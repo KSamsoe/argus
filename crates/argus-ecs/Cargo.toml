@@ -1,0 +1,9 @@
+[package]
+name = "argus-ecs"
+description = "Argus Engine ECS core: SoA archetype storage, component schemas, hierarchy, snapshots"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+argus-ecs-derive = { path = "../argus-ecs-derive", version = "0.0.1" }

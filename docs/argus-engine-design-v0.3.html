@@ -1,0 +1,741 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1"><style>:root{color-scheme:light}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Argus Engine</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --ground:#F6F7F4; --surface:#ECEEE9; --surface-2:#E2E5DF; --ink:#1A1F22; --muted:#5F6A6F; --rule:#D2D7D1;
+  --accent:#C4471C; --accent-ink:#FFFFFF; --code-bg:#1E2326; --code-ink:#E4E7E1; --code-key:#F0A07A; --code-str:#9ED1B2; --code-cmt:#8C979C;
+  --good:#2E7D5B; --warn:#B7791F;
+  --font-display:"Bricolage Grotesque","Helvetica Neue",Arial,sans-serif;
+  --font-body:"Source Serif 4",Georgia,"Times New Roman",serif;
+  --font-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#141719; --surface:#1C2023; --surface-2:#24292D; --ink:#E4E7E1; --muted:#98A1A5; --rule:#2E3438;
+    --accent:#E8703F; --accent-ink:#141719; --code-bg:#0F1214; --code-ink:#DCE0DA; --code-key:#F2A67E; --code-str:#9ED1B2; --code-cmt:#7F898E;
+    --good:#5FBF93; --warn:#D9A24A;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#141719; --surface:#1C2023; --surface-2:#24292D; --ink:#E4E7E1; --muted:#98A1A5; --rule:#2E3438;
+  --accent:#E8703F; --accent-ink:#141719; --code-bg:#0F1214; --code-ink:#DCE0DA; --code-key:#F2A67E; --code-str:#9ED1B2; --code-cmt:#7F898E;
+  --good:#5FBF93; --warn:#D9A24A;
+}
+*{box-sizing:border-box}
+body{background:var(--ground);color:var(--ink);font-family:var(--font-body);font-size:17px;line-height:1.6;padding-inline:20px;padding-block:0 96px;margin:0}
+.wrap{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:230px minmax(0,1fr);gap:56px}
+@media (max-width:900px){.wrap{grid-template-columns:minmax(0,1fr);gap:24px}}
+header.masthead{grid-column:1/-1;padding-block:56px 32px;border-bottom:1px solid var(--rule);display:grid;grid-template-columns:minmax(0,1fr) auto;gap:24px;align-items:end}
+@media (max-width:700px){header.masthead{grid-template-columns:minmax(0,1fr)}}
+.eyebrow{font-family:var(--font-mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+h1{font-family:var(--font-display);font-weight:700;font-size:clamp(40px,6vw,64px);line-height:1;letter-spacing:-.02em;margin:8px 0 14px;text-wrap:balance}
+.lede{font-size:20px;line-height:1.45;max-width:38em;margin:0;color:var(--ink)}
+.meta{font-family:var(--font-mono);font-size:12px;color:var(--muted);line-height:1.8;text-align:right}
+@media (max-width:700px){.meta{text-align:left}}
+nav.toc{position:sticky;top:24px;align-self:start;font-family:var(--font-display);font-size:14px;line-height:1.4;padding-top:40px}
+@media (max-width:900px){nav.toc{position:static;padding-top:24px;border-bottom:1px solid var(--rule);padding-bottom:16px}}
+nav.toc ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:7px}
+@media (max-width:900px){nav.toc ol{flex-direction:row;flex-wrap:wrap;gap:6px 16px}}
+nav.toc a{color:var(--muted);text-decoration:none;display:flex;gap:10px}
+nav.toc a:hover,nav.toc a:focus-visible{color:var(--accent);outline:none}
+nav.toc .n{font-family:var(--font-mono);font-size:11px;color:var(--muted);min-width:1.6em;padding-top:2px}
+main{padding-top:40px;min-width:0}
+section{padding-block:8px 40px;border-bottom:1px solid var(--rule);margin-bottom:40px}
+section:last-of-type{border-bottom:0}
+h2{font-family:var(--font-display);font-weight:700;font-size:30px;line-height:1.1;letter-spacing:-.015em;margin:0 0 20px;text-wrap:balance;display:flex;gap:14px;align-items:baseline}
+h2 .n{font-family:var(--font-mono);font-size:13px;color:var(--accent);font-weight:500;letter-spacing:.04em}
+h3{font-family:var(--font-display);font-weight:600;font-size:20px;line-height:1.2;margin:34px 0 10px;text-wrap:balance}
+p{max-width:66ch;margin:0 0 16px}
+p.wide,.prose-wide p{max-width:none}
+strong{font-weight:600}
+a{color:var(--accent)}
+code{font-family:var(--font-mono);font-size:.86em;background:var(--surface);padding:1px 5px;border-radius:3px}
+pre{font-family:var(--font-mono);font-size:13px;line-height:1.55;background:var(--code-bg);color:var(--code-ink);padding:16px 18px;border-radius:4px;overflow-x:auto;margin:0 0 20px;max-width:88ch}
+pre code{background:none;padding:0;font-size:inherit;color:inherit}
+pre .k{color:var(--code-key)} pre .s{color:var(--code-str)} pre .c{color:var(--code-cmt);font-style:italic}
+pre .cap{display:block;color:var(--code-cmt);margin-bottom:8px;font-size:11px;letter-spacing:.06em;text-transform:uppercase}
+.decision{border-left:3px solid var(--accent);padding:10px 18px;margin:22px 0 24px;max-width:70ch;background:var(--surface)}
+.decision .lbl{font-family:var(--font-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+.decision p{margin:0 0 8px;font-size:16px}
+.decision p:last-child{margin:0}
+.open{border-left:3px solid var(--rule);padding:8px 18px;margin:22px 0;max-width:70ch;color:var(--muted);font-size:16px}
+.open .lbl{font-family:var(--font-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+.open p{margin:0 0 6px;color:var(--ink)}
+table{border-collapse:collapse;width:100%;max-width:88ch;font-size:15px;margin:0 0 24px;font-family:var(--font-display)}
+.tablewrap{overflow-x:auto;margin-bottom:24px}
+th{text-align:left;font-weight:600;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:8px 12px 8px 0;border-bottom:1px solid var(--ink);font-family:var(--font-mono)}
+td{padding:10px 12px 10px 0;border-bottom:1px solid var(--rule);vertical-align:top;line-height:1.45}
+td code{font-size:.82em}
+.principles{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1px;margin:8px 0 28px;max-width:88ch;padding:1px}
+.principles div{background:var(--ground);padding:18px 18px 20px;box-shadow:0 0 0 1px var(--rule)}
+.principles h4{font-family:var(--font-display);font-size:17px;margin:0 0 6px;font-weight:600;line-height:1.2}
+.principles p{font-size:15px;margin:0;color:var(--muted);line-height:1.5}
+.principles .n{font-family:var(--font-mono);font-size:11px;color:var(--accent);letter-spacing:.06em;display:block;margin-bottom:8px}
+figure{margin:24px 0 28px;max-width:88ch}
+figure svg{width:100%;height:auto;display:block}
+figcaption{font-family:var(--font-mono);font-size:12px;color:var(--muted);margin-top:10px;letter-spacing:.02em}
+.layers{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px 20px;max-width:70ch;margin:8px 0 24px;font-size:16px}
+.layers .lv{font-family:var(--font-mono);font-size:12px;color:var(--accent);padding-top:5px;white-space:nowrap}
+.layers .lv small{color:var(--muted)}
+.phase{display:grid;grid-template-columns:110px minmax(0,1fr);gap:16px;padding:16px 0;border-top:1px solid var(--rule);max-width:88ch}
+.phase:last-of-type{border-bottom:1px solid var(--rule)}
+@media (max-width:600px){.phase{grid-template-columns:minmax(0,1fr);gap:6px}}
+.phase .ph{font-family:var(--font-display);font-weight:600;font-size:16px;line-height:1.3}
+.phase .ph small{display:block;font-family:var(--font-mono);font-weight:400;font-size:11px;color:var(--muted);letter-spacing:.04em;margin-top:3px}
+.phase p{margin:0 0 8px;font-size:16px}
+.phase .gate{font-size:15px;color:var(--muted)}
+.phase .gate b{font-weight:600;color:var(--ink);font-family:var(--font-mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;margin-right:6px}
+.split{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:24px;max-width:88ch;margin-bottom:20px}
+.split h4{font-family:var(--font-display);font-size:15px;margin:0 0 8px;font-weight:600;letter-spacing:.01em}
+.split ul{margin:0;padding-left:18px;font-size:15.5px;line-height:1.5}
+.split li{margin-bottom:6px}
+ul.plain{max-width:66ch;padding-left:20px;margin:0 0 16px}
+ul.plain li{margin-bottom:6px}
+kbd{font-family:var(--font-mono);font-size:.8em;border:1px solid var(--rule);border-bottom-width:2px;border-radius:3px;padding:0 5px;background:var(--surface)}
+@media (prefers-reduced-motion: no-preference){html{scroll-behavior:smooth}}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+</style>
+
+<div class="wrap">
+<header class="masthead">
+  <div>
+    <div class="eyebrow">Design document · v0.3 draft</div>
+    <h1>Argus Engine</h1>
+    <p class="lede">A general-purpose 2D game engine whose primary user interface is a protocol. The editor, the CLI, the test runner, and the coding agent are all clients of the same daemon — and the human and the agent tune the game on the same world, at the same time.</p>
+  </div>
+  <div class="meta">
+    Scope: general 2D, four reference games<br>
+    Internals: data-oriented, Rust + Luau<br>
+    Status: for discussion<br>
+    Sep 2026
+  </div>
+</header>
+
+<nav class="toc" aria-label="Contents">
+  <ol>
+    <li><a href="#s0"><span class="n">0</span>Thesis</a></li>
+    <li><a href="#s1"><span class="n">1</span>Principles</a></li>
+    <li><a href="#s2"><span class="n">2</span>Architecture</a></li>
+    <li><a href="#s3"><span class="n">3</span>Data model</a></li>
+    <li><a href="#s4"><span class="n">4</span>Project &amp; scene storage</a></li>
+    <li><a href="#s5"><span class="n">5</span>Protocol</a></li>
+    <li><a href="#s6"><span class="n">6</span>Determinism &amp; time</a></li>
+    <li><a href="#s7"><span class="n">7</span>Scripting &amp; hot reload</a></li>
+    <li><a href="#s8"><span class="n">8</span>Observation</a></li>
+    <li><a href="#s9"><span class="n">9</span>Test harness</a></li>
+    <li><a href="#s10"><span class="n">10</span>Human–agent collaboration</a></li>
+    <li><a href="#s11"><span class="n">11</span>Editor</a></li>
+    <li><a href="#s12"><span class="n">12</span>2D subsystems</a></li>
+    <li><a href="#s13"><span class="n">13</span>Animation, VFX &amp; audio</a></li>
+    <li><a href="#s14"><span class="n">14</span>Assets</a></li>
+    <li><a href="#s15"><span class="n">15</span>Shipping</a></li>
+    <li><a href="#s16"><span class="n">16</span>Agent packaging</a></li>
+    <li><a href="#s17"><span class="n">17</span>Performance targets</a></li>
+    <li><a href="#s18"><span class="n">18</span>Build plan</a></li>
+    <li><a href="#s19"><span class="n">19</span>Non-goals, risks, open questions</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<section id="s0">
+<h2><span class="n">§0</span>Thesis</h2>
+<p>Every mainstream engine treats the editor as the ground truth and the world as something you look at through it. That is why bolting an agent onto Unity or Godot stays shaky: the agent is a translator standing between a language model and a system that was never meant to be driven blind. State lives in serialized objects that only exist properly on the main thread, scene files are ten-thousand-line dumps of GUID references, and a script change nukes the world.</p>
+<p>Argus inverts the ordering. The engine is a long-running daemon that owns a world; a small JSON-RPC protocol is the only way to read or change that world; the editor is one client among several. The simulation is deterministic and time-controllable, so any run is a reproducible artifact. Scenes are queried, not read. And because the human and the agent share the same world through the same protocol, the things agents are bad at — game feel, timing, juice — become collaborative: the human's hands on the sliders produce data the agent can act on.</p>
+<p>The target is general-purpose 2D: action, platformer, grid-based, and simulation games should all come out of the same engine without one of them fighting it. The internals are data-oriented — an archetype ECS, structure-of-arrays storage, a Rust core with Luau for game logic — because that is what makes the world flat, legible, and fast to snapshot, not because any one genre demands it. Three-dimensional rendering, networking, and cross-platform determinism are explicitly deferred.</p>
+<p>To keep the design honest about generality, four reference games are threaded through the document and gate the build plan (§18). Each stresses a different axis, and the engine is done when all four feel native.</p>
+<div class="tablewrap"><table>
+<tr><th>Reference game</th><th>Genre</th><th>What it stresses</th></tr>
+<tr><td><strong>Swarm</strong></td><td>Bullet heaven</td><td>Continuous time, tens of thousands of runtime entities, hot-path systems, few authored entities</td></tr>
+<tr><td><strong>Delve</strong></td><td>Grid roguelike</td><td>Discrete time, procedural generation, turn order, seed sweeps, mostly text and state</td></tr>
+<tr><td><strong>Hollow</strong></td><td>Platformer / metroidvania</td><td>Game feel, kinematic physics, tilemaps, camera, rooms and streaming, thousands of authored entities</td></tr>
+<tr><td><strong>Outpost</strong></td><td>Colony simulation</td><td>Many interacting systems, pathfinding and jobs, data tables, sim speed control, hours-long sessions, save games, balance tuning</td></tr>
+</table></div>
+<div class="decision"><div class="lbl">Design goal, one sentence</div><p>An agent, starting from an empty directory and a one-paragraph brief, can build, run, test, and iterate on a playable prototype of any of the four reference games without a human clicking anything — and a human can then sit down, play it, mark what feels wrong, and hand the agent a reproducible replay of every mark.</p></div>
+</section>
+
+<section id="s1">
+<h2><span class="n">§1</span>Principles</h2>
+<p>Five rules. Every later decision should be traceable to at least one of them; when two conflict, the earlier one wins.</p>
+<div class="principles">
+  <div><span class="n">P1</span><h4>The daemon is the truth; everything else is a client.</h4><p>There is no button that isn't also a command. The editor cannot do anything the CLI can't, because it has no other way to reach the world.</p></div>
+  <div><span class="n">P2</span><h4>Query, don't read.</h4><p>No client ever needs the whole scene in memory. Every response is a summary by default, paginated, with drill-down on request. Token budget is a first-class resource.</p></div>
+  <div><span class="n">P3</span><h4>Deterministic and time-controllable.</h4><p>Fixed timestep, seeded RNG, recorded input. Scene + seed + input log + code version reproduces any run exactly. Step, pause, snapshot, seek, replay are engine primitives, not tooling.</p></div>
+  <div><span class="n">P4</span><h4>Flat data, visible side effects.</h4><p>Components are plain data. Systems declare what they read and write. Nothing lives in script globals. There is no hidden state for the agent to be surprised by.</p></div>
+  <div><span class="n">P5</span><h4>One world, two hands.</h4><p>Human and agent edit the same world through the same transactions. Feel is tuned by hand, but the hand's movements are logged, replayable data.</p></div>
+</div>
+</section>
+
+<section id="s2">
+<h2><span class="n">§2</span>Architecture</h2>
+<p>Three tiers: a Rust core process (<code>argusd</code>), a protocol boundary, and a set of clients. The core is a single process that hosts the ECS world, the fixed-step simulation, the renderer, audio, the asset importer, and the Luau VM. Clients connect over a local socket (Unix domain socket or Windows named pipe) or over stdio when embedded.</p>
+<figure>
+<svg viewBox="0 0 820 400" role="img" aria-label="Argus architecture: clients on top talk over the protocol to the daemon core below">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker>
+  </defs>
+  <g font-family="JetBrains Mono, monospace" font-size="12" fill="currentColor" style="color:var(--ink)">
+    <!-- clients -->
+    <g>
+      <rect x="20" y="20" width="140" height="64" rx="3" fill="var(--surface)" stroke="var(--rule)"/>
+      <text x="90" y="46" text-anchor="middle" font-weight="500">argus CLI</text>
+      <text x="90" y="66" text-anchor="middle" fill="var(--muted)" font-size="11">human / agent shell</text>
+      <rect x="180" y="20" width="140" height="64" rx="3" fill="var(--surface)" stroke="var(--rule)"/>
+      <text x="250" y="46" text-anchor="middle" font-weight="500">argus mcp</text>
+      <text x="250" y="66" text-anchor="middle" fill="var(--muted)" font-size="11">stdio MCP shim</text>
+      <rect x="340" y="20" width="140" height="64" rx="3" fill="var(--surface)" stroke="var(--rule)"/>
+      <text x="410" y="46" text-anchor="middle" font-weight="500">Editor</text>
+      <text x="410" y="66" text-anchor="middle" fill="var(--muted)" font-size="11">separate process</text>
+      <rect x="500" y="20" width="140" height="64" rx="3" fill="var(--surface)" stroke="var(--rule)"/>
+      <text x="570" y="46" text-anchor="middle" font-weight="500">argus test</text>
+      <text x="570" y="66" text-anchor="middle" fill="var(--muted)" font-size="11">scenario runner</text>
+      <rect x="660" y="20" width="140" height="64" rx="3" fill="var(--surface)" stroke="var(--rule)"/>
+      <text x="730" y="46" text-anchor="middle" font-weight="500">Recorder</text>
+      <text x="730" y="66" text-anchor="middle" fill="var(--muted)" font-size="11">marks, clips, tuning log</text>
+    </g>
+    <!-- arrows down -->
+    <g stroke="currentColor" stroke-width="1.2" marker-end="url(#arr)" fill="none">
+      <path d="M90 84V126"/><path d="M250 84V126"/><path d="M410 84V126"/><path d="M570 84V126"/><path d="M730 84V126"/>
+    </g>
+    <!-- protocol band -->
+    <rect x="20" y="130" width="780" height="46" rx="3" fill="var(--accent)" opacity=".92"/>
+    <text x="410" y="152" text-anchor="middle" fill="var(--accent-ink)" font-weight="500">Argus Protocol · JSON-RPC 2.0 over local socket or stdio</text>
+    <text x="410" y="168" text-anchor="middle" fill="var(--accent-ink)" font-size="11" opacity=".85">world · scene · edit · sim · obs · input · asset · script · session</text>
+    <path d="M410 176V214" stroke="currentColor" stroke-width="1.2" marker-end="url(#arr)" fill="none"/>
+    <!-- daemon -->
+    <rect x="20" y="218" width="780" height="162" rx="3" fill="none" stroke="var(--ink)" stroke-width="1.4"/>
+    <text x="36" y="240" font-weight="500">argusd · Rust core process</text>
+    <g font-size="11">
+      <rect x="36" y="256" width="118" height="48" rx="2" fill="var(--surface)" stroke="var(--rule)"/><text x="95" y="276" text-anchor="middle" font-weight="500">ECS world</text><text x="95" y="292" text-anchor="middle" fill="var(--muted)">archetypes, SoA</text>
+      <rect x="164" y="256" width="118" height="48" rx="2" fill="var(--surface)" stroke="var(--rule)"/><text x="223" y="276" text-anchor="middle" font-weight="500">Scheduler</text><text x="223" y="292" text-anchor="middle" fill="var(--muted)">fixed-step, stages</text>
+      <rect x="292" y="256" width="118" height="48" rx="2" fill="var(--surface)" stroke="var(--rule)"/><text x="351" y="276" text-anchor="middle" font-weight="500">Snapshots</text><text x="351" y="292" text-anchor="middle" fill="var(--muted)">ring + replay</text>
+      <rect x="420" y="256" width="118" height="48" rx="2" fill="var(--surface)" stroke="var(--rule)"/><text x="479" y="276" text-anchor="middle" font-weight="500">Luau VM</text><text x="479" y="292" text-anchor="middle" fill="var(--muted)">script systems</text>
+      <rect x="548" y="256" width="118" height="48" rx="2" fill="var(--surface)" stroke="var(--rule)"/><text x="607" y="276" text-anchor="middle" font-weight="500">Rust plugins</text><text x="607" y="292" text-anchor="middle" fill="var(--muted)">hot-path systems</text>
+      <rect x="676" y="256" width="108" height="48" rx="2" fill="var(--surface)" stroke="var(--rule)"/><text x="730" y="276" text-anchor="middle" font-weight="500">Index</text><text x="730" y="292" text-anchor="middle" fill="var(--muted)">SQLite cache</text>
+      <rect x="36" y="316" width="182" height="48" rx="2" fill="var(--surface)" stroke="var(--rule)"/><text x="127" y="336" text-anchor="middle" font-weight="500">Renderer (wgpu)</text><text x="127" y="352" text-anchor="middle" fill="var(--muted)">instanced sprites, offscreen</text>
+      <rect x="228" y="316" width="182" height="48" rx="2" fill="var(--surface)" stroke="var(--rule)"/><text x="319" y="336" text-anchor="middle" font-weight="500">Physics 2D</text><text x="319" y="352" text-anchor="middle" fill="var(--muted)">spatial hash, shapes</text>
+      <rect x="420" y="316" width="182" height="48" rx="2" fill="var(--surface)" stroke="var(--rule)"/><text x="511" y="336" text-anchor="middle" font-weight="500">Audio</text><text x="511" y="352" text-anchor="middle" fill="var(--muted)">event log + mixer</text>
+      <rect x="612" y="316" width="172" height="48" rx="2" fill="var(--surface)" stroke="var(--rule)"/><text x="698" y="336" text-anchor="middle" font-weight="500">Asset importer</text><text x="698" y="352" text-anchor="middle" fill="var(--muted)">watch, cache</text>
+    </g>
+  </g>
+</svg>
+<figcaption>Fig. 1 — Every client, including the editor, reaches the world only through the protocol band.</figcaption>
+</figure>
+
+<h3>Process model</h3>
+<p>One daemon per project. The daemon holds exactly one <em>world</em> and a stack of <em>snapshots</em>. There is no separate edit mode and play mode with different data representations: "editing" is the world with the simulation stages disabled; "playing" is the world with them enabled. Entering play takes a snapshot; stopping restores it. Because the snapshot is a memcpy of SoA columns, the transition costs single-digit milliseconds even at Swarm's entity counts, and there is nothing to desync. For Outpost, where a session is hours long and the world is the save game, the same mechanism is what "save" and "load" are built on (§6).</p>
+<p>The renderer is optional at daemon start (<code>argusd --headless</code>). Headless mode still supports semantic observation (§8) and can render to an offscreen texture on demand for screenshots, using the same wgpu path with a software adapter in CI.</p>
+<p>Isolation: a script or plugin fault must not take the daemon down. Luau systems run sandboxed inside the daemon with instruction budgets. Rust plugin systems are loaded as dynamic libraries; a panic in one is caught at the system boundary, the system is disabled, and the fault is reported through the protocol as an event. The world remains intact and inspectable — which is exactly when the agent most needs to inspect it.</p>
+<div class="decision"><div class="lbl">Decision</div><p>Single process, single world, snapshots instead of modes. Multiple concurrent play sessions (for A/B comparison, §10) are implemented as forked worlds from a snapshot inside the same daemon, not as extra processes.</p><p>Rationale: P1 and P3. The alternative — an edit-time scene graph and a run-time world — is the root of every "play mode changed my scene" bug and doubles the surface the agent has to reason about.</p></div>
+</section>
+
+<section id="s3">
+<h2><span class="n">§3</span>Data model</h2>
+<p>Argus is an archetype ECS. Entities are IDs; components are plain data structs stored column-wise (structure-of-arrays) per archetype; systems are functions that run over queries. Swarm needs this for performance, but it is the right choice for every reference game because of what it does for an agent: the whole game state is a set of flat tables, every field is greppable, and there is no inheritance hierarchy hiding behavior three files away. Delve's turn state, Hollow's room contents, and Outpost's colonists and stockpiles are all the same kind of thing — rows in typed columns.</p>
+
+<h3>Entities</h3>
+<p>An entity ID is a 64-bit value (index + generation). Authored entities — the ones a human or agent places in a scene file — additionally carry a stable string <em>id</em> such as <code>player</code> or <code>door.east</code>, unique within the scene and stable across sessions, saves, and renames of everything else. Runtime-spawned entities (bullets, generated dungeon rooms, colonists born mid-game) never get string ids and are never written to scene files. This split, authored versus runtime, drives the storage design in §4. The proportion varies enormously by genre — Swarm has a dozen authored entities and fifty thousand runtime ones, Hollow has thousands authored and few runtime, Outpost's runtime state <em>is</em> the game and must persist as a save — and §4 and §6 are written to handle all three shapes.</p>
+<p>Transform hierarchy is first-class: a <code>Parent</code> component gives an entity a local transform relative to another, propagated in a dedicated stage before <code>present</code>. Characters with attached weapons, UI trees, and Outpost's buildings with sub-parts all use it; Swarm's bullets simply don't have the component and pay nothing.</p>
+
+<h3>Components</h3>
+<p>A component is a schema plus a column. Schemas are declared once and introspectable everywhere: from Rust via derive, or from Luau via a schema file. Every field has a type, a default, an optional range, and a doc string. The doc string is not decoration: it is what <code>argus describe</code> returns, and therefore what the agent reads.</p>
+<pre><code><span class="cap">components/hitstop.luau — component schema declared from script</span>
+<span class="k">return</span> component <span class="s">"HitStop"</span> {
+  doc    = <span class="s">"Freezes an entity's simulation for N frames after a hit. Read by sim.hitstop."</span>,
+  frames = field.u8 { default = 0, range = {0, 30}, doc = <span class="s">"Remaining frozen frames"</span> },
+  scale  = field.f32{ default = 0.0, range = {0, 1}, tune = <span class="k">true</span>,
+                      doc = <span class="s">"Time scale while frozen. 0 = full stop"</span> },
+}</code></pre>
+<p>The <code>tune = true</code> flag marks a field as a feel parameter. It changes nothing at runtime; it tells the editor to expose the field in the tuning panel and tells the recorder to log changes to it (§10). Hot fields — anything touched every frame by thousands of entities — should be declared in Rust so they get a native SoA column with no VM boundary; cold, game-rule fields can live in Luau schemas. The protocol does not distinguish between the two.</p>
+
+<h3>Systems and stages</h3>
+<p>Systems run in a fixed order of stages: <code>input → sim → late → hierarchy → present</code>. The <code>sim</code> stage runs on the game clock (§6) and is the only stage that may mutate gameplay state; <code>present</code> runs at render rate and is read-only (interpolation, camera, UI). Each system declares the components it reads and writes. The scheduler uses this for parallelism, but more importantly the agent uses it to answer "what could have changed <code>Health</code>?" with a single query instead of a grep.</p>
+<pre><code><span class="cap">systems/hitstop.luau — a script system</span>
+<span class="k">return</span> system <span class="s">"sim.hitstop"</span> {
+  stage  = <span class="s">"sim"</span>,
+  after  = { <span class="s">"sim.damage"</span> },
+  reads  = { <span class="s">"HitStop"</span> },
+  writes = { <span class="s">"HitStop"</span>, <span class="s">"TimeScale"</span> },
+  run = <span class="k">function</span>(q)
+    <span class="k">for</span> e, hs, ts <span class="k">in</span> q:each(<span class="s">"HitStop"</span>, <span class="s">"TimeScale"</span>) <span class="k">do</span>
+      <span class="k">if</span> hs.frames &gt; 0 <span class="k">then</span>
+        hs.frames -= 1
+        ts.value = hs.scale
+      <span class="k">else</span>
+        ts.value = 1
+      <span class="k">end</span>
+    <span class="k">end</span>
+  <span class="k">end</span>,
+}</code></pre>
+<p>Tags are zero-size components. Relations (parent/child, "owned by") are components holding entity references, and the engine keeps them valid across despawn by nulling dangling refs at frame end and emitting an event, so nothing crashes on a stale handle and the agent can see that it happened.</p>
+
+<h3>Prefabs and overrides</h3>
+<p>A prefab is a named bundle of components with values, and may itself be built from another prefab (<code>door/locked</code> from <code>door/base</code>). An entity that references a prefab stores <em>only the fields it overrides</em>; everything else is inherited at load and re-inherited when the prefab changes. The rules are deliberately few, because override models are where scene formats go to die:</p>
+<ul class="plain">
+  <li>Inheritance is per field, never per component. Overriding <code>Door.locked</code> does not detach the rest of <code>Door</code>.</li>
+  <li>Adding a component the prefab lacks is an override; removing one the prefab has is an explicit <code>-Component</code> entry, so a reader sees the removal in the file.</li>
+  <li>A prefab may contain child entities (a door with a frame and a light); children are addressed by path (<code>@door.east/light</code>) and overridden the same way.</li>
+  <li><code>world.get {entity, resolved: false}</code> returns only the overrides; <code>resolved: true</code> returns the merged result with each field's provenance (<code>own</code>, <code>door/locked</code>, <code>door/base</code>). The editor's inspector shows the same provenance as a colour.</li>
+  <li>Changing a prefab is a transaction like any other; the index lists every instance, and the change feed reports how many entities the change touched.</li>
+</ul>
+<div class="decision"><div class="lbl">Decision</div><p>Archetype ECS with SoA columns, declared read/write sets, and authored-versus-runtime entity distinction as a first-class concept.</p><p>Rationale: P2 and P4. Declared side effects turn "why did this change" from an investigation into a query.</p></div>
+</section>
+
+<section id="s4">
+<h2><span class="n">§4</span>Project &amp; scene storage</h2>
+<p>Files are the source of truth and are designed to be read by git, by humans, and by agents in that order of priority. The daemon builds a queryable index from them; the index is a cache and is never committed.</p>
+<pre><code><span class="cap">project layout</span>
+mygame/
+  argus.toml              <span class="c"># project: name, clock config, plugin list, default scene</span>
+  components/             <span class="c"># Luau component schemas, one per file</span>
+  systems/                <span class="c"># Luau systems, one per file, name = path</span>
+  defs/                   <span class="c"># game data tables: items, recipes, jobs, enemies (see below)</span>
+    items.toml
+    recipes.toml
+  prefabs/
+    enemy/bat.toml
+    door/locked.toml
+  scenes/
+    arena/                <span class="c"># a flat scene: one directory</span>
+      scene.toml          <span class="c"># scene metadata: bounds, enabled system groups, seed policy, clock</span>
+      player.toml         <span class="c"># one authored entity per file, filename = string id</span>
+      spawner.north.toml
+    hollow/               <span class="c"># a large scene: subdivided into rooms</span>
+      scene.toml          <span class="c"># room graph, streaming radius, transitions</span>
+      rooms/
+        cavern-03/
+          room.toml       <span class="c"># bounds, tileset, neighbors</span>
+          door.east.toml
+          save-point.toml
+          tiles.map.toml  <span class="c"># index for a binary chunk (see below)</span>
+        cavern-04/ …
+  assets/                 <span class="c"># source art, audio, fonts; importer watches this tree</span>
+  tests/                  <span class="c"># scenario tests (§9)</span>
+  plugins/                <span class="c"># optional Rust crates compiled to dylibs</span>
+  .argus/                 <span class="c"># index.db, import cache, snapshots, marks — gitignored</span></code></pre>
+
+<h3>Entity files</h3>
+<p>One authored entity per TOML file. Small, flat, diffable, and there is never a reason to read a neighbor's file to understand this one.</p>
+<pre><code><span class="cap">scenes/hollow/rooms/cavern-03/door.east.toml</span>
+prefab = <span class="s">"door/locked"</span>
+tags   = [<span class="s">"door"</span>]
+
+[Transform]
+pos = [46.0, 8.0]
+
+[Door]
+leads_to = <span class="s">"@cavern-04/door.west"</span>   <span class="c"># entity ref by string id, room-qualified</span>
+key      = <span class="s">"item:key.brass"</span>         <span class="c"># def ref, not a GUID</span>
+locked   = <span class="k">true</span></code></pre>
+
+<h3>Rooms and streaming</h3>
+<p>A scene is either flat (one directory of entities, the Swarm and Delve case) or subdivided into rooms (the Hollow case, and Outpost's map chunks). Rooms are directories; the scene file holds the room graph. The daemon streams rooms in and out around the player by graph distance, so a two-hundred-room game never has more than a handful of rooms live, and the index still answers queries about rooms that aren't loaded. Transitions between rooms are an engine event with a hook for the game (fade, camera slide), not something each game reinvents.</p>
+
+<h3>Data tables</h3>
+<p>Much of a game's authored content isn't entities at all: item definitions, crafting recipes, job priorities, enemy stat blocks, dialogue lines. These live in <code>defs/</code> as TOML tables with declared schemas, referenced as <code>item:key.brass</code>, indexed and queryable like everything else (<code>world.defs {table: "recipes", where: {output: "item:bread"}}</code>). Outpost is mostly defs; an agent balancing its economy edits tables and runs seed sweeps, never touching a scene.</p>
+<p>Asset and prefab references are paths. Renames are performed through the protocol (<code>asset.move</code>), which rewrites references and appends to <code>.argus/moves.log</code> so an out-of-date client can catch up. This trades GUID robustness against filesystem renames for legibility; a rename done outside the tool leaves a clear "missing reference" error with the old path in it, which is fixable by an agent in one command. That trade is deliberate.</p>
+
+<h3>Bulk authored data</h3>
+<p>Some authored content is legitimately large: a tilemap, a placed-prop layer with thousands of entries, a baked navigation grid. These get a text <em>index</em> file plus a binary <em>chunk</em>: the index carries everything a reader needs to reason about the data (dimensions, tileset, layer names, a content hash), and the chunk carries the numbers. The agent reads the index and queries the chunk through the protocol (<code>scene.tiles.get {rect}</code>); it never sees a 40,000-line array.</p>
+
+<h3>The index</h3>
+<p>On load and on every file change, the daemon updates <code>.argus/index.db</code> (SQLite): entities by scene, components by entity, references between assets, prefabs, and entities, plus a full-text column over doc strings. Every <code>world.*</code> and <code>scene.*</code> query in §5 is served from this index when the world is not loaded, and from the live world when it is, with identical result shapes. The agent does not need to know which.</p>
+<div class="decision"><div class="lbl">Decision</div><p>File-per-entity TOML for authored content, rooms as directories with streaming, data tables in <code>defs/</code>, binary chunks with text indexes for bulk data, path references not GUIDs, SQLite index as cache only.</p><p>Rationale: P2 above all. A room directory of forty 20-line files is something an agent can hold in its head; one 8,000-line YAML file is not, and git can't merge it either. The index is what keeps this true at Hollow's scale, where the whole scene is thousands of files.</p></div>
+<div class="open"><div class="lbl">Open</div><p>TOML versus KDL. TOML is universally known and every model has strong priors for it; KDL nests better for deep component data. Leaning TOML because prior strength matters more than elegance for this audience.</p></div>
+</section>
+
+<section id="s5">
+<h2><span class="n">§5</span>Protocol</h2>
+<p>JSON-RPC 2.0 over a local socket, with server-initiated notifications for subscriptions. JSON rather than a binary format because the primary client is a language model and the secondary client is a human at a terminal; the hot paths (frame streaming, snapshot transfer) use out-of-band shared memory or a sidecar binary channel that the JSON message merely points at.</p>
+<p>The method set is small on purpose. Ten namespaces, roughly fifty methods, mirrored one-to-one by CLI subcommands and MCP tools.</p>
+<div class="tablewrap"><table>
+<tr><th>Namespace</th><th>What it does</th><th>Representative methods</th></tr>
+<tr><td><code>session</code></td><td>Daemon lifecycle, project open, capabilities</td><td><code>open</code>, <code>capabilities</code>, <code>docs</code></td></tr>
+<tr><td><code>world</code></td><td>Read live or indexed state, including data tables</td><td><code>summary</code>, <code>query</code>, <code>get</code>, <code>describe</code>, <code>who_writes</code>, <code>defs</code></td></tr>
+<tr><td><code>scene</code></td><td>Scene and room operations</td><td><code>list</code>, <code>load</code>, <code>save</code>, <code>rooms</code>, <code>tiles.get</code></td></tr>
+<tr><td><code>edit</code></td><td>Transactional mutation, authored or runtime</td><td><code>begin</code>, <code>set</code>, <code>spawn</code>, <code>despawn</code>, <code>commit</code>, <code>abort</code>, <code>lock</code></td></tr>
+<tr><td><code>sim</code></td><td>Time control on either clock</td><td><code>play</code>, <code>pause</code>, <code>step</code>, <code>advance</code>, <code>speed</code>, <code>run_until</code>, <code>seek</code>, <code>snapshot</code>, <code>fork</code>, <code>save</code>, <code>load</code></td></tr>
+<tr><td><code>obs</code></td><td>Observation, all layers of §8</td><td><code>frame</code>, <code>diff</code>, <code>events</code>, <code>subscribe</code>, <code>annotate</code></td></tr>
+<tr><td><code>input</code></td><td>Inject or record <em>actions</em> (§12), not raw keys</td><td><code>inject</code>, <code>script</code>, <code>record</code>, <code>log.get</code>, <code>bindings</code></td></tr>
+<tr><td><code>asset</code></td><td>Import, move, describe assets</td><td><code>list</code>, <code>describe</code>, <code>move</code>, <code>reimport</code></td></tr>
+<tr><td><code>script</code></td><td>Reload, list systems, errors</td><td><code>reload</code>, <code>systems</code>, <code>errors</code></td></tr>
+<tr><td><code>prof</code></td><td>Profiling, always on at low cost</td><td><code>frame</code>, <code>worst</code>, <code>systems</code>, <code>alloc</code>, <code>archetypes</code>, <code>capture</code></td></tr>
+</table></div>
+
+<h3>Profiling as a query</h3>
+<p>The scheduler already times every system every tick; <code>prof.*</code> just exposes it. <code>prof.systems {last: 600}</code> returns per-system mean and p95 in stage order; <code>prof.worst {n: 5}</code> returns the five slowest recent ticks with a per-system breakdown and the entity counts by archetype at that tick; <code>prof.alloc</code> counts allocations by system so a Luau system that builds a table per entity is visible; <code>prof.capture {ticks: 300}</code> writes a Tracy-compatible trace for the human. This is what makes the §17 targets something the agent can enforce rather than something a human notices: a perf regression is a query result with a system name on it.</p>
+
+<h3>Undo is the change feed</h3>
+<p>Every committed transaction records its inverse. Undo and redo are <code>edit.undo</code> and <code>edit.redo</code>, scoped per author, so the human's <kbd>Ctrl</kbd>+<kbd>Z</kbd> in the editor never unwinds the agent's work and vice versa. Because the feed is shared, both parties can also see what the other undid.</p>
+
+<h3>Access</h3>
+<p>The local socket is owned by the user account that started the daemon and needs no further authentication. Any remote access — the tablet review client in §11, or a teammate's editor — goes through a token issued by <code>argus token</code> with a scope (<code>observe</code>, <code>review</code>, <code>edit</code>) and an expiry, over TLS. Nothing in the player runtime (§15) listens on any socket at all.</p>
+
+<h3>Shape of a query</h3>
+<pre><code><span class="cap">request</span>
+{ <span class="k">"method"</span>: <span class="s">"world.query"</span>, <span class="k">"params"</span>: {
+    <span class="k">"select"</span>: [<span class="s">"id"</span>, <span class="s">"Transform.pos"</span>, <span class="s">"Health.cur"</span>],
+    <span class="k">"where"</span>:  { <span class="k">"has"</span>: [<span class="s">"Enemy"</span>], <span class="k">"within"</span>: { <span class="k">"of"</span>: <span class="s">"@player"</span>, <span class="k">"r"</span>: 6.0 } },
+    <span class="k">"order"</span>:  <span class="s">"dist(@player)"</span>,
+    <span class="k">"limit"</span>:  5 } }
+
+<span class="cap">response</span>
+{ <span class="k">"result"</span>: {
+    <span class="k">"frame"</span>: 812,
+    <span class="k">"total"</span>: 31,
+    <span class="k">"rows"</span>: [
+      [<span class="s">"e:4011"</span>, [3.2, 1.1], 4],
+      [<span class="s">"e:4018"</span>, [-2.9, 2.0], 4],
+      [<span class="s">"e:3990"</span>, [4.4, -3.7], 2],
+      [<span class="s">"e:4102"</span>, [-5.1, 0.3], 4],
+      [<span class="s">"e:4077"</span>, [1.0, 5.8], 1] ],
+    <span class="k">"truncated"</span>: <span class="k">true</span>, <span class="k">"next"</span>: <span class="s">"c:9f2"</span> } }</code></pre>
+<p>Every read method obeys the same contract: a default <code>limit</code> of 50, a <code>total</code> that is always present so the agent knows what it isn't seeing, a cursor for continuation, and a compact row-array encoding rather than repeated keys. The design target is that any default response fits in about 2 KB. <code>world.summary</code> — entity counts by archetype, named entities and their key fields, active systems, current frame and seed — is the one-screen orientation call and is what the MCP shim runs automatically on connect.</p>
+
+<h3>Shape of an edit</h3>
+<pre><code>{ <span class="k">"method"</span>: <span class="s">"edit.begin"</span>,  <span class="k">"params"</span>: { <span class="k">"author"</span>: <span class="s">"agent:claude"</span>, <span class="k">"note"</span>: <span class="s">"tighten north spawner"</span> } }
+{ <span class="k">"method"</span>: <span class="s">"edit.set"</span>,    <span class="k">"params"</span>: { <span class="k">"entity"</span>: <span class="s">"@spawner.north"</span>, <span class="k">"path"</span>: <span class="s">"WaveSpawner.interval_s"</span>, <span class="k">"value"</span>: 0.28 } }
+{ <span class="k">"method"</span>: <span class="s">"edit.commit"</span> }
+<span class="c">// → writes scenes/arena/spawner.north.toml, appends to the change feed, emits edit.committed</span></code></pre>
+<p>Edits to authored entities write files on commit. Edits to runtime entities are live-only. A transaction is atomic and carries an author tag, so the change feed — the log every client can subscribe to — always answers "who changed this and why". <code>edit.lock</code> lets an author (typically the human) fence a set of entities or paths; a write into a locked path fails with an error that names the lock and its owner.</p>
+
+<h3>Errors are documentation</h3>
+<pre><code>{ <span class="k">"error"</span>: {
+    <span class="k">"code"</span>: 4102,
+    <span class="k">"message"</span>: <span class="s">"WaveSpawner.interval_s must be in range [0.05, 10]; got 0.0"</span>,
+    <span class="k">"hint"</span>:    <span class="s">"Use 0.05 for the fastest legal spawn rate, or set per_wave higher instead."</span>,
+    <span class="k">"ref"</span>:     <span class="s">"components/wave_spawner.luau:14"</span> } }</code></pre>
+<p>Every error carries a human sentence, a hint written as if to a capable colleague, and a file:line reference. This is the cheapest lever in the whole design: an agent that gets a good error message rarely needs to read a doc.</p>
+<div class="decision"><div class="lbl">Decision</div><p>JSON-RPC, small fixed method set, summary-first responses with totals and cursors, transactional edits with author tags, structured errors with hints.</p><p>Rationale: P1, P2, P5. The protocol is the product; everything else is a view of it.</p></div>
+</section>
+
+<section id="s6">
+<h2><span class="n">§6</span>Determinism &amp; time</h2>
+<p>A run is a value. Given the same scene, seed, input log, and code version, the world at tick N is bit-identical. This is what makes every other feature in the document possible: tests that don't flake, marks that reproduce, A/B comparisons that mean something.</p>
+
+<h3>Two clocks</h3>
+<p>The single biggest way an action-game engine overfits is by making a fixed timer the only way time moves. Argus has a <em>clock</em> abstraction with two drivers, and every scene declares which one drives its <code>sim</code> stage.</p>
+<div class="layers">
+  <div class="lv">continuous</div><div>The sim advances at a fixed rate (60 Hz default) whether or not anything happened. Rendering is decoupled and interpolates between the last two sim states. Swarm and Hollow live here.</div>
+  <div class="lv">discrete</div><div>The sim advances only when a command is issued: <code>sim.advance {by: "turn"}</code>, or the game calling <code>clock.advance()</code> after the player acts. Between advances nothing simulates; <code>present</code> still runs for animation and UI. Delve lives here, and so does any puzzle, card, or tactics game.</div>
+</div>
+<p>The two are the same thing to the replay system. A continuous run's input log records inputs by tick; a discrete run's log records commands by turn. Seek, fork, marks, and tests work identically. A game can mix them: a tactics game runs discrete for the turn structure and continuous for the animations that play between turns, with the continuous stage gated on "a turn is resolving". The scheduler lets a system group bind to either clock.</p>
+<p>Speed is a property of the continuous clock: <code>sim.speed {x: 3}</code> runs three sim ticks per render frame, and <code>{x: 0}</code> is pause. Outpost's 1×/3×/10× controls and the human's "let the colony run for a night" are this one call; the agent uses the same call to fast-forward a balance test, headless, at whatever rate the CPU allows. Wall-clock time is never visible to gameplay code; <code>sim.time</code> is tick count times the timestep, on whichever clock is driving.</p>
+
+<h3>Randomness</h3>
+<p>Randomness comes from named streams. Each system that wants randomness declares a stream name and gets a PCG32 seeded from <code>hash(run_seed, stream_name)</code>. Adding or reordering a system therefore does not perturb the random sequence any other system sees, which is the property that keeps a replay valid across small code changes.</p>
+<p>Floating point is <code>f32</code> with the usual determinism caveats: reproducible on the same platform and build, not guaranteed across compilers or CPUs. Cross-platform bit-determinism (fixed-point math, or a constrained float subset) is a known path and an explicit non-goal for v1, since the human and the agent are almost always on the same machine.</p>
+
+<h3>Snapshots, seek, fork</h3>
+<p>A snapshot is a serialization of every SoA column plus the RNG states, the event queue, and the Luau heap. Because columns are contiguous, a snapshot at 100k entities is a few tens of megabytes and takes low single-digit milliseconds. In development the daemon keeps a ring of keyframe snapshots (every 60 frames by default, configurable) plus the full input log, so <code>sim.seek {frame: 740}</code> is "restore the nearest earlier keyframe, replay inputs forward" and completes in well under a second for any point in the last several minutes of play.</p>
+<p><code>sim.fork</code> creates a second world from a snapshot inside the same daemon. Forks get their own tick counter and can be stepped independently, which is how the harness runs "same inputs, two code versions" and how the editor offers live A/B toggling (§10).</p>
+<p>Long sessions change the ring's shape but not its mechanism. An Outpost session is hours long; keeping a keyframe every second would be gigabytes. The ring thins with age — every second for the last minute, every minute for the last hour, every ten minutes beyond — so a mark from three hours ago still reproduces, just with a longer replay from its nearest keyframe.</p>
+<pre><code><span class="cap">a run identity, as the recorder stores it</span>
+run     = { scene = <span class="s">"outpost/valley"</span>, seed = 0x5EED_2026, code = <span class="s">"git:a41f2c9+dirty"</span>,
+            clock = <span class="s">"continuous@60"</span>, inputs = <span class="s">".argus/runs/2026-09-10T14-02/input.log"</span> }</code></pre>
+
+<h3>Save games</h3>
+<p>A save is a snapshot with a schema version, written by <code>sim.save</code> to a player-facing location instead of the dev ring. The difference from a dev snapshot is that it must survive code changes: components carry a version, and a component's schema file may declare a <code>migrate</code> function from older versions. On <code>sim.load</code> the daemon runs migrations column by column and reports each one as an event, so an agent can see "Health migrated v2→v3 for 1,204 entities" and a test can assert a saved game from last month still loads. Outpost is the reference game for this; Delve uses it for run persistence; Swarm barely needs it and pays nothing.</p>
+<div class="decision"><div class="lbl">Decision</div><p>Two clock drivers behind one replay model, named PCG streams, same-platform f32 determinism, age-thinned keyframe ring + input log for seek, forked worlds for comparison, versioned snapshots as save games.</p><p>Rationale: P3. Every collaboration feature in §10 is a thin layer over seek and fork, and the clock abstraction is what keeps that true for discrete games.</p></div>
+</section>
+
+<section id="s7">
+<h2><span class="n">§7</span>Scripting &amp; hot reload</h2>
+<p>Game logic is Luau. It is fast for an interpreted language, sandboxed by design, gradually typed so schemas can be checked before a run, and small enough that an agent's priors about Lua transfer cleanly. Hot-path systems — bullet integration, collision broadphase, particle update, Outpost's pathfinding and flow fields — are Rust, either in the engine or in a project plugin crate, and are compiled to a dynamic library the daemon loads.</p>
+<p>The reload story is the same for both: because all state lives in components (P4), swapping code never loses state. For Luau, <code>script.reload</code> recompiles the changed files, rebinds system functions, and continues from the current frame; the daemon freezes script globals after module load so nothing can accidentally live there. For Rust plugins, the daemon snapshots, unloads the old dylib, loads the new one, restores, and continues. The agent sees a compile error as a structured <code>script.errors</code> response with file:line and the compiler's message, never as a crash.</p>
+<p>Two rules the engine enforces rather than recommends: a system may only touch components it declared, and a system may not hold references across frames. Violations are errors at load time where they can be detected statically and at run time otherwise. Both exist to keep the side-effect declarations honest, which is what makes <code>world.who_writes</code> trustworthy.</p>
+<div class="decision"><div class="lbl">Decision</div><p>Luau for rules, Rust for hot paths, both hot-reloadable because state is never in code.</p><p>Rationale: P4. Unity's domain reload is the single largest tax on agent iteration in existing engines; this design makes it structurally impossible to need one.</p></div>
+<div class="open"><div class="lbl">Open</div><p>Whether to expose a C# path via NativeAOT for teams with existing code. Not in v1; the cost is a second binding layer and a second set of docs.</p></div>
+</section>
+
+<section id="s8">
+<h2><span class="n">§8</span>Observation</h2>
+<p>The agent's senses are layered from cheapest to most expensive, and the protocol makes the cheap ones easier to reach than the expensive ones. Pixels are the last resort, not the first.</p>
+<div class="layers">
+  <div class="lv">L0 <small>~300 B</small></div><div><strong>Summary.</strong> <code>world.summary</code>: counts, named entities, frame, seed, active systems. Answers "where am I".</div>
+  <div class="lv">L1 <small>~2 KB</small></div><div><strong>Query.</strong> <code>world.query</code> with selection, filters, spatial predicates, aggregates. Answers "what is the state".</div>
+  <div class="lv">L2 <small>stream</small></div><div><strong>Events.</strong> <code>obs.events</code> / <code>obs.subscribe</code>: structured log of spawn, despawn, damage, death, collision, sound played, system errors, edits. Answers "what happened".</div>
+  <div class="lv">L3 <small>~1 KB</small></div><div><strong>Diff.</strong> <code>obs.diff {since: frame}</code>: which entities appeared, vanished, or changed which fields, with counts. Answers "what changed since I last looked".</div>
+  <div class="lv">L4 <small>~3 KB</small></div><div><strong>Semantic frame.</strong> <code>obs.frame {format: "semantic"}</code>: camera rect, every visible entity with screen-space bounds, HUD text, active screen-space effects. Answers "what does the player see" without an image.</div>
+  <div class="lv">L5 <small>image</small></div><div><strong>Pixels.</strong> <code>obs.frame {format: "png"}</code>, optionally <code>annotate: true</code> to overlay entity ids and bounds so the agent can ground what it sees to what it can query. Answers "how does it look".</div>
+</div>
+<p>The layering pays off differently per genre. For Swarm the agent lives at L1 and L3. For Delve, which is mostly state and text, L4 is nearly the whole game: the semantic frame carries the map, the log, and the menus, and pixels are rarely needed. For Outpost the agent leans on L2 and aggregates — <code>world.query</code> with <code>group_by</code> and <code>sum</code> over stockpiles, job queues, and colonist needs — because the question is "is the economy drifting", not "where is entity 4011". The semantic frame is game-extensible through a <code>Describe</code> component so that a HUD, a dialogue box, or a colony overview panel can say what matters about itself.</p>
+<p>Audio is observed as events, not waveforms: "played <code>sfx/hit_heavy</code> at frame 812, gain 0.8, on entity e:4011". A clip export exists for the human (§10), but the agent reasons about sound as a log.</p>
+<p>Two derived helpers earn their place. <code>obs.trace {entity, frames}</code> returns one entity's component history over a window, which is the tool for "why did the player die at 812". And <code>obs.why {event}</code> walks the declared write sets backwards from an event to list the systems that could have caused it, in stage order — a static answer, but usually enough to point the agent at the right file.</p>
+</section>
+
+<section id="s9">
+<h2><span class="n">§9</span>Test harness</h2>
+<p>A test is a scenario: load a scene, fix a seed, script some input, run some frames, assert on state and events. It runs headless in the daemon, takes tens of milliseconds for a short scenario, and never flakes, because §6.</p>
+<pre><code><span class="cap">tests/wave_clear.luau</span>
+<span class="k">return</span> scenario <span class="s">"first wave clears within 20s"</span> {
+  scene = <span class="s">"arena"</span>, seed = 7,
+  run = <span class="k">function</span>(t)
+    t.input:hold(<span class="s">"move"</span>, {1, 0}, frames = 60)      <span class="c">-- walk right for a second</span>
+    t.input:tap(<span class="s">"fire"</span>)
+    t:run_until { event = <span class="s">"wave.cleared"</span>, max_frames = 1200 }
+    t.expect:count({ has = {<span class="s">"Enemy"</span>} }):eq(0)
+    t.expect:field(<span class="s">"@player"</span>, <span class="s">"Health.cur"</span>):gte(1)
+    t.expect:events(<span class="s">"damage"</span>, { target = <span class="s">"@player"</span> }):count():lte(3)
+    t.expect:snapshot(<span class="s">"wave1_end"</span>, { select = {<span class="s">"Transform.pos"</span>, <span class="s">"Health.cur"</span>}, where = { has = {<span class="s">"Player"</span>} } })
+    t.expect:perf(<span class="s">"sim"</span>):p95_ms():lt(4.0)
+  <span class="k">end</span>,
+}</code></pre>
+<p>The same harness on the discrete clock, and at simulation scale:</p>
+<pre><code><span class="cap">tests/delve_stairs.luau — a discrete-clock scenario</span>
+<span class="k">return</span> scenario <span class="s">"stairs are always reachable on floor 1"</span> {
+  scene = <span class="s">"delve"</span>, seeds = range(1, 200),
+  run = <span class="k">function</span>(t)
+    t:advance { by = <span class="s">"turn"</span>, n = 1 }                  <span class="c">-- generate floor</span>
+    t.expect:path(<span class="s">"@player"</span>, { has = {<span class="s">"Stairs"</span>} }):exists()
+    t.expect:count({ has = {<span class="s">"Monster"</span>}, within = { of = <span class="s">"@player"</span>, r = 3 } }):eq(0)
+  <span class="k">end</span>,
+}
+
+<span class="cap">tests/outpost_food.luau — a balance scenario, fast-forwarded headless</span>
+<span class="k">return</span> scenario <span class="s">"a 6-colonist start does not starve in 30 days"</span> {
+  scene = <span class="s">"outpost/valley"</span>, seeds = range(1, 20),
+  run = <span class="k">function</span>(t)
+    t:run_until { sim_time = days(30), speed = <span class="s">"max"</span> }
+    t.expect:sum(<span class="s">"Stockpile.food"</span>):gte(60)
+    t.expect:events(<span class="s">"colonist.died"</span>, { cause = <span class="s">"starvation"</span> }):count():eq(0)
+    t.expect:series(<span class="s">"Stockpile.food"</span>, every = days(1)):trend():gte(0)
+  <span class="k">end</span>,
+}</code></pre>
+<p>Golden snapshots are of <em>selected state</em>, not images: the expectation names the components and filter, the harness stores a compact JSON, and a failure prints a field-level diff. Image goldens exist as an opt-in for rendering work, with a perceptual threshold, and are expected to be rare.</p>
+<p>The runner (<code>argus test</code>) supports the things an agent actually reaches for: run one test by name, run with a seed sweep (<code>--seeds 1..50</code>) to shake out order-dependent bugs, run a failing test and dump a replay file the human can open in the editor, and export a short clip of the failing window so the human can see it without reproducing it. Output is a compact text report by default and JSON with <code>--json</code>. Everything runs identically in CI with the software render adapter.</p>
+<p>Performance assertions run against the headless sim and are stable enough to gate on because the sim is deterministic; only the wall-clock envelope varies, and the assertion is on a percentile with a generous default margin.</p>
+<div class="decision"><div class="lbl">Decision</div><p>Scenario tests in Luau, state goldens by default, seed sweeps, replay and clip export on failure.</p><p>Rationale: P3 makes this cheap; P2 shapes the output. The point is that the agent's edit-test loop is seconds, not minutes, and never needs a human to press play.</p></div>
+</section>
+
+<section id="s10">
+<h2><span class="n">§10</span>Human–agent collaboration</h2>
+<p>This is the section the rest of the document exists to support. Agents are strong at what is legible: logic, structure, tests, refactors, tedious placement. Humans are strong at what is felt: hit-stop length, screen-shake curves, how a dodge reads, whether a death is satisfying. A serious engine has to make the handoff between those two cheap in both directions, and the mechanism is the same throughout: the human's actions are recorded as structured, replayable data on the shared world, and the agent's proposals are things the human can feel rather than read.</p>
+
+<h3>Marks</h3>
+<p>While playing, the human presses one key (<kbd>F8</kbd> by default) to drop a mark. A mark captures the frame, a snapshot, the last five seconds of input, a two-second clip rendered from the ring, and an optional one-line note spoken or typed afterward ("dash feels late"). Marks land in <code>.argus/marks/</code> and surface to the agent as a queue: each is a fully reproducible bug report. The agent runs <code>sim.seek</code> to the mark's frame, traces the relevant entities, and proposes a change — without ever asking "what were you doing when it happened?".</p>
+
+<h3>Tuning sessions</h3>
+<p>Any field with <code>tune = true</code> appears in the editor's tuning panel as a slider while the game runs. Every movement of every slider is logged with its frame: "human set <code>HitStop.scale</code> 0.0→0.15 at frame 3011, →0.08 at 3090, →0.1 at 3140". The agent subscribes to this stream and sees not just the final value but the search path, which carries information ("they tried higher, backed off"). When the human ends the session, the final values are committed as an ordinary transaction with the human as author, and the agent can be asked to propagate the same feel to related parameters, write the test that pins it, or explain what the value does in the doc string.</p>
+
+<p>Tuning is not only about feel. In Outpost the <code>tune</code> fields are job priorities, consumption rates, and growth curves, and the human's slider is a hypothesis about balance rather than a judgement about weight. The loop is the same: the human nudges a value while watching the colony at 10×, the agent sees the path, and then does what a human can't — runs the twenty-seed, thirty-day sweep from §9 against each candidate value and reports which ones starve. Feel is tuned by hand; balance is tuned by hand and verified by machine.</p>
+
+<h3>Proposals and A/B by feel</h3>
+<p>The agent can submit a transaction as a <em>proposal</em> rather than a commit. The editor shows pending proposals; the human plays with <kbd>F9</kbd> toggling between the current world and a fork with the proposal applied, at the same replay point, with the same inputs. Three variants of a screen-shake curve become three forks and one key to cycle them. The human picks by feel, in seconds, and the pick is the commit. Nothing about this requires the human to read a diff.</p>
+
+<h3>Review requests</h3>
+<p>The reverse channel: the agent asks for judgement. <code>obs.review {clip, question}</code> queues a short clip and a question ("does the enemy death read as a kill?") to the editor; the human answers with one keystroke or a sentence. The queue is visible in the editor's agent panel and drains at the human's pace. Because the clip is rendered from a deterministic replay, the agent can attach the exact frame range and the human can scrub it.</p>
+
+<h3>Locks and the change feed</h3>
+<p>The human can lock any entity, component, or path ("camera feel is mine"). The agent's write fails with the owner's name and note. Both parties see one change feed, author-tagged, so the human returning after an hour can read what the agent did as a sequence of notes, and the agent resuming after the human's session can read the human's tuning log the same way.</p>
+
+<div class="split">
+  <div><h4>Agent does well here</h4><ul>
+    <li>Build systems, components, prefabs, and tests from a brief</li>
+    <li>Reproduce and diagnose marks from replay</li>
+    <li>Place and wire authored entities; bulk edits</li>
+    <li>Propagate a tuned value across related parameters</li>
+    <li>Refactor while tests pin behavior</li>
+    <li>Seed sweeps, perf triage, dead-code hunts</li>
+  </ul></div>
+  <div><h4>Human does well here</h4><ul>
+    <li>Judge timing, weight, readability, satisfaction</li>
+    <li>Tune with a slider while playing</li>
+    <li>Choose between proposals by feel</li>
+    <li>Answer "does this read?" in one keystroke</li>
+    <li>Decide what the game is about</li>
+    <li>Lock what shouldn't be touched</li>
+  </ul></div>
+</div>
+<div class="decision"><div class="lbl">Decision</div><p>Marks, tuning logs, proposals-as-forks, review requests, locks, one change feed. All built from seek, fork, and author-tagged transactions.</p><p>Rationale: P5. The engine's job is not to make the agent good at feel; it is to make the human's feel cheap to express and impossible to lose.</p></div>
+</section>
+
+<section id="s11">
+<h2><span class="n">§11</span>Editor</h2>
+<p>The editor is a separate process that speaks only the protocol. This is a constraint, not a convenience: if the editor ever needs a private channel to the daemon, the protocol is missing something the agent also needs. The first editor is immediate-mode (egui) for build speed and because its panels map naturally onto protocol calls: the hierarchy is <code>world.query</code>, the inspector is <code>world.describe</code> plus <code>edit.set</code>, the viewport subscribes to frames, the timeline scrubber is <code>sim.seek</code> over the keyframe ring.</p>
+<p>Two panels exist only because of §10: the tuning panel and the agent panel (pending proposals, review requests, marks, the change feed). And one toggle exists to teach: "show as command" prints the CLI equivalent of every action the human takes, so the human learns the agent's language by using the editor and can paste a command into a chat instead of describing a click.</p>
+<div class="open"><div class="lbl">Open</div><p>Whether a browser-based editor (the daemon serving a web UI) should replace egui later. It would make the editor reachable from a tablet during a playtest, which is attractive for review requests. Not a v1 concern.</p></div>
+</section>
+
+<section id="s12">
+<h2><span class="n">§12</span>2D subsystems</h2>
+<p>A general 2D engine is mostly the sum of subsystems that any one genre would skip. Each of these is built into the core, exposed through the protocol like everything else, and costs nothing for a game that doesn't attach the relevant components. The reference game that drives each one is named so the design has a concrete customer.</p>
+
+<h3>Physics, in tiers</h3>
+<p>Three tiers, chosen per entity, sharing one broadphase (a spatial hash over the live world, rebuilt incrementally each tick). <em>Overlap</em>: shapes that report contacts and nothing else — Swarm's bullets, Delve's triggers, Outpost's zones. <em>Kinematic</em>: a character controller that moves a shape against a tilemap and other kinematic bodies with slopes, one-way platforms, moving platforms, step-up, and the timing affordances that platformers live on (coyote time, jump buffering, corner correction) as tunable fields rather than something every game reimplements — Hollow. <em>Dynamic</em>: real rigid bodies with joints, from an optional Rapier module for the games that need a physics toy, not a default. The kinematic tier is the one worth getting exactly right, because it is where platformer feel comes from and it is the tier the agent can least judge by itself.</p>
+
+<h3>Tilemaps</h3>
+<p>Layers of tiles over a grid, with auto-tiling rules declared in TOML, collision derived from tile properties, and chunked storage (§4). Editable through the protocol at the rect level, so an agent can carve a room without touching pixels and a human can paint in the editor and both land in the same chunk. Hollow and Outpost.</p>
+
+<h3>Camera</h3>
+<p>Follow with dead zones, lookahead, room bounds, smoothing, and shake as a first-class component with a curve and a decay, all of them <code>tune</code> fields. Cameras are entities; cutting between two is an event. Hollow's rooms and Outpost's free pan-and-zoom are two configurations of the same component.</p>
+
+<h3>UI and text</h3>
+<p>A retained UI tree built from the same entities and hierarchy as everything else, with a flexbox-style layout system, bitmap and SDF text with shaping, nine-slice panels, and input focus. Not a separate world: a menu is a query away like anything else, and the semantic frame (§8) reads it directly. Delve's menus, Outpost's inspector panels and overview screens, and every game's pause menu. This is the subsystem that most clearly separates a general engine from an action-game framework, and it is scheduled early for that reason.</p>
+
+<h3>Dialogue and localization</h3>
+<p>Dialogue as a def table (§4) with a small node graph — lines, choices, conditions on world state, effects as edits — runnable from Luau and inspectable through <code>world.defs</code>. All player-facing strings go through a string table keyed by id; the agent can author in one language and a translator can fill the others without opening the engine.</p>
+
+<h3>Pathfinding and jobs</h3>
+<p>A navigation grid derived from the tilemap and blocking entities, with A* for individuals and flow fields for crowds, both Rust hot-path systems. On top of it a job system: entities publish tasks with requirements, agents claim them by priority and distance. Outpost is the customer, but Delve's monsters and any game with NPCs use the same path queries, and <code>obs.why</code> can explain "why is this colonist idle" from the job system's declared events.</p>
+
+<h3>Lighting</h3>
+<p>2D lighting as a render pass — point and cone lights, occluders derived from tiles and sprites, normal-mapped sprites optional — off by default and zero-cost when off. Hollow's caverns; Outpost's day-night cycle.</p>
+
+<h3>Input actions</h3>
+<p>Gameplay never sees keys. An action map in <code>input.toml</code> declares actions (<code>move</code>, <code>jump</code>, <code>confirm</code>) with bindings per device and per <em>player slot</em>, so two gamepads are two players from the start. The input log (§6) records actions, not device events: a replay survives a rebind, a test written against a keyboard runs against a gamepad, and the agent's <code>input.inject</code> says <code>{action: "jump"}</code> rather than naming a scancode. Rebinding at runtime is a UI over the same table. Delve's menus, Hollow's controller feel, and couch co-op in any of them.</p>
+
+<h3>Accessibility</h3>
+<p>Mostly consequences of decisions already made, stated so they get built. Rebinding comes with the action map; text scaling and high-contrast palettes are UI theme tokens; input-hold and toggle alternatives are action-map options; and the semantic frame (§8) is, without modification, a screen-reader feed — the same call the agent uses to know what's on screen can drive a player's narrator. A colour-blind simulation post pass (§13) lets the agent and the human check readability without guessing.</p>
+</section>
+
+<section id="s13">
+<h2><span class="n">§13</span>Animation, VFX, and audio</h2>
+<p>These three are where feel lives and where the previous draft was thinnest. They follow the same rule as everything else — text-authored, queryable, tunable, observable as events — because these are precisely the systems the tuning sessions of §10 need to reach.</p>
+
+<h3>Sprite animation</h3>
+<p>An <code>Animator</code> component runs a state machine declared in TOML: states reference clips, transitions have conditions on component fields (<code>Velocity.y &lt; 0 → fall</code>) and blend windows, and every state can carry <em>events by frame</em>: the frame the foot lands fires <code>sfx/step</code>, the frame the sword is out enables the hitbox, the frame the enemy's eyes flash is the telegraph. Events are ordinary engine events, so the agent sees "hitbox enabled at frame 4 of <code>slash</code>" in the log and a test can assert it. Clip rates, anticipation frame counts, and hold frames are <code>tune</code> fields; a human adjusting a wind-up while playing is the canonical tuning session. Aseprite tags import directly as clips. Skeletal 2D via a Spine-compatible runtime is a phase-5 module; the state machine and events are the same either way.</p>
+
+<h3>Tweens and sequencing</h3>
+<p>A tween is a component: target path, from, to, duration, easing curve, on-complete event. Squash-and-stretch, UI slides, and camera nudges are all tweens, and because they are data the agent can query what is currently animating and the replay reproduces them exactly. Above tweens sits a <em>timeline</em>: a def table of tracks (tweens, animator states, camera cuts, dialogue lines, events) against time, playable from Luau, scrubbable in the editor. Cutscenes, boss intros, and Outpost's event vignettes are timelines, which also answers the open question about coroutine state: sequencing lives in data, not in the Luau heap.</p>
+
+<h3>Particles and VFX</h3>
+<p>An <code>Emitter</code> component: shape, rate or burst, lifetime, and curves over lifetime for velocity, size, colour, and rotation, all as TOML with the curves as control-point lists. Particles are not entities; each emitter owns an SoA pool updated by a Rust system and drawn instanced, so Swarm's fifty thousand sparks cost nothing to the ECS. Screen-space effects live in a <em>post stack</em>: an ordered list of passes (flash, palette swap, chromatic aberration, vignette, CRT, colour-blind simulation) that a game enables with parameters, every one a <code>tune</code> field. The hit-flash-plus-hit-stop-plus-shake combination that makes an impact feel heavy is three tunable systems the human can adjust together in one session.</p>
+
+<h3>Materials and shaders</h3>
+<p>Sprites reference a material; a material is a WGSL shader plus parameters, declared in a sidecar with typed uniforms. The engine ships a small library (lit, unlit, palette, dissolve, outline) and a game adds its own as text. Shader authoring is a natural agent task — WGSL is code, compile errors come back through <code>script.errors</code> with line numbers, and the annotated screenshot path lets the agent check the result. Materials hot-reload like everything else.</p>
+
+<h3>Audio</h3>
+<p>The mixer has named buses (music, sfx, ui, ambience) with a routing tree, ducking rules declared as data ("dialogue ducks music by 6 dB over 200 ms"), and 2D spatialization by distance from the listener entity. Sound events carry variation sets (pick one of five footsteps, pitch-jitter ±5%) so the game asks for <code>sfx/step</code> and the mixer chooses. The <em>music system</em> is adaptive by design: a track is a set of layers with a tempo, transitions between tracks happen on beat or bar boundaries, and intensity is a parameter a system writes (<code>Music.intensity = enemies_near / 10</code>). Hollow's room-to-room music and Outpost's day-night ambience are both this. All of it is observable as the event log in §8; the human hears it, the agent reads it.</p>
+<div class="decision"><div class="lbl">Decision</div><p>Animation state machines with frame events, tweens and timelines as data, emitter pools outside the ECS, a post stack of tunable passes, text materials, and a bus-and-layer audio model.</p><p>Rationale: P4 and P5. Feel is the thing the human tunes; every knob it needs must be a field the tuning panel can show and the recorder can log.</p></div>
+</section>
+
+<section id="s14">
+<h2><span class="n">§14</span>Assets</h2>
+<p>Source assets live in <code>assets/</code> and are described by sidecar TOML files that the agent can write: a sprite sheet's frames and pivots, an animation's clip list and rates, an audio file's gain and variation set. The importer watches the tree, produces a cache in <code>.argus/</code>, and reports every import as an event with warnings ("frame 7 is empty", "texture not power-of-two, padding"). Aseprite and Tiled files import natively with their internal structure exposed through the sidecar.</p>
+<p>Generated art — from an image model or a text-to-sprite pipeline — drops into the same tree and gets the same treatment. The agent can author a placeholder sprite as a described shape (<code>kind = "rect", size = [8, 8], color = "#E8703F"</code>) so gameplay work never waits on art, and the human replaces the file later without touching a reference.</p>
+</section>
+
+<section id="s15">
+<h2><span class="n">§15</span>Shipping</h2>
+<p>Everything before this section describes a development environment. A game is finished when a player who has never heard of a daemon can double-click it, and the engine has to make that path as deliberate as the agent's path.</p>
+
+<h3>The player runtime</h3>
+<p>A release build is the same core with the protocol server compiled out, the editor and index absent, Luau precompiled to bytecode, and assets packed. There is no socket, no <code>.argus/</code> directory, and no way to attach; the dev-only surface is a Cargo feature, not a runtime flag, so it cannot be turned on in the field. <code>argus build --release --target windows</code> produces a single directory — executable, one asset pack per language, and a save location per platform convention.</p>
+<p>Two dev-side features survive into release on purpose. The <em>recorder</em> stays, in a bounded form: the last thirty seconds of actions and a keyframe, so that a player pressing a report key or hitting a crash produces a replay file the team can open with <code>sim.seek</code>. A player bug report becomes a mark. And <em>save migrations</em> stay, because they are how a patched game loads an old save.</p>
+
+<h3>Targets</h3>
+<p>Windows, macOS, and Linux from day one, since wgpu and the input stack already cover them. The <em>web</em> target (wasm + WebGPU, with a WebGL2 fallback) is not a stretch goal; it is how most 2D games get playtested, and a shareable link is the cheapest way to get a human's feel onto a build the agent made. Mobile is a later target with no design blockers beyond input and UI scale. Consoles are out of scope.</p>
+
+<h3>Assets and content</h3>
+<p>A release pack is built from the import cache, not the source tree: compressed textures in atlases, audio in the platform's preferred codec, defs and scenes in a binary form of the same schema. Packs are content-addressed so a patch ships only changed chunks. Localization packs are separate so a language can be added without a rebuild.</p>
+
+<h3>Platform services</h3>
+<p>A <code>platform</code> plugin interface — achievements, cloud saves, rich presence, input glyphs, overlay — with a Steam implementation first and a null implementation for everything else, so game code calls one API and tests run without Steam present.</p>
+
+<h3>Modding</h3>
+<p>Argus is a modding platform whether or not that is intended: the daemon, the Luau sandbox, and <code>defs/</code> are exactly what a modding system needs. The decision is to intend it. A release build can load <em>mod packs</em> — additional defs, scenes, assets, and Luau systems — from a user directory, in a declared load order, with the same sandbox and instruction budgets as the game's own scripts and the same schema validation. Doing this from the start costs a load-order rule and a namespace prefix on mod content; retrofitting it costs a rewrite of asset loading. Games that don't want mods set one flag.</p>
+
+<h3>Networking, preserved</h3>
+<p>Multiplayer stays out of v1, but the sim is kept honest for it. Determinism plus an action log is most of a lockstep model; snapshots plus resimulation is most of rollback. The v1 rule that preserves both: nothing in the <code>sim</code> stage may read from a device, the wall clock, or a local-player singleton — inputs arrive only as per-player-slot actions through the input log. That rule already holds for replays, so the cost is a lint, not a feature.</p>
+<div class="decision"><div class="lbl">Decision</div><p>Protocol compiled out of release builds, bounded recorder kept in, desktop and web targets from the start, content-addressed packs, a platform plugin with Steam first, modding intended, networking preserved by a sim-stage rule.</p><p>Rationale: a serious engine is judged by what reaches players. The choices here are the ones that are cheap now and unaffordable later.</p></div>
+</section>
+
+<section id="s16">
+<h2><span class="n">§16</span>Agent packaging</h2>
+<p><code>argus mcp</code> starts a stdio MCP server that exposes the protocol as a small tool set — on the order of a dozen tools, not a hundred: <code>summary</code>, <code>query</code>, <code>describe</code>, <code>edit</code>, <code>run</code>, <code>seek</code>, <code>observe</code>, <code>events</code>, <code>test</code>, <code>reload</code>, <code>marks</code>, <code>propose</code>. Each tool's description is generated from the same schema the CLI help uses. The CLI (<code>argus</code>) mirrors the tool set exactly, so an agent that prefers a shell loses nothing and a human reading the agent's transcript can rerun any call.</p>
+<p><code>argus docs --for-agent</code> emits an <code>ARGUS.md</code> from the live daemon: the component schemas with doc strings, the system list with stages and write sets, the prefab catalog, and the current scene summaries. It is regenerated on demand, so it never drifts from the project, and it is what a coding agent's project-level instructions should point at. The engine's own reference documentation ships in the same shape.</p>
+<div class="decision"><div class="lbl">Decision</div><p>One schema generates the protocol, the CLI help, the MCP tool descriptions, and the agent-facing docs.</p><p>Rationale: P1. Four surfaces that can drift is how integrations become "shaky at best".</p></div>
+</section>
+
+<section id="s17">
+<h2><span class="n">§17</span>Performance targets</h2>
+<p>Numbers on a mid-range laptop core (one thread for sim unless the scheduler finds parallel stages). Each reference game contributes the rows it stresses, and all of them are perf assertions the engine's own test suite runs.</p>
+<div class="tablewrap"><table>
+<tr><th>Game</th><th>Measure</th><th>Target</th><th>Why this number</th></tr>
+<tr><td>Swarm</td><td>Live entities at 60 Hz sim</td><td>100,000</td><td>Late-game bullet heaven with bullets, enemies, particles, pickups all as entities</td></tr>
+<tr><td>Swarm</td><td>Sim tick, p95</td><td>&lt; 6 ms</td><td>Leaves headroom inside a 16.6 ms frame for present and render</td></tr>
+<tr><td>Swarm</td><td>Instanced sprites per frame</td><td>200,000</td><td>One draw call per texture atlas, GPU-side culling</td></tr>
+<tr><td>Swarm</td><td>Live particles across emitters</td><td>250,000 at &lt; 1 ms</td><td>Emitter pools outside the ECS, updated in Rust, drawn instanced</td></tr>
+<tr><td>Hollow</td><td>Animators evaluated per tick</td><td>2,000 at &lt; 0.3 ms</td><td>State machines are data; transitions are field comparisons, not script</td></tr>
+<tr><td>Hollow</td><td>Post stack, 5 passes at 1080p</td><td>&lt; 1.5 ms GPU</td><td>Flash, shake, aberration, vignette, palette must all be on at once</td></tr>
+<tr><td>All</td><td>Web build, cold load</td><td>&lt; 5 s on a 20 Mbit link</td><td>A playtest link has to open before the tester loses interest</td></tr>
+<tr><td>All</td><td>Release build, incremental</td><td>&lt; 30 s</td><td>Content-addressed packs; only changed chunks rebuild</td></tr>
+<tr><td>Delve</td><td>Turn resolution, 500 monsters</td><td>&lt; 2 ms</td><td>A turn must be imperceptible; seed sweeps of 200 floors must finish in seconds</td></tr>
+<tr><td>Delve</td><td>Floor generation + index</td><td>&lt; 20 ms</td><td>Runtime-generated rooms must be queryable the tick they exist</td></tr>
+<tr><td>Hollow</td><td>Authored entities per scene</td><td>10,000 across 200 rooms</td><td>File-per-entity storage and the index at real metroidvania scale</td></tr>
+<tr><td>Hollow</td><td>Cold scene open (index warm)</td><td>&lt; 300 ms</td><td>Opening the project must not be the slow part of the agent's loop</td></tr>
+<tr><td>Hollow</td><td>Room stream-in</td><td>&lt; 4 ms</td><td>Must fit inside a frame so transitions never hitch</td></tr>
+<tr><td>Hollow</td><td>Tilemap</td><td>4,096 × 4,096 tiles, 8 layers</td><td>Chunked storage, rect edits, and auto-tiling at that size without pauses</td></tr>
+<tr><td>Outpost</td><td>Sim tick at 10× speed, 200 colonists, 20k items</td><td>&lt; 1.6 ms</td><td>Ten ticks per render frame with pathfinding, jobs, and needs all running</td></tr>
+<tr><td>Outpost</td><td>Headless fast-forward</td><td>&gt; 2,000 ticks/s</td><td>A 30-day balance scenario in under a minute per seed</td></tr>
+<tr><td>Outpost</td><td>Save / load at 8 h of play</td><td>&lt; 200 ms / &lt; 500 ms with migrations</td><td>Saves must be frequent enough to be automatic</td></tr>
+<tr><td>Outpost</td><td>UI tree, 2,000 nodes with text</td><td>&lt; 1 ms layout</td><td>Inspector panels and overview screens are most of what the player looks at</td></tr>
+<tr><td>All</td><td>Full snapshot at 100k entities</td><td>&lt; 5 ms</td><td>Keyframes every second must be invisible during play</td></tr>
+<tr><td>All</td><td>Seek to any point in last 5 min</td><td>&lt; 500 ms</td><td>Marks and A/B toggling must feel instant to the human</td></tr>
+<tr><td>All</td><td>Luau hot reload</td><td>&lt; 100 ms</td><td>Agent edit-reload-observe loop stays under a second end to end</td></tr>
+<tr><td>All</td><td>Rust plugin reload</td><td>&lt; 2 s after compile</td><td>Compile time is the cost; reload itself must not add to it</td></tr>
+<tr><td>All</td><td><code>world.query</code> over 100k entities</td><td>&lt; 2 ms</td><td>Spatial predicates hit the broadphase hash, not a scan</td></tr>
+</table></div>
+</section>
+
+<section id="s18">
+<h2><span class="n">§18</span>Build plan</h2>
+<p>Six phases. Each gate is phrased as something the agent can do with one or more of the reference games, because the agent is the user whose experience is being designed and the four games are the proof of generality. No renderer until phase 1, on purpose: if the protocol-and-sim loop isn't compelling headless, a renderer will only hide that. Two of the four games are chosen to be complete <em>without</em> a renderer for exactly that reason.</p>
+<div class="phase"><div class="ph">Phase 0<small>~7 weeks</small></div><div>
+  <p>ECS core with SoA columns, archetypes, and hierarchy; scheduler with stages, declared write sets, and both clock drivers; Luau binding with component and def schemas; JSON-RPC daemon with <code>session</code>, <code>world</code>, <code>edit</code>, <code>sim</code> (play, pause, step, advance, speed, run_until), <code>script</code>; TOML scenes, rooms, defs, and prefab overrides; SQLite index; action maps with the action log; <code>prof.*</code>; CLI; scenario test runner with state goldens and seed sweeps. No renderer, no audio, no input devices — actions are injected only.</p>
+  <p class="gate"><b>Gate</b>From an empty directory and a paragraph brief each, an agent using only the CLI builds headless cores of <strong>Swarm</strong> (continuous clock, 50k entities, waves) and <strong>Delve</strong> (discrete clock, generated floors, turn order) with passing tests, and can answer "why did the player die" in both from events and traces. If either game fights the protocol, that finding is the phase's output.</p>
+</div></div>
+<div class="phase"><div class="ph">Phase 1<small>~8 weeks</small></div><div>
+  <p>wgpu sprite renderer with instancing and atlases; windowed and offscreen modes; keyboard, mouse, gamepad input with recording; audio mixer with event log; asset importer with sidecars and watch; tilemaps with chunks and auto-tiling; kinematic character controller; camera component; sprite animation state machines with frame events; tweens; emitter pools; materials with hot reload; semantic frames and annotated screenshots; <code>obs.diff</code>, <code>obs.trace</code>, <code>obs.why</code>.</p>
+  <p class="gate"><b>Gate</b>Swarm and Delve are playable by a human in a window. The agent builds a three-room slice of <strong>Hollow</strong> with tiles, a kinematic player, one-way platforms, and a following camera, screenshots it, describes what's on screen from the semantic frame, and fixes a visual bug it found that way. The player has a run, jump, and land animation with a footstep event that fires a sound.</p>
+</div></div>
+<div class="phase"><div class="ph">Phase 2<small>~6 weeks</small></div><div>
+  <p>Snapshot ring with age thinning, input log, <code>sim.seek</code>, <code>sim.fork</code>; marks with clip export; tuning log for <code>tune</code> fields; proposals; locks, undo, and the change feed; replay export in the test runner; post stack with the hit-flash and shake passes; <code>argus mcp</code>; <code>argus docs --for-agent</code>; first <code>argus build</code> for desktop and web so a playtest link exists before the editor does.</p>
+  <p class="gate"><b>Gate</b>A human plays Hollow, drops three marks with notes ("dash feels late"), walks away. The agent reproduces each from replay, fixes two, and files a proposal for the third. The human returns, A/B toggles the proposal by feel, and commits it. No screen sharing, no "what were you doing". A second human opens the web build from a link and drops a mark that reaches the agent the same way.</p>
+</div></div>
+<div class="phase"><div class="ph">Phase 3<small>~8 weeks</small></div><div>
+  <p>UI tree with layout and text; dialogue and string tables; timelines; navigation grid, A*, flow fields; job system; save games with migrations; room streaming and transitions at scale; audio buses, ducking, and the adaptive music system; mod pack loading.</p>
+  <p class="gate"><b>Gate</b>The agent builds a headless <strong>Outpost</strong> core — colonists, needs, jobs, stockpiles, a day-night cycle — and a menu-driven in-game inspector for it, then passes the 30-day, 20-seed starvation scenario. A save from the first week of the phase still loads at the end of it, through at least one migration. Hollow reaches 200 rooms with the §17 open and stream-in numbers green.</p>
+</div></div>
+<div class="phase"><div class="ph">Phase 4<small>~8 weeks</small></div><div>
+  <p>egui editor: hierarchy, inspector with override provenance, viewport, tilemap painting, animator and timeline editors, replay scrubber, tuning panel, profiler view, agent panel, "show as command". Built exclusively on the protocol.</p>
+  <p class="gate"><b>Gate</b>Everything the editor does appears in the change feed as a command the agent could have issued. A human tunes Outpost's food economy at 10× with sliders; the agent sees the slider path as data, sweeps the candidates, and reports which ones starve.</p>
+</div></div>
+<div class="phase"><div class="ph">Phase 5<small>ongoing</small></div><div>
+  <p>Rust plugin crates with dylib hot reload; parallel stage scheduling; 2D lighting; optional rigid-body module; skeletal 2D module; platform plugin with the Steam implementation; bounded release recorder with player bug reports; accessibility pass; every §17 target met and gated in CI; Aseprite and Tiled importers; browser editor spike; cross-platform determinism spike.</p>
+  <p class="gate"><b>Gate</b>All four reference games ship as example projects, each with its test suite green in CI on the reference laptop, and an agent given any one of them can add a feature end to end without reading engine source.</p>
+</div></div>
+</section>
+
+<section id="s19">
+<h2><span class="n">§19</span>Non-goals, risks, open questions</h2>
+<h3>Non-goals for v1</h3>
+<p>3D rendering and physics. Networking and multiplayer (preserved as an option by the sim-stage rule in §15, not built). Cross-platform bit-determinism. Console and mobile platforms. A visual scripting language. An asset store. Any attempt to make the agent good at aesthetic judgement — that is what §10 is for.</p>
+<p>Two things that were candidates for this list and are deliberately <em>not</em> on it: modding, which §15 decides to support from the start because the architecture already is one, and the web target, which is in v1 because a shareable build is the cheapest way to get a human's feel onto the agent's work.</p>
+<h3>Risks</h3>
+<p><strong>Rust compile times on the plugin path.</strong> The mitigation is architectural: most game logic is Luau, and the Rust path is reserved for a handful of hot systems that change rarely. If teams push more into Rust than expected, the agent loop degrades toward what it is in Bevy today.</p>
+<p><strong>Luau performance ceiling.</strong> Swarm's per-entity rules and Outpost's per-colonist decision logic can both get heavy. The scheduler's write-set declarations make it possible to promote a Luau system to Rust without changing anything around it, but that is a migration, not a switch.</p>
+<p><strong>Generality as scope.</strong> Four reference games is the honest way to test generality and it is also roughly a third more engine than one game would need: UI, dialogue, jobs, save migrations, and streaming all exist because of Delve, Hollow, and Outpost. The mitigation is that they are ordinary systems on the same protocol, not separate frameworks, and that each one has a named customer so nothing is built speculatively. The risk is the phase-3 gate slipping; if it does, ship Swarm, Delve, and Hollow and let Outpost define the next release rather than diluting all four.</p>
+<p><strong>Feel systems are the largest surface.</strong> §13 alone — animation, tweens, timelines, particles, post, materials, music — is more code than the ECS and the protocol together, and it is the part where a half-built version reads as an amateur engine. The mitigation is that each piece is data over the same protocol and none of it blocks phase 0; the risk is a phase-1 gate that quietly drops the animation events, at which point §10 has nothing to tune.</p>
+<p><strong>Long-run float drift.</strong> Outpost sessions run for hours on f32. Same-platform determinism holds, but replays from an eight-hour-old mark take minutes to reconstruct from the thinned ring, and any nondeterminism bug compounds over that window. The counter is the seed-sweep harness catching drift early, and thinning parameters that keep the worst-case replay bounded.</p>
+<p><strong>Editor debt.</strong> An editor built only on the protocol will lag a native one in polish for a long time. The bet is that phase-2 collaboration features are worth more to this audience than inspector polish, and that "show as command" builds a shared language that pays back.</p>
+<p><strong>Legibility bias.</strong> An engine optimized for what agents can see nudges games toward what agents can see. §10 is the counterweight, but it only works if the human actually plays. Teams that let the agent run unattended for weeks will get a game that passes its tests and feels like nothing.</p>
+<p><strong>Scope.</strong> This document describes roughly a year of work for a small team before it is pleasant. Phase 0 alone is the honest test of the thesis and should be treated as a go/no-go — and it is deliberately two games, not one, so that the go/no-go is about the protocol and not about one genre.</p>
+<h3>Open questions</h3>
+<ul class="plain">
+  <li>TOML or KDL for authored files (§4). Leaning TOML for prior strength.</li>
+  <li>Should the snapshot include the Luau heap, or should Luau systems be forbidden any per-system state at all? Timelines (§13) take sequencing and dialogue out of the heap, which removes the main argument for keeping it; leaning toward the stricter rule.</li>
+  <li>Mixed clocks (§6): is "a system group binds to a clock" enough, or do tactics-style games need an explicit state machine that hands control between clocks? Decide with a small tactics prototype after phase 0.</li>
+  <li>Save migrations as Luau functions per component versus a declarative rename/default/drop table. The table covers most cases and is inspectable; the function covers the rest. Probably both, table first.</li>
+  <li>Review requests over a phone during a couch playtest: worth a small web client early, or does that wait for the browser editor?</li>
+  <li>Whether the C# path is ever worth it (§7).</li>
+</ul>
+</section>
+
+</main>
+</div>
+
+</body></html>

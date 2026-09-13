@@ -1,0 +1,116 @@
+# argus-ecs: spec trace
+
+Every statement in the Argus Engine design document (v0.3, `docs/argus-engine-design-v0.3.html`) that constrains the ECS core, with where it lives and the test that pins it. Section numbers are the document's.
+
+Status words:
+
+- **Done**: implemented here and tested.
+- **Partial**: implemented here as far as the ECS can take it; the rest is named.
+- **Deferred**: belongs to a later phase-0 piece or a later phase. Listed so it is not dropped; the ECS hook it will use is named.
+
+## §2 Architecture
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| The daemon holds exactly one world and a stack of snapshots. | Partial | `World`, `Snapshot`. The keyframe ring is phase 2 and stacks these. | `maintain_snapshot::snapshot_restore_round_trips_everything` |
+| Entering play takes a snapshot; stopping restores it; the snapshot is a memcpy of SoA columns costing single-digit ms at Swarm's entity counts. | Done | `Column::clone` is one `memcpy`; `World::snapshot`, `World::restore`. Measured 1.1 ms at 102k entities. | `perf::perf_snapshot_100k_under_5ms` |
+| Multiple concurrent play sessions are forked worlds from a snapshot inside the same daemon. | Done | `World::fork`, `Snapshot::fork`. | `maintain_snapshot::forks_evolve_independently` |
+| A script or plugin fault must not take the daemon down; the world remains intact and inspectable. | Partial | No ECS operation panics on protocol-reachable input: every fallible call returns `ArgusError`; unknown string ids resolve to `""`; hierarchy cycles are reported, not looped. Remaining asserts (typed view size mismatch, row out of range) are programmer errors unreachable through the protocol. Script sandboxing is the Luau piece. | `hierarchy::cycles_are_reported_not_hung`, `components::bad_schemas_are_rejected_with_reasons` |
+
+## §3 Data model
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| Archetype ECS: entities are ids; components are plain data stored column-wise per archetype; systems are functions over queries. | Done | `archetype.rs`, `column.rs`, `query.rs`. | `queries::*` |
+| An entity id is a 64-bit value (index + generation). | Done | `Entity::from_parts`, `index`, `generation`; slots recycle with a generation bump. | `entities::entity_id_is_index_plus_generation`, `entities::stale_handles_die_and_slots_are_recycled` |
+| Authored entities carry a stable string id (`player`, `door.east`), unique within the scene and stable across sessions, saves, and renames. | Partial | `World::spawn_authored`, `World::entity("@player")`, `string_id`; ids survive snapshot/restore. "Across sessions" is the scene-file piece (filename = id). | `entities::authored_ids_are_unique_and_resolvable`, `maintain_snapshot::snapshot_restore_round_trips_everything` |
+| Runtime-spawned entities never get string ids and are never written to scene files. | Partial | `World::spawn`; `is_authored` is what the scene writer will filter on. | `entities::runtime_entities_never_get_string_ids` |
+| Transform hierarchy is first-class: `Parent` gives a local transform, propagated in a dedicated stage before `present`. | Partial | `hierarchy::{Transform, GlobalTransform, Parent, propagate}`. Registering `propagate` in the `hierarchy` stage is the scheduler piece. | `hierarchy::roots_copy_and_children_compose`, `hierarchy::rotation_and_scale_compose`, `hierarchy::children_processed_in_depth_order_regardless_of_spawn_order` |
+| Swarm's bullets simply don't have the component and pay nothing. | Done | Only archetypes with `Parent` are walked; roots are a column copy. 100k bullets + 2,000 children propagate in 0.5 ms. | `hierarchy::entities_without_parent_are_only_copied_and_others_untouched` |
+| A component is a schema plus a column; declared once, introspectable everywhere: from Rust via derive, or from Luau via a schema file. | Done | `argus-ecs-derive`, `SchemaBuilder` (the Luau binding calls it), `World::describe`. | `components::derive_produces_an_introspectable_schema`, `components::runtime_schema_matches_rust_layout_and_is_indistinguishable` |
+| Every field has a type, a default, an optional range, and a doc string. | Done | `FieldSchema`. | `components::derive_produces_an_introspectable_schema` |
+| The doc string is what `argus describe` returns, and therefore what the agent reads. | Done | `World::describe` returns the schema with docs. | same |
+| `tune = true` marks a feel parameter; changes nothing at runtime. | Done | `FieldSchema::tune` is metadata only. | same |
+| Hot fields declared in Rust get a native SoA column with no VM boundary; cold fields can live in Luau schemas; the protocol does not distinguish. | Done | One `Column` type for both; Rust types view it as `&[T]`; both are reachable by `Component.field` path. C layout rules make a Rust struct and a script schema with the same fields byte-identical. | `components::runtime_schema_matches_rust_layout_and_is_indistinguishable`, `components::runtime_schema_layout_follows_c_rules` |
+| Systems run in stages `input → sim → late → hierarchy → present`; `sim` is the only stage that may mutate gameplay state; `present` is read-only. | Deferred | Scheduler piece. Uses `Access` and `propagate` from here. | |
+| Each system declares the components it reads and writes; the agent uses it to answer "what could have changed Health". | Partial | `Access` with `reads`/`writes`; `Access::from_names` for script declarations. `who_writes` is the scheduler/daemon piece over the same data. | `queries::declared_access_is_enforced` |
+| Tags are zero-size components. | Done | Stride-0 `Column` never allocates. | `components::tags_are_zero_size` |
+| Relations are components holding entity references; the engine nulls dangling refs at frame end and emits an event, so nothing crashes on a stale handle and the agent can see it happened. | Done | `World::maintain` / `end_frame`, `Event::DanglingRefNulled`. Covers Rust and runtime schemas. | `maintain_snapshot::dangling_references_are_nulled_at_frame_end_with_an_event`, `maintain_snapshot::dynamic_schema_entity_fields_are_maintained_too`, `hierarchy::dead_parent_is_nulled_at_frame_end_and_child_becomes_root` |
+| Prefabs and overrides (per-field inheritance, `-Component` removal, child paths, resolved provenance, instance counts on change). | Deferred | Scene/prefab piece of phase 0. The ECS side it needs is present: field-level `get_component`, `insert_default`, `remove`, `Event::ComponentAdded/Removed`. | |
+| Decision: archetype ECS with SoA columns, declared read/write sets, authored-versus-runtime as a first-class concept. | Done | as above | |
+
+## §5 Protocol (the parts the ECS defines)
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| Entity refs are written `e:4011`; string ids `@player`. | Done | `Entity` `Display`/`FromStr` (a recycled slot prints `e:4011.2`); `World::entity` accepts both forms. | `entities::entity_id_is_index_plus_generation`, `entities::authored_ids_are_unique_and_resolvable` |
+| Field paths are `Component.field` (`Transform.pos`, `Health.cur`). | Done | `Registry::resolve_path`, `World::get_field`, `World::set_field`. | `components::field_paths_read_and_write_with_coercion_and_range_checks` |
+| `world.summary`: entity counts by archetype, named entities and their key fields, active systems, current frame and seed. | Partial | `WorldSummary` has counts by archetype, named entities, frame. Key fields, active systems, seed are the daemon/scheduler pieces. | `maintain_snapshot::summary_and_archetype_stats_orient_in_one_screen` |
+| Error shape: numeric code, `"WaveSpawner.interval_s must be in range [0.05, 10]; got 0.0"`, a hint, a `file:line` ref. Code 4102 for range. | Done | `ArgusError`, `codes`, `ComponentSchema::check`. Message format matches the spec's example exactly; `ref` is the derive's `file!():line!()` or the script schema's `source`. | `components::field_paths_read_and_write_with_coercion_and_range_checks` |
+| `world.describe`, `prof.archetypes` data. | Done | `World::describe`, `World::archetype_stats`. | `maintain_snapshot::summary_and_archetype_stats_orient_in_one_screen` |
+| `edit.*` transactions, author tags, change feed, undo/redo, locks. | Deferred | Daemon piece; wraps `World` mutation and `Event`s. | |
+
+## §6 Determinism and time
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| A snapshot is every SoA column plus the RNG states, the event queue, and the Luau heap. | Partial | Columns, entity table, string ids, string table, event queue, frame counter: done. RNG states join with the scheduler piece; the Luau heap with the scripting piece (see §19 open question). | `maintain_snapshot::snapshot_restore_round_trips_everything` |
+| A snapshot at 100k entities is a few tens of MB and takes low single-digit ms. | Done | 4.1 MB and 1.1 ms for the example's component set. | `perf::perf_snapshot_100k_under_5ms` |
+| `sim.fork` creates a second world from a snapshot inside the same daemon; forks get their own tick counter. | Partial | `fork`; each `World` has its own `frame`. The sim tick is the clock's. | `maintain_snapshot::forks_evolve_independently` |
+| Components carry a version (save games). | Partial | `ComponentSchema::version` (`#[argus(version = N)]`). `migrate` is phase 3. | `components::derive_produces_an_introspectable_schema` |
+| Floating point is `f32`. | Done | `FieldType::F32`, `Vec2` is two `f32`. | |
+
+## §7 Scripting and hot reload
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| A system may only touch components it declared; violations are errors. | Done | `Query::access`, `ArchetypeView::check`; typed fetches are checked once per query, dynamic columns per fetch. Code 4301 with a hint naming the list to fix. | `queries::declared_access_is_enforced`, `queries::archetype_views_give_typed_and_dynamic_access` |
+| A system may not hold references across frames. | Partial | Column guards borrow from the query and `&World`; structural changes need `&mut World`, so Rust cannot hold one. Enforcing it for Luau is the binding's job. | compile-time |
+| All state lives in components, so swapping code never loses state. | Done | Columns hold no code or pointers; `World` is `Clone`. | |
+
+## §8 Observation
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| L0 summary. | Done | `WorldSummary`. | as above |
+| L2 events: spawn, despawn, ... system errors, edits. | Partial | Structural events: `Spawned`, `Despawned`, `ComponentAdded`, `ComponentRemoved`, `DanglingRefNulled`, `HierarchyCycle`, `ComponentRegistered`, each tagged with its frame. Gameplay events (damage, death, collision, sound) come from systems. | `entities::spawn_and_despawn_emit_events_with_ids` |
+| L3 diff, `obs.trace`, `obs.why`. | Deferred | Phase 1. `obs.why` walks `Access` declarations. | |
+
+## §9 Test harness
+
+Deferred to the scenario-runner piece. State goldens will serialize `get_component` and query rows.
+
+## §15 Shipping
+
+"Nothing in the sim stage may read from a device or the wall clock." The ECS has no clock; `World::frame` is a counter. The lint is the scheduler's.
+
+## §17 Performance targets the ECS core owns
+
+Release build, one thread, development laptop. Gates are `tests/perf.rs`; numbers from `examples/perf.rs`.
+
+| Target | Spec | Measured |
+|---|---|---|
+| Live entities at 60 Hz sim (Swarm) | 100,000 | 100,000 spawned with 3-4 components each in 60 ms |
+| Sim tick, p95 (Swarm) | < 6 ms | one read/write system over 100k: 0.13 ms |
+| `world.query` over 100k entities | < 2 ms | filtered typed query: 0.02 ms (spatial predicates are phase 1) |
+| Full snapshot at 100k entities | < 5 ms | 1.1 ms |
+| Authored entities per scene (Hollow) | 10,000 | hierarchy with 2,000 children propagates in 0.5 ms |
+| Runtime-generated rooms queryable the tick they exist (Delve) | immediate | queries see structural changes with no rebuild: `queries::queries_see_structural_changes_made_between_passes` |
+
+## §18 Build plan
+
+Phase 0 item 1, "ECS core with SoA columns, archetypes, and hierarchy": this crate. The other phase-0 items are tracked in `docs/phase0-checklist.md`.
+
+## §19 Open questions touching this crate
+
+- Whether the snapshot includes the Luau heap: the ECS snapshot is data-only, so either answer composes with it.
+- TOML versus KDL: the ECS is format-agnostic; `Value` is what any loader produces.
+
+## Known limitations, stated so they are decisions
+
+- Column borrow flags are `Cell`s, so `World` is not `Sync`. Parallel stage scheduling (phase 5) replaces runtime flags with static per-stage checks from `Access`.
+- The string table is append-only. A game that mints unbounded distinct strings at runtime grows it for the life of the world.
+- `propagate` does a hash lookup per child. Fine at Hollow's thousands; revisit if a game parents tens of thousands.
+- The registry is per world and cloned on fork. Register every component before forking.
+- Typed writes to Rust components may copy uninitialized padding bytes into a row. Rows are never exposed as byte slices, only copied with `ptr::copy`, so this is not observable; snapshot comparisons in tests compare values, not bytes.
+- `insert` on an existing component overwrites in place and emits no event. The edit transaction layer will report value changes.

@@ -1,0 +1,12 @@
+[workspace]
+resolver = "2"
+members = ["crates/argus-ecs", "crates/argus-ecs-derive"]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/KSamsoe/argus"
+
+[profile.release]
+debug = 1

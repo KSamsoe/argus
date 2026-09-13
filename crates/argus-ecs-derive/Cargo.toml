@@ -1,0 +1,16 @@
+[package]
+name = "argus-ecs-derive"
+description = "#[derive(Component)] for argus-ecs: generates the component schema from a repr(C) struct"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+proc-macro = true
+test = false
+doctest = false
+
+[dependencies]
+syn = { version = "2", features = ["full"] }
+quote = "1"
+proc-macro2 = "1"
