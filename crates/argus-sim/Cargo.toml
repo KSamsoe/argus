@@ -1,0 +1,9 @@
+[package]
+name = "argus-sim"
+description = "Argus Engine scheduler: stages, declared access, continuous and discrete clocks, named RNG streams, per-system timing, fault isolation"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+argus-ecs = { path = "../argus-ecs", version = "0.0.1" }

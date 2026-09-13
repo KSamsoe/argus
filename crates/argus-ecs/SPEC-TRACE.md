@@ -73,7 +73,7 @@ Status words:
 | Spec | Status | Where | Test |
 |---|---|---|---|
 | L0 summary. | Done | `WorldSummary`. | as above |
-| L2 events: spawn, despawn, ... system errors, edits. | Partial | Structural events: `Spawned`, `Despawned`, `ComponentAdded`, `ComponentRemoved`, `DanglingRefNulled`, `HierarchyCycle`, `ComponentRegistered`, each tagged with its frame. Gameplay events (damage, death, collision, sound) come from systems. | `entities::spawn_and_despawn_emit_events_with_ids` |
+| L2 events: spawn, despawn, ... system errors, edits. | Partial | Structural events: `Spawned`, `Despawned`, `ComponentAdded`, `ComponentRemoved`, `DanglingRefNulled`, `HierarchyCycle`, `ComponentRegistered`, each tagged with its frame. `Event::Game { name, fields }` is the shape gameplay events (damage, death, collision, sound) take; `SystemFault` and `SystemDisabled` are emitted by the scheduler (piece 2). Edit events are the daemon's. | `entities::spawn_and_despawn_emit_events_with_ids`, `argus-sim/tests/faults.rs` |
 | L3 diff, `obs.trace`, `obs.why`. | Deferred | Phase 1. `obs.why` walks `Access` declarations. | |
 
 ## §9 Test harness

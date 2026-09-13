@@ -10,7 +10,7 @@ Phase 0 rule from the plan: no renderer, no audio, no input devices. Actions are
 
 ## 2. Scheduler with stages, declared write sets, and both clock drivers
 
-**Status: not started.** Constraints to meet:
+**Status: done** in `crates/argus-sim`. Sentence-level trace in `crates/argus-sim/SPEC-TRACE.md`. Every constraint below is covered there; the two that are only partly this crate's are the §15 lint (needs the Luau binding to inspect script source) and the tactics-style clock hand-off (§19, decided by a prototype after phase 0). Constraints that were met:
 
 - Stages in fixed order `input → sim → late → hierarchy → present` (§3). `sim` is the only stage that may mutate gameplay state; `present` runs at render rate and is read-only.
 - Each system declares `stage`, `after`, `reads`, `writes` (§3 example). Use `argus_ecs::Access`; violations are already errors.
@@ -78,7 +78,7 @@ Phase 0 rule from the plan: no renderer, no audio, no input devices. Actions are
 
 ## 8. prof.*
 
-**Status: partial.** `argus_ecs::World::archetype_stats` supplies `prof.archetypes`. Remaining (§5): `prof.frame`, `prof.worst {n}` with per-system breakdown and entity counts by archetype at that tick, `prof.systems {last}` mean and p95 in stage order, `prof.alloc` by system, `prof.capture {ticks}` Tracy-compatible trace. Depends on the scheduler's per-system timing.
+**Status: partial.** Data side done: `argus_ecs::World::archetype_stats` supplies `prof.archetypes`; `argus_sim::Scheduler::{prof_systems, prof_worst, prof_last, prof_tick_p95_ms}` supply `prof.systems {last}` (mean and p95 in stage order), `prof.worst {n}` (per-system breakdown plus entity counts by archetype at that tick), and `prof.frame`. Remaining (§5): `prof.alloc` by system (needs a counting global allocator wired to the scheduler's current-system marker) and `prof.capture {ticks}` (Tracy-compatible trace). Exposing all of it as protocol methods is item 4.
 
 ## 9. CLI
 

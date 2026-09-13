@@ -4,10 +4,36 @@
 
 use crate::entity::Entity;
 use crate::schema::ComponentId;
+use crate::value::Value;
 
 /// What happened.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Event {
+    /// A gameplay event emitted by a system: `damage`, `wave.cleared`,
+    /// `colonist.died`. Fields are whatever the system attached (§8 L2).
+    Game {
+        /// Event name, dotted namespace style.
+        name: String,
+        /// Attached fields, in the order the system gave them.
+        fields: Vec<(String, Value)>,
+    },
+    /// A system panicked or returned an error. The scheduler catches it at
+    /// the system boundary, disables the system, and the world stays intact (§2).
+    SystemFault {
+        /// System name.
+        system: String,
+        /// Panic message or error text.
+        message: String,
+        /// `file:line` of the system or the schema involved, if known.
+        r#ref: Option<String>,
+    },
+    /// A system was disabled, by a fault or by request.
+    SystemDisabled {
+        /// System name.
+        system: String,
+        /// Why.
+        reason: String,
+    },
     /// An entity was created.
     Spawned {
         /// The entity.
@@ -64,7 +90,7 @@ pub enum Event {
 }
 
 /// An event tagged with the frame it happened on.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct EventRecord {
     /// Frame counter of the world when the event was emitted.
     pub frame: u64,
