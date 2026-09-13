@@ -28,9 +28,19 @@ Phase 0, piece 2: the scheduler, in [crates/argus-sim](crates/argus-sim).
 
 Its trace is [crates/argus-sim/SPEC-TRACE.md](crates/argus-sim/SPEC-TRACE.md).
 
+Phase 0, piece 3: the Luau binding, in [crates/argus-luau](crates/argus-luau).
+
+- Scripts declare components (`component "HitStop" { frames = field.u8 { range = {0, 30} }, ... }`), def table schemas (`def "recipes" { ... }`), and systems (`system "sim.hitstop" { stage, after, reads, writes, run = function(q) ... end }`). The example systems from the design document run as written.
+- Script systems get the same contract as Rust ones: declared reads and writes are checked at load time (names must exist) and at run time (proxies refuse undeclared writes), every field write goes through the schema's range check, and errors carry the schema or script `file:line`.
+- The VM is sandboxed with a memory limit and an instruction budget per system run. Globals are read-only, so no state can hide in them. A runaway loop is stopped, the system disabled, and the fault reported as an event.
+- Handles (`q`, entities, components) are valid only during the `run` that made them; using one on a later frame is a clear error.
+- Reload re-evaluates changed files, swaps system bodies in place, keeps world state, tick, and RNG stream state, removes systems of deleted files, and reports syntax and declaration errors as `file:line` data.
+
+Its trace is [crates/argus-luau/SPEC-TRACE.md](crates/argus-luau/SPEC-TRACE.md).
+
 ## Building
 
-Rust stable (1.77 or newer for `offset_of!`). On this machine the toolchain is the GNU target because no MSVC build tools are installed.
+Rust stable (1.77 or newer for `offset_of!`) plus a C++ compiler, because the Luau VM is built from source by the `mlua` crate. On this machine the Rust toolchain is the GNU target and the compiler is WinLibs MinGW-w64 GCC (installed with `winget install BrechtSanders.WinLibs.POSIX.UCRT`); its `mingw64/bin` must be on `PATH` when building.
 
 ```bash
 cargo test -p argus-ecs
@@ -61,6 +71,7 @@ crates/
   argus-ecs/          the ECS core (this piece)
   argus-ecs-derive/   #[derive(Component)]
   argus-sim/          scheduler, clocks, RNG streams, profiling, fault isolation (piece 2)
+  argus-luau/         Luau VM host: script components, defs, systems, sandbox, reload (piece 3)
 docs/
   argus-engine-design-v0.3.html   the design document
   phase0-checklist.md             every phase-0 item and its status
@@ -68,4 +79,4 @@ docs/
 
 ## Next pieces of phase 0
 
-Luau binding, JSON-RPC daemon, TOML scenes and prefab overrides, SQLite index, action maps, the rest of profiling (allocation counts and Tracy capture), CLI, scenario test runner. See the checklist for the exact spec each one has to satisfy.
+JSON-RPC daemon, TOML scenes and prefab overrides, SQLite index, action maps, the rest of profiling (allocation counts and Tracy capture), CLI, scenario test runner. See the checklist for the exact spec each one has to satisfy.

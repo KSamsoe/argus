@@ -239,6 +239,40 @@ impl Scheduler {
         Ok(())
     }
 
+    /// Replace a system's declaration and body in place, keeping its slot so
+    /// registration-order tie-breaks do not shift. Re-enables it and keeps
+    /// its RNG stream state when the stream name is unchanged (§7 hot reload:
+    /// "continues from the current frame"). Registers it if absent.
+    pub fn replace_system(&mut self, desc: SystemDesc, run: SystemFn) -> Result<()> {
+        let Some(i) = self.systems.iter().position(|s| s.desc.name == desc.name) else {
+            return self.add_system(desc, run);
+        };
+        if desc.stage == Stage::Present && !desc.access.writes.is_empty() {
+            return Err(ArgusError::new(
+                crate::codes::STAGE_READ_ONLY,
+                format!(
+                    "system {} is in the present stage but declares writes",
+                    desc.name
+                ),
+            )
+            .hint("present is read-only; move gameplay mutation to sim or late.")
+            .at(desc.source.clone()));
+        }
+        let slot = &mut self.systems[i];
+        let rng = match (&slot.desc.rng, &desc.rng) {
+            (Some(old), Some(new)) if old == new => slot.rng.take(),
+            (_, Some(new)) => Some(rng::stream(self.config.seed, new)),
+            (_, None) => None,
+        };
+        slot.desc = desc;
+        slot.run = run;
+        slot.rng = rng;
+        slot.enabled = true;
+        slot.disabled_reason = None;
+        self.order_dirty = true;
+        Ok(())
+    }
+
     /// Re-enable a system (after a fault, or a `disable`).
     pub fn enable(&mut self, name: &str) -> Result<()> {
         let i = self.slot_index(name)?;

@@ -28,7 +28,7 @@ Phase 0 rule from the plan: no renderer, no audio, no input devices. Actions are
 
 ## 3. Luau binding with component and def schemas
 
-**Status: not started.** Constraints:
+**Status: done** in `crates/argus-luau`. Sentence-level trace in `crates/argus-luau/SPEC-TRACE.md`. Two items are carried forward on purpose: def *rows* load with the scene piece (the schema declaration is here), and `migrate` functions are stored but invoked by save games in phase 3. The Luau heap is not part of the snapshot (open question, §19). Constraints that were met:
 
 - `component "Name" { doc = ..., field = field.u8 { default, range, tune, doc } }` schema files in `components/`, one per file (§3, §4). Build with `argus_ecs::SchemaBuilder`; `source` is `file:line`.
 - `system "sim.name" { stage, after, reads, writes, run = function(q) ... end }` in `systems/`, name = path (§3, §4). `q:each("A", "B")` iterates; use `DynColumn` and `Access::from_names`.

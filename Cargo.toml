@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/argus-ecs", "crates/argus-ecs-derive", "crates/argus-sim"]
+members = ["crates/argus-ecs", "crates/argus-ecs-derive", "crates/argus-sim", "crates/argus-luau"]
 
 [workspace.package]
 version = "0.0.1"

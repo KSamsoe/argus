@@ -8,7 +8,7 @@ use crate::error::{codes, ArgusError, Result};
 use crate::event::{Event, EventRecord};
 use crate::intern::Interner;
 use crate::query::Query;
-use crate::schema::{Component, ComponentId, ComponentSchema, Registry};
+use crate::schema::{Component, ComponentId, ComponentSchema, FieldSchema, Registry};
 use crate::value::{FieldType, Value};
 use std::collections::HashMap;
 
@@ -450,6 +450,19 @@ impl World {
     /// Read one field by `Component.field` path (§5).
     pub fn get_field(&self, e: Entity, path: &str) -> Result<Value> {
         let (c, field) = self.registry.resolve_path(path)?;
+        self.get_field_by(e, c, field)
+    }
+
+    /// Write one field by path, with type coercion and range checking. The
+    /// error for a bad value is the §5 shape: code 4102, sentence, hint, ref.
+    pub fn set_field(&self, e: Entity, path: &str, value: impl Into<Value>) -> Result<()> {
+        let (c, field) = self.registry.resolve_path(path)?;
+        self.set_field_by(e, c, field, value.into())
+    }
+
+    /// Read a field with the component id and field schema already resolved
+    /// (the hot path for script bindings, which resolve names once).
+    pub fn get_field_by(&self, e: Entity, c: ComponentId, field: &FieldSchema) -> Result<Value> {
         let (col, row) = self.locate(e, c)?;
         col.acquire_shared()?;
         // SAFETY: offset + size within the row.
@@ -462,12 +475,16 @@ impl World {
         Ok(v)
     }
 
-    /// Write one field by path, with type coercion and range checking. The
-    /// error for a bad value is the §5 shape: code 4102, sentence, hint, ref.
-    pub fn set_field(&self, e: Entity, path: &str, value: impl Into<Value>) -> Result<()> {
-        let (c, field) = self.registry.resolve_path(path)?;
+    /// Write a field with the component id and field schema already resolved.
+    pub fn set_field_by(
+        &self,
+        e: Entity,
+        c: ComponentId,
+        field: &FieldSchema,
+        value: Value,
+    ) -> Result<()> {
         let schema = self.registry.schema(c);
-        let value = schema.check(field, value.into())?;
+        let value = schema.check(field, value)?;
         let (col, row) = self.locate(e, c)?;
         col.acquire_exclusive()?;
         // SAFETY: offset + size within the row.

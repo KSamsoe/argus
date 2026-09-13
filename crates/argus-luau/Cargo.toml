@@ -1,0 +1,11 @@
+[package]
+name = "argus-luau"
+description = "Argus Engine Luau binding: component, def and system declarations from script, sandboxed with instruction budgets, hot reload"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+argus-ecs = { path = "../argus-ecs", version = "0.0.1" }
+argus-sim = { path = "../argus-sim", version = "0.0.1" }
+mlua = { version = "0.10", features = ["luau"] }

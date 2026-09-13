@@ -1,0 +1,92 @@
+# argus-luau: spec trace
+
+Every statement in the design document (v0.3) that constrains the Luau binding, with where it lives and the test that pins it. Statuses as in the other traces: **Done**, **Partial**, **Deferred**.
+
+## §2 Architecture
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| Luau systems run sandboxed inside the daemon with instruction budgets. | Done | `ScriptHost::new`: `Lua::sandbox(true)`, `set_memory_limit`, `set_interrupt` counting VM interrupts against `ScriptConfig::interrupt_budget`, reset per system run. `io`, `os`, and global writes are unavailable. | `limits_reload::an_unbounded_loop_hits_the_budget_and_is_disabled`, `limits_reload::memory_limit_is_enforced`, `declarations::globals_are_frozen_and_the_sandbox_holds` |
+| A script fault must not take the daemon down; the world stays inspectable. | Done | Script errors are `ArgusError`s returned from the system body; the scheduler disables the system and emits `SystemFault` with the script's `file:line`. | `systems::runtime_errors_point_at_the_script_line_and_disable_the_system` |
+
+## §3 Data model
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| Schemas declared from Luau via a schema file: `component "HitStop" { doc, frames = field.u8 { default, range, doc }, scale = field.f32 { ..., tune = true } }`. | Done | `decl.rs` installs `component`, `field.<type>`; specs become `SchemaBuilder` calls with `source = file:line`. Field order follows declaration order (a per-field counter, since Lua tables are unordered). | `declarations::component_declaration_becomes_an_introspectable_schema` |
+| Every field has a type, default, optional range, doc string; `tune` flag. | Done | `parse_field`; all fifteen `FieldType`s are exposed as `field.<name>`. | `declarations::field_types_defaults_and_tags` |
+| Hot fields in Rust, cold in Luau; the protocol does not distinguish. | Done | Script components register through the same `World::register_schema`; Rust and script systems can read either. | `systems::rust_and_script_systems_share_one_schedule_and_one_contract` |
+| System declaration: `system "sim.hitstop" { stage, after, reads, writes, run = function(q) for e, hs, ts in q:each("HitStop", "TimeScale") do ... end end }`. | Done | `decl.rs` `system`; `bind.rs` `QueryHandle::each` yields an entity proxy plus one component proxy per name; the spec's example runs verbatim. | `systems::the_spec_example_system_runs` |
+| Tags are zero-size components. | Done | `component "Enemy" {}`. | `declarations::field_types_defaults_and_tags` |
+| Relations are components holding entity references. | Done | `field.entity`; proxies accept entity handles or `@id` / `e:n` strings; null reads as `nil`. | `systems::spawn_despawn_insert_emit_entities_and_rng` |
+
+## §4 Project and scene storage
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| `components/` Luau component schemas, one per file; `systems/` Luau systems, one per file. | Done | `ScriptHost::load_project` scans `components/`, `defs/`, `systems/` recursively in sorted order. A file may declare more than one thing; the convention is not enforced. | `declarations::a_project_directory_loads_in_order` |
+| Data tables in `defs/` with declared schemas. | Partial | `def "recipes" { key = "id", ... }` declares the row schema (`DefDecl`), reusing `ComponentSchema`. Loading the TOML rows and `world.defs` queries are the scene piece. | `declarations::def_schema_declaration` |
+
+## §5 Protocol
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| Errors carry a sentence, a hint, and a `file:line` ref. | Done | Range and type errors from script writes carry the schema's ref; runtime errors carry the script line; declaration errors carry the declaring line. Hints from `ArgusError` are appended to `ScriptError.message`. | `systems::range_violations_from_script_carry_the_schema_ref`, `declarations::errors_are_file_line_data_never_a_crash` |
+| `script.reload`, `script.systems`, `script.errors`. | Done | `ScriptHost::reload`, `Scheduler::systems` (sources are script `file:line`), `ScriptHost::errors`. | `limits_reload::reload_swaps_code_and_keeps_world_state_and_rng_streams` |
+
+## §6 Determinism
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| Randomness from named streams. | Done | `rng = "name"` in the declaration; `q:rng()` exposes `next`, `below`, `range`, `chance`; undeclared use is a structured error. | `systems::script_systems_are_deterministic_under_the_same_seed` |
+| Snapshot includes the Luau heap (open question §19). | Deferred | The heap is not snapshotted. Sequencing state moves to timelines (§13) and module state is discouraged: globals are read-only, so state can only live in file-level locals. Decide with the phase-2 snapshot ring. | |
+
+## §7 Scripting and hot reload
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| Game logic is Luau: sandboxed, gradually typed, small. | Done | mlua 0.10 with the `luau` feature; type annotations parse. | `declarations::*` |
+| `script.reload` recompiles the changed files, rebinds system functions, and continues from the current frame. | Done | `reload` hashes files, re-evaluates changed ones, `Scheduler::replace_system` keeps the slot, enabled state resets, RNG stream state is kept when the stream name is unchanged; world and tick untouched. Deleted files remove their systems. | `limits_reload::reload_swaps_code_and_keeps_world_state_and_rng_streams` |
+| The daemon freezes script globals after module load so nothing can accidentally live there. | Done (stricter) | Luau sandbox makes globals read-only even during load; a global write is a load error and a run-time write is a fault. Module state must be a `local`. | `declarations::globals_are_frozen_and_the_sandbox_holds` |
+| The agent sees a compile error as a structured `script.errors` response with `file:line` and the compiler's message, never as a crash. | Done | `ScriptError { file, line, message, phase }`; syntax, load, and declaration phases. | `declarations::errors_are_file_line_data_never_a_crash` |
+| A system may only touch components it declared: errors at load time where detectable, at run time otherwise. | Done | Load time: `reads`/`writes` must name registered components (`Access::from_names`). Run time: `q:each` and `e:get` check reads; proxies are read-only unless the component is in `writes`; `e:insert`/`e:remove` check writes. | `declarations::errors_are_file_line_data_never_a_crash`, `systems::undeclared_access_is_an_error_at_run_time` |
+| A system may not hold references across frames; violations are run-time errors. | Done | Every proxy holds a link to the running context that is nulled when `run` returns; a stale use is error 4502 with a hint. | `systems::handles_held_across_frames_fail_clearly` |
+| Component `migrate` functions per schema version (§6 save games; phase 3). | Partial | Accepted and stored (`ScriptHost::has_migration`); not yet invoked. | `declarations::component_declaration_becomes_an_introspectable_schema` |
+| Changing a component's shape needs a version bump and a migration. | Done | A reload that changes a registered schema's shape is reported with the "bump the version and add a migration" hint; the running schema is untouched. | `limits_reload::reload_of_a_changed_component_shape_is_a_reported_conflict` |
+
+## §8 Observation
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| Gameplay events (`damage`, `wave.cleared`) in the event log. | Done | `q:emit(name, fields)` → `Event::Game`; fields sorted by name for determinism. | `systems::spawn_despawn_insert_emit_entities_and_rng` |
+
+## §15 Shipping
+
+| Spec | Status | Where |
+|---|---|---|
+| Nothing in the sim stage may read from a device or the wall clock. | Done | The sandbox exposes no `os`, `io`, or clock; `q.time`, `q.tick`, `q.dt` are sim time. |
+| Release builds precompile Luau to bytecode. | Deferred | Phase 2 `argus build`. |
+
+## §17 Performance
+
+| Target | Spec | Measured (release) |
+|---|---|---|
+| Luau hot reload | < 100 ms | asserted in `limits_reload`; single-file reload is a few ms |
+| Script system over 50k entities, four field ops each | (no target; the §19 risk) | 40 ms per tick, about 0.2 µs per field access; roughly 300× the same system in Rust (0.13 ms). The spec's answer is to move a hot system to Rust; Swarm's bullet integration is exactly that case. |
+
+## §18 Build plan
+
+Phase 0 item 3, "Luau binding with component and def schemas": this crate.
+
+## §19 Open questions and risks touching this crate
+
+- Luau heap in the snapshot: not snapshotted; see §6 row.
+- Luau performance ceiling: per-entity proxies allocate once per `each` call, not per entity, but every field access is a Rust round trip. Promoting a system to Rust changes nothing around it because the declaration contract is identical.
+
+## Known limitations, stated so they are decisions
+
+- One Luau VM per `ScriptHost`; a forked world needs its own host (or the same host with a different scheduler, since the VM holds no world state).
+- `q:each` snapshots the entity list, so entities spawned during the loop are visited next tick.
+- Numbers cross the boundary as doubles; integer fields accept integral doubles and reject fractions with a type error naming the field.
+- Def schemas are declared here but their rows are loaded by the scene piece.
+- Static analysis of `run` bodies (which components a function touches) is not attempted; the runtime checks are exhaustive.
