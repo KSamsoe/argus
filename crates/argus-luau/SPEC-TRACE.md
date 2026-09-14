@@ -25,7 +25,7 @@ Every statement in the design document (v0.3) that constrains the Luau binding, 
 | Spec | Status | Where | Test |
 |---|---|---|---|
 | `components/` Luau component schemas, one per file; `systems/` Luau systems, one per file. | Done | `ScriptHost::load_project` scans `components/`, `defs/`, `systems/` recursively in sorted order. A file may declare more than one thing; the convention is not enforced. | `declarations::a_project_directory_loads_in_order` |
-| Data tables in `defs/` with declared schemas. | Partial | `def "recipes" { key = "id", ... }` declares the row schema (`DefDecl`), reusing `ComponentSchema`. Loading the TOML rows and `world.defs` queries are the scene piece. | `declarations::def_schema_declaration` |
+| Data tables in `defs/` with declared schemas. | Done | `def "recipes" { key = "id", prefix = "recipe", ... }` declares the row schema (`DefDecl`), reusing `ComponentSchema`; `prefix` is the `item` in `item:key.brass` and defaults to the table name. `argus-scene` loads the rows against it and serves `world.defs` queries. | `declarations::def_schema_declaration` |
 
 ## §5 Protocol
 
@@ -88,5 +88,5 @@ Phase 0 item 3, "Luau binding with component and def schemas": this crate.
 - One Luau VM per `ScriptHost`; a forked world needs its own host (or the same host with a different scheduler, since the VM holds no world state).
 - `q:each` snapshots the entity list, so entities spawned during the loop are visited next tick.
 - Numbers cross the boundary as doubles; integer fields accept integral doubles and reject fractions with a type error naming the field.
-- Def schemas are declared here but their rows are loaded by the scene piece.
+- Def schemas are declared here; their rows are loaded by `argus-scene`.
 - Static analysis of `run` bodies (which components a function touches) is not attempted; the runtime checks are exhaustive.

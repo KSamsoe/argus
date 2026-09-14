@@ -38,6 +38,18 @@ Phase 0, piece 3: the Luau binding, in [crates/argus-luau](crates/argus-luau).
 
 Its trace is [crates/argus-luau/SPEC-TRACE.md](crates/argus-luau/SPEC-TRACE.md).
 
+Phase 0, piece 5: authored content, in [crates/argus-scene](crates/argus-scene). (Piece 4, the daemon, needs this to open a scene, so it came first.)
+
+- A project is `argus.toml` plus the directories from the design: `prefabs/`, `defs/`, `scenes/<name>/`, and so on. One authored entity per TOML file, filename is the id. The entity file from the design document loads as written.
+- Prefabs are files too (`prefabs/door/locked.toml`, itself built from `door/base`). An entity file holds only its overrides. Inheritance is per field, removal is an explicit `-Door = true`, children live under `[children.light.Light]` and are addressed as `@door.east/light`. Resolving an entity gives every field with where it came from: its own file, a named prefab, or the schema default.
+- Scenes are flat or subdivided into rooms. The scene file holds the room graph; rooms within a radius of the player stay loaded, the rest stream out, and references across the boundary go null and come back when the room does. Transitions are events.
+- Data tables in `defs/` are rows keyed by id, validated against schemas declared in script, and referenced as `item:key.brass`. Every reference in every file is checked when a scene opens.
+- Renames go through `asset.move`, which rewrites every reference and appends to `.argus/moves.log`. A rename done outside the tool produces an error naming the old path, and the hint tells you where it went if the log knows.
+- Large data (a tilemap) is a small text index plus a binary chunk with a hash. Readers query rectangles; nobody reads a 40,000-line array.
+- Edits write back only the changed key and leave comments and spacing alone. A scene with any problem lists all of them with `file:line` and refuses to load, so a run always starts from a whole world.
+
+Its trace is [crates/argus-scene/SPEC-TRACE.md](crates/argus-scene/SPEC-TRACE.md).
+
 ## Building
 
 Rust stable (1.77 or newer for `offset_of!`) plus a C++ compiler, because the Luau VM is built from source by the `mlua` crate. On this machine the Rust toolchain is the GNU target and the compiler is WinLibs MinGW-w64 GCC (installed with `winget install BrechtSanders.WinLibs.POSIX.UCRT`); its `mingw64/bin` must be on `PATH` when building.
@@ -64,6 +76,12 @@ The same gates for the scheduler:
 cargo test -p argus-sim --release --test perf -- --ignored --nocapture
 ```
 
+And for authored content (10,000 entities across 200 rooms open and resolve in about 240 ms with no index; one room streams in and out in under a millisecond):
+
+```bash
+cargo test -p argus-scene --release --test perf -- --ignored --nocapture
+```
+
 ## Layout
 
 ```
@@ -72,6 +90,7 @@ crates/
   argus-ecs-derive/   #[derive(Component)]
   argus-sim/          scheduler, clocks, RNG streams, profiling, fault isolation (piece 2)
   argus-luau/         Luau VM host: script components, defs, systems, sandbox, reload (piece 3)
+  argus-scene/        argus.toml, TOML scenes and rooms, prefab overrides, defs, moves, bulk chunks (piece 5)
 docs/
   argus-engine-design-v0.3.html   the design document
   phase0-checklist.md             every phase-0 item and its status
@@ -79,4 +98,4 @@ docs/
 
 ## Next pieces of phase 0
 
-JSON-RPC daemon, TOML scenes and prefab overrides, SQLite index, action maps, the rest of profiling (allocation counts and Tracy capture), CLI, scenario test runner. See the checklist for the exact spec each one has to satisfy.
+JSON-RPC daemon, SQLite index, action maps, the rest of profiling (allocation counts and Tracy capture), CLI, scenario test runner. See the checklist for the exact spec each one has to satisfy.

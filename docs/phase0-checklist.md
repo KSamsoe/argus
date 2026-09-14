@@ -28,7 +28,7 @@ Phase 0 rule from the plan: no renderer, no audio, no input devices. Actions are
 
 ## 3. Luau binding with component and def schemas
 
-**Status: done** in `crates/argus-luau`. Sentence-level trace in `crates/argus-luau/SPEC-TRACE.md`. Two items are carried forward on purpose: def *rows* load with the scene piece (the schema declaration is here), and `migrate` functions are stored but invoked by save games in phase 3. The Luau heap is not part of the snapshot (open question, §19). Constraints that were met:
+**Status: done** in `crates/argus-luau`. Sentence-level trace in `crates/argus-luau/SPEC-TRACE.md`. Def *rows* now load in item 5 from the schema declared here (`def "items" { key, prefix, ... }`); `migrate` functions are stored but invoked by save games in phase 3. The Luau heap is not part of the snapshot (open question, §19). Constraints that were met:
 
 - `component "Name" { doc = ..., field = field.u8 { default, range, tune, doc } }` schema files in `components/`, one per file (§3, §4). Build with `argus_ecs::SchemaBuilder`; `source` is `file:line`.
 - `system "sim.name" { stage, after, reads, writes, run = function(q) ... end }` in `systems/`, name = path (§3, §4). `q:each("A", "B")` iterates; use `DynColumn` and `Access::from_names`.
@@ -55,7 +55,7 @@ Phase 0 rule from the plan: no renderer, no audio, no input devices. Actions are
 
 ## 5. TOML scenes, rooms, defs, and prefab overrides
 
-**Status: not started.** Constraints:
+**Status: done** in `crates/argus-scene`. Sentence-level trace in `crates/argus-scene/SPEC-TRACE.md`. Carried forward on purpose: the transaction, author tag, and change feed around file writes (item 4); the index answering about unloaded rooms with identical shapes (item 6); streaming at scale (phase 3); tilemap semantics over the bulk chunk (phase 1). Decisions recorded in the trace: TOML over KDL; `default` as a fourth provenance; tags registered on first use; `-tags` and `-children` follow the `-Component` rule. Constraints that were met:
 
 - Project layout from §4: `argus.toml`, `components/`, `systems/`, `defs/`, `prefabs/`, `scenes/<name>/scene.toml` plus one authored entity per TOML file with filename = string id, `rooms/<room>/room.toml` for subdivided scenes, `assets/`, `tests/`, `plugins/`, `.argus/` gitignored.
 - Entity file shape: `prefab = "door/locked"`, `tags = [...]`, `[Component]` tables, entity refs as `@id` (room-qualified `@cavern-04/door.west`), def refs as `item:key.brass` (§4).

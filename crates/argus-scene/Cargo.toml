@@ -1,0 +1,14 @@
+[package]
+name = "argus-scene"
+description = "Argus Engine authored content: argus.toml, TOML scenes and rooms with streaming, file-per-entity with prefab overrides and provenance, defs tables, asset moves, bulk chunks"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+argus-ecs = { path = "../argus-ecs", version = "0.0.1" }
+argus-sim = { path = "../argus-sim", version = "0.0.1" }
+toml_edit = "0.22"
+
+[dev-dependencies]
+argus-luau = { path = "../argus-luau", version = "0.0.1" }

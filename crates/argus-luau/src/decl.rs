@@ -58,6 +58,8 @@ pub struct DefDecl {
     pub schema: ComponentSchema,
     /// Field that identifies a row (`item:key.brass` refers to it). Default `id`.
     pub key: String,
+    /// Reference prefix (`item` in `item:key.brass`). Defaults to the table name.
+    pub prefix: String,
     /// File it came from.
     pub file: String,
 }
@@ -331,11 +333,13 @@ pub(crate) fn install_globals(lua: &Lua) -> LuaResult<()> {
                 let mut fields = Vec::new();
                 let mut doc = String::new();
                 let mut key = "id".to_string();
+                let mut prefix = name.clone();
                 for pair in spec.pairs::<String, LuaValue>() {
                     let (k, v) = pair?;
                     match (k.as_str(), v) {
                         ("doc", LuaValue::String(s)) => doc = s.to_str()?.to_string(),
                         ("key", LuaValue::String(s)) => key = s.to_str()?.to_string(),
+                        ("prefix", LuaValue::String(s)) => prefix = s.to_str()?.to_string(),
                         (_, v) => fields.push(parse_field(&name, &k, v, &source)?),
                     }
                 }
@@ -354,7 +358,12 @@ pub(crate) fn install_globals(lua: &Lua) -> LuaResult<()> {
                 lua.app_data_mut::<Pending>()
                     .expect("pending")
                     .defs
-                    .push(DefDecl { schema, key, file });
+                    .push(DefDecl {
+                        schema,
+                        key,
+                        prefix,
+                        file,
+                    });
                 Ok(spec)
             })
         })?,
