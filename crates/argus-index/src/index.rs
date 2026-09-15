@@ -902,9 +902,11 @@ impl Index {
             .filter(|r| has(&r.2))
             .map(|r| r.0.as_str())
             .collect();
+        // A writer reads too (Access::allows_read), so readers include writers,
+        // as the live who_reads does.
         let readers: Vec<&str> = rows
             .iter()
-            .filter(|r| has(&r.1))
+            .filter(|r| has(&r.1) || has(&r.2))
             .map(|r| r.0.as_str())
             .collect();
         Ok(json!({ "component": component, "systems": systems, "readers": readers }))

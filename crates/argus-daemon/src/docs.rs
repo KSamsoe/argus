@@ -234,6 +234,48 @@ pub const METHODS: &[MethodDoc] = &[
         returns: "{rows: [{id, author, note, entities, paths}]}",
     },
     MethodDoc {
+        name: "input.inject",
+        doc: "Inject an action for a player slot; gameplay sees it as the Actions component next tick. Continuous: held for frames ticks (default 1) or until another inject with hold; discrete: a command for the next turn. Toggles flip.",
+        params: "action: string; slot: integer (default 1); value: true|false | number | [x, y] (default: the active value); frames: integer; hold: boolean",
+        returns: "{action, slot, tick, until}",
+    },
+    MethodDoc {
+        name: "input.script",
+        doc: "Schedule several injects at ticks relative to now.",
+        params: "steps: [{at: integer, action, slot, value, frames, hold}]",
+        returns: "{scheduled, from, until}",
+    },
+    MethodDoc {
+        name: "input.record",
+        doc: "Start or stop writing the input log to .argus/runs/<stamp>-<seed>/input.log, next to a run.toml with the run identity (scene, seed, clock).",
+        params: "on: boolean (default true)",
+        returns: "{recording, path, run, entries}",
+    },
+    MethodDoc {
+        name: "input.replay",
+        doc: "Feed a recorded input log back in: the same scene, seed, and code then give the same run.",
+        params: "path: string (project-relative or absolute)",
+        returns: "{path, entries, last_tick}",
+    },
+    MethodDoc {
+        name: "input.log.get",
+        doc: "The input log: every action value change by tick (continuous) or turn (discrete).",
+        params: "since: integer (tick); slot: integer; action: string; limit; cursor",
+        returns: "{total, columns, rows: [[tick, slot, action, value]], recording, clock, next}",
+    },
+    MethodDoc {
+        name: "input.bindings",
+        doc: "The action map from input.toml: actions with type, doc, toggle, and bindings per device; player slots with their devices.",
+        params: "",
+        returns: "{file, actions: [{name, type, doc, toggle, bindings, at}], slots: [{slot, devices}]}",
+    },
+    MethodDoc {
+        name: "input.state",
+        doc: "The current value of every action for a slot.",
+        params: "slot: integer (default 1)",
+        returns: "{slot, tick, actions: {name: value}, pending}",
+    },
+    MethodDoc {
         name: "sim.play",
         doc: "Enter play: snapshot the world and enable the sim stages. In a continuous scene the daemon ticks in real time; in a discrete scene time moves on sim.advance.",
         params: "",

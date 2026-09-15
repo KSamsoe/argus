@@ -168,7 +168,11 @@ fn get_summary_rooms_describe_and_defs() {
     assert_eq!(d["rows"][0]["doc"], "Hit points");
     assert_eq!(d["rows"][0]["fields"][0]["range"], json!([0.0, 1000.0]));
     assert_eq!(d["rows"][0]["written_by"], json!(["sim.damage"]));
-    assert_eq!(d["rows"][0]["read_by"], json!(["present.hud"]));
+    assert_eq!(
+        d["rows"][0]["read_by"],
+        json!(["sim.damage", "present.hud"]),
+        "a writer reads too"
+    );
     assert_eq!(
         idx.who_writes("Health").unwrap()["systems"],
         json!(["sim.damage"])

@@ -32,7 +32,10 @@ fn session_open_gives_the_one_screen_summary() {
         .iter()
         .map(|v| v.as_str().unwrap())
         .collect();
-    assert_eq!(systems, ["sim.damage", "present.hud"]);
+    assert_eq!(
+        systems,
+        ["input.actions", "sim.damage", "sim.move", "present.hud"]
+    );
     assert!(
         s.to_string().len() < 2048,
         "summary must fit in ~2 KB: {}",
@@ -508,9 +511,9 @@ fn sim_and_events_answer_why_the_bat_died() {
     assert_eq!(r["tick"], 65);
     let pf = ok(&mut d, "prof.frame", json!({}));
     assert_eq!(pf["tick"], 64, "the last tick that ran, numbered from 0");
-    assert_eq!(pf["systems"][0][0], "sim.damage");
+    assert_eq!(pf["systems"][0][0], "input.actions", "stage order");
     let ps = ok(&mut d, "prof.systems", json!({ "last": 10 }));
-    assert_eq!(ps["rows"][0][0], "sim.damage");
+    assert_eq!(ps["rows"][1][0], "sim.damage");
     assert!(
         ok(&mut d, "prof.worst", json!({ "n": 2 }))["rows"]
             .as_array()
@@ -544,8 +547,8 @@ fn scripts_reload_in_place_and_errors_are_data() {
     project(t.path());
     let mut d = open(t.path());
     let sys = ok(&mut d, "script.systems", json!({}));
-    assert_eq!(sys["total"], 2);
-    let dmg = &sys["rows"][0];
+    assert_eq!(sys["total"], 4);
+    let dmg = &sys["rows"][1];
     assert_eq!(dmg["name"], "sim.damage");
     assert_eq!(dmg["stage"], "sim");
     assert_eq!(dmg["writes"], json!(["Health"]));

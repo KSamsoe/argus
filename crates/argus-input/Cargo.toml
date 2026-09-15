@@ -1,0 +1,12 @@
+[package]
+name = "argus-input"
+description = "Argus Engine action maps: input.toml actions with bindings per device and player slot, the per-slot Actions component, injected input, and the replayable input log"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+argus-ecs = { path = "../argus-ecs", version = "0.0.1" }
+argus-sim = { path = "../argus-sim", version = "0.0.1" }
+argus-scene = { path = "../argus-scene", version = "0.0.1" }
+serde_json = "1"

@@ -70,6 +70,15 @@ Phase 0, piece 6: the index, in [crates/argus-index](crates/argus-index).
 
 Its trace is [crates/argus-index/SPEC-TRACE.md](crates/argus-index/SPEC-TRACE.md).
 
+Phase 0, piece 7: action maps and the input log, in [crates/argus-input](crates/argus-input).
+
+- `input.toml` declares actions (`move`, `fire`, `crouch`) as buttons, axes, or two-axis sticks, with bindings per device and player slots with their devices. Bindings are checked and reported now and read when devices arrive in phase 1.
+- The map becomes one component, `Actions`, with a field per action and went-down and went-up edge fields for buttons. Every tick, the `input.actions` system writes each slot's values onto every entity that carries a `PlayerSlot`. Gameplay reads a component like any other and never sees a key.
+- With no devices, input is injected: hold an action for some frames, tap it, hold it until told otherwise, or schedule a script of injects. Toggle actions flip on each press.
+- Every value change is logged by tick, or by turn in a discrete scene. `input.record` writes that log next to a small file naming the scene, seed, and clock. `input.replay` feeds a log back in, and the same scene, seed, and code give the same run, which the tests check bit for bit.
+
+Its trace is [crates/argus-input/SPEC-TRACE.md](crates/argus-input/SPEC-TRACE.md).
+
 ## Building
 
 Rust stable (1.77 or newer for `offset_of!`) plus a C++ compiler, because the Luau VM is built from source by the `mlua` crate. On this machine the Rust toolchain is the GNU target and the compiler is WinLibs MinGW-w64 GCC (installed with `winget install BrechtSanders.WinLibs.POSIX.UCRT`); its `mingw64/bin` must be on `PATH` when building.
@@ -125,6 +134,7 @@ crates/
   argus-scene/        argus.toml, TOML scenes and rooms, prefab overrides, defs, moves, bulk chunks (piece 5)
   argus-daemon/       argusd: JSON-RPC 2.0 over local socket or stdio; session, world, scene, edit, sim, script, obs, prof (piece 4)
   argus-index/        .argus/index.db: SQLite cache of entities, components, refs, prefabs, defs, schemas, docs; shared query evaluator (piece 6)
+  argus-input/        input.toml action maps, the Actions component and input.actions system, injected input, the replayable log (piece 7)
 docs/
   argus-engine-design-v0.3.html   the design document
   phase0-checklist.md             every phase-0 item and its status
@@ -132,4 +142,4 @@ docs/
 
 ## Next pieces of phase 0
 
-Action maps with the action log, the rest of profiling (allocation counts and Tracy capture), the `argus` CLI mirroring the daemon's method table, and the scenario test runner. See the checklist for the exact spec each one has to satisfy.
+The rest of profiling (allocation counts and Tracy capture), the `argus` CLI mirroring the daemon's method table, and the scenario test runner. See the checklist for the exact spec each one has to satisfy.

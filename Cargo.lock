@@ -8,6 +8,7 @@ version = "0.0.1"
 dependencies = [
  "argus-ecs",
  "argus-index",
+ "argus-input",
  "argus-luau",
  "argus-scene",
  "argus-sim",
@@ -43,6 +44,16 @@ dependencies = [
  "rusqlite",
  "serde_json",
  "toml_edit",
+]
+
+[[package]]
+name = "argus-input"
+version = "0.0.1"
+dependencies = [
+ "argus-ecs",
+ "argus-scene",
+ "argus-sim",
+ "serde_json",
 ]
 
 [[package]]

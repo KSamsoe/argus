@@ -11,14 +11,17 @@ use crate::rpc;
 use argus_ecs::{ArgusError, Entity, Event, EventRecord, Result, Value, World};
 use argus_index::shapes::{overrides_json, resolved_json, Summary};
 use argus_index::{Index, SyncReport};
+use argus_input::{ActionMap, InputState};
 use argus_luau::{ScriptConfig, ScriptHost};
 use argus_scene::{
     Bulk, DefSchema, EntityDoc, Project, ProjectConfig, Rect, Scene, SceneDoc, SeedPolicy,
 };
 use argus_sim::{Clock, ClockKind, Scheduler, SchedulerConfig};
 use serde_json::{json, Map, Value as Json};
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 /// Identifies a client connection for subscriptions.
 pub type ConnId = u64;
@@ -38,6 +41,10 @@ struct Session {
     /// `.argus/index.db`, when it could be opened.
     index: Option<Index>,
     index_error: Option<String>,
+    /// Injected input and the log; `None` when the project has no input.toml.
+    input: Option<Rc<RefCell<InputState>>>,
+    /// Where `input.record` writes, if on.
+    run_dir: Option<PathBuf>,
 }
 
 struct EventLog {
@@ -184,6 +191,19 @@ impl Daemon {
                 Ok(out)
             }
             "scene.index" => self.scene_index(params),
+            "input.inject" => self.input_inject(params),
+            "input.script" => self.input_script(params),
+            "input.record" => self.input_record(params),
+            "input.replay" => self.input_replay(params),
+            "input.log.get" => self.input_log_get(params),
+            "input.bindings" => Ok(self.input()?.borrow().map().to_json()),
+            "input.state" => {
+                let slot = json::u64_param(params, "slot", 1)? as u8;
+                let st = self.input()?;
+                let st = st.borrow();
+                st.map().slot(slot)?;
+                Ok(st.state_json(slot))
+            }
             "asset.move" => self.asset_move(params),
             "scene.list" => self.scene_list(),
             "scene.load" => self.scene_load(params),
@@ -361,6 +381,19 @@ impl Daemon {
         self.world = World::new();
         argus_ecs::hierarchy::register(&mut self.world)?;
         self.sched = Scheduler::new(sched_cfg);
+        // The action map's components exist before scripts load, so a
+        // system may declare reads = {"Actions"}.
+        let input = match ActionMap::load(&root)? {
+            Some(map) => {
+                let state = Rc::new(RefCell::new(InputState::new(
+                    map,
+                    clock.kind == ClockKind::Discrete,
+                )));
+                argus_input::install(&mut self.world, &mut self.sched, state.clone())?;
+                Some(state)
+            }
+            None => None,
+        };
         let mut host = ScriptHost::new(ScriptConfig::default())?;
         host.load_project(&mut self.world, &mut self.sched, &root)?;
         let def_schemas: Vec<DefSchema> = host
@@ -406,6 +439,8 @@ impl Daemon {
             loaded: issues.is_empty(),
             index,
             index_error,
+            input,
+            run_dir: None,
         });
         self.pump_events();
         self.sync_index(false);
@@ -1441,6 +1476,140 @@ impl Daemon {
         let id = json::u64_param(params, "lock", 0)? as u32;
         self.edits.unlock(author, id)?;
         Ok(json!({ "unlocked": id }))
+    }
+
+    // ----- input ------------------------------------------------------------
+
+    fn input(&self) -> Result<Rc<RefCell<InputState>>> {
+        let ses = self.require_session()?;
+        ses.input.clone().ok_or_else(|| {
+            ArgusError::new(
+                argus_input::codes::NO_INPUT_MAP,
+                "this project has no input.toml, so there are no actions to inject",
+            )
+            .hint("Add input.toml with [actions.<name>] tables (type = button | axis | axis2) and reopen; input.bindings shows the map.")
+        })
+    }
+
+    fn input_inject(&mut self, params: &Json) -> Result<Json> {
+        let action = json::str_param(params, "action")?;
+        let slot = json::u64_param(params, "slot", 1)? as u8;
+        let frames = match params.get("frames") {
+            Some(Json::Number(n)) => n.as_u64(),
+            _ => None,
+        };
+        let hold = json::bool_param(params, "hold", false)?;
+        let now = self.sched.tick();
+        let st = self.input()?;
+        let r = st
+            .borrow_mut()
+            .inject(now, slot, action, params.get("value"), frames, hold)?;
+        Ok(json!({ "action": action, "slot": slot, "tick": r.tick, "until": r.until }))
+    }
+
+    fn input_script(&mut self, params: &Json) -> Result<Json> {
+        let steps = params
+            .get("steps")
+            .and_then(Json::as_array)
+            .ok_or_else(|| {
+                bad_params("steps must be an array of {at, action, slot, value, frames, hold}")
+            })?;
+        let now = self.sched.tick();
+        let st = self.input()?;
+        let reports = st.borrow_mut().script(now, steps)?;
+        Ok(json!({
+            "scheduled": reports.len(),
+            "from": now,
+            "until": reports.iter().filter_map(|r| r.until.or(Some(r.tick))).max(),
+        }))
+    }
+
+    fn input_record(&mut self, params: &Json) -> Result<Json> {
+        let on = json::bool_param(params, "on", true)?;
+        let st = self.input()?;
+        if !on {
+            let path = st.borrow_mut().stop_recording();
+            let n = st.borrow().log().len();
+            let dir = self.session.as_mut().and_then(|s| s.run_dir.take());
+            return Ok(json!({
+                "recording": false,
+                "path": path.map(|p| p.to_string_lossy().into_owned()),
+                "run": dir.map(|d| d.to_string_lossy().into_owned()),
+                "entries": n,
+            }));
+        }
+        let ses = self.session.as_ref().expect("session");
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let dir = ses
+            .root
+            .join(".argus")
+            .join("runs")
+            .join(format!("{stamp}-{}", ses.seed));
+        let log_path = dir.join("input.log");
+        st.borrow_mut().start_recording(&log_path)?;
+        // The run identity (§6): what reproduces this run.
+        let run_toml = format!(
+            "scene = {:?}\nseed = {}\nclock = {:?}\ninputs = \"input.log\"\nstarted = {stamp}\ntick = {}\n",
+            ses.scene_name,
+            ses.seed,
+            self.sched.driving().to_string(),
+            self.sched.tick()
+        );
+        std::fs::write(dir.join("run.toml"), run_toml).map_err(|e| {
+            ArgusError::new(
+                argus_input::codes::BAD_LOG,
+                format!("cannot write run.toml: {e}"),
+            )
+        })?;
+        self.session.as_mut().expect("session").run_dir = Some(dir.clone());
+        Ok(json!({
+            "recording": true,
+            "path": log_path.to_string_lossy(),
+            "run": dir.to_string_lossy(),
+        }))
+    }
+
+    fn input_replay(&mut self, params: &Json) -> Result<Json> {
+        let path = json::str_param(params, "path")?;
+        let st = self.input()?;
+        let root = self.session.as_ref().expect("session").root.clone();
+        let p = if Path::new(path).is_absolute() {
+            PathBuf::from(path)
+        } else {
+            root.join(path)
+        };
+        let entries = InputState::read_log(&p, st.borrow().map())?;
+        let n = st.borrow_mut().replay(&entries)?;
+        Ok(json!({
+            "path": p.to_string_lossy(),
+            "entries": n,
+            "last_tick": entries.iter().map(|e| e.tick).max(),
+        }))
+    }
+
+    fn input_log_get(&self, params: &Json) -> Result<Json> {
+        let since = json::u64_param(params, "since", 0)?;
+        let slot = params.get("slot").and_then(Json::as_u64).map(|s| s as u8);
+        let action = json::opt_str(params, "action")?;
+        let st = self.input()?;
+        let st = st.borrow();
+        let rows: Vec<Json> = st
+            .log()
+            .iter()
+            .filter(|e| e.tick >= since)
+            .filter(|e| slot.is_none_or(|s| s == e.slot))
+            .filter(|e| action.is_none_or(|a| a == e.action))
+            .map(|e| e.to_json())
+            .collect();
+        let (limit, offset) = query::page(params)?;
+        let mut out = query::paged(rows, limit, offset);
+        out["columns"] = json!(["tick", "slot", "action", "value"]);
+        out["recording"] = json!(st.recording().map(|p| p.to_string_lossy().into_owned()));
+        out["clock"] = json!(if st.is_discrete() { "turn" } else { "tick" });
+        Ok(out)
     }
 
     // ----- sim --------------------------------------------------------------

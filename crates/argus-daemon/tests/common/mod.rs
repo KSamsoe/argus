@@ -95,6 +95,50 @@ component "Light" {
     );
     write(
         root,
+        "input.toml",
+        r#"[actions.move]
+type = "axis2"
+doc = "Walk direction"
+[actions.move.bindings]
+keyboard = ["wasd"]
+gamepad = ["left_stick"]
+
+[actions.fire]
+type = "button"
+doc = "Shoot"
+[actions.fire.bindings]
+keyboard = ["space"]
+gamepad = ["south"]
+
+[slots.1]
+devices = ["keyboard", "gamepad:0"]
+[slots.2]
+devices = ["gamepad:1"]
+"#,
+    );
+    write(
+        root,
+        "systems/move.luau",
+        r#"system "sim.move" {
+  stage = "sim",
+  reads = { "PlayerSlot", "Actions" },
+  writes = { "Transform" },
+  doc = "Walks the player by its move action; fire emits a shot.",
+  run = function(q)
+    for e, t, a in q:each("Transform", "Actions") do
+      local m = a.move
+      local p = t.pos
+      t.pos = { x = p.x + m.x * 2, y = p.y + m.y * 2 }
+      if a.fire_pressed then
+        q:emit("shot", { by = e })
+      end
+    end
+  end,
+}
+"#,
+    );
+    write(
+        root,
         "systems/present.luau",
         "system \"present.hud\" { stage = \"present\", reads = { \"Health\" }, run = function(q) end }\n",
     );
@@ -116,7 +160,7 @@ component "Light" {
     write(
         root,
         "scenes/arena/player.toml",
-        "# the player\ntags = [\"player\"]\n\n[Transform]\npos = [0.0, 0.0]\n\n[Health]\ncur = 3 # hp\nmax = 3\n",
+        "# the player\ntags = [\"player\"]\n\n[PlayerSlot]\nslot = 1\n\n[Actions]\n\n[Transform]\npos = [0.0, 0.0]\n\n[Health]\ncur = 3 # hp\nmax = 3\n",
     );
     write(
         root,

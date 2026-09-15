@@ -19,6 +19,7 @@ argus-sim = { path = "../argus-sim", version = "0.0.1" }
 argus-luau = { path = "../argus-luau", version = "0.0.1" }
 argus-scene = { path = "../argus-scene", version = "0.0.1" }
 argus-index = { path = "../argus-index", version = "0.0.1" }
+argus-input = { path = "../argus-input", version = "0.0.1" }
 serde_json = "1"
 toml_edit = "0.22"
 interprocess = "2"

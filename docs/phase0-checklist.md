@@ -74,7 +74,7 @@ Phase 0 rule from the plan: no renderer, no audio, no input devices. Actions are
 
 ## 7. Action maps with the action log
 
-**Status: not started.** Constraints (§12, §6): `input.toml` declares actions with bindings per device and per player slot; gameplay never sees keys; the input log records actions by tick (continuous) or commands by turn (discrete); `input.inject {action}`, `input.script`, `input.record`, `input.log.get`, `input.bindings` (§5). Phase 0 has no devices: injection only. Inputs arrive only as per-player-slot actions (§15).
+**Status: done** in `crates/argus-input`. Sentence-level trace in `crates/argus-input/SPEC-TRACE.md`. Constraints (§12, §6) and how they were met: `input.toml` declares actions (`button`, `axis`, `axis2`, with `doc` and `toggle`) with bindings per device and `[slots.<n>]` per player slot; the map becomes one `Actions` component (a field per action, `_pressed`/`_released` edges for buttons) written every tick onto entities with `PlayerSlot` by the `input.actions` system in the `input` stage, so gameplay reads a component and never sees keys; the input log records action value changes by tick (continuous) or by turn (discrete); protocol `input.inject`, `input.script`, `input.record` (writes `.argus/runs/<stamp>-<seed>/input.log` plus `run.toml`), `input.replay`, `input.log.get`, `input.bindings`, `input.state`. Phase 0 has no devices: bindings are validated and reported, not read. A recorded run replays bit for bit in a fresh daemon. `code` in the run identity waits for the recorder (phase 2).
 
 ## 8. prof.*
 
