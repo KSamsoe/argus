@@ -1,0 +1,17 @@
+[package]
+name = "argus-index"
+description = "Argus Engine SQLite index: entities by scene, components and fields by entity, references, prefabs, defs, schemas, systems, full-text over doc strings; serves world.* and scene.* reads when the world is not loaded"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+argus-ecs = { path = "../argus-ecs", version = "0.0.1" }
+argus-sim = { path = "../argus-sim", version = "0.0.1" }
+argus-scene = { path = "../argus-scene", version = "0.0.1" }
+rusqlite = { version = "0.40", features = ["bundled"] }
+serde_json = "1"
+toml_edit = "0.22"
+
+[dev-dependencies]
+argus-luau = { path = "../argus-luau", version = "0.0.1" }

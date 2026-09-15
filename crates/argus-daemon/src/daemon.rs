@@ -9,6 +9,8 @@ use crate::json::{self, bad_params};
 use crate::query;
 use crate::rpc;
 use argus_ecs::{ArgusError, Entity, Event, EventRecord, Result, Value, World};
+use argus_index::shapes::{overrides_json, resolved_json, Summary};
+use argus_index::{Index, SyncReport};
 use argus_luau::{ScriptConfig, ScriptHost};
 use argus_scene::{
     Bulk, DefSchema, EntityDoc, Project, ProjectConfig, Rect, Scene, SceneDoc, SeedPolicy,
@@ -31,6 +33,11 @@ struct Session {
     scene_name: String,
     host: ScriptHost,
     seed: u64,
+    /// The world was instantiated (no issues).
+    loaded: bool,
+    /// `.argus/index.db`, when it could be opened.
+    index: Option<Index>,
+    index_error: Option<String>,
 }
 
 struct EventLog {
@@ -111,22 +118,80 @@ impl Daemon {
                 self.close();
                 Ok(json!({ "closed": true }))
             }
-            "world.summary" => self.world_summary(),
-            "world.query" => {
-                self.require_session()?;
-                query::run(&self.world, params)
+            "world.summary" => match self.index_target(params)? {
+                Some(s) => self.index()?.summary(&s),
+                None => self.world_summary(),
+            },
+            "world.query" => match self.index_target(params)? {
+                Some(s) => self.index()?.query(&s, params),
+                None => {
+                    self.require_session()?;
+                    query::run(&self.world, params)
+                }
+            },
+            "world.get" => match self.index_target(params)? {
+                Some(s) => {
+                    let entity = json::str_param(params, "entity")?;
+                    let resolved = json::bool_param(params, "resolved", false)?;
+                    self.index()?.get(&s, entity, resolved)
+                }
+                None => {
+                    self.require_session()?;
+                    self.world_get(params)
+                }
+            },
+            "world.describe" => {
+                if self.index_forced(params)? {
+                    self.index()?.describe(params)
+                } else {
+                    self.world_describe(params)
+                }
             }
-            "world.get" => {
-                self.require_session()?;
-                self.world_get(params)
+            "world.who_writes" => {
+                if self.index_forced(params)? {
+                    self.index()?.who_writes(json::str_param(params, "component")?)
+                } else {
+                    self.world_who_writes(params)
+                }
             }
-            "world.describe" => self.world_describe(params),
-            "world.who_writes" => self.world_who_writes(params),
-            "world.defs" => self.world_defs(params),
+            "world.defs" => {
+                if self.index_forced(params)? {
+                    self.index()?.defs(params)
+                } else {
+                    self.world_defs(params)
+                }
+            }
+            "world.refs" => {
+                let target = json::str_param(params, "target")?;
+                self.index()?.references_to(target, params)
+            }
+            "world.search" => {
+                let text = json::str_param(params, "text")?;
+                self.index()?.search(text, params)
+            }
+            "world.instances" => {
+                let prefab = json::str_param(params, "prefab")?;
+                let rows: Vec<Json> = self
+                    .index()?
+                    .instances_of(prefab)?
+                    .into_iter()
+                    .map(|(s, id)| json!([s, format!("@{id}")]))
+                    .collect();
+                let (limit, offset) = query::page(params)?;
+                let mut out = query::paged(rows, limit, offset);
+                out["prefab"] = json!(prefab);
+                out["columns"] = json!(["scene", "entity"]);
+                Ok(out)
+            }
+            "scene.index" => self.scene_index(params),
+            "asset.move" => self.asset_move(params),
             "scene.list" => self.scene_list(),
             "scene.load" => self.scene_load(params),
             "scene.issues" => self.scene_issues(),
-            "scene.rooms" => self.scene_rooms(),
+            "scene.rooms" => match self.index_target(params)? {
+                Some(s) => self.index()?.rooms(&s),
+                None => self.scene_rooms(),
+            },
             "scene.transition" => self.scene_transition(params),
             "scene.tiles.get" => self.scene_tiles_get(params),
             "edit.begin" => self.edit_begin(params),
@@ -327,6 +392,10 @@ impl Daemon {
             self.world.registry(),
         )?;
         self.sched.validate()?;
+        let (index, index_error) = match Index::open(&root) {
+            Ok(i) => (Some(i), None),
+            Err(e) => (None, Some(e.message)),
+        };
         self.session = Some(Session {
             root,
             project,
@@ -334,8 +403,12 @@ impl Daemon {
             scene_name: scene_name.to_string(),
             host,
             seed,
+            loaded: issues.is_empty(),
+            index,
+            index_error,
         });
         self.pump_events();
+        self.sync_index(false);
         let mut out = self.world_summary()?;
         if !issues.is_empty() {
             out["issues"] = Json::Array(issues.iter().map(json::error_json).collect());
@@ -366,6 +439,12 @@ impl Daemon {
                 st["root"] = json!(s.root.to_string_lossy().trim_start_matches(r"\\?\"));
                 st["scene"] = json!(s.scene_name);
                 st["script_errors"] = json!(s.host.errors().len());
+                st["loaded"] = json!(s.loaded);
+                st["index"] = json!(s
+                    .index
+                    .as_ref()
+                    .map(|_| Index::path(&s.root).to_string_lossy().into_owned()));
+                st["index_error"] = json!(s.index_error);
                 st
             }
         }
@@ -388,24 +467,28 @@ impl Daemon {
         let s = self.world.summary();
         let (scene, rooms, seed) = match &self.session {
             Some(ses) => (
-                json!(ses.scene_name),
-                json!(ses.scene.loaded_rooms()),
+                Some(ses.scene_name.clone()),
+                ses.scene
+                    .loaded_rooms()
+                    .into_iter()
+                    .map(str::to_string)
+                    .collect(),
                 ses.seed,
             ),
-            None => (Json::Null, json!([]), self.sched.seed()),
+            None => (None, Vec::new(), self.sched.seed()),
         };
         let systems = self.sched.systems(self.world.registry())?;
-        let enabled: Vec<&str> = systems
+        let enabled: Vec<String> = systems
             .iter()
             .filter(|x| x.enabled)
-            .map(|x| x.name.as_str())
+            .map(|x| x.name.clone())
             .collect();
-        let disabled: Vec<&str> = systems
+        let disabled: Vec<String> = systems
             .iter()
             .filter(|x| !x.enabled)
-            .map(|x| x.name.as_str())
+            .map(|x| x.name.clone())
             .collect();
-        let named: Vec<Json> = s
+        let named: Vec<(String, Vec<String>)> = s
             .named
             .iter()
             .take(50)
@@ -419,29 +502,177 @@ impl Daemon {
                             .collect()
                     })
                     .unwrap_or_default();
-                json!([format!("@{id}"), comps])
+                (id.clone(), comps)
             })
             .collect();
-        Ok(json!({
-            "frame": s.frame,
-            "tick": self.sched.tick(),
-            "time": self.sched.time(),
-            "seed": seed,
-            "clock": self.sched.driving().to_string(),
-            "playing": self.sched.is_playing(),
-            "paused": self.sched.is_paused(),
-            "scene": scene,
-            "rooms": rooms,
-            "entities": s.entities,
-            "authored": s.authored,
-            "components": s.components,
-            "archetypes": s.archetypes.iter().map(|a| json!([a.components, a.entities])).collect::<Vec<_>>(),
-            "named": named,
-            "named_total": s.named.len(),
-            "systems": enabled,
-            "disabled": disabled,
-            "pending_events": s.pending_events,
-        }))
+        Ok(Summary {
+            frame: s.frame,
+            tick: self.sched.tick(),
+            time: self.sched.time(),
+            seed,
+            clock: self.sched.driving().to_string(),
+            playing: self.sched.is_playing(),
+            paused: self.sched.is_paused(),
+            scene,
+            rooms,
+            entities: s.entities,
+            authored: s.authored,
+            components: s.components,
+            archetypes: s
+                .archetypes
+                .iter()
+                .map(|a| (a.components.clone(), a.entities))
+                .collect(),
+            named,
+            named_total: s.named.len(),
+            systems: enabled,
+            disabled,
+            pending_events: s.pending_events,
+            source: "live",
+        }
+        .to_json())
+    }
+
+    /// Which scene a read should be served from the index for: an explicit
+    /// `source: "index"`, another scene than the loaded one, or the current
+    /// scene when it could not be instantiated. `None` means the live world.
+    fn index_target(&self, params: &Json) -> Result<Option<String>> {
+        let Some(ses) = self.session.as_ref() else {
+            return Ok(None);
+        };
+        let scene = json::opt_str(params, "scene")?;
+        let forced = json::opt_str(params, "source")? == Some("index");
+        if forced {
+            return Ok(Some(scene.unwrap_or(&ses.scene_name).to_string()));
+        }
+        if let Some(sc) = scene {
+            if sc != ses.scene_name {
+                return Ok(Some(sc.to_string()));
+            }
+        }
+        if !ses.loaded {
+            return Ok(Some(ses.scene_name.clone()));
+        }
+        Ok(None)
+    }
+
+    fn index_forced(&self, params: &Json) -> Result<bool> {
+        Ok(json::opt_str(params, "source")? == Some("index")
+            || self.session.as_ref().is_some_and(|s| !s.loaded))
+    }
+
+    fn index(&self) -> Result<&Index> {
+        let ses = self.require_session()?;
+        ses.index.as_ref().ok_or_else(|| {
+            ArgusError::new(
+                argus_index::codes::INDEX,
+                format!(
+                    "the index is unavailable: {}",
+                    ses.index_error.as_deref().unwrap_or("not opened")
+                ),
+            )
+            .hint("Delete .argus/index.db and reopen the project; the index is a cache.")
+        })
+    }
+
+    /// Bring the index up to date. `force` rewrites every scene; otherwise
+    /// only scenes whose files changed (and the loaded scene when stale).
+    pub fn sync_index(&mut self, force: bool) -> Option<SyncReport> {
+        let systems = self
+            .sched
+            .systems(self.world.registry())
+            .unwrap_or_default();
+        let registry = self.world.registry().clone();
+        let ses = self.session.as_mut()?;
+        let idx = ses.index.as_mut()?;
+        match idx.sync_project(&ses.project, &registry, &systems, Some(&ses.scene), force) {
+            Ok(r) => Some(r),
+            Err(e) => {
+                ses.index_error = Some(e.message);
+                None
+            }
+        }
+    }
+
+    /// Idle-time refresh: pick up files edited outside the daemon.
+    pub fn refresh_index(&mut self) {
+        self.sync_index(false);
+    }
+
+    fn index_touched(&mut self, touched: &[String]) {
+        let Some(ses) = self.session.as_mut() else {
+            return;
+        };
+        let Some(idx) = ses.index.as_mut() else {
+            return;
+        };
+        for t in touched {
+            let Some(id) = t.strip_prefix('@') else {
+                continue;
+            };
+            let (fid, _) = split_child(&ses.scene, id);
+            if ses.scene.resolved(&fid).is_some() {
+                let _ = idx.sync_entities(&ses.scene, &[&fid]);
+            } else {
+                let _ = idx.remove_entity(&ses.scene.name, &fid, None);
+            }
+        }
+    }
+
+    fn scene_index(&mut self, params: &Json) -> Result<Json> {
+        self.require_session()?;
+        let rebuild = json::bool_param(params, "rebuild", false)?;
+        let mut stale = serde_json::Map::new();
+        if let Some(idx) = self.session.as_ref().and_then(|s| s.index.as_ref()) {
+            for name in self
+                .session
+                .as_ref()
+                .map(|s| s.project.scenes())
+                .unwrap_or_default()
+            {
+                if let Ok(Some(why)) = idx.stale_reason(&name) {
+                    stale.insert(name, json!(why));
+                }
+            }
+        }
+        let report = self.sync_index(rebuild);
+        let stats = self.index()?.stats()?;
+        let mut out = json!({ "stats": stats, "stale": stale });
+        if let Some(r) = report {
+            out["scenes"] = json!(r.scenes);
+            out["entities"] = json!(r.entities);
+            out["failed"] = json!(r.failed);
+            out["ms"] = json!(r.ms);
+        }
+        if let Some(e) = self.session.as_ref().and_then(|s| s.index_error.clone()) {
+            out["error"] = json!(e);
+        }
+        Ok(out)
+    }
+
+    fn asset_move(&mut self, params: &Json) -> Result<Json> {
+        let from = json::str_param(params, "from")?.to_string();
+        let to = json::str_param(params, "to")?.to_string();
+        let registry = self.world.registry().clone();
+        let ses = self
+            .session
+            .as_mut()
+            .ok_or_else(|| ArgusError::new(codes::NO_PROJECT, "no project is open"))?;
+        let report = ses.project.move_asset(&from, &to)?;
+        ses.scene.reload_files(&ses.project.ctx(&registry));
+        let entity_move = report.record.kind == argus_scene::MoveKind::Entity;
+        self.sync_index(true);
+        let mut out = json!({
+            "kind": report.record.kind.name(),
+            "from": report.record.from,
+            "to": report.record.to,
+            "refs": report.record.refs,
+            "rewritten": report.rewritten,
+        });
+        if entity_move {
+            out["note"] = json!("the loaded world keeps the old id until scene.load");
+        }
+        Ok(out)
     }
 
     fn world_get(&self, params: &Json) -> Result<Json> {
@@ -462,6 +693,7 @@ impl Daemon {
             "id": id,
             "authored": self.world.is_authored(e),
             "components": comps,
+            "source": "live",
         });
         if let (Some(id), Some(ses)) = (&id, &self.session) {
             if resolved {
@@ -834,6 +1066,7 @@ impl Daemon {
             files: files.into_iter().collect(),
         };
         let row = commit.to_json();
+        self.index_touched(&commit.touched);
         match kind {
             CommitKind::Normal => {
                 self.edits
@@ -1275,6 +1508,7 @@ impl Daemon {
         let registry = self.world.registry().clone();
         ses.scene.reresolve(&ses.project.ctx(&registry));
         self.sched.validate()?;
+        self.sync_index(true);
         Ok(json!({
             "reloaded": report.reloaded,
             "removed": report.removed,
@@ -1602,75 +1836,6 @@ pub fn event_json(world: &World, seq: u64, rec: &EventRecord) -> Json {
         }
     };
     json!({ "seq": seq, "frame": rec.frame, "name": name, "fields": fields })
-}
-
-fn resolved_json(re: &argus_scene::ResolvedEntity) -> Json {
-    let comps: Map<String, Json> = re
-        .components
-        .iter()
-        .map(|c| {
-            let fields: Map<String, Json> = c
-                .fields
-                .iter()
-                .map(|f| {
-                    let v = match &f.value {
-                        Value::Bool(b) => json!(b),
-                        Value::Int(i) => json!(i),
-                        Value::UInt(u) => json!(u),
-                        Value::Float(x) => json!(x),
-                        Value::Vec2(p) => json!([p.x, p.y]),
-                        Value::Str(s) | Value::Ref(s) => json!(s),
-                        Value::Entity(e) => json!(e.to_string()),
-                    };
-                    (
-                        f.name.clone(),
-                        json!({ "value": v, "from": f.from.to_string(), "at": f.at }),
-                    )
-                })
-                .collect();
-            (
-                c.name.clone(),
-                json!({ "from": c.from.to_string(), "fields": fields }),
-            )
-        })
-        .collect();
-    json!({
-        "id": re.id,
-        "prefab": re.prefab,
-        "chain": re.chain,
-        "tags": re.tags.iter().map(|(t, p)| json!([t, p.to_string()])).collect::<Vec<_>>(),
-        "components": comps,
-        "children": re.children.iter().map(|c| c.id.clone()).collect::<Vec<_>>(),
-        "file": re.file,
-    })
-}
-
-fn overrides_json(doc: &EntityDoc) -> Json {
-    let comps: Map<String, Json> = doc
-        .components
-        .iter()
-        .map(|c| {
-            (
-                c.name.clone(),
-                Json::Object(
-                    c.fields
-                        .iter()
-                        .map(|f| (f.name.clone(), json::toml_to_json(&f.raw)))
-                        .collect(),
-                ),
-            )
-        })
-        .collect();
-    json!({
-        "prefab": doc.prefab,
-        "tags": doc.tags,
-        "removed_tags": doc.removed_tags,
-        "components": comps,
-        "removed": doc.removed,
-        "children": doc.children.iter().map(|(n, _)| n).collect::<Vec<_>>(),
-        "removed_children": doc.removed_children,
-        "at": doc.at,
-    })
 }
 
 /// Where a project's daemon writes its connection info.

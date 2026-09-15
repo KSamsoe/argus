@@ -70,7 +70,7 @@ Phase 0 rule from the plan: no renderer, no audio, no input devices. Actions are
 
 ## 6. SQLite index
 
-**Status: not started.** Constraints (§4): `.argus/index.db` updated on load and on every file change; entities by scene, components by entity, references between assets, prefabs, and entities, full-text over doc strings; serves `world.*` and `scene.*` queries when the world is not loaded with identical result shapes; cache only, never committed. Delve target: floor generation plus index < 20 ms (§17).
+**Status: done** in `crates/argus-index`. Sentence-level trace in `crates/argus-index/SPEC-TRACE.md`. Constraints (§4) and how they were met: `.argus/index.db` (SQLite via rusqlite, bundled, FTS5) updated on load, on every commit, reload, and move, and by a 10 s idle scan for outside edits; entities by scene, components and fields by entity, references between assets, prefabs, defs, and entities, prefab and def catalogs, schemas and systems, full-text over doc strings; `world.*` and `scene.*` reads are served from the index for unloaded scenes (or on request) with identical shapes, guaranteed by one shared query evaluator and shared shape builders; cache only, gitignored, rebuilt on schema change. New protocol methods: `world.refs`, `world.search`, `world.instances`, `scene.index`, `asset.move`, and `scene` / `source: "index"` parameters on the reads. Delve target (§17): runtime floors live in the world, not SQLite; re-indexing one floor's worth of authored entities measures 15–19 ms. A file watcher is a later refinement of the idle scan.
 
 ## 7. Action maps with the action log
 

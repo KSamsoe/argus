@@ -61,6 +61,15 @@ Phase 0, piece 4: the daemon, in [crates/argus-daemon](crates/argus-daemon), wit
 
 Its trace is [crates/argus-daemon/SPEC-TRACE.md](crates/argus-daemon/SPEC-TRACE.md).
 
+Phase 0, piece 6: the index, in [crates/argus-index](crates/argus-index).
+
+- `.argus/index.db` is a SQLite cache of everything in the project's files: entities by scene, components and fields by entity, references between entities, prefabs, defs, and files, the prefab and def catalogs, component schemas, systems, and a full-text search over doc strings. It is never committed, and a schema change rebuilds it.
+- The daemon keeps it current: on open, after every commit, reload, and move, and by a scan every ten seconds while idle so a file edited by hand is picked up.
+- Reads about a scene that is not loaded come from the index with exactly the shapes the live world gives. That is guaranteed by construction: one query evaluator runs over either source, and one set of shape builders produces `world.get` and `world.summary` for both. A `source` field says which answered.
+- New reads it makes possible: everything that references an entity, prefab, def, or file; every instance of a prefab across all scenes; and searching doc strings in plain words.
+
+Its trace is [crates/argus-index/SPEC-TRACE.md](crates/argus-index/SPEC-TRACE.md).
+
 ## Building
 
 Rust stable (1.77 or newer for `offset_of!`) plus a C++ compiler, because the Luau VM is built from source by the `mlua` crate. On this machine the Rust toolchain is the GNU target and the compiler is WinLibs MinGW-w64 GCC (installed with `winget install BrechtSanders.WinLibs.POSIX.UCRT`); its `mingw64/bin` must be on `PATH` when building.
@@ -115,6 +124,7 @@ crates/
   argus-luau/         Luau VM host: script components, defs, systems, sandbox, reload (piece 3)
   argus-scene/        argus.toml, TOML scenes and rooms, prefab overrides, defs, moves, bulk chunks (piece 5)
   argus-daemon/       argusd: JSON-RPC 2.0 over local socket or stdio; session, world, scene, edit, sim, script, obs, prof (piece 4)
+  argus-index/        .argus/index.db: SQLite cache of entities, components, refs, prefabs, defs, schemas, docs; shared query evaluator (piece 6)
 docs/
   argus-engine-design-v0.3.html   the design document
   phase0-checklist.md             every phase-0 item and its status
@@ -122,4 +132,4 @@ docs/
 
 ## Next pieces of phase 0
 
-SQLite index, action maps with the action log, the rest of profiling (allocation counts and Tracy capture), the `argus` CLI mirroring the daemon's method table, and the scenario test runner. See the checklist for the exact spec each one has to satisfy.
+Action maps with the action log, the rest of profiling (allocation counts and Tracy capture), the `argus` CLI mirroring the daemon's method table, and the scenario test runner. See the checklist for the exact spec each one has to satisfy.

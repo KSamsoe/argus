@@ -168,6 +168,7 @@ fn run_loop(
 ) -> std::io::Result<()> {
     let mut outs: BTreeMap<ConnId, Sender<String>> = BTreeMap::new();
     let mut next_frame = Instant::now();
+    let mut last_refresh = Instant::now();
     loop {
         let timeout = if daemon.wants_frames() {
             next_frame.saturating_duration_since(Instant::now())
@@ -193,7 +194,13 @@ fn run_loop(
                     return Ok(());
                 }
             }
-            Err(RecvTimeoutError::Timeout) => {}
+            Err(RecvTimeoutError::Timeout) => {
+                // Idle: pick up files edited outside the daemon (§4 "on every file change").
+                if !daemon.wants_frames() && last_refresh.elapsed() >= Duration::from_secs(10) {
+                    daemon.refresh_index();
+                    last_refresh = Instant::now();
+                }
+            }
             Err(RecvTimeoutError::Disconnected) => return Ok(()),
         }
         if daemon.wants_frames() && Instant::now() >= next_frame {

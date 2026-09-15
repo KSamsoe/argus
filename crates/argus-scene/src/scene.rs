@@ -1305,6 +1305,27 @@ impl Scene {
         Ok(())
     }
 
+    /// Re-read every entity file from disk (after `asset.move` rewrote
+    /// references, or an outside edit) and re-resolve, keeping the loaded
+    /// rooms and spawned entities as they are. Values in the live world are
+    /// not touched; call [`Scene::sync_entity`] for those.
+    pub fn reload_files(&mut self, ctx: &ResolveCtx<'_>) {
+        self.issues
+            .retain(|e| e.code == codes::UNKNOWN_ROOM || e.code == codes::BAD_SCENE);
+        let ids: Vec<String> = self.entities.keys().cloned().collect();
+        for id in ids {
+            let (path, rel) = {
+                let f = &self.entities[&id];
+                (f.path.clone(), f.rel.clone())
+            };
+            match tomlv::read(&path).and_then(|t| EntityDoc::parse(&rel, &t)) {
+                Ok(doc) => self.entities.get_mut(&id).expect("exists").doc = doc,
+                Err(e) => self.issues.push(e),
+            }
+        }
+        self.resolve_all(ctx);
+    }
+
     /// Re-resolve every entity (after prefab or def changes) and refresh
     /// the issue list.
     pub fn reresolve(&mut self, ctx: &ResolveCtx<'_>) {
