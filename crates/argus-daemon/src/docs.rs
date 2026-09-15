@@ -357,13 +357,13 @@ pub const METHODS: &[MethodDoc] = &[
         name: "prof.frame",
         doc: "The last tick: total time and per-system breakdown.",
         params: "",
-        returns: "{tick, clock, total_ms, systems: [[name, ms]], archetypes: [[id, entities]]}",
+        returns: "{tick, clock, total_ms, allocs, bytes, systems: [[name, ms, allocs, bytes]], archetypes: [[id, entities]]}",
     },
     MethodDoc {
         name: "prof.worst",
         doc: "The n slowest recent ticks with per-system breakdown and entity counts by archetype.",
         params: "n: integer (default 5)",
-        returns: "{rows: [{tick, clock, total_ms, systems, archetypes}]}",
+        returns: "{rows: [{tick, clock, total_ms, allocs, bytes, systems, archetypes}]}",
     },
     MethodDoc {
         name: "prof.systems",
@@ -376,6 +376,18 @@ pub const METHODS: &[MethodDoc] = &[
         doc: "Entity counts and bytes by archetype.",
         params: "",
         returns: "{rows: [[components, entities, bytes]]}",
+    },
+    MethodDoc {
+        name: "prof.alloc",
+        doc: "Heap allocations by system over the last n ticks, in stage order: a Luau system that builds a table per entity shows up here. Counted on the sim thread by argusd's allocator; `counted` is false in a build without it.",
+        params: "last: integer (default 600)",
+        returns: "{last, counted, tick_mean_allocs, tick_mean_bytes, rows: [[name, stage, mean_allocs, mean_bytes, max_allocs, max_bytes, samples]]}",
+    },
+    MethodDoc {
+        name: "prof.capture",
+        doc: "Capture the next n ticks as a trace file for a human: every system span on one time base with its allocation counts, in the Chrome trace event format that Tracy imports (tracy-import-chrome) and Perfetto opens. Written to .argus/captures/ when the last tick is in; a `prof.capture` event names the file. Without `ticks`, reports the capture in progress.",
+        params: "ticks: integer (1 to 100000); path: string (optional, where to write)",
+        returns: "{armed, captured, ticks, path, from_tick}",
     },
 ];
 

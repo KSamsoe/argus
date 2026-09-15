@@ -31,7 +31,8 @@ Every statement in the design document (v0.3) that constrains the scheduler, clo
 | The scheduler already times every system every tick; `prof.*` just exposes it. `prof.systems {last: 600}` returns per-system mean and p95 in stage order. | Done | `Profiler` ring (600 ticks by default); `prof_systems(last)`. `hierarchy.propagate` appears as its own row. | `prof_snapshot::every_system_is_timed_every_tick` |
 | `prof.worst {n}` returns the slowest recent ticks with a per-system breakdown and the entity counts by archetype at that tick. | Done | `prof_worst(n)`; `TickRecord::archetypes`. | same |
 | `prof.frame`. | Done | `prof_last`. | same |
-| `prof.alloc` counts allocations by system; `prof.capture` writes a Tracy-compatible trace. | Deferred | Needs a counting global allocator and a Tracy client. Tracked in `docs/phase0-checklist.md` item 8. | |
+| `prof.alloc` counts allocations by system so a Luau system that builds a table per entity is visible. | Done | `alloc::Counting`, a global allocator wrapper with thread-local allocation and byte counters; the scheduler reads them before and after every system and `hierarchy.propagate`, so each `SystemSample` and `TickRecord` carries `allocs` and `bytes`. `prof_alloc(last)` gives mean, max, and total per system in stage order; `alloc::installed()` says whether the binary opted in (argusd does). Luau allocates through the same global allocator (`mlua` hands it to `lua_newstate`), so script systems are counted like Rust ones. | `prof_snapshot::allocations_are_counted_by_system`; `argus-luau/tests/systems.rs::a_script_system_that_builds_a_table_per_entity_is_visible_in_prof_alloc` |
+| `prof.capture {ticks: 300}` writes a Tracy-compatible trace for the human. | Done | `capture_start(ticks)` arms a `Capture`; each of the next `ticks` ticks records every system span (start and duration on one time base, allocations, bytes) and the tick's entity count; `capture_take` returns it once complete. `Capture::chrome_trace` writes the Chrome trace event JSON that Tracy's bundled `import-chrome` tool converts to `.tracy` and that Perfetto and `chrome://tracing` open as is. Tracy's native wire format needs a live client connection and is not a file a daemon can drop; the import path is how Tracy itself takes offline traces. | `prof_snapshot::a_capture_collects_the_next_ticks_as_a_chrome_trace` |
 | A perf regression is a query result with a system name on it. | Done | `SystemProf { name, mean_ms, p95_ms, max_ms }`; `prof_tick_p95_ms` for whole-tick assertions. | same |
 
 ## §6 Determinism and time
@@ -77,10 +78,12 @@ Release build, one thread, development laptop. Gates in `tests/perf.rs`.
 
 | Target | Spec | Measured |
 |---|---|---|
-| Outpost headless fast-forward | > 2,000 ticks/s | 50k-entity swarm with three systems: ~45,000 ticks/s |
-| Delve turn resolution, 500 monsters | < 2 ms | p95 0.02 ms |
-| Scheduler overhead, empty tick with 10 systems | (internal) | 1.3 µs |
+| Outpost headless fast-forward | > 2,000 ticks/s | 50k-entity swarm with three systems: ~48,000 ticks/s with the counting allocator installed (51,700 without) |
+| Delve turn resolution, 500 monsters | < 2 ms | p95 0.05 ms |
+| Scheduler overhead, empty tick with 10 systems | (internal) | 5 µs with allocation counting (2 µs without) |
 | Swarm sim tick p95 | < 6 ms | 0.02 ms for the three-system swarm above |
+
+"Profiling, always on at low cost" (§5 namespace table): the gates run with `alloc::Counting` installed, as `argusd` has it. The allocator adds two thread-local increments per allocation and two counter reads per system; the swarm loses about six percent of its headless rate, which is the price of `prof.alloc` being a query rather than a build flag.
 
 ## §18 Build plan
 
@@ -96,5 +99,8 @@ Phase 0 item 2, "scheduler with stages, declared write sets, and both clock driv
 - One scheduler per world; forks need their own scheduler built from the same system list. The daemon piece owns that pairing.
 - `present` systems run with the driving clock's tick and time; interpolation alpha is added with the renderer.
 - `SystemCtx::query` clones the access set per call (two small vectors). Fine at phase-0 scale; switch to `Arc` if a profile ever shows it.
-- The profiler stores `Arc<str>` names and a small vector per tick; at 45k ticks/s this is a few percent of an otherwise empty tick and invisible under real work.
+- The profiler stores `Arc<str>` names and a small vector per tick; at 48k ticks/s this is a few percent of an otherwise empty tick and invisible under real work.
+- `prof.alloc` counts what the sim thread allocates while a system runs, which includes the ECS query machinery and Luau's page allocator batching (a thousand small tables show as a handful of 16 KB pages, so `bytes` is the column that makes a script system visible, `allocs` the one that catches a Rust system boxing per entity). Frees are not counted; a leak is a question for the snapshot, not the profiler.
+- A capture holds one process and one thread: the sim thread. When systems run in parallel (phase 1) each worker becomes its own `tid` in the same file.
+- A capture is written in the Chrome trace event format rather than Tracy's own; `tracy-import-chrome` is the documented way into Tracy for offline traces. A live Tracy client (the `tracy-client` crate) can be added behind a feature without changing the protocol.
 - Panic payloads that are neither `&str` nor `String` are reported as "panic with non-string payload".

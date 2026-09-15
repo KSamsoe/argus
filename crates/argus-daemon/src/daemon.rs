@@ -63,6 +63,8 @@ pub struct Daemon {
     edits: Editing,
     events: EventLog,
     subs: BTreeMap<ConnId, BTreeSet<String>>,
+    /// Where the armed `prof.capture` writes when its last tick is in.
+    capture_path: Option<PathBuf>,
     /// Notifications waiting for the transport, per connection.
     pub outbox: Vec<(ConnId, Json)>,
 }
@@ -87,6 +89,7 @@ impl Daemon {
                 cap: 200_000,
             },
             subs: BTreeMap::new(),
+            capture_path: None,
             outbox: Vec::new(),
         }
     }
@@ -277,6 +280,8 @@ impl Daemon {
             }
             "prof.systems" => self.prof_systems(params),
             "prof.archetypes" => Ok(self.prof_archetypes()),
+            "prof.alloc" => self.prof_alloc(params),
+            "prof.capture" => self.prof_capture(params),
             other => Err(ArgusError::new(
                 codes::UNKNOWN_METHOD,
                 format!("no method {other:?}"),
@@ -1733,6 +1738,7 @@ impl Daemon {
 
     /// Move the world's pending events into the log and notify subscribers.
     fn pump_events(&mut self) {
+        self.finish_capture();
         if self.world.events().is_empty() {
             return;
         }
@@ -1846,6 +1852,113 @@ impl Daemon {
         }))
     }
 
+    fn prof_alloc(&mut self, params: &Json) -> Result<Json> {
+        let last = json::u64_param(params, "last", 600)? as usize;
+        let rows: Vec<Json> = self
+            .sched
+            .prof_alloc(last)?
+            .iter()
+            .map(|p| {
+                json!([
+                    p.name,
+                    p.stage.name(),
+                    p.mean_allocs,
+                    p.mean_bytes,
+                    p.max_allocs,
+                    p.max_bytes,
+                    p.samples
+                ])
+            })
+            .collect();
+        let (allocs, bytes) = self.sched.prof_tick_alloc_mean(last);
+        Ok(json!({
+            "last": last,
+            "counted": argus_sim::alloc::installed(),
+            "tick_mean_allocs": allocs,
+            "tick_mean_bytes": bytes,
+            "columns": ["name", "stage", "mean_allocs", "mean_bytes", "max_allocs", "max_bytes", "samples"],
+            "rows": rows,
+        }))
+    }
+
+    /// `prof.capture {ticks, path}`: arm a capture of the next ticks, or
+    /// report the one in progress.
+    fn prof_capture(&mut self, params: &Json) -> Result<Json> {
+        let path = json::opt_str(params, "path")?.map(PathBuf::from);
+        let ticks = match params.get("ticks") {
+            None | Some(Json::Null) => None,
+            Some(_) => Some(json::u64_param(params, "ticks", 300)?),
+        };
+        if let Some(n) = ticks {
+            if !(1..=100_000).contains(&n) {
+                return Err(bad_params(format!("ticks must be 1 to 100000; got {n}")));
+            }
+            let path = match path {
+                Some(p) => p,
+                None => {
+                    let root = self.require_session()?.root.clone();
+                    let stamp = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0);
+                    root.join(".argus")
+                        .join("captures")
+                        .join(format!("{stamp}-tick{}.json", self.sched.tick()))
+                }
+            };
+            self.sched.capture_start(n as usize);
+            self.capture_path = Some(path.clone());
+            return Ok(json!({
+                "armed": true,
+                "captured": 0,
+                "ticks": n,
+                "path": path.to_string_lossy(),
+                "from_tick": self.sched.tick(),
+            }));
+        }
+        match self.sched.capture_status() {
+            Some((got, want)) => Ok(json!({
+                "armed": true,
+                "captured": got,
+                "ticks": want,
+                "path": self.capture_path.as_ref().map(|p| p.to_string_lossy().into_owned()),
+            })),
+            None => Ok(json!({ "armed": false, "captured": 0, "ticks": 0, "path": null })),
+        }
+    }
+
+    /// Write a finished capture and say so as an event (`prof.capture
+    /// {path, ticks, bytes}`), so a client waiting on it has something to
+    /// wait for; a write failure is the same event with an `error` field.
+    fn finish_capture(&mut self) {
+        let Some(cap) = self.sched.capture_take() else {
+            return;
+        };
+        let path = self
+            .capture_path
+            .take()
+            .unwrap_or_else(|| PathBuf::from("argus-capture.json"));
+        let mut fields = vec![
+            (
+                "path".to_string(),
+                Value::Str(path.to_string_lossy().into_owned()),
+            ),
+            ("ticks".to_string(), Value::Int(cap.ticks.len() as i64)),
+            (
+                "from_tick".to_string(),
+                Value::Int(cap.ticks.first().map(|t| t.tick as i64).unwrap_or(0)),
+            ),
+        ];
+        match cap.write(&path) {
+            Ok(n) => fields.push(("bytes".to_string(), Value::Int(n as i64))),
+            Err(e) => fields.push(("error".to_string(), Value::Str(e.to_string()))),
+        }
+        self.world.emit(Event::Game {
+            name: "prof.capture".to_string(),
+            fields,
+        });
+    }
+
     fn prof_archetypes(&self) -> Json {
         let rows: Vec<Json> = self
             .world
@@ -1941,7 +2054,9 @@ fn tick_json(t: &argus_sim::TickRecord) -> Json {
         "tick": t.tick,
         "clock": t.clock.to_string(),
         "total_ms": t.total.as_secs_f64() * 1000.0,
-        "systems": t.systems.iter().map(|(n, d)| json!([n.as_ref(), d.as_secs_f64() * 1000.0])).collect::<Vec<_>>(),
+        "allocs": t.allocs,
+        "bytes": t.bytes,
+        "systems": t.systems.iter().map(|s| json!([s.name.as_ref(), s.elapsed.as_secs_f64() * 1000.0, s.allocs, s.bytes])).collect::<Vec<_>>(),
         "archetypes": t.archetypes.iter().map(|(id, n)| json!([id, n])).collect::<Vec<_>>(),
     })
 }

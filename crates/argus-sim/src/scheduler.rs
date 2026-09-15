@@ -4,15 +4,18 @@
 //! "Editing" is the world with the tick stages disabled; "playing" is the
 //! world with them enabled. `play` takes a snapshot, `stop` restores it (§2).
 
+use crate::alloc;
 use crate::clock::{Clock, ClockKind};
-use crate::prof::{Profiler, SystemProf, TickRecord};
+use crate::prof::{
+    AllocProf, Capture, CapturedSpan, CapturedTick, Profiler, SystemProf, SystemSample, TickRecord,
+};
 use crate::rng::{self, Pcg32};
 use crate::system::{ClockBinding, Stage, SystemCtx, SystemDesc, SystemFn};
 use argus_ecs::{Access, ArgusError, ComponentId, Event, Registry, Result, Snapshot, World};
 use std::collections::HashMap;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 /// Scene-level scheduler configuration (`scene.toml` clock section, §4/§6).
 #[derive(Clone, Debug, PartialEq)]
@@ -156,6 +159,13 @@ pub struct Scheduler {
     paused: bool,
     edit_snapshot: Option<SimSnapshot>,
     prof: Profiler,
+    capture: Option<Capture>,
+}
+
+/// What one tick collects while it runs.
+struct TickSamples {
+    timings: Vec<SystemSample>,
+    spans: Vec<CapturedSpan>,
 }
 
 impl Scheduler {
@@ -173,6 +183,7 @@ impl Scheduler {
             paused: false,
             edit_snapshot: None,
             prof,
+            capture: None,
         }
     }
 
@@ -637,37 +648,90 @@ impl Scheduler {
     fn run_tick(&mut self, world: &mut World, kind: ClockKind) -> Result<()> {
         self.ensure_order()?;
         let started = Instant::now();
+        let (a0, b0) = alloc::counters();
         let tick = self.clock(kind).tick;
         let dt = self.clock(kind).timestep;
         let time = self.clock(kind).time();
-        let mut timings: Vec<(Arc<str>, Duration)> = Vec::new();
+        let mut samples = TickSamples {
+            timings: Vec::new(),
+            spans: Vec::new(),
+        };
 
         for stage in [Stage::Input, Stage::Sim, Stage::Late] {
-            self.run_stage(world, stage, kind, tick, time, dt, &mut timings);
+            self.run_stage(world, stage, kind, tick, time, dt, &mut samples);
         }
         {
             let t = Instant::now();
+            let (pa, pb) = alloc::counters();
             argus_ecs::propagate(world)?;
-            timings.push((Arc::from("hierarchy.propagate"), t.elapsed()));
+            let (qa, qb) = alloc::counters();
+            self.sample(
+                &mut samples,
+                Arc::from("hierarchy.propagate"),
+                t,
+                qa - pa,
+                qb - pb,
+            );
         }
-        self.run_stage(world, Stage::Hierarchy, kind, tick, time, dt, &mut timings);
+        self.run_stage(world, Stage::Hierarchy, kind, tick, time, dt, &mut samples);
         world.end_frame();
 
-        let archetypes = world
+        let archetypes: Vec<(u32, usize)> = world
             .archetypes()
             .iter()
             .filter(|a| !a.is_empty())
             .map(|a| (a.id.0, a.len()))
             .collect();
+        let (a1, b1) = alloc::counters();
+        let total = started.elapsed();
+        if let Some(c) = &mut self.capture {
+            if !c.complete() {
+                c.ticks.push(CapturedTick {
+                    tick,
+                    clock: kind,
+                    start_us: c.us(started),
+                    dur_us: total.as_secs_f64() * 1e6,
+                    entities: archetypes.iter().map(|a| a.1).sum(),
+                    allocs: a1 - a0,
+                    bytes: b1 - b0,
+                    systems: std::mem::take(&mut samples.spans),
+                });
+            }
+        }
         self.prof.record(TickRecord {
             tick,
             clock: kind,
-            total: started.elapsed(),
-            systems: timings,
+            total,
+            systems: samples.timings,
+            allocs: a1 - a0,
+            bytes: b1 - b0,
             archetypes,
         });
         self.clock_mut(kind).tick += 1;
         Ok(())
+    }
+
+    /// Record one system's sample for the profiler ring and, while a
+    /// capture is collecting, its span on the capture's time base.
+    fn sample(&self, s: &mut TickSamples, name: Arc<str>, t: Instant, allocs: u64, bytes: u64) {
+        let elapsed = t.elapsed();
+        if let Some(c) = &self.capture {
+            if !c.complete() {
+                s.spans.push(CapturedSpan {
+                    name: name.clone(),
+                    start_us: c.us(t),
+                    dur_us: elapsed.as_secs_f64() * 1e6,
+                    allocs,
+                    bytes,
+                });
+            }
+        }
+        s.timings.push(SystemSample {
+            name,
+            elapsed,
+            allocs,
+            bytes,
+        });
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -679,7 +743,7 @@ impl Scheduler {
         tick: u64,
         time: f64,
         dt: f64,
-        timings: &mut Vec<(Arc<str>, Duration)>,
+        samples: &mut TickSamples,
     ) {
         let order = self.order[stage.index()].clone();
         for i in order {
@@ -687,8 +751,11 @@ impl Scheduler {
                 continue;
             }
             let t = Instant::now();
+            let (a0, b0) = alloc::counters();
             self.run_system(i, world, stage, kind, tick, time, dt);
-            timings.push((self.systems[i].name.clone(), t.elapsed()));
+            let (a1, b1) = alloc::counters();
+            let name = self.systems[i].name.clone();
+            self.sample(samples, name, t, a1 - a0, b1 - b0);
         }
     }
 
@@ -817,8 +884,9 @@ impl Scheduler {
 
     // ----- profiling --------------------------------------------------------
 
-    /// `prof.systems {last}`: mean and p95 per system in stage order.
-    pub fn prof_systems(&mut self, last: usize) -> Result<Vec<SystemProf>> {
+    /// Row order for `prof.systems` and `prof.alloc`: stage order, with
+    /// `hierarchy.propagate` at the head of its stage.
+    fn prof_order(&mut self) -> Result<Vec<(Arc<str>, Stage)>> {
         self.ensure_order()?;
         let mut order: Vec<(Arc<str>, Stage)> = Vec::new();
         for stage in Stage::ALL {
@@ -829,7 +897,52 @@ impl Scheduler {
                 order.push((self.systems[i].name.clone(), stage));
             }
         }
+        Ok(order)
+    }
+
+    /// `prof.systems {last}`: mean and p95 per system in stage order.
+    pub fn prof_systems(&mut self, last: usize) -> Result<Vec<SystemProf>> {
+        let order = self.prof_order()?;
         Ok(self.prof.systems(last, &order))
+    }
+
+    /// `prof.alloc {last}`: allocations and bytes per system per tick in
+    /// stage order. Real numbers only when `alloc::installed()`; see
+    /// `crate::alloc`.
+    pub fn prof_alloc(&mut self, last: usize) -> Result<Vec<AllocProf>> {
+        let order = self.prof_order()?;
+        Ok(self.prof.alloc(last, &order))
+    }
+
+    /// Mean whole-tick `(allocations, bytes)` over the last `last` ticks.
+    pub fn prof_tick_alloc_mean(&self, last: usize) -> (f64, f64) {
+        self.prof.tick_alloc_mean(last)
+    }
+
+    /// `prof.capture {ticks}`: collect the next `ticks` ticks with every
+    /// system span on one time base. Replaces a capture in progress.
+    pub fn capture_start(&mut self, ticks: usize) {
+        self.capture = Some(Capture::new(ticks));
+    }
+
+    /// Progress of the capture in progress: `(collected, wanted)`.
+    pub fn capture_status(&self) -> Option<(usize, usize)> {
+        self.capture.as_ref().map(|c| (c.ticks.len(), c.wanted))
+    }
+
+    /// The capture, once every wanted tick is in; `None` while collecting
+    /// or when none was started.
+    pub fn capture_take(&mut self) -> Option<Capture> {
+        if self.capture.as_ref().is_some_and(|c| c.complete()) {
+            self.capture.take()
+        } else {
+            None
+        }
+    }
+
+    /// Abandon the capture in progress, returning what was collected.
+    pub fn capture_cancel(&mut self) -> Option<Capture> {
+        self.capture.take()
     }
 
     /// `prof.worst {n}`: the slowest recent ticks with per-system breakdown

@@ -378,3 +378,60 @@ return system "sim.after" {
         vec!["sim.damage", "sim.after"]
     );
 }
+
+// ----- prof.alloc sees script allocations ---------------------------------
+
+#[global_allocator]
+static ALLOC: argus_sim::alloc::Counting = argus_sim::alloc::Counting;
+
+#[test]
+fn a_script_system_that_builds_a_table_per_entity_is_visible_in_prof_alloc() {
+    let (mut h, mut w, mut s) = host(1);
+    assert!(h.load_source(&mut w, &mut s, "components/all.luau", COMPONENTS));
+    let lean = r#"
+return system "sim.lean" {
+  stage = "sim", reads = {"Health"},
+  run = function(q)
+    local total = 0
+    for e, hp in q:each("Health") do total += hp.cur end
+  end,
+}"#;
+    let greedy = r#"
+return system "sim.greedy" {
+  stage = "sim", reads = {"Health"}, after = {"sim.lean"},
+  run = function(q)
+    local keep = {}
+    for e, hp in q:each("Health") do
+      keep[#keep + 1] = { cur = hp.cur, max = hp.max, who = e, label = "hp " .. hp.cur }
+    end
+  end,
+}"#;
+    assert!(
+        h.load_source(&mut w, &mut s, "systems/lean.luau", lean),
+        "{:?}",
+        h.errors()
+    );
+    assert!(
+        h.load_source(&mut w, &mut s, "systems/greedy.luau", greedy),
+        "{:?}",
+        h.errors()
+    );
+    for _ in 0..1000 {
+        let e = w.spawn();
+        w.insert_by_name(e, "Health").unwrap();
+    }
+    s.step(&mut w, 10).unwrap();
+    assert!(fault_messages(&w).is_empty(), "{:?}", fault_messages(&w));
+
+    let rows = s.prof_alloc(600).unwrap();
+    let lean = rows.iter().find(|r| r.name == "sim.lean").unwrap();
+    let greedy = rows.iter().find(|r| r.name == "sim.greedy").unwrap();
+    assert_eq!(greedy.samples, 10);
+    // A table with four fields per entity, a thousand entities: tens of
+    // kilobytes a tick, whatever Luau's page allocator batches it into.
+    assert!(greedy.mean_bytes >= 32_000.0, "greedy {greedy:?}");
+    assert!(
+        greedy.mean_bytes > lean.mean_bytes * 2.0,
+        "the table builder stands out: greedy {greedy:?} lean {lean:?}"
+    );
+}

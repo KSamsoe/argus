@@ -12,6 +12,11 @@ use argus_daemon::{serve, socket_name_for, Daemon, Transport};
 use serde_json::json;
 use std::path::PathBuf;
 
+/// Count allocations per system for `prof.alloc` (§5). The cost is two
+/// thread-local increments per allocation.
+#[global_allocator]
+static ALLOC: argus_sim::alloc::Counting = argus_sim::alloc::Counting;
+
 fn usage() -> ! {
     eprintln!("usage: argusd [--project <dir>] [--scene <name>] [--seed <n>] [--stdio | --socket [name]] [--headless]");
     std::process::exit(2)

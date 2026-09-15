@@ -7,6 +7,9 @@ use argus_daemon::{codes, Daemon};
 use common::*;
 use serde_json::json;
 
+#[global_allocator]
+static ALLOC: argus_sim::alloc::Counting = argus_sim::alloc::Counting;
+
 #[test]
 fn session_open_gives_the_one_screen_summary() {
     let t = temp("open");
@@ -82,6 +85,8 @@ fn session_open_gives_the_one_screen_summary() {
         "script.errors",
         "obs.events",
         "prof.systems",
+        "prof.alloc",
+        "prof.capture",
     ] {
         assert!(names.contains(&m), "missing {m}");
     }
@@ -527,6 +532,77 @@ fn sim_and_events_answer_why_the_bat_died() {
             .unwrap()
             .len()
             >= 2
+    );
+    assert_eq!(
+        pf["systems"][0].as_array().unwrap().len(),
+        4,
+        "name, ms, allocs, bytes per system"
+    );
+
+    // prof.alloc: this binary installs the counting allocator as argusd does.
+    let pa = ok(&mut d, "prof.alloc", json!({ "last": 10 }));
+    assert_eq!(pa["counted"], true);
+    assert_eq!(
+        pa["rows"][1][0], "sim.damage",
+        "stage order, like prof.systems"
+    );
+    assert!(pa["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|r| r[1] != "present")
+        .all(|r| r[6] == 10));
+    assert!(pa["tick_mean_allocs"].as_f64().unwrap() >= 0.0);
+
+    // prof.capture: arm, tick past it, get the file and the event.
+    assert_eq!(ok(&mut d, "prof.capture", json!({}))["armed"], false);
+    let e = err(&mut d, "prof.capture", json!({ "ticks": 0 }));
+    assert_eq!(e.code, codes::BAD_PARAMS);
+    let armed = ok(&mut d, "prof.capture", json!({ "ticks": 3 }));
+    assert_eq!(armed["armed"], true);
+    assert_eq!(armed["from_tick"], 65);
+    let path = std::path::PathBuf::from(armed["path"].as_str().unwrap());
+    assert!(
+        path.parent()
+            .unwrap()
+            .ends_with(std::path::Path::new(".argus").join("captures")),
+        "{path:?}"
+    );
+    assert!(path
+        .file_name()
+        .unwrap()
+        .to_string_lossy()
+        .ends_with("-tick65.json"));
+    ok(&mut d, "sim.step", json!({ "n": 2 }));
+    let st = ok(&mut d, "prof.capture", json!({}));
+    assert_eq!(st["captured"], 2);
+    assert_eq!(st["ticks"], 3);
+    ok(&mut d, "sim.step", json!({ "n": 2 }));
+    assert_eq!(
+        ok(&mut d, "prof.capture", json!({}))["armed"],
+        false,
+        "written and cleared"
+    );
+    let ev = ok(&mut d, "obs.events", json!({ "name": "prof.capture" }));
+    assert_eq!(ev["total"], 1);
+    assert_eq!(ev["rows"][0]["fields"]["ticks"], 3);
+    assert_eq!(ev["rows"][0]["fields"]["from_tick"], 65);
+    assert_eq!(
+        ev["rows"][0]["fields"]["path"].as_str().unwrap(),
+        path.to_string_lossy()
+    );
+    let trace: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    let events = trace["traceEvents"].as_array().unwrap();
+    assert!(events
+        .iter()
+        .any(|e| e["name"] == "tick 65" && e["ph"] == "X" && e["cat"] == "tick"));
+    assert!(events
+        .iter()
+        .any(|e| e["name"] == "sim.damage" && e["cat"] == "system" && e["args"]["tick"] == 67));
+    assert!(
+        !events.iter().any(|e| e["args"]["tick"] == 68),
+        "three ticks, no more"
     );
 
     // A discrete scene advances on turns.

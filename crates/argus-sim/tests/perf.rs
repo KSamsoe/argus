@@ -11,6 +11,11 @@ use argus_ecs::{Component, Vec2, World};
 use argus_sim::{Scheduler, SchedulerConfig, Stage, SystemDesc};
 use std::time::{Duration, Instant};
 
+// The gates run with the counting allocator installed, as argusd has it, so
+// the numbers include prof.alloc's cost.
+#[global_allocator]
+static ALLOC: argus_sim::alloc::Counting = argus_sim::alloc::Counting;
+
 #[derive(Component, Clone, Copy, Debug, Default, PartialEq)]
 #[repr(C)]
 struct Pos {

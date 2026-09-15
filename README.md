@@ -79,6 +79,13 @@ Phase 0, piece 7: action maps and the input log, in [crates/argus-input](crates/
 
 Its trace is [crates/argus-input/SPEC-TRACE.md](crates/argus-input/SPEC-TRACE.md).
 
+Phase 0, piece 8: the rest of profiling, in [crates/argus-sim](crates/argus-sim) and the daemon.
+
+- `prof.alloc` counts heap allocations and bytes per system per tick. A small wrapper around the system allocator keeps thread-local counters; the scheduler reads them before and after every system. `argusd` installs the wrapper, and the report says so, or says it is not counted in a build without it. The Luau VM allocates through the same allocator, so a script system that builds a table per entity is visible as a number with its name on it.
+- `prof.frame` and `prof.worst` carry the same counts per system, so a slow tick shows whether it was slow because it allocated.
+- `prof.capture {ticks: 300}` records the next 300 ticks with every system span on one time base and writes a trace file under `.argus/captures/`. The format is the Chrome trace event JSON that Tracy imports with its bundled tool and that Perfetto opens as is. A `prof.capture` event names the file when it is written, so a client can wait for it like any other event.
+- The cost is measured on the scheduler's perf gate: the 50k-entity swarm runs at about 48,000 headless ticks per second with counting on, 51,700 without.
+
 ## Building
 
 Rust stable (1.77 or newer for `offset_of!`) plus a C++ compiler, because the Luau VM is built from source by the `mlua` crate. On this machine the Rust toolchain is the GNU target and the compiler is WinLibs MinGW-w64 GCC (installed with `winget install BrechtSanders.WinLibs.POSIX.UCRT`); its `mingw64/bin` must be on `PATH` when building.
@@ -93,7 +100,7 @@ Release-only performance gates from section 17 of the design:
 cargo test -p argus-ecs --release --test perf -- --ignored --nocapture
 ```
 
-Measured on the development laptop (100k entities, release build): sim pass over 100k in 0.13 ms, filtered query in 0.02 ms, snapshot in 1.1 ms, hierarchy of 2,000 children in 0.5 ms. Scheduler: a 50k-entity swarm with three systems runs at about 45,000 ticks per second headless; a 500-monster discrete turn resolves in 0.02 ms.
+Measured on the development laptop (100k entities, release build): sim pass over 100k in 0.13 ms, filtered query in 0.02 ms, snapshot in 1.1 ms, hierarchy of 2,000 children in 0.5 ms. Scheduler, with allocation counting on: a 50k-entity swarm with three systems runs at about 48,000 ticks per second headless; a 500-monster discrete turn resolves in 0.05 ms.
 
 ```bash
 cargo run -p argus-ecs --release --example perf
@@ -129,7 +136,7 @@ printf '{"jsonrpc":"2.0","id":1,"method":"world.summary"}\n' | cargo run -q -p a
 crates/
   argus-ecs/          the ECS core (this piece)
   argus-ecs-derive/   #[derive(Component)]
-  argus-sim/          scheduler, clocks, RNG streams, profiling, fault isolation (piece 2)
+  argus-sim/          scheduler, clocks, RNG streams, profiling with allocation counts and captures, fault isolation (pieces 2, 8)
   argus-luau/         Luau VM host: script components, defs, systems, sandbox, reload (piece 3)
   argus-scene/        argus.toml, TOML scenes and rooms, prefab overrides, defs, moves, bulk chunks (piece 5)
   argus-daemon/       argusd: JSON-RPC 2.0 over local socket or stdio; session, world, scene, edit, sim, script, obs, prof (piece 4)
@@ -142,4 +149,4 @@ docs/
 
 ## Next pieces of phase 0
 
-The rest of profiling (allocation counts and Tracy capture), the `argus` CLI mirroring the daemon's method table, and the scenario test runner. See the checklist for the exact spec each one has to satisfy.
+The `argus` CLI mirroring the daemon's method table, and the scenario test runner. See the checklist for the exact spec each one has to satisfy.

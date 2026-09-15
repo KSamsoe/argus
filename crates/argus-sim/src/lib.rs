@@ -6,7 +6,7 @@
 //! command-driven clock. Every system declares its stage, ordering, read and
 //! write sets, clock binding, and optional named RNG stream; the scheduler
 //! enforces the declarations, seeds each stream from `hash(run_seed, name)`,
-//! times every system every tick for `prof.*` (§5), and catches faults at
+//! times every system every tick and counts its allocations for `prof.*` (§5), and catches faults at
 //! the system boundary so the world stays intact (§2).
 //!
 //! `SPEC-TRACE.md` next to this crate maps the spec to code and tests.
@@ -14,6 +14,7 @@
 #![deny(missing_docs)]
 #![warn(clippy::all)]
 
+pub mod alloc;
 pub mod clock;
 pub mod prof;
 pub mod rng;
@@ -21,7 +22,9 @@ pub mod scheduler;
 pub mod system;
 
 pub use clock::{Clock, ClockKind};
-pub use prof::{SystemProf, TickRecord};
+pub use prof::{
+    AllocProf, Capture, CapturedSpan, CapturedTick, SystemProf, SystemSample, TickRecord,
+};
 pub use rng::{stream_seed, Pcg32};
 pub use scheduler::{
     FrameReport, RunUntil, Scheduler, SchedulerConfig, SimSnapshot, SimState, SystemInfo,

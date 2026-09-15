@@ -125,3 +125,126 @@ fn full_snapshot_carries_world_and_sim_state() {
     s.step(&mut w, 5).unwrap();
     assert_eq!(w.get::<Tag>(e).unwrap().n, n15, "same rolls after restore");
 }
+
+// ----- prof.alloc and prof.capture ------------------------------------------
+
+#[global_allocator]
+static ALLOC: argus_sim::alloc::Counting = argus_sim::alloc::Counting;
+
+#[test]
+fn allocations_are_counted_by_system() {
+    assert!(argus_sim::alloc::installed());
+    let mut w = World::new();
+    let tag = w.register::<Tag>().unwrap();
+    for _ in 0..100 {
+        let e = w.spawn();
+        w.insert(e, Tag::default()).unwrap();
+    }
+    let mut s = Scheduler::new(SchedulerConfig::continuous(60.0));
+    s.add_system(
+        SystemDesc::new("sim.lean", Stage::Sim).reads(tag),
+        Box::new(|_| Ok(())),
+    )
+    .unwrap();
+    // A system that builds a table per entity: exactly what prof.alloc is for.
+    s.add_system(
+        SystemDesc::new("sim.greedy", Stage::Sim)
+            .reads(tag)
+            .after("sim.lean"),
+        Box::new(move |ctx| {
+            let entities = ctx.query().has(tag).entities();
+            let mut keep = Vec::new();
+            for e in entities {
+                keep.push(Box::new([e.index(); 8]));
+            }
+            std::hint::black_box(keep);
+            Ok(())
+        }),
+    )
+    .unwrap();
+    s.step(&mut w, 5).unwrap();
+
+    let rows = s.prof_alloc(600).unwrap();
+    let lean = rows.iter().find(|r| r.name == "sim.lean").unwrap();
+    let greedy = rows.iter().find(|r| r.name == "sim.greedy").unwrap();
+    assert_eq!(lean.samples, 5);
+    assert_eq!(lean.total_allocs, 0, "an empty system allocates nothing");
+    assert!(
+        greedy.mean_allocs >= 100.0,
+        "one box per entity, at least: {greedy:?}"
+    );
+    assert!(greedy.mean_bytes >= 100.0 * 32.0, "{greedy:?}");
+    assert!(greedy.max_allocs >= greedy.mean_allocs as u64);
+    let last = s.prof_last().unwrap();
+    assert!(last.allocs >= 100, "the tick total covers its systems");
+    assert!(last.bytes >= last.systems.iter().map(|x| x.bytes).sum::<u64>());
+    let (mean_allocs, _) = s.prof_tick_alloc_mean(600);
+    assert!(mean_allocs >= 100.0);
+}
+
+#[test]
+fn a_capture_collects_the_next_ticks_as_a_chrome_trace() {
+    let mut w = World::new();
+    let tag = w.register::<Tag>().unwrap();
+    let e = w.spawn();
+    w.insert(e, Tag::default()).unwrap();
+    let mut s = Scheduler::new(SchedulerConfig::continuous(60.0));
+    s.add_system(
+        SystemDesc::new("sim.a", Stage::Sim).reads(tag),
+        Box::new(|_| Ok(())),
+    )
+    .unwrap();
+    s.add_system(
+        SystemDesc::new("late.b", Stage::Late),
+        Box::new(|_| {
+            let v: Vec<u64> = (0..1000).collect();
+            std::hint::black_box(v);
+            Ok(())
+        }),
+    )
+    .unwrap();
+    s.step(&mut w, 2).unwrap();
+    assert!(s.capture_take().is_none(), "nothing armed");
+
+    s.capture_start(3);
+    assert_eq!(s.capture_status(), Some((0, 3)));
+    s.step(&mut w, 1).unwrap();
+    assert_eq!(s.capture_status(), Some((1, 3)));
+    assert!(s.capture_take().is_none(), "not complete yet");
+    s.step(&mut w, 4).unwrap();
+    assert_eq!(
+        s.capture_status(),
+        Some((3, 3)),
+        "stops at the count asked for"
+    );
+    let cap = s.capture_take().unwrap();
+    assert!(s.capture_status().is_none(), "taken");
+    assert_eq!(cap.ticks.len(), 3);
+    assert_eq!(cap.ticks[0].tick, 2);
+    assert_eq!(cap.ticks[2].tick, 4);
+    let t = &cap.ticks[1];
+    let names: Vec<&str> = t.systems.iter().map(|x| x.name.as_ref()).collect();
+    assert_eq!(names, vec!["sim.a", "late.b", "hierarchy.propagate"]);
+    assert!(t.start_us >= cap.ticks[0].start_us + cap.ticks[0].dur_us);
+    for x in &t.systems {
+        assert!(x.start_us >= t.start_us && x.start_us + x.dur_us <= t.start_us + t.dur_us + 1.0);
+    }
+    assert!(
+        t.systems[1].bytes >= 8000,
+        "late.b's vector is counted: {:?}",
+        t.systems[1]
+    );
+    assert_eq!(t.entities, 1);
+
+    let text = cap.chrome_trace();
+    assert!(text.starts_with("{\"displayTimeUnit\":\"ms\",\"traceEvents\":["));
+    assert!(text.contains("\"name\":\"tick 3\""));
+    assert!(text.contains("\"ph\":\"X\",\"cat\":\"system\",\"name\":\"late.b\""));
+    // Well-formed enough for a strict parser: balanced and one event per line.
+    assert_eq!(text.matches("{\"ph\":").count(), 2 + 3 * 4);
+    let dir = std::env::temp_dir().join(format!("argus-capture-{}", std::process::id()));
+    let path = dir.join("trace.json");
+    let n = cap.write(&path).unwrap();
+    assert_eq!(std::fs::metadata(&path).unwrap().len() as usize, n);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
