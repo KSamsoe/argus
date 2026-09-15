@@ -910,6 +910,43 @@ impl Scene {
         Ok(())
     }
 
+    /// Spawn one top-level authored entity (with its children) into the
+    /// world, for an entity file created after its room was loaded.
+    pub fn spawn_entity(&mut self, world: &mut World, id: &str) -> Result<Entity> {
+        let id = id.strip_prefix('@').unwrap_or(id);
+        let re = self
+            .resolved
+            .get(id)
+            .ok_or_else(|| {
+                ArgusError::new(
+                    argus_ecs::codes::UNKNOWN_ID,
+                    format!("no authored entity file {id:?} in scene {:?}", self.name),
+                )
+            })?
+            .clone();
+        if let Some(e) = self.spawned.get(id) {
+            return Ok(*e);
+        }
+        self.require_clean()?;
+        ensure_hierarchy(world)?;
+        let room = self.entities[id].room.clone();
+        let mut report = LoadReport::default();
+        let mut placed = Vec::new();
+        self.spawn_tree(world, &re, None, &mut placed, &mut report)?;
+        for (e, r) in &placed {
+            self.set_fields(world, *e, r, room.as_deref(), &mut report, false)?;
+        }
+        self.fill_pending(world)?;
+        Ok(placed[0].0)
+    }
+
+    /// The room an entity id belongs to (`None` in a flat scene).
+    pub fn room_of(&self, id: &str) -> Option<&str> {
+        let id = id.strip_prefix('@').unwrap_or(id);
+        let (fid, _) = self.split_id(id)?;
+        self.entities.get(fid)?.room.as_deref()
+    }
+
     /// Despawn a room's entities. References into it from other rooms are
     /// nulled and remembered so they refill when the room returns.
     pub fn unload_room(&mut self, world: &mut World, name: &str) -> Result<usize> {
@@ -1335,6 +1372,18 @@ fn ensure_hierarchy(world: &mut World) -> Result<()> {
         argus_ecs::hierarchy::register(world)?;
     }
     Ok(())
+}
+
+impl SceneDoc {
+    /// Read `scenes/<name>/scene.toml` under a project root without opening
+    /// the whole scene: enough to pick the clock and seed before the world
+    /// exists.
+    pub fn load(root: &Path, name: &str) -> Result<SceneDoc> {
+        let path = root.join("scenes").join(name).join("scene.toml");
+        let rel = format!("scenes/{name}/scene.toml");
+        let text = tomlv::read(&path)?;
+        parse_scene_doc(&rel, &text)
+    }
 }
 
 fn parse_scene_doc(rel: &str, text: &str) -> Result<SceneDoc> {

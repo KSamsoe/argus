@@ -34,6 +34,18 @@ pub struct ProjectConfig {
 }
 
 impl ProjectConfig {
+    /// Read `argus.toml` under `root` without opening the rest of the project.
+    pub fn load(root: &Path) -> Result<ProjectConfig> {
+        let text = std::fs::read_to_string(root.join("argus.toml")).map_err(|e| {
+            ArgusError::new(
+                codes::MISSING_FILE,
+                format!("{} is not an Argus project: {e}", root.display()),
+            )
+            .hint("A project root has an argus.toml; run `argus init` to create one.")
+        })?;
+        ProjectConfig::parse(&text)
+    }
+
     fn parse(text: &str) -> Result<ProjectConfig> {
         let im = tomlv::parse("argus.toml", text)?;
         let t = im.as_table();

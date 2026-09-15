@@ -50,6 +50,17 @@ Phase 0, piece 5: authored content, in [crates/argus-scene](crates/argus-scene).
 
 Its trace is [crates/argus-scene/SPEC-TRACE.md](crates/argus-scene/SPEC-TRACE.md).
 
+Phase 0, piece 4: the daemon, in [crates/argus-daemon](crates/argus-daemon), with the `argusd` binary.
+
+- One process per project, one world. Clients speak JSON-RPC 2.0, one object per line, over a local socket (a named pipe on Windows) or stdio. Server-initiated notifications carry events and commits to subscribers.
+- Forty-eight methods in the namespaces the plan lists for phase 0: `session`, `world`, `scene`, `edit`, `sim`, `script`, plus `obs.events` and `prof.*`. They are described once, in a table the daemon serves as `session.capabilities` and `session.docs`, and the CLI will generate its help from.
+- Every read obeys the same contract: a default limit of 50, a total that is always present, a cursor for the rest, and rows as compact arrays. `world.summary` is the one-screen orientation call and fits in about 2 KB.
+- Edits are transactions with an author and a note. They apply at commit, all or none. Authored entities are written to their files; runtime entities are live-only. Every commit records its inverse, so undo and redo work per author, and the change feed says who changed what and why. A lock fences entities or paths, and a write into one fails naming the owner and their note.
+- Play snapshots the world and stops restores it. The continuous clock ticks in real time on the daemon thread; `sim.run_until` fast-forwards headless until an event, a time, or a tick count.
+- Every error reaches the client with its code, sentence, hint, and `file:line` unchanged.
+
+Its trace is [crates/argus-daemon/SPEC-TRACE.md](crates/argus-daemon/SPEC-TRACE.md).
+
 ## Building
 
 Rust stable (1.77 or newer for `offset_of!`) plus a C++ compiler, because the Luau VM is built from source by the `mlua` crate. On this machine the Rust toolchain is the GNU target and the compiler is WinLibs MinGW-w64 GCC (installed with `winget install BrechtSanders.WinLibs.POSIX.UCRT`); its `mingw64/bin` must be on `PATH` when building.
@@ -82,6 +93,18 @@ And for authored content (10,000 entities across 200 rooms open and resolve in a
 cargo test -p argus-scene --release --test perf -- --ignored --nocapture
 ```
 
+## Running the daemon
+
+```bash
+cargo run -p argus-daemon --bin argusd -- --project path/to/game
+```
+
+That opens the project's default scene and listens on the project's local socket, recording the socket name in `.argus/daemon.json`. With `--stdio` it reads requests from stdin instead, one JSON-RPC object per line, which is how a client embeds it:
+
+```bash
+printf '{"jsonrpc":"2.0","id":1,"method":"world.summary"}\n' | cargo run -q -p argus-daemon --bin argusd -- --project path/to/game --stdio
+```
+
 ## Layout
 
 ```
@@ -91,6 +114,7 @@ crates/
   argus-sim/          scheduler, clocks, RNG streams, profiling, fault isolation (piece 2)
   argus-luau/         Luau VM host: script components, defs, systems, sandbox, reload (piece 3)
   argus-scene/        argus.toml, TOML scenes and rooms, prefab overrides, defs, moves, bulk chunks (piece 5)
+  argus-daemon/       argusd: JSON-RPC 2.0 over local socket or stdio; session, world, scene, edit, sim, script, obs, prof (piece 4)
 docs/
   argus-engine-design-v0.3.html   the design document
   phase0-checklist.md             every phase-0 item and its status
@@ -98,4 +122,4 @@ docs/
 
 ## Next pieces of phase 0
 
-JSON-RPC daemon, SQLite index, action maps, the rest of profiling (allocation counts and Tracy capture), CLI, scenario test runner. See the checklist for the exact spec each one has to satisfy.
+SQLite index, action maps with the action log, the rest of profiling (allocation counts and Tracy capture), the `argus` CLI mirroring the daemon's method table, and the scenario test runner. See the checklist for the exact spec each one has to satisfy.

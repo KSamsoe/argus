@@ -1,0 +1,23 @@
+[package]
+name = "argus-daemon"
+description = "Argus Engine daemon (argusd): the JSON-RPC 2.0 protocol over a local socket or stdio; session, world, scene, edit, sim, script, obs, prof"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "argus_daemon"
+path = "src/lib.rs"
+
+[[bin]]
+name = "argusd"
+path = "src/main.rs"
+
+[dependencies]
+argus-ecs = { path = "../argus-ecs", version = "0.0.1" }
+argus-sim = { path = "../argus-sim", version = "0.0.1" }
+argus-luau = { path = "../argus-luau", version = "0.0.1" }
+argus-scene = { path = "../argus-scene", version = "0.0.1" }
+serde_json = "1"
+toml_edit = "0.22"
+interprocess = "2"

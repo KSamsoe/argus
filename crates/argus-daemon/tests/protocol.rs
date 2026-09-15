@@ -1,0 +1,672 @@
+//! The phase-0 protocol end to end, in process (§5). The socket path is
+//! covered in `transport.rs`.
+
+mod common;
+
+use argus_daemon::{codes, Daemon};
+use common::*;
+use serde_json::json;
+
+#[test]
+fn session_open_gives_the_one_screen_summary() {
+    let t = temp("open");
+    project(t.path());
+    let mut d = open(t.path());
+    let s = ok(&mut d, "world.summary", json!({}));
+    assert_eq!(s["scene"], "arena");
+    assert_eq!(s["entities"], 3);
+    assert_eq!(s["authored"], 3);
+    assert_eq!(s["seed"], 7);
+    assert_eq!(s["clock"], "continuous@60");
+    assert_eq!(s["playing"], false);
+    let named: Vec<&str> = s["named"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r[0].as_str().unwrap())
+        .collect();
+    assert_eq!(named, ["@bat", "@door", "@player"]);
+    let systems: Vec<&str> = s["systems"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    assert_eq!(systems, ["sim.damage", "present.hud"]);
+    assert!(
+        s.to_string().len() < 2048,
+        "summary must fit in ~2 KB: {}",
+        s.to_string().len()
+    );
+
+    let st = ok(&mut d, "session.status", json!({}));
+    assert_eq!(st["project"], "fixture");
+    assert_eq!(st["scene"], "arena");
+    assert_eq!(st["driver"], "continuous");
+
+    let caps = ok(&mut d, "session.capabilities", json!({}));
+    let names: Vec<&str> = caps["methods"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| m["name"].as_str().unwrap())
+        .collect();
+    for m in [
+        "session.open",
+        "world.summary",
+        "world.query",
+        "world.get",
+        "world.describe",
+        "world.who_writes",
+        "world.defs",
+        "edit.begin",
+        "edit.set",
+        "edit.spawn",
+        "edit.despawn",
+        "edit.commit",
+        "edit.abort",
+        "edit.lock",
+        "edit.undo",
+        "edit.redo",
+        "sim.play",
+        "sim.pause",
+        "sim.step",
+        "sim.advance",
+        "sim.speed",
+        "sim.run_until",
+        "script.reload",
+        "script.systems",
+        "script.errors",
+        "obs.events",
+        "prof.systems",
+    ] {
+        assert!(names.contains(&m), "missing {m}");
+    }
+    let docs = ok(&mut d, "session.docs", json!({ "method": "world.query" }));
+    assert!(docs["text"].as_str().unwrap().starts_with("world.query\n"));
+
+    // Errors are documentation: no project, unknown method, bad params.
+    let mut empty = Daemon::new();
+    let e = err(&mut empty, "world.get", json!({ "entity": "@player" }));
+    assert_eq!(e.code, codes::NO_PROJECT);
+    assert!(e.hint.contains("session.open"));
+    let e = err(&mut d, "obs.frame", json!({}));
+    assert_eq!(e.code, codes::UNKNOWN_METHOD);
+    let e = err(&mut d, "world.get", json!({}));
+    assert_eq!(e.code, codes::BAD_PARAMS);
+    assert!(e.hint.contains("session.docs"));
+    let resp = d
+        .handle_line(0, "{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"nope.x\"}")
+        .unwrap();
+    assert_eq!(resp["error"]["code"], -32601);
+    assert_eq!(resp["id"], 9);
+    let resp = d.handle_line(0, "not json").unwrap();
+    assert_eq!(resp["error"]["code"], -32700);
+    assert!(
+        d.handle_line(0, "{\"jsonrpc\":\"2.0\",\"method\":\"sim.status\"}")
+            .is_none(),
+        "notifications get no reply"
+    );
+}
+
+#[test]
+fn world_query_obeys_the_read_contract() {
+    let t = temp("query");
+    project(t.path());
+    let mut d = open(t.path());
+    let r = ok(
+        &mut d,
+        "world.query",
+        json!({ "select": ["id", "Transform.pos", "Health.cur"], "where": { "has": ["Health"] }, "order": "dist(@player)" }),
+    );
+    assert_eq!(r["frame"], 0);
+    assert_eq!(r["total"], 2);
+    assert_eq!(r["truncated"], false);
+    assert_eq!(
+        r["rows"],
+        json!([["@player", [0.0, 0.0], 3], ["@bat", [3.0, 0.0], 2]])
+    );
+
+    let r = ok(
+        &mut d,
+        "world.query",
+        json!({ "where": { "has": ["Enemy"], "within": { "of": "@player", "r": 5.0 } } }),
+    );
+    assert_eq!(r["rows"], json!([["@bat"]]));
+    let r = ok(
+        &mut d,
+        "world.query",
+        json!({ "where": { "within": { "of": "@player", "r": 1.0 } } }),
+    );
+    assert_eq!(r["total"], 1);
+    let r = ok(
+        &mut d,
+        "world.query",
+        json!({ "select": ["id", "Door"], "where": { "Door.leads_to": "@player" } }),
+    );
+    assert_eq!(r["rows"][0][0], "@door");
+    assert_eq!(r["rows"][0][1]["key"], "item:key.brass");
+    let r = ok(
+        &mut d,
+        "world.query",
+        json!({ "where": { "Health.cur": { "gte": 3 } } }),
+    );
+    assert_eq!(r["rows"], json!([["@player"]]));
+
+    // Paging: limit 1, cursor continues, total is always present.
+    let r = ok(
+        &mut d,
+        "world.query",
+        json!({ "limit": 1, "order": "-Health.cur" }),
+    );
+    assert_eq!(r["total"], 3);
+    assert_eq!(r["truncated"], true);
+    assert_eq!(r["rows"], json!([["@player"]]));
+    let next = r["next"].as_str().unwrap().to_string();
+    let r2 = ok(
+        &mut d,
+        "world.query",
+        json!({ "limit": 1, "order": "-Health.cur", "cursor": next }),
+    );
+    assert_eq!(r2["rows"], json!([["@bat"]]));
+    let e = err(&mut d, "world.query", json!({ "cursor": "zzz" }));
+    assert_eq!(e.code, codes::BAD_CURSOR);
+    let e = err(&mut d, "world.query", json!({ "select": ["Nope.x"] }));
+    assert_eq!(e.code, argus_ecs::codes::UNKNOWN_COMPONENT);
+}
+
+#[test]
+fn world_get_describe_who_writes_and_defs() {
+    let t = temp("get");
+    project(t.path());
+    let mut d = open(t.path());
+    let g = ok(&mut d, "world.get", json!({ "entity": "@bat" }));
+    assert_eq!(g["authored"], true);
+    assert_eq!(g["id"], "bat");
+    assert_eq!(g["components"]["Health"]["cur"], 2);
+    assert_eq!(g["components"]["Enemy"], json!({}));
+    assert_eq!(g["overrides"]["prefab"], "enemy/bat");
+    assert_eq!(
+        g["overrides"]["components"]["Transform"]["pos"],
+        json!([3.0, 0.0])
+    );
+    assert!(
+        g["overrides"]["components"].get("Health").is_none(),
+        "overrides only"
+    );
+    let g = ok(
+        &mut d,
+        "world.get",
+        json!({ "entity": "@bat", "resolved": true }),
+    );
+    let r = &g["resolved"];
+    assert_eq!(r["chain"], json!(["enemy/bat"]));
+    assert_eq!(
+        r["components"]["Health"]["fields"]["cur"]["from"],
+        "enemy/bat"
+    );
+    assert_eq!(r["components"]["Transform"]["fields"]["pos"]["from"], "own");
+    assert_eq!(
+        r["components"]["Transform"]["fields"]["rot"]["from"],
+        "default"
+    );
+    assert_eq!(r["tags"], json!([["Enemy", "enemy/bat"]]));
+
+    let desc = ok(&mut d, "world.describe", json!({ "component": "Health" }));
+    let h = &desc["rows"][0];
+    assert_eq!(h["doc"], "Hit points");
+    assert_eq!(h["fields"][0]["range"], json!([0.0, 1000.0]));
+    assert!(h["source"]
+        .as_str()
+        .unwrap()
+        .starts_with("components/health.luau:"));
+    assert_eq!(h["written_by"], json!(["sim.damage"]));
+    assert_eq!(h["read_by"], json!(["sim.damage", "present.hud"]));
+    let all = ok(&mut d, "world.describe", json!({}));
+    assert!(all["total"].as_u64().unwrap() >= 7);
+    let ww = ok(&mut d, "world.who_writes", json!({ "component": "Health" }));
+    assert_eq!(ww["systems"], json!(["sim.damage"]));
+
+    let tables = ok(&mut d, "world.defs", json!({}));
+    assert_eq!(tables["tables"][0]["name"], "items");
+    assert_eq!(tables["tables"][0]["rows"], 2);
+    let rows = ok(
+        &mut d,
+        "world.defs",
+        json!({ "table": "items", "where": { "name": "Bread" } }),
+    );
+    assert_eq!(rows["columns"], json!(["id", "name", "weight"]));
+    assert_eq!(rows["rows"], json!([["bread", "Bread", 1.0]]));
+    assert_eq!(rows["total"], 1);
+}
+
+#[test]
+fn edits_are_atomic_authored_edits_write_files_and_the_feed_answers_why() {
+    let t = temp("edits");
+    project(t.path());
+    let mut d = open(t.path());
+
+    let c = commit(
+        &mut d,
+        "agent:claude",
+        "weaken the player",
+        &[
+            (
+                "edit.set",
+                json!({ "entity": "@player", "path": "Health.cur", "value": 1 }),
+            ),
+            (
+                "edit.add",
+                json!({ "entity": "@player", "component": "Light" }),
+            ),
+            (
+                "edit.set",
+                json!({ "entity": "@player", "path": "Light.intensity", "value": 2.5 }),
+            ),
+        ],
+    );
+    assert_eq!(c["id"], 1);
+    assert_eq!(c["touched"], json!(["@player"]));
+    assert_eq!(c["files"], json!(["scenes/arena/player.toml"]));
+    let text = read(t.path(), "scenes/arena/player.toml");
+    assert!(text.contains("cur = 1 # hp"), "{text}");
+    assert!(text.contains("[Light]\nintensity = 2.5"), "{text}");
+    assert!(text.starts_with("# the player"), "{text}");
+    let g = ok(&mut d, "world.get", json!({ "entity": "@player" }));
+    assert_eq!(g["components"]["Health"]["cur"], 1);
+    assert_eq!(g["components"]["Light"]["intensity"], 2.5);
+
+    // Atomic: a bad op in the middle leaves nothing applied.
+    let tx = ok(
+        &mut d,
+        "edit.begin",
+        json!({ "author": "agent:claude", "note": "half bad" }),
+    )["tx"]
+        .clone();
+    ok(
+        &mut d,
+        "edit.set",
+        json!({ "tx": tx, "entity": "@player", "path": "Health.max", "value": 99 }),
+    );
+    ok(
+        &mut d,
+        "edit.set",
+        json!({ "tx": tx, "entity": "@player", "path": "Health.cur", "value": 5000 }),
+    );
+    let e = err(&mut d, "edit.commit", json!({ "tx": tx }));
+    assert_eq!(e.code, argus_ecs::codes::OUT_OF_RANGE);
+    assert!(
+        e.message
+            .contains("Health.cur must be in range [0, 1000]; got 5000"),
+        "{e}"
+    );
+    assert!(
+        e.r#ref
+            .as_deref()
+            .unwrap()
+            .starts_with("components/health.luau:"),
+        "{e:?}"
+    );
+    let g = ok(&mut d, "world.get", json!({ "entity": "@player" }));
+    assert_eq!(g["components"]["Health"]["max"], 3, "rolled back");
+    assert!(!read(t.path(), "scenes/arena/player.toml").contains("99"));
+    let e = err(&mut d, "edit.commit", json!({ "tx": tx }));
+    assert_eq!(e.code, codes::NO_TRANSACTION);
+
+    // Runtime spawn (never written), authored spawn (a file), despawn (file gone).
+    let c = commit(
+        &mut d,
+        "agent:claude",
+        "spawn things",
+        &[
+            (
+                "edit.spawn",
+                json!({ "tags": ["Enemy"], "components": { "Health": { "cur": 1 } } }),
+            ),
+            (
+                "edit.spawn",
+                json!({ "id": "bat.2", "prefab": "enemy/bat", "components": { "Transform": { "pos": [5, 5] } } }),
+            ),
+            ("edit.despawn", json!({ "entity": "@door" })),
+        ],
+    );
+    let touched = c["touched"].as_array().unwrap();
+    assert!(
+        touched
+            .iter()
+            .any(|v| v.as_str().unwrap().starts_with("e:")),
+        "{touched:?}"
+    );
+    assert!(touched.contains(&json!("@bat.2")));
+    assert_eq!(
+        c["files"],
+        json!(["scenes/arena/bat.2.toml", "scenes/arena/door.toml"])
+    );
+    assert_eq!(
+        read(t.path(), "scenes/arena/bat.2.toml"),
+        "prefab = \"enemy/bat\"\n\n[Transform]\npos = [5.0, 5.0]\n"
+    );
+    assert!(!t.path().join("scenes/arena/door.toml").exists());
+    let s = ok(&mut d, "world.summary", json!({}));
+    assert_eq!(s["entities"], 4);
+    let q = ok(
+        &mut d,
+        "world.query",
+        json!({ "where": { "has": ["Enemy"] } }),
+    );
+    assert_eq!(q["total"], 3);
+
+    // Undo per author brings the door file back; redo removes it again.
+    let u = ok(&mut d, "edit.undo", json!({ "author": "agent:claude" }));
+    assert_eq!(u["kind"], json!({ "undo": 2 }));
+    assert!(t.path().join("scenes/arena/door.toml").exists());
+    assert!(!t.path().join("scenes/arena/bat.2.toml").exists());
+    let g = ok(&mut d, "world.get", json!({ "entity": "@door" }));
+    assert_eq!(g["components"]["Door"]["leads_to"], "@player");
+    let q = ok(
+        &mut d,
+        "world.query",
+        json!({ "where": { "has": ["Enemy"] } }),
+    );
+    assert_eq!(q["total"], 1);
+    ok(&mut d, "edit.redo", json!({ "author": "agent:claude" }));
+    assert!(!t.path().join("scenes/arena/door.toml").exists());
+    let e = err(&mut d, "edit.undo", json!({ "author": "human:kevin" }));
+    assert_eq!(e.code, codes::NOTHING_TO_UNDO);
+
+    // The feed answers who changed this and why.
+    let f = ok(&mut d, "edit.feed", json!({}));
+    assert_eq!(f["total"], 4);
+    assert_eq!(f["rows"][0]["author"], "agent:claude");
+    assert_eq!(f["rows"][0]["note"], "weaken the player");
+    assert_eq!(
+        f["rows"][0]["ops"][0],
+        json!(["set", "@player", "Health.cur", 1])
+    );
+    assert_eq!(f["rows"][2]["kind"], json!({ "undo": 2 }));
+    let f = ok(&mut d, "edit.feed", json!({ "since": 3 }));
+    assert_eq!(f["total"], 1);
+    assert_eq!(f["rows"][0]["kind"], json!({ "redo": 3 }));
+
+    // Locks: the human fences Health on the player; the agent's write fails naming the lock.
+    let l = ok(
+        &mut d,
+        "edit.lock",
+        json!({ "author": "human:kevin", "note": "balancing hp by hand", "entities": ["@player"], "paths": ["Health"] }),
+    );
+    let lock = l["lock"].clone();
+    let tx = ok(
+        &mut d,
+        "edit.begin",
+        json!({ "author": "agent:claude", "note": "poke" }),
+    )["tx"]
+        .clone();
+    ok(
+        &mut d,
+        "edit.set",
+        json!({ "tx": tx, "entity": "@player", "path": "Health.cur", "value": 2 }),
+    );
+    let e = err(&mut d, "edit.commit", json!({ "tx": tx }));
+    assert_eq!(e.code, codes::LOCKED);
+    assert!(e.message.contains("locked by human:kevin"), "{e}");
+    assert!(e.message.contains("balancing hp by hand"), "{e}");
+    // The owner may still write, and other paths are free.
+    commit(
+        &mut d,
+        "human:kevin",
+        "tune",
+        &[(
+            "edit.set",
+            json!({ "entity": "@player", "path": "Health.cur", "value": 2 }),
+        )],
+    );
+    commit(
+        &mut d,
+        "agent:claude",
+        "light",
+        &[(
+            "edit.set",
+            json!({ "entity": "@player", "path": "Light.intensity", "value": 1.0 }),
+        )],
+    );
+    let e = err(
+        &mut d,
+        "edit.unlock",
+        json!({ "author": "agent:claude", "lock": lock }),
+    );
+    assert_eq!(e.code, codes::BAD_LOCK);
+    ok(
+        &mut d,
+        "edit.unlock",
+        json!({ "author": "human:kevin", "lock": lock }),
+    );
+    assert_eq!(ok(&mut d, "edit.locks", json!({}))["rows"], json!([]));
+    commit(
+        &mut d,
+        "agent:claude",
+        "free again",
+        &[(
+            "edit.set",
+            json!({ "entity": "@player", "path": "Health.cur", "value": 3 }),
+        )],
+    );
+}
+
+#[test]
+fn sim_and_events_answer_why_the_bat_died() {
+    let t = temp("sim");
+    project(t.path());
+    let mut d = open(t.path());
+    let st = ok(&mut d, "sim.play", json!({}));
+    assert_eq!(st["playing"], true);
+    let r = ok(
+        &mut d,
+        "sim.run_until",
+        json!({ "event": "death", "max_ticks": 100 }),
+    );
+    assert_eq!(r["hit"], true);
+    assert_eq!(r["ticks"], 2);
+    assert_eq!(r["tick"], 2);
+    let ev = ok(&mut d, "obs.events", json!({ "name": "death" }));
+    assert_eq!(ev["total"], 1);
+    assert_eq!(ev["rows"][0]["frame"], 1);
+    assert_eq!(ev["rows"][0]["fields"]["entity"], "@bat");
+    assert_eq!(ev["rows"][0]["fields"]["cause"], "attrition");
+    let ev = ok(&mut d, "obs.events", json!({ "entity": "@bat" }));
+    assert!(
+        ev["total"].as_u64().unwrap() >= 2,
+        "spawned and death: {ev}"
+    );
+    let g = ok(&mut d, "world.get", json!({ "entity": "@bat" }));
+    assert_eq!(g["components"]["Health"]["cur"], 0);
+    let ww = ok(&mut d, "world.who_writes", json!({ "component": "Health" }));
+    assert_eq!(ww["systems"], json!(["sim.damage"]));
+
+    // Paging over the event log with since.
+    let all = ok(&mut d, "obs.events", json!({ "limit": 2 }));
+    assert_eq!(all["truncated"], true);
+    let last = all["last_seq"].as_u64().unwrap();
+    let tail = ok(&mut d, "obs.events", json!({ "since": last - 1 }));
+    assert_eq!(tail["total"], 1);
+
+    // Stop restores the play snapshot; the sim state comes back too.
+    let st = ok(&mut d, "sim.stop", json!({}));
+    assert_eq!(st["playing"], false);
+    assert_eq!(st["tick"], 0);
+    let g = ok(&mut d, "world.get", json!({ "entity": "@bat" }));
+    assert_eq!(g["components"]["Health"]["cur"], 2);
+
+    // Step and speed without play; run_until by time and ticks.
+    let st = ok(&mut d, "sim.step", json!({ "n": 3 }));
+    assert_eq!(st["tick"], 3);
+    assert_eq!(st["time"], 0.05);
+    let st = ok(&mut d, "sim.speed", json!({ "x": 3 }));
+    assert_eq!(st["speed"], 3.0);
+    let r = ok(&mut d, "sim.run_until", json!({ "time": 1.0 }));
+    assert_eq!(r["tick"], 60);
+    let r = ok(&mut d, "sim.run_until", json!({ "ticks": 5 }));
+    assert_eq!(r["tick"], 65);
+    let pf = ok(&mut d, "prof.frame", json!({}));
+    assert_eq!(pf["tick"], 64, "the last tick that ran, numbered from 0");
+    assert_eq!(pf["systems"][0][0], "sim.damage");
+    let ps = ok(&mut d, "prof.systems", json!({ "last": 10 }));
+    assert_eq!(ps["rows"][0][0], "sim.damage");
+    assert!(
+        ok(&mut d, "prof.worst", json!({ "n": 2 }))["rows"]
+            .as_array()
+            .unwrap()
+            .len()
+            == 2
+    );
+    assert!(
+        ok(&mut d, "prof.archetypes", json!({}))["rows"]
+            .as_array()
+            .unwrap()
+            .len()
+            >= 2
+    );
+
+    // A discrete scene advances on turns.
+    let r = ok(&mut d, "scene.load", json!({ "scene": "delve" }));
+    assert_eq!(r["clock"], "discrete");
+    let st = ok(&mut d, "sim.advance", json!({ "by": "turn", "n": 2 }));
+    assert_eq!(st["tick"], 2);
+    assert_eq!(st["driver"], "discrete");
+    let e = err(&mut d, "sim.advance", json!({ "by": "hour" }));
+    assert_eq!(e.code, codes::BAD_PARAMS);
+    let e = err(&mut d, "sim.run_until", json!({}));
+    assert_eq!(e.code, codes::BAD_PARAMS);
+}
+
+#[test]
+fn scripts_reload_in_place_and_errors_are_data() {
+    let t = temp("script");
+    project(t.path());
+    let mut d = open(t.path());
+    let sys = ok(&mut d, "script.systems", json!({}));
+    assert_eq!(sys["total"], 2);
+    let dmg = &sys["rows"][0];
+    assert_eq!(dmg["name"], "sim.damage");
+    assert_eq!(dmg["stage"], "sim");
+    assert_eq!(dmg["writes"], json!(["Health"]));
+    assert_eq!(dmg["enabled"], true);
+    assert_eq!(ok(&mut d, "script.errors", json!({}))["total"], 0);
+
+    ok(&mut d, "sim.step", json!({ "n": 1 }));
+    // Change the rule's event: the world state and tick survive the reload.
+    let text = read(t.path(), "systems/damage.luau")
+        .replace("cause = \"attrition\"", "cause = \"reloaded\"");
+    write(t.path(), "systems/damage.luau", &text);
+    let r = ok(&mut d, "script.reload", json!({}));
+    assert_eq!(r["reloaded"], json!(["systems/damage.luau"]));
+    assert_eq!(r["errors"], 0);
+    assert_eq!(ok(&mut d, "sim.status", json!({}))["tick"], 1, "tick kept");
+    let before = ok(&mut d, "world.get", json!({ "entity": "@player" }))["components"]["Health"]
+        ["cur"]
+        .clone();
+    assert_eq!(before, 3);
+    let bat = ok(&mut d, "world.get", json!({ "entity": "@bat" }));
+    assert_eq!(
+        bat["components"]["Health"]["cur"], 1,
+        "one tick of the old rule"
+    );
+    ok(&mut d, "sim.step", json!({ "n": 1 }));
+    let ev = ok(&mut d, "obs.events", json!({ "name": "death" }));
+    assert_eq!(ev["rows"][0]["fields"]["cause"], "reloaded");
+
+    // A syntax error is file:line data and the old system keeps running.
+    write(
+        t.path(),
+        "systems/damage.luau",
+        "system \"sim.damage\" { stage = \"sim\", run = function(q) if end }\n",
+    );
+    let r = ok(&mut d, "script.reload", json!({}));
+    assert_eq!(r["errors"], 1);
+    let errs = ok(&mut d, "script.errors", json!({}));
+    assert_eq!(errs["rows"][0]["file"], "systems/damage.luau");
+    assert_eq!(errs["rows"][0]["phase"], "syntax");
+    assert!(errs["rows"][0]["ref"]
+        .as_str()
+        .unwrap()
+        .starts_with("systems/damage.luau:"));
+    assert_eq!(ok(&mut d, "session.status", json!({}))["script_errors"], 1);
+}
+
+#[test]
+fn rooms_stream_through_the_protocol() {
+    let t = temp("rooms");
+    project(t.path());
+    let mut d = Daemon::new();
+    let r = ok(
+        &mut d,
+        "session.open",
+        json!({ "project": t.path().to_string_lossy(), "scene": "hollow" }),
+    );
+    assert_eq!(r["rooms"], json!(["a"]));
+    assert_eq!(r["seed"], 3);
+    let rooms = ok(&mut d, "scene.rooms", json!({}));
+    assert_eq!(rooms["current"], "a");
+    assert_eq!(rooms["rooms"][0]["loaded"], true);
+    assert_eq!(rooms["rooms"][1]["loaded"], false);
+    assert_eq!(rooms["rooms"][0]["neighbors"], json!(["b"]));
+    let g = ok(&mut d, "world.get", json!({ "entity": "@a/left" }));
+    assert_eq!(
+        g["components"]["Door"]["leads_to"],
+        serde_json::Value::Null,
+        "b is not loaded"
+    );
+    let tr = ok(&mut d, "scene.transition", json!({ "room": "b" }));
+    assert_eq!(tr["loaded"], json!(["b"]));
+    assert_eq!(tr["unloaded"], json!(["a"]));
+    let ev = ok(&mut d, "obs.events", json!({ "name": "room.transition" }));
+    assert_eq!(ev["rows"][0]["fields"], json!({ "from": "a", "to": "b" }));
+    let e = err(&mut d, "scene.transition", json!({ "room": "zz" }));
+    assert_eq!(e.code, argus_scene::codes::UNKNOWN_ROOM);
+    assert_eq!(
+        ok(&mut d, "scene.list", json!({}))["scenes"],
+        json!(["arena", "delve", "hollow"])
+    );
+
+    // Bulk data through scene.tiles.get.
+    let mut b = argus_scene::Bulk::create(
+        t.path(),
+        "scenes/hollow/rooms/a/tiles.map.toml",
+        "tiles",
+        4,
+        2,
+        &["ground"],
+        1,
+    )
+    .unwrap();
+    b.set("ground", argus_scene::Rect::new(1, 0, 2, 1), &[7, 9])
+        .unwrap();
+    b.save().unwrap();
+    let tiles = ok(
+        &mut d,
+        "scene.tiles.get",
+        json!({ "file": "scenes/hollow/rooms/a/tiles.map.toml", "rect": { "x": 0, "y": 0, "w": 4, "h": 1 } }),
+    );
+    assert_eq!(tiles["cells"], json!([0, 7, 9, 0]));
+    assert_eq!(tiles["layer"], "ground");
+
+    // A scene with a broken file opens with issues and an empty world; scene.issues lists them.
+    write(
+        t.path(),
+        "scenes/hollow/rooms/b/bad.toml",
+        "[Nope]\nx = 1\n",
+    );
+    let r = ok(&mut d, "scene.load", json!({}));
+    assert_eq!(r["entities"], 0);
+    assert_eq!(r["issues"][0]["code"], argus_ecs::codes::UNKNOWN_COMPONENT);
+    let iss = ok(&mut d, "scene.issues", json!({}));
+    assert_eq!(iss["total"], 1);
+    assert_eq!(
+        iss["rows"][0]["data"]["ref"],
+        "scenes/hollow/rooms/b/bad.toml:1"
+    );
+    // Fix the file and load again: clean.
+    std::fs::remove_file(t.path().join("scenes/hollow/rooms/b/bad.toml")).unwrap();
+    let r = ok(&mut d, "scene.load", json!({}));
+    assert!(r.get("issues").is_none());
+    assert_eq!(ok(&mut d, "scene.issues", json!({}))["total"], 0);
+}

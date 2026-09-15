@@ -40,7 +40,7 @@ Phase 0 rule from the plan: no renderer, no audio, no input devices. Actions are
 
 ## 4. JSON-RPC daemon: session, world, edit, sim, script
 
-**Status: not started.** Constraints:
+**Status: done** in `crates/argus-daemon` (library) and the `argusd` binary. Sentence-level trace in `crates/argus-daemon/SPEC-TRACE.md`. Beyond the item's list it ships `scene.*` (list, load, issues, rooms, transition, tiles.get), `obs.events` and `obs.subscribe` (needed by the gate), `prof.frame/worst/systems/archetypes`, and `edit.add/remove/unlock/locks/feed`. Carried forward on purpose: shared-memory hot paths (phase 1), `sim.seek/snapshot/fork/save/load` (phase 2, 3), remote access with tokens, serving reads from the index (item 6). `docs::METHODS` is the one method table the CLI (item 9) generates its help from. Constraints that were met:
 
 - JSON-RPC 2.0 over a local socket (Unix domain socket or Windows named pipe) or stdio when embedded; server-initiated notifications for subscriptions (§2, §5). Hot paths use out-of-band shared memory that the JSON message points at (§5).
 - One daemon per project, one world, forks inside the same process (§2). `argusd --headless` (§2).
@@ -78,7 +78,7 @@ Phase 0 rule from the plan: no renderer, no audio, no input devices. Actions are
 
 ## 8. prof.*
 
-**Status: partial.** Data side done: `argus_ecs::World::archetype_stats` supplies `prof.archetypes`; `argus_sim::Scheduler::{prof_systems, prof_worst, prof_last, prof_tick_p95_ms}` supply `prof.systems {last}` (mean and p95 in stage order), `prof.worst {n}` (per-system breakdown plus entity counts by archetype at that tick), and `prof.frame`. Remaining (§5): `prof.alloc` by system (needs a counting global allocator wired to the scheduler's current-system marker) and `prof.capture {ticks}` (Tracy-compatible trace). Exposing all of it as protocol methods is item 4.
+**Status: partial.** Data side done: `argus_ecs::World::archetype_stats` supplies `prof.archetypes`; `argus_sim::Scheduler::{prof_systems, prof_worst, prof_last, prof_tick_p95_ms}` supply `prof.systems {last}` (mean and p95 in stage order), `prof.worst {n}` (per-system breakdown plus entity counts by archetype at that tick), and `prof.frame`. Exposed by the daemon (item 4) as `prof.frame`, `prof.worst {n}`, `prof.systems {last}`, `prof.archetypes`. Remaining (§5): `prof.alloc` by system (needs a counting global allocator wired to the scheduler's current-system marker) and `prof.capture {ticks}` (Tracy-compatible trace).
 
 ## 9. CLI
 
@@ -99,7 +99,7 @@ Phase 0 rule from the plan: no renderer, no audio, no input devices. Actions are
 
 From an empty directory and a paragraph brief each, an agent using only the CLI builds headless cores of Swarm (continuous clock, 50k entities, waves) and Delve (discrete clock, generated floors, turn order) with passing tests, and can answer "why did the player die" in both from events and traces. If either game fights the protocol, that finding is the phase's output.
 
-**Inconsistency to resolve:** the gate asks for answers "from events and traces", but `obs.trace` is listed under phase 1. Either `obs.trace` (one entity's component history over a window, §8) moves into phase 0, or the gate is satisfied with events plus queries. Decide before piece 4 fixes the phase-0 method set.
+**Inconsistency, decided at piece 4:** the gate asks for answers "from events and traces", but `obs.trace` is listed under phase 1. The daemon ships `obs.events` (filtered by entity and name) plus `world.who_writes`, which answer "what happened, when, and which systems could have done it". `obs.trace` stays in phase 1 with the snapshot ring it depends on. The scenario runner (item 10) is the check: if "why did the player die" cannot be answered from those two calls in Swarm and Delve, `obs.trace` moves into phase 0.
 
 ## Deliberately outside phase 0 (so nobody adds them early)
 
