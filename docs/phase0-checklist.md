@@ -82,7 +82,7 @@ Phase 0 rule from the plan: no renderer, no audio, no input devices. Actions are
 
 ## 9. CLI
 
-**Status: not started.** `argus` subcommands mirror protocol methods one-to-one (§5, §16); help generated from the same schema as the protocol and the later MCP tool descriptions (§16). `argus docs --for-agent` (ARGUS.md from the live daemon) and `argus mcp` are phase 2.
+**Status: done.** `crates/argus-cli`, binary `argus`. Every row of `argus_daemon::METHODS` is a subcommand (`argus world query`, `argus world.query`, `argus input log get`) and nothing else is, except `help` and `daemon start|stop|status|run`; the test walks the table both ways. Help at every level (overview, namespace, method) is generated from the same `MethodDoc` rows the daemon serves as `session.docs`, and the method's parameter names for bare values and usage lines are parsed from that text, so there is no second list. Params are `key=value` words (JSON when they parse, strings otherwise, bracketed values with bare words, dotted keys, repeated keys as lists, `--params` for a whole object, one bare word for the first parameter). Output is a table for row results, pretty JSON otherwise, `--json` for the raw result; errors are code, sentence, hint, `file:line` on stderr with exit 1. The project is found from `--project`, `$ARGUS_PROJECT`, or the nearest `argus.toml`; the daemon through `.argus/daemon.json`, started in the background when none answers. `session.shutdown` was added to the daemon so `argus daemon stop` is a method call; `argus_daemon::launch` is shared by `argusd` and `argus daemon run`. `argus docs --for-agent` and `argus mcp` are phase 2. Trace: `crates/argus-cli/SPEC-TRACE.md`.
 
 ## 10. Scenario test runner with state goldens and seed sweeps
 

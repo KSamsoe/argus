@@ -86,6 +86,16 @@ Phase 0, piece 8: the rest of profiling, in [crates/argus-sim](crates/argus-sim)
 - `prof.capture {ticks: 300}` records the next 300 ticks with every system span on one time base and writes a trace file under `.argus/captures/`. The format is the Chrome trace event JSON that Tracy imports with its bundled tool and that Perfetto opens as is. A `prof.capture` event names the file when it is written, so a client can wait for it like any other event.
 - The cost is measured on the scheduler's perf gate: the 50k-entity swarm runs at about 48,000 headless ticks per second with counting on, 51,700 without.
 
+Phase 0, piece 9: the command line, in [crates/argus-cli](crates/argus-cli), binary `argus`.
+
+- Every daemon method is a subcommand and nothing else is: `argus world query`, `argus world.query`, and `argus input log get` all reach the method of that name. There is no command table in the crate; the daemon's method table is the list, and the test checks it both ways.
+- Help at every level is generated from that same table, so `argus world get --help` prints the doc, params, and returns that `session.docs` serves, and the two cannot drift.
+- Parameters are `key=value` words: JSON when they parse as JSON, strings otherwise, with `[Enemy, @player]` and `{of: @player, r: 6}` accepted as written, dotted keys for nesting, and one bare word for the method's first parameter, so `argus world get @player` and `argus sim step 5` read as they should. `--params` takes a whole JSON object.
+- Row results print as aligned tables, everything else as pretty JSON, and `--json` gives the raw result for a script or an agent. An error prints its code, sentence, hint, and `file:line` and exits 1.
+- The project is the nearest `argus.toml`, and its daemon is found through `.argus/daemon.json`. A call with no daemon answering starts one in the background and waits for it; `argus daemon stop` asks it to exit through the protocol like everything else.
+
+Its trace is [crates/argus-cli/SPEC-TRACE.md](crates/argus-cli/SPEC-TRACE.md).
+
 ## Building
 
 Rust stable (1.77 or newer for `offset_of!`) plus a C++ compiler, because the Luau VM is built from source by the `mlua` crate. On this machine the Rust toolchain is the GNU target and the compiler is WinLibs MinGW-w64 GCC (installed with `winget install BrechtSanders.WinLibs.POSIX.UCRT`); its `mingw64/bin` must be on `PATH` when building.
@@ -124,7 +134,17 @@ cargo test -p argus-scene --release --test perf -- --ignored --nocapture
 cargo run -p argus-daemon --bin argusd -- --project path/to/game
 ```
 
-That opens the project's default scene and listens on the project's local socket, recording the socket name in `.argus/daemon.json`. With `--stdio` it reads requests from stdin instead, one JSON-RPC object per line, which is how a client embeds it:
+That opens the project's default scene and listens on the project's local socket, recording the socket name in `.argus/daemon.json`. Usually there is no need: the first `argus` command in a project starts the daemon itself.
+
+```bash
+cargo run -q -p argus-cli --bin argus -- --project path/to/game world summary
+```
+
+```bash
+argus world query select=[id,Health.cur] where.has=[Enemy] order=-Health.cur
+```
+
+With `--stdio` the daemon reads requests from stdin instead, one JSON-RPC object per line, which is how a client embeds it:
 
 ```bash
 printf '{"jsonrpc":"2.0","id":1,"method":"world.summary"}\n' | cargo run -q -p argus-daemon --bin argusd -- --project path/to/game --stdio
@@ -142,6 +162,7 @@ crates/
   argus-daemon/       argusd: JSON-RPC 2.0 over local socket or stdio; session, world, scene, edit, sim, script, obs, prof (piece 4)
   argus-index/        .argus/index.db: SQLite cache of entities, components, refs, prefabs, defs, schemas, docs; shared query evaluator (piece 6)
   argus-input/        input.toml action maps, the Actions component and input.actions system, injected input, the replayable log (piece 7)
+  argus-cli/          argus: every daemon method as a subcommand, help from the daemon's method table, daemon start/stop (piece 9)
 docs/
   argus-engine-design-v0.3.html   the design document
   phase0-checklist.md             every phase-0 item and its status
@@ -149,4 +170,4 @@ docs/
 
 ## Next pieces of phase 0
 
-The `argus` CLI mirroring the daemon's method table, and the scenario test runner. See the checklist for the exact spec each one has to satisfy.
+The scenario test runner, `argus test`. See the checklist for the exact spec it has to satisfy.

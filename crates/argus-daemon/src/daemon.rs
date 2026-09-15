@@ -65,6 +65,8 @@ pub struct Daemon {
     subs: BTreeMap<ConnId, BTreeSet<String>>,
     /// Where the armed `prof.capture` writes when its last tick is in.
     capture_path: Option<PathBuf>,
+    /// `session.shutdown` was called: the server should stop after replying.
+    pub shutdown: bool,
     /// Notifications waiting for the transport, per connection.
     pub outbox: Vec<(ConnId, Json)>,
 }
@@ -90,6 +92,7 @@ impl Daemon {
             },
             subs: BTreeMap::new(),
             capture_path: None,
+            shutdown: false,
             outbox: Vec::new(),
         }
     }
@@ -127,6 +130,11 @@ impl Daemon {
             "session.close" => {
                 self.close();
                 Ok(json!({ "closed": true }))
+            }
+            "session.shutdown" => {
+                self.close();
+                self.shutdown = true;
+                Ok(json!({ "shutdown": true }))
             }
             "world.summary" => match self.index_target(params)? {
                 Some(s) => self.index()?.summary(&s),

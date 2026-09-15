@@ -48,6 +48,12 @@ pub const METHODS: &[MethodDoc] = &[
         returns: "{closed: true}",
     },
     MethodDoc {
+        name: "session.shutdown",
+        doc: "Close the project and exit the daemon process after replying. `argus daemon stop` is this.",
+        params: "",
+        returns: "{shutdown: true}",
+    },
+    MethodDoc {
         name: "world.summary",
         doc: "One-screen orientation: entity counts by archetype, named entities, active systems, frame, seed, clock. The first call to make on connect. Served from the index (same shape, source: \"index\") for a scene that is not loaded.",
         params: "scene: string (optional: another scene, from the index); source: \"index\" (force the index)",

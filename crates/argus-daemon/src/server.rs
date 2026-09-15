@@ -215,5 +215,11 @@ fn run_loop(
                 let _ = out.send(msg.to_string());
             }
         }
+        if daemon.shutdown {
+            // Let the writer threads deliver the reply before the process ends.
+            drop(outs);
+            std::thread::sleep(Duration::from_millis(150));
+            return Ok(());
+        }
     }
 }

@@ -23,12 +23,14 @@ pub mod daemon;
 pub mod docs;
 pub mod edit;
 pub mod json;
+pub mod launch;
 pub mod query;
 pub mod rpc;
 pub mod server;
 
 pub use daemon::{ConnId, Daemon};
 pub use docs::{MethodDoc, METHODS};
+pub use launch::{launch, Launch};
 pub use server::{serve, socket_name_for, Transport};
 
 /// Error codes this crate adds to the 4xxx block.

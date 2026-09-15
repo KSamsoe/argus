@@ -3,6 +3,17 @@
 version = 4
 
 [[package]]
+name = "argus-cli"
+version = "0.0.1"
+dependencies = [
+ "argus-daemon",
+ "argus-ecs",
+ "argus-sim",
+ "interprocess",
+ "serde_json",
+]
+
+[[package]]
 name = "argus-daemon"
 version = "0.0.1"
 dependencies = [

@@ -8,8 +8,7 @@
 //! the open result (or error) is printed on stderr. `--headless` is the
 //! only mode in phase 0 and is accepted for forward compatibility.
 
-use argus_daemon::{serve, socket_name_for, Daemon, Transport};
-use serde_json::json;
+use argus_daemon::{launch, Launch, Transport};
 use std::path::PathBuf;
 
 /// Count allocations per system for `prof.alloc` (§5). The cost is two
@@ -51,48 +50,10 @@ fn main() {
             _ => usage(),
         }
     }
-    let mut daemon = Daemon::new();
-    let root = project
-        .as_ref()
-        .map(|p| p.canonicalize().unwrap_or(p.clone()));
-    if let Some(root) = &root {
-        let mut params = json!({ "project": root.to_string_lossy() });
-        if let Some(s) = &scene {
-            params["scene"] = json!(s);
-        }
-        if let Some(s) = seed {
-            params["seed"] = json!(s);
-        }
-        match daemon.call(0, "session.open", &params) {
-            Ok(v) => eprintln!("argusd: opened {}", v["scene"]),
-            Err(e) => {
-                eprintln!(
-                    "argusd: {}",
-                    serde_json::to_string(&argus_daemon::json::error_json(&e)).unwrap_or_default()
-                );
-                std::process::exit(1);
-            }
-        }
-    }
-    let transport = match transport {
-        Some(Transport::Socket(name)) if name.is_empty() => {
-            let Some(root) = &root else {
-                eprintln!("argusd: --socket without a name needs --project");
-                std::process::exit(2);
-            };
-            Transport::Socket(socket_name_for(root))
-        }
-        Some(t) => t,
-        None => match &root {
-            Some(root) => Transport::Socket(socket_name_for(root)),
-            None => Transport::Stdio,
-        },
-    };
-    if let Transport::Socket(name) = &transport {
-        eprintln!("argusd: listening on {name}");
-    }
-    if let Err(e) = serve(daemon, transport, root.as_deref()) {
-        eprintln!("argusd: {e}");
-        std::process::exit(1);
-    }
+    std::process::exit(launch(Launch {
+        project,
+        scene,
+        seed,
+        transport,
+    }));
 }
