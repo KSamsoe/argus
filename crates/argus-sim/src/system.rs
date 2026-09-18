@@ -276,6 +276,34 @@ impl<'a> SystemCtx<'a> {
         self.world.spawn_authored(id)
     }
 
+    /// Spawn straight into the archetype of `comps` at schema defaults;
+    /// every component must be in the declared write set.
+    pub fn spawn_with(&mut self, comps: &[ComponentId]) -> Result<Entity> {
+        for &c in comps {
+            self.check_write(c)?;
+        }
+        self.world.spawn_with(comps)
+    }
+
+    /// Live entities within `r` of a point, nearest first, from the
+    /// broadphase rebuilt at the start of this tick (§12).
+    pub fn within(&self, x: f32, y: f32, r: f32) -> Vec<(Entity, f32)> {
+        self.world.within(x, y, r)
+    }
+
+    /// The nearest live entity to a point that `keep` accepts, within `max_r`.
+    pub fn nearest(
+        &self,
+        x: f32,
+        y: f32,
+        max_r: f32,
+        mut keep: impl FnMut(Entity) -> bool,
+    ) -> Option<(Entity, f32)> {
+        let w: &World = self.world;
+        w.broadphase()
+            .nearest(x, y, max_r, |e| w.is_alive(e) && keep(e))
+    }
+
     /// Despawn an entity.
     pub fn despawn(&mut self, e: Entity) -> Result<()> {
         self.world.despawn(e)

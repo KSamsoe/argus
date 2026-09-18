@@ -3,19 +3,17 @@ return system "sim.chase" {
   after = { "sim.waves" },
   reads = { "Enemy", "Transform", "Player" },
   writes = { "Transform" },
-  doc = "Every enemy walks straight at the player.",
+  doc = "Every enemy walks straight at the player. Positions are native vectors: no allocation per entity.",
   run = function(q)
     local pe = q:entity("@player")
     if pe:get("Player").dead then return end
     local p = pe:get("Transform").pos
-    local px, py, dt = p.x, p.y, q.dt
+    local dt = q.dt
     for e, en, t in q:each("Enemy", "Transform") do
-      local pos = t.pos
-      local dx, dy = px - pos.x, py - pos.y
-      local len = math.sqrt(dx * dx + dy * dy)
+      local d = p - t.pos
+      local len = vector.magnitude(d)
       if len > 0.05 then
-        local s = en.speed * dt / len
-        t.pos = { x = pos.x + dx * s, y = pos.y + dy * s }
+        t.pos = t.pos + d * (en.speed * dt / len)
       end
     end
   end,

@@ -64,6 +64,7 @@ fn every_system_is_timed_every_tick() {
             "sim.slow",
             "late.tidy",
             "hierarchy.propagate",
+            "broadphase.rebuild",
             "present.ui"
         ]
     );
@@ -76,12 +77,12 @@ fn every_system_is_timed_every_tick() {
         slow.mean_ms >= fast.mean_ms,
         "busy system costs at least as much as an empty one"
     );
-    assert_eq!(profs[4].samples, 0, "present is not part of a tick");
+    assert_eq!(profs[5].samples, 0, "present is not part of a tick");
 
     let last = s.prof_last().unwrap();
     assert_eq!(last.tick, 19);
     assert_eq!(last.clock, ClockKind::Continuous);
-    assert_eq!(last.systems.len(), 4);
+    assert_eq!(last.systems.len(), 5);
     assert_eq!(last.archetypes, vec![(1, 10)]);
 
     let worst = s.prof_worst(3);
@@ -224,7 +225,15 @@ fn a_capture_collects_the_next_ticks_as_a_chrome_trace() {
     assert_eq!(cap.ticks[2].tick, 4);
     let t = &cap.ticks[1];
     let names: Vec<&str> = t.systems.iter().map(|x| x.name.as_ref()).collect();
-    assert_eq!(names, vec!["sim.a", "late.b", "hierarchy.propagate"]);
+    assert_eq!(
+        names,
+        vec![
+            "sim.a",
+            "late.b",
+            "hierarchy.propagate",
+            "broadphase.rebuild"
+        ]
+    );
     assert!(t.start_us >= cap.ticks[0].start_us + cap.ticks[0].dur_us);
     for x in &t.systems {
         assert!(x.start_us >= t.start_us && x.start_us + x.dur_us <= t.start_us + t.dur_us + 1.0);
@@ -241,7 +250,7 @@ fn a_capture_collects_the_next_ticks_as_a_chrome_trace() {
     assert!(text.contains("\"name\":\"tick 3\""));
     assert!(text.contains("\"ph\":\"X\",\"cat\":\"system\",\"name\":\"late.b\""));
     // Well-formed enough for a strict parser: balanced and one event per line.
-    assert_eq!(text.matches("{\"ph\":").count(), 2 + 3 * 4);
+    assert_eq!(text.matches("{\"ph\":").count(), 2 + 3 * 5);
     let dir = std::env::temp_dir().join(format!("argus-capture-{}", std::process::id()));
     let path = dir.join("trace.json");
     let n = cap.write(&path).unwrap();

@@ -12,8 +12,7 @@ return system "sim.bullets" {
         table.insert(doomed, e:id())
       else
         b.ttl -= 1
-        local pos, vel = t.pos, v.v
-        t.pos = { x = pos.x + vel.x * dt, y = pos.y + vel.y * dt }
+        t.pos = t.pos + v.v * dt
       end
     end
     for _, id in ipairs(doomed) do

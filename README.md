@@ -180,6 +180,12 @@ docs/
   phase0-checklist.md             every phase-0 item and its status
 ```
 
+## Phase 1
+
+Phase 1's items and their constraints are in [docs/phase1-checklist.md](docs/phase1-checklist.md). Done so far:
+
+- **Item 0, the Luau cost model and the broadphase.** `vec2` fields cross into Luau as native vectors, so a position read or write no longer allocates a table. `q:spawn_many` places a batch of entities in their archetype in one call. The engine now keeps the shared spatial hash the design's physics section asks for, rebuilt once per tick; `world.query`'s `within` predicate, Luau's `q:within` and `q:nearest`, and the phase-1 physics tiers all read it. On the 50,000-enemy stress scene the tick went from 280 ms to 49 ms and the hit pass from 176 ms to 0.14 ms; the rest is the binding's per-call cost in per-entity loops, which is what promoting a system to Rust removes.
+
 ## Where phase 0 stands
 
 All ten items of the plan's phase-0 sentence are built, each with a trace from the design's sentences to code and tests, and the gate in section 18 is passed: [docs/phase0-gate.md](docs/phase0-gate.md) records an agent building headless cores of Swarm and Delve from a paragraph brief each, using only the CLI, with passing tests and "why did the player die" answered from the event log in both. The two games are in [examples/swarm](examples/swarm) and [examples/delve](examples/delve).

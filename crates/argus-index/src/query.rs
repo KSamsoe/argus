@@ -105,6 +105,12 @@ pub trait Source {
     fn entity_ref(&self, id: u64) -> Json;
     /// Resolve a protocol reference to an id.
     fn lookup(&self, r: &str) -> Result<u64>;
+    /// Ids within `r` of a point from a broadphase, when the source has
+    /// one (the live world does; the index scans). The evaluator still
+    /// measures the distance itself.
+    fn near(&self, _center: (f64, f64), _r: f64) -> Option<Vec<u64>> {
+        None
+    }
     /// World position: `GlobalTransform.pos`, else `Transform.pos`.
     fn position(&self, id: u64) -> Option<(f64, f64)> {
         for path in ["GlobalTransform.pos", "Transform.pos"] {
@@ -218,7 +224,16 @@ pub fn run(src: &dyn Source, params: &Json) -> Result<Json> {
     }
 
     let mut rows: Vec<(u64, Option<f64>)> = Vec::new();
-    'ent: for id in src.candidates(&has, &not)? {
+    // A spatial predicate narrows the candidates through the broadphase
+    // before any field is read (§17: a hash, not a scan).
+    let mut candidates = src.candidates(&has, &not)?;
+    if let Some((center, r)) = within {
+        if let Some(near) = src.near(center, r) {
+            let near: std::collections::HashSet<u64> = near.into_iter().collect();
+            candidates.retain(|id| near.contains(id));
+        }
+    }
+    'ent: for id in candidates {
         for p in &preds {
             let Some(v) = src.field(id, &p.path) else {
                 continue 'ent;

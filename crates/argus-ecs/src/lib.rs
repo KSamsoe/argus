@@ -35,6 +35,7 @@ pub mod intern;
 pub mod query;
 pub mod schema;
 pub mod snapshot;
+pub mod spatial;
 pub mod value;
 pub mod world;
 
@@ -51,6 +52,7 @@ pub use schema::{
     Registry, SchemaBuilder,
 };
 pub use snapshot::Snapshot;
+pub use spatial::SpatialHash;
 pub use value::{FieldType, Value, Vec2};
 pub use world::{World, WorldSummary};
 

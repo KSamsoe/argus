@@ -3,7 +3,7 @@ return system "sim.waves" {
   reads = { "Director", "Enemy", "Transform" },
   writes = { "Director", "Enemy", "Transform", "Health" },
   rng = "waves",
-  doc = "Counts the living, announces a cleared wave, and after the gap spawns the next one on a ring around the player.",
+  doc = "Counts the living, announces a cleared wave, and after the gap spawns the next one on a ring around the player, in one batch.",
   run = function(q)
     local d = q:entity("@director"):get("Director")
     local alive = q:count("Enemy")
@@ -23,14 +23,18 @@ return system "sim.waves" {
     if count > d.cap then count = d.cap end
     local p = q:entity("@player"):get("Transform").pos
     local rng = q:rng()
-    for i = 1, count do
+    local radius = d.spawn_radius
+    q:spawn_many(count, { "Transform", "Enemy", "Health" }, function(e, i)
       local a = rng:next() * 2 * math.pi
-      local r = d.spawn_radius + rng:next() * 10
-      local e = q:spawn()
-      e:insert("Transform", { pos = { x = p.x + math.cos(a) * r, y = p.y + math.sin(a) * r } })
-      e:insert("Enemy", { speed = 2.5 + rng:next() * 1.5, wave = n })
-      e:insert("Health", { cur = 2, max = 2 })
-    end
+      local r = radius + rng:next() * 10
+      e:get("Transform").pos = p + vector.create(math.cos(a) * r, math.sin(a) * r, 0)
+      local en = e:get("Enemy")
+      en.speed = 2.5 + rng:next() * 1.5
+      en.wave = n
+      local hp = e:get("Health")
+      hp.cur = 2
+      hp.max = 2
+    end)
     d.wave = n
     d.cleared = false
     d.alive = count

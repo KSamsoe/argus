@@ -85,6 +85,12 @@ Release build, one thread, development laptop. Gates in `tests/perf.rs`.
 
 "Profiling, always on at low cost" (§5 namespace table): the gates run with `alloc::Counting` installed, as `argusd` has it. The allocator adds two thread-local increments per allocation and two counter reads per system; the swarm loses about six percent of its headless rate, which is the price of `prof.alloc` being a query rather than a build flag.
 
+## §12 The shared broadphase (phase 1, item 0)
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| The broadphase is rebuilt each tick. | Done | `run_tick` rebuilds it after `end_frame`, timed and allocation-counted as the `broadphase.rebuild` row at the end of the hierarchy stage, so the next tick's systems and any query between ticks see the tick's final positions. `SystemCtx::within`, `SystemCtx::nearest`, and `SystemCtx::spawn_with` (checked against the declared writes) are what the Luau binding wraps. | `prof_snapshot::every_system_is_timed_every_tick` (the row), `argus-luau/tests/systems.rs::vec2_fields_are_native_vectors_and_spawn_many_and_within_reach_the_broadphase` |
+
 ## §18 Build plan
 
 Phase 0 item 2, "scheduler with stages, declared write sets, and both clock drivers", plus the `prof.*` data of item 8 that depends on it: this crate.

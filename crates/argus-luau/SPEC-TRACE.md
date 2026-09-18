@@ -74,6 +74,28 @@ Every statement in the design document (v0.3) that constrains the Luau binding, 
 | Luau hot reload | < 100 ms | asserted in `limits_reload`; single-file reload is a few ms |
 | Script system over 50k entities, four field ops each | (no target; the §19 risk) | 40 ms per tick, about 0.2 µs per field access; roughly 300× the same system in Rust (0.13 ms). The spec's answer is to move a hot system to Rust; Swarm's bullet integration is exactly that case. |
 
+## Phase 1, item 0: the cost model the phase-0 gate found
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| `vec2` fields read and write without allocating (the gate's finding: a table per access, 200k allocations a tick in Swarm's chase). | Done | `bind.rs`: a `vec2` read is Luau's native `vector` (`Value::Vector`, x and y with z = 0), so `v.x`, `v + w`, `v * s`, and `vector.magnitude(v)` run in the VM; a write accepts a vector or a table. | `systems::vec2_fields_are_native_vectors_and_spawn_many_and_within_reach_the_broadphase` |
+| Spawning many entities is one call. | Done | `q:spawn({"A", "B"})` places the entity in its archetype at defaults in one move; `q:spawn_many(n, {"A", "B"}, function(e, i) ... end)` loops in Rust and hands each entity to the callback through one reused handle. | same |
+| Luau reaches the broadphase. | Done | `q:within(pos, r, "A", "B")` iterates nearest first with the distance last; `q:nearest(pos, r, "A", "B")` returns one entity and its distance. Reads are checked against the declaration like `each`. | same |
+| The promotion path stays open. | Done | Nothing about declarations changed; Swarm's systems were rewritten in place without touching their `reads`/`writes`. | `examples/swarm` tests |
+
+Measured on the phase-0 gate's stress scene (50,000 enemies alive, release build, the same laptop):
+
+| Measure | Phase 0 | Item 0 |
+|---|---|---|
+| Tick p95 | 280 ms | 49 ms |
+| `sim.hits` p95 (bullets against enemies, enemies against the player) | 176 ms | 0.14 ms |
+| `sim.chase` p95 (50,000 vector reads and writes) | 88 ms | 46 ms |
+| Allocations per tick | 997,000 | 286,000 |
+| `sim.chase` allocations per entity | 4 (tables) | 5 (the binding's call path) |
+| Spawning 50,000 enemies | 279 ms | 172 ms |
+
+What remains in `sim.chase` is the binding's call path: each iteration is three calls across the boundary (the iterator, a field read, a field write), and mlua allocates its argument and result lists per call, about a microsecond per entity per system. That is the floor for per-entity Luau loops, and it is what the promotion to Rust removes; the §17 target of 6 ms at 50k stays a Rust target, as §19 says.
+
 ## §18 Build plan
 
 Phase 0 item 3, "Luau binding with component and def schemas": this crate.
@@ -81,7 +103,7 @@ Phase 0 item 3, "Luau binding with component and def schemas": this crate.
 ## §19 Open questions and risks touching this crate
 
 - Luau heap in the snapshot: not snapshotted; see §6 row.
-- Luau performance ceiling: per-entity proxies allocate once per `each` call, not per entity, but every field access is a Rust round trip. Promoting a system to Rust changes nothing around it because the declaration contract is identical.
+- Luau performance ceiling: per-entity proxies allocate once per `each` call, not per entity, and `vec2` values cross as native vectors, but every field access is still a Rust round trip with mlua's per-call allocations (about a microsecond per entity per system at 50k). Promoting a system to Rust changes nothing around it because the declaration contract is identical.
 
 ## Known limitations, stated so they are decisions
 

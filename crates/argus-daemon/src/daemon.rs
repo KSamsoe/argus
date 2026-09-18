@@ -67,6 +67,10 @@ pub struct Daemon {
     capture_path: Option<PathBuf>,
     /// `session.shutdown` was called: the server should stop after replying.
     pub shutdown: bool,
+    /// Bumped by every change to the world made outside a tick (commits,
+    /// undo, scene load); `ensure_broadphase` rebuilds when it moved.
+    mutations: u64,
+    broadphase_epoch: u64,
     /// Notifications waiting for the transport, per connection.
     pub outbox: Vec<(ConnId, Json)>,
 }
@@ -93,6 +97,8 @@ impl Daemon {
             subs: BTreeMap::new(),
             capture_path: None,
             shutdown: false,
+            mutations: 0,
+            broadphase_epoch: 0,
             outbox: Vec::new(),
         }
     }
@@ -141,6 +147,15 @@ impl Daemon {
                 None => self.world_summary(),
             },
             "world.query" => match self.index_target(params)? {
+                None if params
+                    .get("where")
+                    .and_then(|w| w.get("within"))
+                    .is_some() =>
+                {
+                    self.require_session()?;
+                    self.ensure_broadphase();
+                    query::run(&self.world, params)
+                }
                 Some(s) => self.index()?.query(&s, params),
                 None => {
                     self.require_session()?;
@@ -229,10 +244,19 @@ impl Daemon {
             "edit.set" | "edit.add" | "edit.remove" | "edit.spawn" | "edit.despawn" => {
                 self.edit_queue(method, params)
             }
-            "edit.commit" => self.edit_commit(params),
+            "edit.commit" => {
+                self.mutations += 1;
+                self.edit_commit(params)
+            }
             "edit.abort" => self.edit_abort(params),
-            "edit.undo" => self.edit_undo(params, false),
-            "edit.redo" => self.edit_undo(params, true),
+            "edit.undo" => {
+                self.mutations += 1;
+                self.edit_undo(params, false)
+            }
+            "edit.redo" => {
+                self.mutations += 1;
+                self.edit_undo(params, true)
+            }
             "edit.feed" => self.edit_feed(params),
             "edit.lock" => self.edit_lock(params),
             "edit.unlock" => self.edit_unlock(params),
@@ -382,6 +406,7 @@ impl Daemon {
         // A new world: the log's records refer to the old one's component ids.
         // Sequence numbers keep counting so a client's `since` cursor stays valid.
         self.events.records.clear();
+        self.mutations += 1;
         let scene_doc = SceneDoc::load(&root, scene_name)?;
         let clock = Clock::parse(scene_doc.clock.as_deref().unwrap_or(&cfg.clock))?;
         let seed = seed.unwrap_or(match scene_doc.seed {
@@ -1835,6 +1860,17 @@ impl Daemon {
             }
         }
         Ok(json!({ "topics": set.iter().collect::<Vec<_>>() }))
+    }
+
+    /// Rebuild the broadphase when the world changed outside a tick or a
+    /// tick ran since the hash was built, so `within` sees current positions.
+    fn ensure_broadphase(&mut self) {
+        let stale = self.broadphase_epoch != self.mutations
+            || self.world.broadphase().frame() != self.world.frame();
+        if stale {
+            self.world.rebuild_broadphase();
+            self.broadphase_epoch = self.mutations;
+        }
     }
 
     // ----- test -------------------------------------------------------------

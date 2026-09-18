@@ -9,8 +9,8 @@
 use argus_ecs::{codes, ArgusError, ComponentId, Entity, FieldSchema, FieldType, Value, Vec2};
 use argus_sim::SystemCtx;
 use mlua::{
-    AnyUserData, Lua, MetaMethod, MultiValue, Result as LuaResult, UserData, UserDataMethods,
-    Value as LuaValue, Variadic,
+    AnyUserData, Lua, MetaMethod, MultiValue, Result as LuaResult, Table as LuaTable, UserData,
+    UserDataMethods, Value as LuaValue, Variadic,
 };
 use std::cell::Cell;
 use std::rc::Rc;
@@ -62,12 +62,9 @@ pub(crate) fn value_to_lua(lua: &Lua, v: Value, link: &Link) -> LuaResult<LuaVal
         Value::Int(i) => LuaValue::Number(i as f64),
         Value::UInt(u) => LuaValue::Number(u as f64),
         Value::Float(f) => LuaValue::Number(f),
-        Value::Vec2(v) => {
-            let t = lua.create_table()?;
-            t.set("x", v.x)?;
-            t.set("y", v.y)?;
-            LuaValue::Table(t)
-        }
+        // Luau's native vector: no allocation, `v.x`/`v.y`, arithmetic in
+        // the VM (phase-1 item 0; the phase-0 gate's finding).
+        Value::Vec2(v) => LuaValue::Vector(mlua::Vector::new(v.x, v.y, 0.0)),
         Value::Str(s) | Value::Ref(s) => LuaValue::String(lua.create_string(&s)?),
         Value::Entity(e) => {
             if e.is_null() {
@@ -96,6 +93,7 @@ pub(crate) fn lua_to_value(v: LuaValue, ty: FieldType, link: &Link) -> LuaResult
         (FieldType::Bool, LuaValue::Boolean(b)) => Value::Bool(b),
         (t, LuaValue::Integer(i)) if t.is_numeric() => number_for(t, i as f64),
         (t, LuaValue::Number(n)) if t.is_numeric() => number_for(t, n),
+        (FieldType::Vec2, LuaValue::Vector(v)) => Value::Vec2(Vec2::new(v.x(), v.y())),
         (FieldType::Vec2, LuaValue::Table(t)) => {
             let x: Option<f32> = t.get("x")?;
             let y: Option<f32> = t.get("y")?;
@@ -151,6 +149,39 @@ fn number_for(ty: FieldType, n: f64) -> Value {
 pub struct EntityRef {
     pub(crate) entity: Entity,
     pub(crate) link: Link,
+}
+
+/// A list of component names to ids.
+fn component_ids(link: &Link, names: &LuaTable) -> LuaResult<Vec<ComponentId>> {
+    let mut ids = Vec::new();
+    for v in names.sequence_values::<String>() {
+        ids.push(component_id(link, &v?)?);
+    }
+    Ok(ids)
+}
+
+/// A point from a vector, `{x=, y=}`, or `{x, y}`.
+fn lua_point(v: LuaValue) -> LuaResult<(f32, f32)> {
+    match v {
+        LuaValue::Vector(v) => Ok((v.x(), v.y())),
+        LuaValue::Table(t) => {
+            let x: Option<f32> = t.get("x")?;
+            let y: Option<f32> = t.get("y")?;
+            if let (Some(x), Some(y)) = (x, y) {
+                return Ok((x, y));
+            }
+            let x: Option<f32> = t.get(1)?;
+            let y: Option<f32> = t.get(2)?;
+            match (x, y) {
+                (Some(x), Some(y)) => Ok((x, y)),
+                _ => Err(mlua::Error::runtime("a point needs x and y")),
+            }
+        }
+        other => Err(mlua::Error::runtime(format!(
+            "expected a vector or a table for a point; got {}",
+            other.type_name()
+        ))),
+    }
 }
 
 fn component_id(link: &Link, name: &str) -> LuaResult<ComponentId> {
@@ -449,17 +480,140 @@ impl UserData for QueryHandle {
             let e = e.borrow::<EntityRef>()?.entity;
             component_ref(lua, &this.link, e, &name)
         });
-        m.add_method("spawn", |lua, this, id: Option<String>| {
-            let c = ctx(&this.link)?;
-            let e = match id {
-                Some(id) => c.spawn_authored(&id).map_err(argus_err)?,
-                None => c.spawn(),
+        // spawn(): a bare entity. spawn("id"): authored. spawn({"A", "B"}):
+        // straight into that archetype at schema defaults, one placement
+        // instead of one move per component.
+        m.add_method("spawn", |lua, this, what: Option<LuaValue>| {
+            let e = match what {
+                None | Some(LuaValue::Nil) => ctx(&this.link)?.spawn(),
+                Some(LuaValue::String(id)) => {
+                    let id = id.to_str()?.to_string();
+                    ctx(&this.link)?.spawn_authored(&id).map_err(argus_err)?
+                }
+                Some(LuaValue::Table(names)) => {
+                    let ids = component_ids(&this.link, &names)?;
+                    ctx(&this.link)?.spawn_with(&ids).map_err(argus_err)?
+                }
+                Some(other) => {
+                    return Err(mlua::Error::runtime(format!(
+                        "spawn takes nothing, an id string, or a list of component names; got {}",
+                        other.type_name()
+                    )))
+                }
             };
             lua.create_userdata(EntityRef {
                 entity: e,
                 link: this.link.clone(),
             })
         });
+        // spawn_many(n, {"A", "B"}, function(e, i) ... end): n entities in
+        // one call, each handed to the callback through one reused handle.
+        m.add_method(
+            "spawn_many",
+            |lua, this, (n, names, f): (u32, LuaTable, Option<mlua::Function>)| {
+                let ids = component_ids(&this.link, &names)?;
+                let handle = lua.create_userdata(EntityRef {
+                    entity: Entity::NULL,
+                    link: this.link.clone(),
+                })?;
+                for i in 0..n {
+                    let e = ctx(&this.link)?.spawn_with(&ids).map_err(argus_err)?;
+                    if let Some(f) = &f {
+                        handle.borrow_mut::<EntityRef>()?.entity = e;
+                        f.call::<()>((handle.clone(), i + 1))?;
+                    }
+                }
+                Ok(n)
+            },
+        );
+        // within(pos, r, "A", "B"): like each, over the entities within r of
+        // pos (nearest first) that have every named component; the distance
+        // comes last: `for e, a, b, d in q:within(p, 3, "A", "B")`.
+        m.add_method(
+            "within",
+            |lua, this, (pos, r, names): (LuaValue, f32, Variadic<String>)| {
+                let link = this.link.clone();
+                let (x, y) = lua_point(pos)?;
+                let c = ctx(&link)?;
+                let mut ids = Vec::with_capacity(names.len());
+                for n in names.iter() {
+                    let id = c.world().registry().require(n).map_err(argus_err)?;
+                    if !c.access().allows_read(id) {
+                        return Err(argus_err(
+                            ArgusError::new(
+                                codes::ACCESS_VIOLATION,
+                                format!("system {} reads {n} without declaring it", c.name),
+                            )
+                            .hint(format!("Add {n:?} to the system's reads list.")),
+                        ));
+                    }
+                    ids.push(id);
+                }
+                let found = c.within(x, y, r);
+                let refs: Vec<AnyUserData> = names
+                    .iter()
+                    .zip(&ids)
+                    .map(|(n, &id)| {
+                        lua.create_userdata(ComponentRef {
+                            link: link.clone(),
+                            comp: id,
+                            name: Arc::from(n.as_str()),
+                            entity: Cell::new(Entity::NULL),
+                            writable: c.access().allows_write(id),
+                        })
+                    })
+                    .collect::<LuaResult<_>>()?;
+                let entity_ud = lua.create_userdata(EntityRef {
+                    entity: Entity::NULL,
+                    link: link.clone(),
+                })?;
+                let mut i = 0usize;
+                let iter = lua.create_function_mut(move |_, ()| {
+                    let c = ctx(&link)?;
+                    while i < found.len() {
+                        let (e, d) = found[i];
+                        i += 1;
+                        if !c.is_alive(e) || !ids.iter().all(|&id| c.has(e, id)) {
+                            continue;
+                        }
+                        entity_ud.borrow_mut::<EntityRef>()?.entity = e;
+                        let mut out = Vec::with_capacity(refs.len() + 2);
+                        out.push(LuaValue::UserData(entity_ud.clone()));
+                        for r in &refs {
+                            r.borrow::<ComponentRef>()?.entity.set(e);
+                            out.push(LuaValue::UserData(r.clone()));
+                        }
+                        out.push(LuaValue::Number(d as f64));
+                        return Ok(MultiValue::from_vec(out));
+                    }
+                    Ok(MultiValue::new())
+                })?;
+                Ok(iter)
+            },
+        );
+        // nearest(pos, r, "A", "B"): the closest entity within r having the
+        // named components, and its distance; nil when none.
+        m.add_method(
+            "nearest",
+            |lua, this, (pos, r, names): (LuaValue, f32, Variadic<String>)| {
+                let (x, y) = lua_point(pos)?;
+                let c = ctx(&this.link)?;
+                let mut ids = Vec::with_capacity(names.len());
+                for n in names.iter() {
+                    ids.push(c.world().registry().require(n).map_err(argus_err)?);
+                }
+                match c.nearest(x, y, r, |e| ids.iter().all(|&id| c.has(e, id))) {
+                    Some((e, d)) => Ok((
+                        LuaValue::UserData(lua.create_userdata(EntityRef {
+                            entity: e,
+                            link: this.link.clone(),
+                        })?),
+                        LuaValue::Number(d as f64),
+                    )),
+                    None => Ok((LuaValue::Nil, LuaValue::Nil)),
+                }
+            },
+        );
         m.add_method("despawn", |_, this, e: AnyUserData| {
             let e = e.borrow::<EntityRef>()?.entity;
             ctx(&this.link)?.despawn(e).map_err(argus_err)

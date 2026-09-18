@@ -135,3 +135,39 @@ fn perf_spawn_and_despawn_100k() {
         "despawn took {despawn:?}"
     );
 }
+
+/// §12 the shared broadphase; §17 "world.query over 100k entities < 2 ms:
+/// spatial predicates hit the broadphase hash, not a scan".
+#[test]
+#[ignore]
+fn perf_broadphase_rebuild_and_within_100k() {
+    let mut w = World::new();
+    w.register::<argus_ecs::Transform>().unwrap();
+    let tr = w.component_id_of::<argus_ecs::Transform>().unwrap();
+    let mut seed = 12345u64;
+    let mut next = || {
+        seed ^= seed << 13;
+        seed ^= seed >> 7;
+        seed ^= seed << 17;
+        (seed % 100_000) as f32 / 100.0 // 0..1000 units square
+    };
+    for _ in 0..100_000 {
+        let e = w.spawn_with(&[tr]).unwrap();
+        w.set_field(e, "Transform.pos", Vec2::new(next(), next()))
+            .unwrap();
+    }
+    let rebuild = best_of(5, || {
+        assert_eq!(w.rebuild_broadphase(), 100_000);
+    });
+    eprintln!("broadphase rebuild 100k: {rebuild:?}");
+    let q = best_of(20, || {
+        let hits = w.within(500.0, 500.0, 30.0);
+        assert!(hits.len() > 100 && hits.len() < 1000, "{}", hits.len());
+    });
+    eprintln!("within r=30 over 100k: {q:?}");
+    assert!(
+        rebuild < Duration::from_millis(6),
+        "rebuild took {rebuild:?}"
+    );
+    assert!(q < Duration::from_millis(2), "within took {q:?}");
+}

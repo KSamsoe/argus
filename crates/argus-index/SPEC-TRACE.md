@@ -37,6 +37,12 @@ Every statement in the design document (v0.3) that constrains the index (§4 "Th
 | Query over an indexed 15,000-entity scene | (no target) | 33 ms for a filtered query returning 1,000 |
 | Staleness check of a 10,200-file scene | (idle refresh) | 21 ms, from directory-listing metadata |
 
+## §12, §17 The broadphase in the shared evaluator (phase 1, item 0)
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| Spatial predicates hit the broadphase hash, not a scan. | Done | `Source::near(center, r)` lets a source narrow the candidates of a `within` query; the live world answers from its hash, the index returns `None` and scans as before. The evaluator still measures every distance itself, so both sources give identical rows. | `argus-daemon/tests/index_shapes.rs::live_and_index_reads_have_identical_shapes` |
+
 ## Known limitations, stated so they are decisions
 
 - File change detection is by size and mtime from a periodic scan (10 s idle) plus the daemon's own writes; a file watcher is a later refinement. An outside edit to the *loaded* scene updates the index when its scene is re-indexed from disk, but the live world keeps its state until `scene.load`.

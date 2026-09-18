@@ -656,7 +656,6 @@ impl Scheduler {
             timings: Vec::new(),
             spans: Vec::new(),
         };
-
         for stage in [Stage::Input, Stage::Sim, Stage::Late] {
             self.run_stage(world, stage, kind, tick, time, dt, &mut samples);
         }
@@ -675,6 +674,22 @@ impl Scheduler {
         }
         self.run_stage(world, Stage::Hierarchy, kind, tick, time, dt, &mut samples);
         world.end_frame();
+        {
+            // The shared broadphase (§12), rebuilt once per tick from the
+            // tick's final positions: what the next tick's systems and any
+            // query between ticks see.
+            let t = Instant::now();
+            let (pa, pb) = alloc::counters();
+            world.rebuild_broadphase();
+            let (qa, qb) = alloc::counters();
+            self.sample(
+                &mut samples,
+                Arc::from("broadphase.rebuild"),
+                t,
+                qa - pa,
+                qb - pb,
+            );
+        }
 
         let archetypes: Vec<(u32, usize)> = world
             .archetypes()
@@ -895,6 +910,9 @@ impl Scheduler {
             }
             for &i in &self.order[stage.index()] {
                 order.push((self.systems[i].name.clone(), stage));
+            }
+            if stage == Stage::Hierarchy {
+                order.push((Arc::from("broadphase.rebuild"), Stage::Hierarchy));
             }
         }
         Ok(order)

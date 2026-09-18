@@ -97,6 +97,14 @@ Release build, one thread, development laptop. Gates are `tests/perf.rs`; number
 | Authored entities per scene (Hollow) | 10,000 | hierarchy with 2,000 children propagates in 0.5 ms |
 | Runtime-generated rooms queryable the tick they exist (Delve) | immediate | queries see structural changes with no rebuild: `queries::queries_see_structural_changes_made_between_passes` |
 
+## §12 The shared broadphase (phase 1, item 0)
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| Three physics tiers sharing one broadphase: a spatial hash over the live world, rebuilt incrementally each tick. | Done (the hash; the tiers are phase-1 item 6) | `spatial.rs`: `SpatialHash` of uniform cells over `(entity, x, y)`; `World::rebuild_broadphase` reads `GlobalTransform.pos` when present, else `Transform.pos`, straight from the columns; `World::within(x, y, r)` visits the cells a circle covers and checks distance exactly, nearest first; `SpatialHash::nearest` searches rings outward with a filter. Rebuilt from scratch each tick (2.3 ms at 100k); incremental maintenance is a later optimisation behind the same calls. | `spatial::within_and_nearest_come_from_the_hash_with_exact_distances`, `perf::perf_broadphase_rebuild_and_within_100k` |
+| `world.query` over 100k entities under 2 ms: spatial predicates hit the broadphase hash, not a scan (§17). | Done | `within` at r=30 over 100k uniformly spread entities: 8 µs. The evaluator narrows its candidates through `Source::near` before reading a field. | `perf::perf_broadphase_rebuild_and_within_100k` |
+| Spawning many entities is one placement, not one move per component (§19 batch spawn). | Done | `World::spawn_with(&[ComponentId])` builds the default rows and pushes the entity into the target archetype once; `ComponentAdded` events still fire per component. | `spatial::spawn_with_places_the_entity_in_its_archetype_at_defaults` |
+
 ## §18 Build plan
 
 Phase 0 item 1, "ECS core with SoA columns, archetypes, and hierarchy": this crate. The other phase-0 items are tracked in `docs/phase0-checklist.md`.

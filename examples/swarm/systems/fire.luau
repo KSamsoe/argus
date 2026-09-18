@@ -16,13 +16,11 @@ return system "sim.fire" {
     local p = pe:get("Transform").pos
     local n = pl.bullets_per_burst
     local base = pl.aim
-    for i = 0, n - 1 do
-      local a = base + i * (2 * math.pi / n)
-      local b = q:spawn()
-      b:insert("Transform", { pos = { x = p.x, y = p.y } })
-      b:insert("Velocity", { v = { x = math.cos(a) * 18, y = math.sin(a) * 18 } })
-      b:insert("Bullet", {})
-    end
+    q:spawn_many(n, { "Transform", "Velocity", "Bullet" }, function(b, i)
+      local a = base + (i - 1) * (2 * math.pi / n)
+      b:get("Transform").pos = p
+      b:get("Velocity").v = vector.create(math.cos(a) * 18, math.sin(a) * 18, 0)
+    end)
     pl.aim = (base + 2.399963) % (2 * math.pi)
   end,
 }

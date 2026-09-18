@@ -6,9 +6,11 @@ use crate::archetype::{Archetype, ArchetypeId, ArchetypeStat};
 use crate::entity::{Entities, Entity};
 use crate::error::{codes, ArgusError, Result};
 use crate::event::{Event, EventRecord};
+use crate::hierarchy::{GlobalTransform, Transform};
 use crate::intern::Interner;
 use crate::query::Query;
 use crate::schema::{Component, ComponentId, ComponentSchema, FieldSchema, Registry};
+use crate::spatial::SpatialHash;
 use crate::value::{FieldType, Value};
 use std::collections::HashMap;
 
@@ -26,6 +28,9 @@ pub struct World {
     strings: Interner,
     events: Vec<EventRecord>,
     frame: u64,
+    /// The shared broadphase over `Transform.pos` (or `GlobalTransform`
+    /// when present), rebuilt by [`World::rebuild_broadphase`].
+    broadphase: SpatialHash,
 }
 
 impl Default for World {
@@ -51,6 +56,7 @@ impl World {
             strings: Interner::new(),
             events: Vec::new(),
             frame: 0,
+            broadphase: SpatialHash::default(),
         }
     }
 
@@ -125,6 +131,47 @@ impl World {
             id: None,
         });
         e
+    }
+
+    /// Spawn a runtime entity straight into the archetype of `comps`, every
+    /// component at its schema defaults: one archetype placement instead
+    /// of one move per component (§19 batch spawn). Duplicates are fine.
+    pub fn spawn_with(&mut self, comps: &[ComponentId]) -> Result<Entity> {
+        let mut ids: Vec<ComponentId> = comps.to_vec();
+        ids.sort_unstable();
+        ids.dedup();
+        for &c in &ids {
+            if c.0 as usize >= self.registry.schemas().len() {
+                return Err(ArgusError::new(
+                    codes::UNKNOWN_COMPONENT,
+                    format!("component id {} is not registered", c.0),
+                ));
+            }
+        }
+        let rows: Vec<Vec<u8>> = ids
+            .iter()
+            .map(|&c| self.registry.schema(c).default_row(&self.strings))
+            .collect();
+        let e = self.entities.alloc(false);
+        let dst = self.archetype_for(ids.clone());
+        let ptrs: Vec<*const u8> = rows.iter().map(|r| r.as_ptr()).collect();
+        // SAFETY: each row is exactly its schema's size, in `ids` order,
+        // which is the archetype's component order.
+        let row = unsafe { self.archetypes[dst.0 as usize].push_row(e, &ptrs) };
+        let slot = self.entities.slot_mut(e).expect("just allocated");
+        slot.archetype = dst.0;
+        slot.row = row as u32;
+        self.emit(Event::Spawned {
+            entity: e,
+            id: None,
+        });
+        for &c in &ids {
+            self.emit(Event::ComponentAdded {
+                entity: e,
+                component: c,
+            });
+        }
+        Ok(e)
     }
 
     /// Spawn an authored entity with a stable string id such as `player` or
@@ -250,6 +297,73 @@ impl World {
     pub fn named_entities(&self) -> Vec<(&str, Entity)> {
         let mut v: Vec<_> = self.names.iter().map(|(k, v)| (k.as_str(), *v)).collect();
         v.sort_by(|a, b| a.0.cmp(b.0));
+        v
+    }
+
+    // ----- broadphase -------------------------------------------------------
+
+    /// Rebuild the spatial hash from every entity with a position:
+    /// `GlobalTransform.pos` when the entity has one, else `Transform.pos`.
+    /// The scheduler calls this at the start of every tick; a client that
+    /// edits positions outside a tick calls it before a spatial query.
+    /// Returns the number of entities indexed.
+    pub fn rebuild_broadphase(&mut self) -> usize {
+        let frame = self.frame;
+        let t = self.registry.id_of::<Transform>();
+        let g = self.registry.id_of::<GlobalTransform>();
+        let Some(t) = t else {
+            self.broadphase.clear(frame);
+            return 0;
+        };
+        let t_off = self
+            .registry
+            .schema(t)
+            .field("pos")
+            .map(|f| f.offset)
+            .unwrap_or(0);
+        let g_off = g
+            .and_then(|g| self.registry.schema(g).field("pos").map(|f| f.offset))
+            .unwrap_or(0);
+        let mut hash = std::mem::take(&mut self.broadphase);
+        hash.clear(frame);
+        for arch in &self.archetypes {
+            if arch.is_empty() {
+                continue;
+            }
+            let (col, off) = match (g.and_then(|g| arch.column(g)), arch.column(t)) {
+                (Some(gc), _) => (gc, g_off),
+                (None, Some(tc)) => (tc, t_off),
+                (None, None) => continue,
+            };
+            for (row, &e) in arch.entities().iter().enumerate() {
+                // SAFETY: `pos` is a Vec2 (two f32) at `off` inside a row of
+                // this column, and `row` is within the column's length.
+                let (x, y) = unsafe {
+                    let p = col.row_ptr(row).add(off) as *const f32;
+                    (p.read_unaligned(), p.add(1).read_unaligned())
+                };
+                hash.insert(e, x, y);
+            }
+        }
+        self.broadphase = hash;
+        self.broadphase.len()
+    }
+
+    /// The broadphase as last rebuilt.
+    pub fn broadphase(&self) -> &SpatialHash {
+        &self.broadphase
+    }
+
+    /// Set the broadphase cell size (world units); takes effect on the next rebuild.
+    pub fn set_broadphase_cell(&mut self, cell: f32) {
+        self.broadphase = SpatialHash::new(cell);
+    }
+
+    /// Live entities within `r` of a point, nearest first, from the
+    /// broadphase as last rebuilt.
+    pub fn within(&self, x: f32, y: f32, r: f32) -> Vec<(Entity, f32)> {
+        let mut v = self.broadphase.within(x, y, r);
+        v.retain(|(e, _)| self.is_alive(*e));
         v
     }
 

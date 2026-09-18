@@ -435,3 +435,77 @@ return system "sim.greedy" {
         "the table builder stands out: greedy {greedy:?} lean {lean:?}"
     );
 }
+
+// ----- phase 1 item 0: vectors, batch spawn, the broadphase ------------------
+
+#[test]
+fn vec2_fields_are_native_vectors_and_spawn_many_and_within_reach_the_broadphase() {
+    let (mut h, mut w, mut s) = host(1);
+    w.register::<argus_ecs::Transform>().unwrap();
+    assert!(h.load_source(&mut w, &mut s, "components/all.luau", COMPONENTS));
+    let sys = r#"
+component "Pos" { hits = field.u32 { default = 0 } }
+return system "sim.vec" {
+  stage = "sim", reads = {"Pos", "Health", "Transform"}, writes = {"Pos", "Health", "Transform"},
+  run = function(q)
+    if q.tick == 0 then
+      -- One call spawns them all, straight into their archetype.
+      local n = q:spawn_many(100, { "Pos", "Health", "Transform" }, function(e, i)
+        e:get("Transform").pos = vector.create(i, 0, 0)     -- a vector write
+        e:get("Health").cur = i
+      end)
+      assert(n == 100)
+      local one = q:spawn({ "Pos", "Transform" })
+      one:get("Transform").pos = { x = 1000, y = 0 }         -- a table write still works
+      return
+    end
+    -- Reads are vectors: fields, arithmetic, magnitude, no tables.
+    for e, tr in q:each("Transform") do
+      local p = tr.pos
+      assert(type(p) == "vector", type(p))
+      tr.pos = p + vector.create(0, 1, 0)
+    end
+    -- The broadphase was rebuilt at the end of tick 0: within and nearest see tick-0 positions.
+    local count = 0
+    for e, pos, hp, d in q:within(vector.create(10, 0, 0), 2.5, "Pos", "Health") do
+      count += 1
+      pos.hits += 1
+      assert(d <= 2.5)
+    end
+    assert(count == 5, "within found " .. count)
+    local near, d = q:nearest(vector.create(10.4, 0, 0), 5, "Pos", "Health")
+    assert(near ~= nil and near:get("Health").cur == 10, tostring(near))
+    assert(math.abs(d - 0.4) < 1e-3, tostring(d))
+    local none = q:nearest({ x = 5000, y = 0 }, 1, "Pos")
+    assert(none == nil)
+  end,
+}"#;
+    assert!(
+        h.load_source(&mut w, &mut s, "systems/vec.luau", sys),
+        "{:?}",
+        h.errors()
+    );
+    s.step(&mut w, 2).unwrap();
+    assert!(fault_messages(&w).is_empty(), "{:?}", fault_messages(&w));
+    let pos = w.component_id("Pos").unwrap();
+    assert_eq!(w.query().has(pos).count(), 101);
+    let hit: usize = w
+        .query()
+        .has(pos)
+        .entities()
+        .iter()
+        .filter(|e| w.get_field(**e, "Pos.hits").unwrap() == Value::UInt(1))
+        .count();
+    assert_eq!(hit, 5, "entities at x 8..12 were within 2.5 of x 10");
+    // The vector read and write cost no table: what remains per entity is
+    // the binding's call path (mlua allocates its argument and result
+    // lists per call), about 17 allocations for the two calls above. The
+    // table form was two tables more per entity on top of that.
+    let rows = s.prof_alloc(10).unwrap();
+    let vec = rows.iter().find(|r| r.name == "sim.vec").unwrap();
+    assert!(
+        vec.max_allocs < 2500,
+        "tick 1 over 101 entities allocated {}",
+        vec.max_allocs
+    );
+}

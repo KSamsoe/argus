@@ -73,6 +73,18 @@ impl Source for WorldSource<'_> {
     fn lookup(&self, r: &str) -> Result<u64> {
         self.0.entity(r).map(pack)
     }
+
+    fn near(&self, center: (f64, f64), r: f64) -> Option<Vec<u64>> {
+        // Cover float rounding at the edge: the evaluator measures exactly.
+        let r = (r as f32) * 1.0001 + 1e-3;
+        Some(
+            self.0
+                .within(center.0 as f32, center.1 as f32, r)
+                .into_iter()
+                .map(|(e, _)| pack(e))
+                .collect(),
+        )
+    }
 }
 
 /// Run a query against the live world.
