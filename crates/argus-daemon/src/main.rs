@@ -1,7 +1,7 @@
 //! `argusd`: the Argus daemon.
 //!
 //! ```text
-//! argusd --project <dir> [--scene <name>] [--seed <n>] [--stdio | --socket [name]] [--headless]
+//! argusd --project <dir> [--scene <name>] [--seed <n>] [--stdio | --socket [name]] [--headless | --window [WxH]]
 //! ```
 //!
 //! With `--project` the session opens before the first client connects and
@@ -17,7 +17,7 @@ use std::path::PathBuf;
 static ALLOC: argus_sim::alloc::Counting = argus_sim::alloc::Counting;
 
 fn usage() -> ! {
-    eprintln!("usage: argusd [--project <dir>] [--scene <name>] [--seed <n>] [--stdio | --socket [name]] [--headless]");
+    eprintln!("usage: argusd [--project <dir>] [--scene <name>] [--seed <n>] [--stdio | --socket [name]] [--headless | --window [WxH]]");
     std::process::exit(2)
 }
 
@@ -27,6 +27,7 @@ fn main() {
     let mut scene: Option<String> = None;
     let mut seed: Option<u64> = None;
     let mut transport: Option<Transport> = None;
+    let mut window: Option<(u32, u32)> = None;
     while let Some(a) = args.next() {
         match a.as_str() {
             "--project" | "-p" => {
@@ -46,6 +47,15 @@ fn main() {
                 transport = Some(Transport::Socket(name.unwrap_or_default()));
             }
             "--headless" => {}
+            "--window" => {
+                window = Some(match args.next() {
+                    Some(s) if s.contains('x') => {
+                        let (w, h) = s.split_once('x').unwrap();
+                        (w.parse().unwrap_or(1280), h.parse().unwrap_or(720))
+                    }
+                    _ => (1280, 720),
+                })
+            }
             "--help" | "-h" => usage(),
             _ => usage(),
         }
@@ -55,5 +65,6 @@ fn main() {
         scene,
         seed,
         transport,
+        window,
     }));
 }

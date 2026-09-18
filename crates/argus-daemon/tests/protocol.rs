@@ -98,7 +98,7 @@ fn session_open_gives_the_one_screen_summary() {
     let e = err(&mut empty, "world.get", json!({ "entity": "@player" }));
     assert_eq!(e.code, codes::NO_PROJECT);
     assert!(e.hint.contains("session.open"));
-    let e = err(&mut d, "obs.frame", json!({}));
+    let e = err(&mut d, "obs.frobnicate", json!({}));
     assert_eq!(e.code, codes::UNKNOWN_METHOD);
     let e = err(&mut d, "world.get", json!({}));
     assert_eq!(e.code, codes::BAD_PARAMS);

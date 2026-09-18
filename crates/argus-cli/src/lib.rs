@@ -69,6 +69,8 @@ pub struct Invocation {
     pub file: Option<String>,
     /// `--update`: rewrite goldens, for `argus test`.
     pub update: bool,
+    /// `--window [WxH]`: open a window, for `daemon start` and `daemon run`.
+    pub window: Option<(u32, u32)>,
 }
 
 /// Parse a command line (without the program name).
@@ -94,6 +96,18 @@ pub fn parse(argv: &[String]) -> Result<Invocation, String> {
             "--seeds" => inv.seeds = Some(need(&mut it)?),
             "--file" => inv.file = Some(need(&mut it)?),
             "--update" => inv.update = true,
+            "--window" => {
+                let size = match it.clone().next() {
+                    Some(s) if s.contains('x') && !s.starts_with('-') => {
+                        it.next();
+                        s.split_once('x')
+                            .map(|(w, h)| (w.parse().unwrap_or(1280), h.parse().unwrap_or(720)))
+                            .unwrap()
+                    }
+                    _ => (1280, 720),
+                };
+                inv.window = Some(size);
+            }
             "--seed" => {
                 let v = need(&mut it)?;
                 inv.seed = Some(

@@ -175,6 +175,7 @@ crates/
   argus-input/        input.toml action maps, the Actions component and input.actions system, injected input, the replayable log (piece 7)
   argus-cli/          argus: every daemon method as a subcommand, help from the daemon's method table, daemon start/stop, argus test (piece 9)
   argus-test/         the scenario harness (tests/*.luau), state goldens, seed sweeps; test.list and test.run (piece 10)
+  argus-render/       wgpu instanced sprites from atlases, Sprite and Camera, offscreen PNG and a winit window (phase 1, item 1)
 docs/
   argus-engine-design-v0.3.html   the design document
   phase0-checklist.md             every phase-0 item and its status
@@ -185,6 +186,7 @@ docs/
 Phase 1's items and their constraints are in [docs/phase1-checklist.md](docs/phase1-checklist.md). Done so far:
 
 - **Item 0, the Luau cost model and the broadphase.** `vec2` fields cross into Luau as native vectors, so a position read or write no longer allocates a table. `q:spawn_many` places a batch of entities in their archetype in one call. The engine now keeps the shared spatial hash the design's physics section asks for, rebuilt once per tick; `world.query`'s `within` predicate, Luau's `q:within` and `q:nearest`, and the phase-1 physics tiers all read it. On the 50,000-enemy stress scene the tick went from 280 ms to 49 ms and the hit pass from 176 ms to 0.14 ms; the rest is the binding's per-call cost in per-entity loops, which is what promoting a system to Rust removes.
+- **Item 1, the renderer**, in [crates/argus-render](crates/argus-render). A `Sprite` is an atlas frame or a described shape (a rect or a circle, a size, a colour), so gameplay never waits on art; a `Camera` entity frames the view. One instanced pipeline draws a run of sprites per atlas and culls on the GPU; positions are interpolated between the last two sim ticks. It renders offscreen to a PNG for tests, CI, and `argus obs frame`, or into a window that the daemon presents every frame: `argus daemon run --window`. Both example games draw with it. Trace: [crates/argus-render/SPEC-TRACE.md](crates/argus-render/SPEC-TRACE.md).
 
 ## Where phase 0 stands
 

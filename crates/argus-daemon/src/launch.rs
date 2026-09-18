@@ -18,6 +18,8 @@ pub struct Launch {
     pub seed: Option<u64>,
     /// Transport; `None` picks the project's socket, or stdio with no project.
     pub transport: Option<Transport>,
+    /// Open a window of this size after the scene opens.
+    pub window: Option<(u32, u32)>,
 }
 
 /// Open the project (if any), announce on stderr, serve until told to
@@ -38,7 +40,19 @@ pub fn launch(l: Launch) -> i32 {
             params["seed"] = json!(s);
         }
         match daemon.call(0, "session.open", &params) {
-            Ok(v) => eprintln!("argusd: opened {}", v["scene"]),
+            Ok(v) => {
+                eprintln!("argusd: opened {}", v["scene"]);
+                if let Some((w, h)) = l.window {
+                    match daemon.call(
+                        0,
+                        "render.window",
+                        &json!({ "open": true, "width": w, "height": h }),
+                    ) {
+                        Ok(s) => eprintln!("argusd: window {}x{} on {}", w, h, s["adapter"]),
+                        Err(e) => eprintln!("argusd: no window: {}", e),
+                    }
+                }
+            }
             Err(e) => {
                 eprintln!(
                     "argusd: {}",

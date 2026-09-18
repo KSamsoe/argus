@@ -354,6 +354,12 @@ pub const METHODS: &[MethodDoc] = &[
         returns: "{total, rows: [{seq, frame, name, fields}], next, last_seq}",
     },
     MethodDoc {
+        name: "obs.frame",
+        doc: "Render the current world offscreen and write it as a PNG (section 8 L5). Sprites and the active Camera come from the world; described shapes need no asset. Semantic frames and annotation arrive with phase-1 item 12.",
+        params: "format: \"png\" (default); width: integer (default 640); height: integer (default 360); path: string (default .argus/frames/frame-<tick>.png); software: boolean (force the software rasteriser)",
+        returns: "{path, width, height, tick, alpha, sprites, draw_calls, atlases, missing_atlases, interpolated, adapter, ms}",
+    },
+    MethodDoc {
         name: "obs.subscribe",
         doc: "Receive notifications on this connection: `event` for each new event, `edit.committed` for each commit. Topics: events, edits.",
         params: "topics: [\"events\" | \"edits\"]; off: boolean (unsubscribe)",
@@ -370,6 +376,18 @@ pub const METHODS: &[MethodDoc] = &[
         doc: "Run scenarios headless in this daemon: each seed loads the scene fresh, scripts input, runs frames, and checks expectations; state goldens live in tests/goldens/ and a mismatch is a field-level diff. The scene that was open is reloaded afterwards. `argus test` is this.",
         params: "name: string (optional; exact or substring); file: string (optional, tests/x.luau); seeds: string (optional override: \"7\", \"1..50\", \"1,2,9\"); update: boolean (rewrite goldens)",
         returns: "{ok, ms, total_runs, passed_runs, failed_runs, scenarios: [{name, file, scene, ok, seeds: [{seed, ok, ms, tick, error, expectations: [{kind, desc, ok, message, ...}], log}]}], load_errors}",
+    },
+    MethodDoc {
+        name: "render.window",
+        doc: "Open or close the window the daemon presents into every frame (playable by a human, section 18 phase 1). Device events from it feed the input layer.",
+        params: "open: boolean (default true); width: integer (default 1280); height: integer (default 720); title: string; software: boolean",
+        returns: "render.status",
+    },
+    MethodDoc {
+        name: "render.status",
+        doc: "Whether a window is open, the adapter in use, and the last frame's statistics.",
+        params: "",
+        returns: "{window, size: [w, h], adapter, software, last: {sprites, draw_calls, atlases, interpolated, missing_atlases, ms}, atlases: [name]}",
     },
     MethodDoc {
         name: "prof.frame",

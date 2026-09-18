@@ -102,6 +102,9 @@ pub fn start(root: &Path, inv: &Invocation, err: &mut dyn Write) -> Result<Json,
     if let Some(s) = inv.seed {
         cmd.arg("--seed").arg(s.to_string());
     }
+    if let Some((w, h)) = inv.window {
+        cmd.arg("--window").arg(format!("{w}x{h}"));
+    }
     detach(&mut cmd);
     let child = cmd
         .spawn()
@@ -188,6 +191,7 @@ pub fn daemon_command(
                 scene: inv.scene.clone(),
                 seed: inv.seed,
                 transport: inv.socket.clone().map(Transport::Socket),
+                window: inv.window,
             })
         }
         "start" => {

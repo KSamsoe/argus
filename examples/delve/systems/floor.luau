@@ -1,7 +1,7 @@
 return system "sim.floor" {
   stage = "sim",
-  reads = { "Floor", "Player", "Monster", "Stairs", "Transform" },
-  writes = { "Floor", "Player", "Monster", "Stairs", "Transform", "Health" },
+  reads = { "Floor", "Player", "Monster", "Stairs", "Transform", "Tile" },
+  writes = { "Floor", "Player", "Monster", "Stairs", "Transform", "Health", "Sprite", "Tile" },
   rng = "floor",
   doc = "Generates a floor when there is none or the hero asked to descend: rooms, L-shaped corridors, the hero in the first room, stairs in the last, monsters never within four steps of the hero.",
   run = function(q)
@@ -14,6 +14,7 @@ return system "sim.floor" {
     local doomed = {}
     for e in q:each("Monster") do table.insert(doomed, e:id()) end
     for e in q:each("Stairs") do table.insert(doomed, e:id()) end
+    for e in q:each("Tile") do table.insert(doomed, e:id()) end
     for _, id in ipairs(doomed) do q:entity(id):despawn() end
 
     local w, h = f.w, f.h
@@ -60,9 +61,27 @@ return system "sim.floor" {
 
     local first, last = rooms[1], rooms[#rooms]
     pe:get("Transform").pos = { x = first.cx, y = first.cy }
-    local st = q:spawn()
-    st:insert("Stairs")
-    st:insert("Transform", { pos = { x = last.cx, y = last.cy } })
+    local st = q:spawn({ "Stairs", "Transform", "Sprite" })
+    st:get("Transform").pos = vector.create(last.cx, last.cy, 0)
+    local ss = st:get("Sprite")
+    ss.kind = "rect"
+    ss.size = vector.create(0.8, 0.8, 0)
+    ss.color = "#7FD1FF"
+    ss.z = 2
+    -- One drawn cell per floor tile, so the window shows the map.
+    local cells = {}
+    for i = 1, w * h do
+      if grid[i] == "." then table.insert(cells, i - 1) end
+    end
+    q:spawn_many(#cells, { "Tile", "Transform", "Sprite" }, function(e, i)
+      local c = cells[i]
+      e:get("Transform").pos = vector.create(c % w, c // w, 0)
+      local sp = e:get("Sprite")
+      sp.kind = "rect"
+      sp.size = vector.create(0.95, 0.95, 0)
+      sp.color = "#2E2A3A"
+      sp.z = 0
+    end)
 
     local count = 4 + 2 * f.n
     local placed, guard = 0, 0
@@ -74,14 +93,20 @@ return system "sim.floor" {
       local y = rng:range(r.y, r.y + r.h - 1)
       if math.abs(x - first.cx) + math.abs(y - first.cy) > 4 then
         local k = kinds[rng:range(1, 3)]
-        local m = q:spawn()
-        m:insert("Monster", {
-          kind = k,
-          atk = (k == "goblin") and 3 or 1,
-          initiative = rng:range(1, 9),
-        })
-        m:insert("Health", { cur = (k == "goblin") and 6 or 3, max = 6 })
-        m:insert("Transform", { pos = { x = x, y = y } })
+        local m = q:spawn({ "Monster", "Health", "Transform", "Sprite" })
+        local mo = m:get("Monster")
+        mo.kind = k
+        mo.atk = (k == "goblin") and 3 or 1
+        mo.initiative = rng:range(1, 9)
+        local mh = m:get("Health")
+        mh.cur = (k == "goblin") and 6 or 3
+        mh.max = 6
+        m:get("Transform").pos = vector.create(x, y, 0)
+        local sp = m:get("Sprite")
+        sp.kind = "circle"
+        sp.size = vector.create(0.8, 0.8, 0)
+        sp.color = (k == "goblin") and "#7FBF5A" or ((k == "bat") and "#A98BD6" or "#C2743F")
+        sp.z = 4
         placed += 1
       end
     end

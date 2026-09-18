@@ -170,7 +170,7 @@ fn run_loop(
     let mut next_frame = Instant::now();
     let mut last_refresh = Instant::now();
     loop {
-        let timeout = if daemon.wants_frames() {
+        let timeout = if daemon.wants_frames() || daemon.has_window() {
             next_frame.saturating_duration_since(Instant::now())
         } else {
             next_frame = Instant::now();
@@ -203,8 +203,13 @@ fn run_loop(
             }
             Err(RecvTimeoutError::Disconnected) => return Ok(()),
         }
-        if daemon.wants_frames() && Instant::now() >= next_frame {
-            let _ = daemon.frame();
+        if (daemon.wants_frames() || daemon.has_window()) && Instant::now() >= next_frame {
+            if daemon.wants_frames() {
+                let _ = daemon.frame();
+            }
+            if daemon.has_window() {
+                daemon.present();
+            }
             next_frame += Duration::from_secs_f64(daemon.frame_seconds());
             if next_frame < Instant::now() {
                 next_frame = Instant::now();

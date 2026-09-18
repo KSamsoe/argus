@@ -131,6 +131,16 @@ impl Clock {
         n as u32
     }
 
+    /// How far the next tick is owed, in [0, 1): what a renderer
+    /// interpolates by between the last two sim states (section 6).
+    /// Always 1 on the discrete clock, where nothing moves between advances.
+    pub fn alpha(&self) -> f32 {
+        if self.kind != ClockKind::Continuous {
+            return 1.0;
+        }
+        self.accumulator.clamp(0.0, 1.0) as f32
+    }
+
     /// Reset tick count and accumulator, keeping rate and speed.
     pub fn reset(&mut self) {
         self.tick = 0;

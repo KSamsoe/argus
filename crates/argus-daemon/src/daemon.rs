@@ -71,6 +71,9 @@ pub struct Daemon {
     /// undo, scene load); `ensure_broadphase` rebuilds when it moved.
     mutations: u64,
     broadphase_epoch: u64,
+    /// The renderer's targets (phase 1, item 1).
+    #[cfg(feature = "render")]
+    render: render::RenderState,
     /// Notifications waiting for the transport, per connection.
     pub outbox: Vec<(ConnId, Json)>,
 }
@@ -99,6 +102,8 @@ impl Daemon {
             shutdown: false,
             mutations: 0,
             broadphase_epoch: 0,
+            #[cfg(feature = "render")]
+            render: render::RenderState::default(),
             outbox: Vec::new(),
         }
     }
@@ -314,6 +319,9 @@ impl Daemon {
             "prof.archetypes" => Ok(self.prof_archetypes()),
             "prof.alloc" => self.prof_alloc(params),
             "prof.capture" => self.prof_capture(params),
+            "obs.frame" => self.obs_frame(params),
+            "render.window" => self.render_window(params),
+            "render.status" => Ok(self.render_status()),
             "test.list" => {
                 let root = self.require_session()?.root.clone();
                 argus_test::list(&root).map_err(|e| ArgusError::new(codes::TEST_RUNNER, e))
@@ -323,7 +331,7 @@ impl Daemon {
                 codes::UNKNOWN_METHOD,
                 format!("no method {other:?}"),
             )
-            .hint("session.capabilities lists every method; obs.frame, sim.seek, and input.* arrive in later phases.")),
+            .hint("session.capabilities lists every method; obs.diff, obs.trace, and sim.seek arrive in later phases.")),
         };
         self.pump_events();
         r
@@ -337,6 +345,27 @@ impl Daemon {
             self.pump_events();
         }
         Ok(())
+    }
+
+    /// True while a window is open and wants presenting every frame.
+    pub fn has_window(&self) -> bool {
+        #[cfg(feature = "render")]
+        {
+            self.render.window.is_some()
+        }
+        #[cfg(not(feature = "render"))]
+        {
+            false
+        }
+    }
+
+    /// Present one frame into the window, if open: pump its events, run
+    /// the `present` stage, draw. Closing the window drops it.
+    pub fn present(&mut self) {
+        #[cfg(feature = "render")]
+        {
+            self.render_present();
+        }
     }
 
     /// True while the continuous clock should be driven in real time.
@@ -440,6 +469,8 @@ impl Daemon {
             }
             None => None,
         };
+        #[cfg(feature = "render")]
+        argus_render::register(&mut self.world)?;
         let mut host = ScriptHost::new(ScriptConfig::default())?;
         host.load_project(&mut self.world, &mut self.sched, &root)?;
         let def_schemas: Vec<DefSchema> = host
@@ -1873,6 +1904,178 @@ impl Daemon {
         }
     }
 
+    // ----- render -----------------------------------------------------------
+
+    #[cfg(feature = "render")]
+    fn obs_frame(&mut self, params: &Json) -> Result<Json> {
+        self.require_session()?;
+        let format = json::opt_str(params, "format")?.unwrap_or("png");
+        if format != "png" {
+            return Err(bad_params(format!(
+                "format must be \"png\" in phase-1 item 1; got {format:?} (semantic frames are item 12)"
+            )));
+        }
+        let width = json::u64_param(params, "width", 640)?.clamp(1, 8192) as u32;
+        let height = json::u64_param(params, "height", 360)?.clamp(1, 8192) as u32;
+        let software = json::bool_param(params, "software", false)?;
+        let root = self.session.as_ref().expect("session").root.clone();
+        let path = match json::opt_str(params, "path")? {
+            Some(p) => {
+                let p = PathBuf::from(p);
+                if p.is_absolute() {
+                    p
+                } else {
+                    root.join(p)
+                }
+            }
+            None => root
+                .join(".argus")
+                .join("frames")
+                .join(format!("frame-{}.png", self.sched.tick())),
+        };
+        let tick = self.sched.tick();
+        let alpha = self.sched.alpha();
+        let r = self.render.offscreen(width, height, software, &root)?;
+        let _ = self.sched.present(&mut self.world);
+        let rep = r.render(&self.world, tick, alpha)?;
+        let img = r.capture()?;
+        img.save_png(&path)?;
+        Ok(json!({
+            "path": path.to_string_lossy(),
+            "width": width,
+            "height": height,
+            "tick": tick,
+            "alpha": alpha,
+            "sprites": rep.stats.sprites,
+            "draw_calls": rep.stats.draw_calls,
+            "atlases": rep.stats.atlases,
+            "missing_atlases": rep.missing_atlases,
+            "interpolated": rep.interpolated,
+            "adapter": r.gpu().adapter,
+            "software": r.gpu().software,
+            "ms": rep.ms,
+        }))
+    }
+
+    #[cfg(feature = "render")]
+    fn render_window(&mut self, params: &Json) -> Result<Json> {
+        let open = json::bool_param(params, "open", true)?;
+        if !open {
+            self.render.window = None;
+            return Ok(self.render_status());
+        }
+        self.require_session()?;
+        let width = json::u64_param(params, "width", 1280)?.clamp(64, 8192) as u32;
+        let height = json::u64_param(params, "height", 720)?.clamp(64, 8192) as u32;
+        let software = json::bool_param(params, "software", false)?;
+        let title = json::opt_str(params, "title")?
+            .map(str::to_string)
+            .unwrap_or_else(|| {
+                let ses = self.session.as_ref().expect("session");
+                format!("argus: {} ({})", ses.project.config.name, ses.scene_name)
+            });
+        let root = self.session.as_ref().expect("session").root.clone();
+        self.render
+            .open_window(&title, width, height, software, &root)?;
+        Ok(self.render_status())
+    }
+
+    #[cfg(feature = "render")]
+    fn render_status(&self) -> Json {
+        let (window, size, adapter, software, last, atlases) = match &self.render.window {
+            Some((host, r)) => (
+                true,
+                host.size(),
+                r.gpu().adapter.clone(),
+                r.gpu().software,
+                Some(r.last().clone()),
+                r.gpu().atlas_names().to_vec(),
+            ),
+            None => match &self.render.offscreen {
+                Some((w, h, r)) => (
+                    false,
+                    (*w, *h),
+                    r.gpu().adapter.clone(),
+                    r.gpu().software,
+                    Some(r.last().clone()),
+                    r.gpu().atlas_names().to_vec(),
+                ),
+                None => (false, (0, 0), String::new(), false, None, Vec::new()),
+            },
+        };
+        json!({
+            "window": window,
+            "size": [size.0, size.1],
+            "adapter": adapter,
+            "software": software,
+            "last": last.map(|l| json!({
+                "sprites": l.stats.sprites,
+                "draw_calls": l.stats.draw_calls,
+                "atlases": l.stats.atlases,
+                "interpolated": l.interpolated,
+                "missing_atlases": l.missing_atlases,
+                "ms": l.ms,
+            })),
+            "atlases": atlases,
+            "pending_events": self.render.events.len(),
+        })
+    }
+
+    #[cfg(feature = "render")]
+    fn render_present(&mut self) {
+        let Some((host, _)) = &mut self.render.window else {
+            return;
+        };
+        if !host.pump() {
+            self.render.window = None;
+            self.world.emit(Event::Game {
+                name: "window.closed".to_string(),
+                fields: Vec::new(),
+            });
+            self.pump_events();
+            return;
+        }
+        let events = host.take_events();
+        for ev in &events {
+            if let argus_render::window::DeviceEvent::Resized { width, height } = ev {
+                if let Some((_, r)) = &mut self.render.window {
+                    r.gpu_mut().resize(*width, *height);
+                }
+            }
+        }
+        self.render.events.extend(events);
+        if self.render.events.len() > 4096 {
+            let n = self.render.events.len() - 4096;
+            self.render.events.drain(..n);
+        }
+        let _ = self.sched.present(&mut self.world);
+        let tick = self.sched.tick();
+        let alpha = self.sched.alpha();
+        if let Some((_, r)) = &mut self.render.window {
+            let _ = r.render(&self.world, tick, alpha);
+        }
+        self.pump_events();
+    }
+
+    #[cfg(not(feature = "render"))]
+    fn obs_frame(&mut self, _params: &Json) -> Result<Json> {
+        Err(ArgusError::new(
+            5005,
+            "this daemon was built without the renderer",
+        ))
+    }
+    #[cfg(not(feature = "render"))]
+    fn render_window(&mut self, _params: &Json) -> Result<Json> {
+        Err(ArgusError::new(
+            5005,
+            "this daemon was built without the renderer",
+        ))
+    }
+    #[cfg(not(feature = "render"))]
+    fn render_status(&self) -> Json {
+        json!({ "window": false, "adapter": null })
+    }
+
     // ----- test -------------------------------------------------------------
 
     /// `test.run`: run scenarios through this daemon's own methods, then
@@ -2162,6 +2365,65 @@ impl argus_test::Driver for Daemon {
             .as_ref()
             .map(|s| s.root.clone())
             .unwrap_or_default()
+    }
+}
+
+/// The renderer's targets and their device events.
+#[cfg(feature = "render")]
+pub(crate) mod render {
+    use argus_ecs::Result;
+    use argus_render::window::{DeviceEvent, WindowHost};
+    use argus_render::Renderer;
+    use std::path::Path;
+
+    #[derive(Default)]
+    pub(crate) struct RenderState {
+        /// The window and its renderer, while open.
+        pub window: Option<(WindowHost, Renderer)>,
+        /// An offscreen renderer kept between `obs.frame` calls of one size.
+        pub offscreen: Option<(u32, u32, Renderer)>,
+        /// Device events since the input layer last took them (item 2).
+        pub events: Vec<DeviceEvent>,
+    }
+
+    impl RenderState {
+        pub fn offscreen(
+            &mut self,
+            width: u32,
+            height: u32,
+            software: bool,
+            root: &Path,
+        ) -> Result<&mut Renderer> {
+            let fresh = match &self.offscreen {
+                Some((w, h, r)) => *w != width || *h != height || r.gpu().software != software,
+                None => true,
+            };
+            if fresh {
+                let mut r = Renderer::offscreen(width, height, software)?;
+                r.load_atlases(root)?;
+                self.offscreen = Some((width, height, r));
+            }
+            Ok(&mut self.offscreen.as_mut().expect("just set").2)
+        }
+
+        pub fn open_window(
+            &mut self,
+            title: &str,
+            width: u32,
+            height: u32,
+            software: bool,
+            root: &Path,
+        ) -> Result<()> {
+            if self.window.is_some() {
+                return Ok(());
+            }
+            let host = WindowHost::open(title, width, height)?;
+            let window = host.window().expect("open");
+            let mut r = Renderer::windowed(window, software)?;
+            r.load_atlases(root)?;
+            self.window = Some((host, r));
+            Ok(())
+        }
     }
 }
 

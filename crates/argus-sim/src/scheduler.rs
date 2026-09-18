@@ -451,6 +451,12 @@ impl Scheduler {
 
     // ----- clocks and play state --------------------------------------------
 
+    /// Interpolation fraction for the renderer: how far into the next
+    /// tick real time is, 0 to 1 (section 6). 1 on the discrete clock.
+    pub fn alpha(&self) -> f32 {
+        self.driving().alpha()
+    }
+
     /// The clock that drives `sim`.
     pub fn driving(&self) -> &Clock {
         self.clock(self.config.driving)

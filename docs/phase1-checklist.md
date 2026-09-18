@@ -20,7 +20,7 @@ Carried in from phase 0 by decision: `obs.trace` (item 13 here), `code` in `run.
 
 ## 1. wgpu sprite renderer, windowed and offscreen
 
-**Status: not started.** Constraints: §2 (the core hosts the renderer; rendering is decoupled from the fixed-rate sim and interpolates between the last two sim states, §6); §17 Swarm 200,000 instanced sprites per frame, one draw call per texture atlas, GPU-side culling; offscreen mode is what tests and CI render into (§9 "identically in CI with the software render adapter"); `present` stage systems read only; the render ring is what marks and clips are cut from (§10, phase 2); placeholder sprites as described shapes (§14) render without an asset.
+**Status: done** (2026-09-18) in `crates/argus-render` (wgpu 24, winit 0.30) and the daemon (`render` feature, on by default): `Sprite` and `Camera` components, one instanced pipeline with a draw per atlas run and culling in the vertex shader, offscreen readback to PNG and a winit window presented every frame, interpolation by the clock's `alpha`, atlases from `assets/*.png` with a `.atlas.toml` sidecar, described-shape placeholders. Protocol: `obs.frame {format: "png"}`, `render.window`, `render.status`; `argusd --window [WxH]` and `argus daemon run --window`. Trace: `crates/argus-render/SPEC-TRACE.md`. Measured: 200,000 sprites over two atlases and four z values in 8 draw calls, 23 ms to build and submit on the development laptop; the frame build is the CPU cost and is the item's known limitation. Both example games now draw (swarm: ring, fans, player; delve: rooms, monsters, stairs) and were captured with `argus obs frame`. Constraints: §2 (the core hosts the renderer; rendering is decoupled from the fixed-rate sim and interpolates between the last two sim states, §6); §17 Swarm 200,000 instanced sprites per frame, one draw call per texture atlas, GPU-side culling; offscreen mode is what tests and CI render into (§9 "identically in CI with the software render adapter"); `present` stage systems read only; the render ring is what marks and clips are cut from (§10, phase 2); placeholder sprites as described shapes (§14) render without an asset.
 
 ## 2. Keyboard, mouse, gamepad input with recording
 
@@ -72,4 +72,4 @@ Carried in from phase 0 by decision: `obs.trace` (item 13 here), `code` in `run.
 
 ## Gate
 
-Not started. Swarm and Delve playable in a window (items 1, 2, 3); the Hollow slice (items 5, 6, 7, 12); the animation with a footstep that fires a sound (items 3, 8).
+Item 1 done: Swarm and Delve open in a window and draw; nothing reads the keyboard yet (item 2). The Hollow slice (items 5, 6, 7, 12); the animation with a footstep that fires a sound (items 3, 8).

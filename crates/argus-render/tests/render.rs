@@ -1,0 +1,274 @@
+//! §2 the core hosts the renderer; §6 rendering interpolates between the
+//! last two sim states; §14 described-shape placeholders render without
+//! an asset; §17 instanced sprites, one draw call per atlas, GPU culling;
+//! §9 identical offscreen in CI.
+
+use argus_ecs::{Transform, Vec2, World};
+use argus_render::{Camera, Renderer, Sprite};
+
+fn world_with_camera(height: f32) -> World {
+    let mut w = World::new();
+    w.register::<Transform>().unwrap();
+    argus_render::register(&mut w).unwrap();
+    let cam = w.spawn_authored("camera").unwrap();
+    w.insert(cam, Transform::at(0.0, 0.0)).unwrap();
+    w.insert(
+        cam,
+        Camera {
+            height,
+            active: true,
+        },
+    )
+    .unwrap();
+    w
+}
+
+fn shape(
+    w: &mut World,
+    x: f32,
+    y: f32,
+    kind: &str,
+    size: f32,
+    color: &str,
+    z: f32,
+) -> argus_ecs::Entity {
+    let e = w.spawn();
+    w.insert(e, Transform::at(x, y)).unwrap();
+    let s = Sprite {
+        kind: w.strings().intern(kind),
+        size: Vec2::new(size, size),
+        color: w.strings().intern(color),
+        z,
+        ..Default::default()
+    };
+    w.insert(e, s).unwrap();
+    e
+}
+
+/// Offscreen renderer or skip: a machine with no adapter at all (not even
+/// the software rasteriser) cannot run these, and says so.
+fn renderer(w: u32, h: u32) -> Option<Renderer> {
+    match Renderer::offscreen(w, h, false) {
+        Ok(r) => Some(r),
+        Err(e) => {
+            eprintln!("skipping: {e}");
+            None
+        }
+    }
+}
+
+#[test]
+fn described_shapes_render_where_the_camera_puts_them() {
+    let Some(mut r) = renderer(200, 100) else {
+        return;
+    };
+    // A camera 10 units tall over a 2:1 target sees x in [-10, 10], y in [-5, 5].
+    let mut w = world_with_camera(10.0);
+    shape(&mut w, 0.0, 0.0, "rect", 2.0, "#FF0000", 0.0);
+    shape(&mut w, 8.0, 3.0, "circle", 2.0, "#00FF00", 0.0);
+    shape(&mut w, 50.0, 0.0, "rect", 2.0, "#0000FF", 0.0); // off screen: culled on the GPU
+    let rep = r.render(&w, 0, 0.0).unwrap();
+    assert_eq!(
+        rep.stats.sprites, 3,
+        "every sprite is submitted; the GPU culls"
+    );
+    assert_eq!(rep.stats.draw_calls, 2, "rect run then circle run");
+    assert!(rep.missing_atlases.is_empty());
+    let img = r.capture().unwrap();
+    assert_eq!(
+        img.pixel(100, 50)[..3],
+        [255, 0, 0],
+        "red rect at the centre"
+    );
+    // 2 units at 10 px/unit: a 20 px square.
+    assert_eq!(
+        img.count_color([255, 0, 0], 2),
+        400,
+        "{}",
+        img.count_color([255, 0, 0], 2)
+    );
+    let (cx, cy) = r.to_pixel(8.0, 3.0);
+    assert_eq!(
+        img.pixel(cx as u32, cy as u32)[..3],
+        [0, 255, 0],
+        "green circle centre"
+    );
+    let green = img.count_color([0, 255, 0], 2);
+    assert!(
+        green > 250 && green < 340,
+        "a circle of radius 10 px: {green}"
+    );
+    assert_eq!(
+        img.count_color([0, 0, 255], 2),
+        0,
+        "the far rect never rasterised"
+    );
+    assert_eq!(
+        img.pixel(5, 5)[..3],
+        [69, 69, 80],
+        "clear colour (linear 0.06) in sRGB elsewhere"
+    );
+    let path = std::env::temp_dir().join(format!("argus-render-{}.png", std::process::id()));
+    img.save_png(&path).unwrap();
+    assert!(std::fs::metadata(&path).unwrap().len() > 100);
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn z_orders_and_atlas_runs_make_the_draw_calls() {
+    let Some(mut r) = renderer(64, 64) else {
+        return;
+    };
+    let mut w = world_with_camera(8.0);
+    // Same spot: the higher z wins the pixel regardless of spawn order.
+    shape(&mut w, 0.0, 0.0, "rect", 4.0, "#0000FF", 5.0);
+    shape(&mut w, 0.0, 0.0, "rect", 4.0, "#FF0000", 1.0);
+    let rep = r.render(&w, 0, 0.0).unwrap();
+    assert_eq!(rep.stats.draw_calls, 1, "one atlas, one run");
+    assert_eq!(r.capture().unwrap().pixel(32, 32)[..3], [0, 0, 255]);
+    // Interleaving z across atlases costs extra runs, and only then.
+    shape(&mut w, 2.0, 2.0, "circle", 1.0, "#FFFFFF", 3.0);
+    let rep = r.render(&w, 0, 0.0).unwrap();
+    assert_eq!(rep.stats.draw_calls, 3, "rect z1, circle z3, rect z5");
+    assert_eq!(rep.stats.atlases, 2);
+}
+
+#[test]
+fn positions_interpolate_between_the_last_two_ticks() {
+    let Some(mut r) = renderer(100, 100) else {
+        return;
+    };
+    let mut w = world_with_camera(10.0);
+    let e = shape(&mut w, -4.0, 0.0, "rect", 1.0, "#FFFFFF", 0.0);
+    r.render(&w, 0, 0.0).unwrap();
+    // The sim moved it 4 units right during tick 1; real time is half way.
+    w.set_field(e, "Transform.pos", Vec2::new(0.0, 0.0))
+        .unwrap();
+    let rep = r.render(&w, 1, 0.5).unwrap();
+    assert_eq!(rep.interpolated, 1);
+    let img = r.capture().unwrap();
+    assert_eq!(
+        img.pixel(30, 50)[..3],
+        [255, 255, 255],
+        "drawn at x = -2, half way"
+    );
+    assert_ne!(img.pixel(50, 50)[..3], [255, 255, 255]);
+    // alpha 1 (or the discrete clock) draws the current state.
+    let rep = r.render(&w, 1, 1.0).unwrap();
+    assert_eq!(rep.interpolated, 0);
+    assert_eq!(r.capture().unwrap().pixel(50, 50)[..3], [255, 255, 255]);
+    // A tick gap (two ticks since last frame) is not interpolated across.
+    w.set_field(e, "Transform.pos", Vec2::new(4.0, 0.0))
+        .unwrap();
+    let rep = r.render(&w, 3, 0.5).unwrap();
+    assert_eq!(rep.interpolated, 0);
+}
+
+#[test]
+fn a_named_atlas_loads_from_assets_and_a_missing_one_is_reported() {
+    let Some(mut r) = renderer(64, 64) else {
+        return;
+    };
+    let dir = std::env::temp_dir().join(format!("argus-atlas-{}", std::process::id()));
+    std::fs::create_dir_all(dir.join("assets")).unwrap();
+    // A 2x1 PNG: left pixel yellow, right pixel cyan, two frames by grid.
+    let png_path = dir.join("assets").join("tiles.png");
+    let img = argus_render::Image {
+        width: 2,
+        height: 1,
+        rgba: vec![255, 255, 0, 255, 0, 255, 255, 255],
+    };
+    img.save_png(&png_path).unwrap();
+    std::fs::write(
+        dir.join("assets").join("tiles.atlas.toml"),
+        "grid = [2, 1]\n",
+    )
+    .unwrap();
+    let names = r.load_atlases(&dir).unwrap();
+    assert_eq!(names, vec!["tiles"]);
+    assert_eq!(r.gpu().atlas("tiles").unwrap().frames.len(), 2);
+
+    let mut w = world_with_camera(8.0);
+    let e = w.spawn();
+    w.insert(e, Transform::at(0.0, 0.0)).unwrap();
+    let atlas = w.strings().intern("tiles");
+    w.insert(
+        e,
+        Sprite {
+            atlas,
+            frame: 1,
+            size: Vec2::new(4.0, 4.0),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let ghost = w.spawn();
+    w.insert(ghost, Transform::at(-3.0, 0.0)).unwrap();
+    let nope = w.strings().intern("nope");
+    w.insert(
+        ghost,
+        Sprite {
+            atlas: nope,
+            size: Vec2::new(1.0, 1.0),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let rep = r.render(&w, 0, 0.0).unwrap();
+    assert_eq!(rep.missing_atlases, vec!["nope".to_string()]);
+    let img = r.capture().unwrap();
+    assert_eq!(
+        img.pixel(32, 32)[..3],
+        [0, 255, 255],
+        "frame 1 is the cyan half"
+    );
+    let (gx, gy) = r.to_pixel(-3.0, 0.0);
+    assert_eq!(
+        img.pixel(gx as u32, gy as u32)[..3],
+        [255, 0, 255],
+        "a missing atlas draws magenta"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// §17: 200,000 instanced sprites per frame. Release only.
+#[test]
+#[ignore]
+fn perf_200k_sprites_per_frame() {
+    let Some(mut r) = renderer(1280, 720) else {
+        return;
+    };
+    let mut w = world_with_camera(200.0);
+    let mut seed = 7u64;
+    let mut next = || {
+        seed ^= seed << 13;
+        seed ^= seed >> 7;
+        seed ^= seed << 17;
+        (seed % 100_000) as f32 / 250.0 - 200.0
+    };
+    for i in 0..200_000 {
+        let kind = if i % 2 == 0 { "rect" } else { "circle" };
+        shape(
+            &mut w,
+            next(),
+            next(),
+            kind,
+            1.5,
+            "#E8703F",
+            ((i / 2) % 4) as f32,
+        );
+    }
+    r.render(&w, 0, 0.0).unwrap();
+    let mut best = f64::MAX;
+    for _ in 0..5 {
+        let rep = r.render(&w, 0, 0.0).unwrap();
+        assert_eq!(rep.stats.sprites, 200_000);
+        assert_eq!(rep.stats.draw_calls, 8, "four z values, two atlases");
+        best = best.min(rep.ms);
+    }
+    eprintln!(
+        "200k sprites: build + submit {best:.2} ms per frame on {}",
+        r.gpu().adapter
+    );
+    assert!(best < 40.0, "{best} ms");
+}

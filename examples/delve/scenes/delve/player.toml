@@ -14,3 +14,12 @@ pos = [0.0, 0.0]
 [Health]
 cur = 10
 max = 10
+
+[Sprite]
+kind = "circle"
+size = [0.9, 0.9]
+color = "#F2E6C8"
+z = 5.0
+
+[Camera]
+height = 24.0

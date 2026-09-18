@@ -42,3 +42,7 @@ component "Turn" {
   doc = "Turn counter",
   n = field.u32 { default = 0 },
 }
+
+component "Tile" {
+  doc = "A drawn floor cell; regenerated with the floor",
+}

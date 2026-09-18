@@ -16,3 +16,12 @@ fire_every = 6
 [Health]
 cur = 10
 max = 10
+
+[Sprite]
+kind = "circle"
+size = [1.2, 1.2]
+color = "#F2E6C8"
+z = 5.0
+
+[Camera]
+height = 60.0

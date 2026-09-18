@@ -1,7 +1,7 @@
 return system "sim.waves" {
   stage = "sim",
   reads = { "Director", "Enemy", "Transform" },
-  writes = { "Director", "Enemy", "Transform", "Health" },
+  writes = { "Director", "Enemy", "Transform", "Health", "Sprite" },
   rng = "waves",
   doc = "Counts the living, announces a cleared wave, and after the gap spawns the next one on a ring around the player, in one batch.",
   run = function(q)
@@ -24,7 +24,7 @@ return system "sim.waves" {
     local p = q:entity("@player"):get("Transform").pos
     local rng = q:rng()
     local radius = d.spawn_radius
-    q:spawn_many(count, { "Transform", "Enemy", "Health" }, function(e, i)
+    q:spawn_many(count, { "Transform", "Enemy", "Health", "Sprite" }, function(e, i)
       local a = rng:next() * 2 * math.pi
       local r = radius + rng:next() * 10
       e:get("Transform").pos = p + vector.create(math.cos(a) * r, math.sin(a) * r, 0)
@@ -34,6 +34,11 @@ return system "sim.waves" {
       local hp = e:get("Health")
       hp.cur = 2
       hp.max = 2
+      local sp = e:get("Sprite")
+      sp.kind = "circle"
+      sp.size = vector.create(0.9, 0.9, 0)
+      sp.color = "#E8703F"
+      sp.z = 1
     end)
     d.wave = n
     d.cleared = false
