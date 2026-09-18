@@ -21,6 +21,7 @@ pub fn overview() -> String {
         }
         let _ = writeln!(out, "    {:<22} {}", m.name, first_sentence(m.doc));
     }
+    out.push_str("\n  test\n    test [name]            run the scenarios in tests/*.luau (test.run); --seeds 1..50, --file tests/x.luau, --update goldens\n");
     out.push_str("\n  daemon\n    daemon start           start the project's daemon in the background (a method does this too when needed)\n    daemon stop            session.shutdown on the running daemon\n    daemon status          is a daemon running for this project, and which\n    daemon run             run the daemon in the foreground (what argusd --project does)\n");
     out
 }
@@ -36,6 +37,9 @@ pub fn topic(words: &[String]) -> String {
     }
     if joined == "daemon" {
         return daemon();
+    }
+    if joined == "test" {
+        return test();
     }
     if METHODS
         .iter()
@@ -98,12 +102,22 @@ pub fn daemon() -> String {
     "usage: argus daemon start [--scene s] [--seed n]   start the project's daemon in the background\n       argus daemon stop                          ask it to exit (session.shutdown)\n       argus daemon status                        running or not, pid, socket\n       argus daemon run [--scene s] [--seed n]     serve in the foreground until stopped\n\nThe daemon is found through <project>/.argus/daemon.json. A method call starts one when none answers,\nunless --no-start is given.\n".to_string()
 }
 
+/// Help for `argus test`.
+pub fn test() -> String {
+    let m = docs::find("test.run").expect("test.run is a method");
+    format!(
+        "usage: argus test [name] [--seeds 1..50] [--file tests/x.luau] [--update] [--json]\n\n{}\n\nname: exact or substring of a scenario name; none runs every scenario.\n--seeds: override the scenario's seed or range: 7, 1..50, or 1,2,9.\n--file: only that file's scenarios. --update: rewrite state goldens under tests/goldens/.\n--json: the test.run report as one line. Exit 0 when every run passed, 1 otherwise.\n\nsame as: test.run {{{}}}\n",
+        m.doc, m.params
+    )
+}
+
 /// Help for whatever the words resolved to.
 pub fn for_command(cmd: &Command) -> String {
     match cmd {
         Command::Method(name, _) => method(docs::find(name).expect("resolved")),
         Command::Namespace(ns) => namespace(ns),
         Command::Daemon(_) => daemon(),
+        Command::Test(_) => test(),
         Command::Help(t) => topic(t),
         Command::Unknown(_) => overview(),
     }

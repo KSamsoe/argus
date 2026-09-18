@@ -360,6 +360,18 @@ pub const METHODS: &[MethodDoc] = &[
         returns: "{topics}",
     },
     MethodDoc {
+        name: "test.list",
+        doc: "The scenarios under tests/*.luau: name, file, scene, seeds. Files that fail to load are listed, not fatal.",
+        params: "",
+        returns: "{total, rows: [{name, file, scene, seeds, runs}], load_errors: [{file, message}]}",
+    },
+    MethodDoc {
+        name: "test.run",
+        doc: "Run scenarios headless in this daemon: each seed loads the scene fresh, scripts input, runs frames, and checks expectations; state goldens live in tests/goldens/ and a mismatch is a field-level diff. The scene that was open is reloaded afterwards. `argus test` is this.",
+        params: "name: string (optional; exact or substring); file: string (optional, tests/x.luau); seeds: string (optional override: \"7\", \"1..50\", \"1,2,9\"); update: boolean (rewrite goldens)",
+        returns: "{ok, ms, total_runs, passed_runs, failed_runs, scenarios: [{name, file, scene, ok, seeds: [{seed, ok, ms, tick, error, expectations: [{kind, desc, ok, message, ...}], log}]}], load_errors}",
+    },
+    MethodDoc {
         name: "prof.frame",
         doc: "The last tick: total time and per-system breakdown.",
         params: "",

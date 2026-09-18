@@ -304,6 +304,51 @@ fn the_cli_talks_to_a_daemon_over_its_socket() {
     assert_eq!(code, EXIT_CONNECT);
     assert!(err.contains("cannot connect"));
 
+    // argus test: the runner's report, compact.
+    common::write(
+        t.path(),
+        "tests/bat.luau",
+        "return scenario \"the bat dies\" { scene = \"arena\", seeds = range(1, 3), run = function(t)\n  t:run_until { event = \"death\", max_frames = 50 }\n  t.expect:field(\"@bat\", \"Health.cur\"):eq(0)\nend }",
+    );
+    common::write(
+        t.path(),
+        "tests/wrong.luau",
+        "return scenario \"wrong\" { scene = \"arena\", seed = 4, run = function(t)\n  t.expect:count({ has = {\"Enemy\"} }):eq(0)\nend }",
+    );
+    let (code, out, err) = cli(&name, &["test"]);
+    assert_eq!(code, EXIT_RPC, "{out}{err}");
+    assert!(
+        out.starts_with("PASS  the bat dies  (arena, 3 seeds 1..3: 3 ok, 0 failed, "),
+        "{out}"
+    );
+    assert!(out.contains("FAIL  wrong  (arena, seed 4, "), "{out}");
+    assert!(
+        out.contains("    seed 4: count {has = [\"Enemy\"]}: 1 == 0 failed"),
+        "{out}"
+    );
+    assert!(
+        out.trim_end().ends_with("2 scenarios, 4 runs, 1 failed")
+            || out.contains("2 scenarios, 4 runs, 1 failed, "),
+        "{out}"
+    );
+    let (code, out, _) = cli(&name, &["test", "bat", "dies", "--seeds", "1..2", "--json"]);
+    assert_eq!(code, EXIT_OK, "{out}");
+    let rep: Json = serde_json::from_str(out.trim()).unwrap();
+    assert_eq!(rep["total_runs"], 2);
+    assert_eq!(rep["scenarios"][0]["name"], "the bat dies");
+    let (code, out, _) = cli(&name, &["test", "--help"]);
+    assert_eq!(code, EXIT_OK);
+    assert!(out.starts_with("usage: argus test [name]"));
+    assert_eq!(
+        resolve(&args(&["test", "run"])),
+        Command::Method("test.run", vec![]),
+        "the method spelling still works"
+    );
+    assert_eq!(
+        resolve(&args(&["test", "wrong"])),
+        Command::Test(args(&["wrong"]))
+    );
+
     let (code, _, _) = cli(&name, &["session", "shutdown"]);
     assert_eq!(code, EXIT_OK);
 }

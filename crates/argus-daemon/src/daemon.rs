@@ -290,6 +290,11 @@ impl Daemon {
             "prof.archetypes" => Ok(self.prof_archetypes()),
             "prof.alloc" => self.prof_alloc(params),
             "prof.capture" => self.prof_capture(params),
+            "test.list" => {
+                let root = self.require_session()?.root.clone();
+                argus_test::list(&root).map_err(|e| ArgusError::new(codes::TEST_RUNNER, e))
+            }
+            "test.run" => self.test_run(params),
             other => Err(ArgusError::new(
                 codes::UNKNOWN_METHOD,
                 format!("no method {other:?}"),
@@ -374,6 +379,9 @@ impl Daemon {
         scene_name: &str,
         seed: Option<u64>,
     ) -> Result<Json> {
+        // A new world: the log's records refer to the old one's component ids.
+        // Sequence numbers keep counting so a client's `since` cursor stays valid.
+        self.events.records.clear();
         let scene_doc = SceneDoc::load(&root, scene_name)?;
         let clock = Clock::parse(scene_doc.clock.as_deref().unwrap_or(&cfg.clock))?;
         let seed = seed.unwrap_or(match scene_doc.seed {
@@ -744,6 +752,9 @@ impl Daemon {
             "source": "live",
         });
         if let (Some(id), Some(ses)) = (&id, &self.session) {
+            if let Some(room) = ses.scene.room_of(id) {
+                out["room"] = json!(room);
+            }
             if resolved {
                 if let Some(re) = ses.scene.resolved(id) {
                     out["resolved"] = resolved_json(re);
@@ -1826,6 +1837,43 @@ impl Daemon {
         Ok(json!({ "topics": set.iter().collect::<Vec<_>>() }))
     }
 
+    // ----- test -------------------------------------------------------------
+
+    /// `test.run`: run scenarios through this daemon's own methods, then
+    /// put back the scene that was open (§9: headless in the daemon).
+    fn test_run(&mut self, params: &Json) -> Result<Json> {
+        let before = {
+            let ses = self.require_session()?;
+            (ses.scene_name.clone(), ses.seed)
+        };
+        let opts = argus_test::Options {
+            name: json::opt_str(params, "name")?.map(str::to_string),
+            file: json::opt_str(params, "file")?.map(str::to_string),
+            seeds: match params.get("seeds") {
+                None | Some(Json::Null) => None,
+                Some(Json::String(s)) => Some(s.clone()),
+                Some(Json::Number(n)) => Some(n.to_string()),
+                Some(other) => {
+                    return Err(bad_params(format!(
+                        "seeds must be a string like \"1..50\"; got {other}"
+                    )))
+                }
+            },
+            update_goldens: json::bool_param(params, "update", false)?,
+        };
+        let report = argus_test::run(self, &opts);
+        let restore = self.call(
+            0,
+            "scene.load",
+            &json!({ "scene": before.0, "seed": before.1 }),
+        );
+        let mut report = report.map_err(|e| ArgusError::new(codes::TEST_RUNNER, e))?;
+        if let Err(e) = restore {
+            report["restore_error"] = json::error_json(&e);
+        }
+        Ok(report)
+    }
+
     // ----- prof -------------------------------------------------------------
 
     fn prof_frame(&self) -> Json {
@@ -2067,6 +2115,18 @@ fn tick_json(t: &argus_sim::TickRecord) -> Json {
         "systems": t.systems.iter().map(|s| json!([s.name.as_ref(), s.elapsed.as_secs_f64() * 1000.0, s.allocs, s.bytes])).collect::<Vec<_>>(),
         "archetypes": t.archetypes.iter().map(|(id, n)| json!([id, n])).collect::<Vec<_>>(),
     })
+}
+
+impl argus_test::Driver for Daemon {
+    fn call(&mut self, method: &str, params: &Json) -> std::result::Result<Json, Json> {
+        Daemon::call(self, 0, method, params).map_err(|e| json::error_json(&e))
+    }
+    fn root(&self) -> PathBuf {
+        self.session
+            .as_ref()
+            .map(|s| s.root.clone())
+            .unwrap_or_default()
+    }
 }
 
 /// One event as `obs.events` reports it.

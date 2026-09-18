@@ -2,6 +2,8 @@
 
 Section 18 of the design document lists phase 0 as one sentence. This file breaks that sentence into pieces, attaches every constraint from elsewhere in the document that each piece has to meet, and records status. Update it as pieces land so nothing gets dropped between pieces.
 
+**All ten items are done (2026-09-18).** What remains against the phase-0 gate is the gate itself: an agent, using only the CLI, building headless cores of Swarm and Delve from a paragraph brief each. Carried forward by decision: `obs.trace` (phase 1), `code` in `run.toml` (phase 2 recorder), `argus docs --for-agent` and `argus mcp` (phase 2), tile pathfinding under `t.expect:path` (phase 1), replay and clip export on test failure (phase 2).
+
 Phase 0 rule from the plan: no renderer, no audio, no input devices. Actions are injected only.
 
 ## 1. ECS core with SoA columns, archetypes, and hierarchy
@@ -86,7 +88,7 @@ Phase 0 rule from the plan: no renderer, no audio, no input devices. Actions are
 
 ## 10. Scenario test runner with state goldens and seed sweeps
 
-**Status: not started.** Constraints (§9):
+**Status: done** in `crates/argus-test` (the harness, `harness.luau`, over a `Driver` that answers protocol methods), `test.list` and `test.run` in the daemon, and `argus test` in the CLI. Sentence-level trace in `crates/argus-test/SPEC-TRACE.md`. Every constraint below is met except `path(...)`, which is room-graph reachability until tilemap navigation exists (phase 1), and the replay dump and clip export on failure, which are phase 2 as the item says. A series declared after the run it should watch (the §9 example's order) is handled by running that seed again with the series in place, which determinism makes exact. Perf bounds get a default x1.5 margin (`perf_margin` on the scenario). Constraints:
 
 - `tests/*.luau`: `scenario "name" { scene, seed | seeds = range(a, b), run = function(t) ... end }`.
 - `t.input:hold(action, value, frames)`, `t.input:tap(action)`, `t:run_until { event | sim_time, max_frames, speed = "max" }`, `t:advance { by = "turn", n }`.

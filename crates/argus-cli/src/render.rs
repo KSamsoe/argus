@@ -1,7 +1,7 @@
 //! Results as text for a terminal. Row results (`{columns, rows}`) become
 //! aligned tables; everything else is pretty JSON. `--json` bypasses this.
 
-use serde_json::Value as Json;
+use serde_json::{json, Value as Json};
 use std::fmt::Write;
 
 /// A result for a human.
@@ -118,6 +118,73 @@ pub fn error(e: &Json) -> String {
     if let Some(r) = e["data"]["ref"].as_str() {
         let _ = writeln!(out, "  at: {r}");
     }
+    out
+}
+
+/// A `test.run` report as the compact text of §9: one line per scenario,
+/// a line per failing seed with the expectation that failed, a summary.
+pub fn test_report(r: &Json) -> String {
+    let mut out = String::new();
+    for e in r["load_errors"].as_array().into_iter().flatten() {
+        let _ = writeln!(
+            out,
+            "LOAD  {}: {}",
+            e["file"].as_str().unwrap_or("?"),
+            e["message"].as_str().unwrap_or("")
+        );
+    }
+    for sc in r["scenarios"].as_array().into_iter().flatten() {
+        let seeds = sc["seeds"].as_array().cloned().unwrap_or_default();
+        let failed: Vec<&Json> = seeds.iter().filter(|s| s["ok"] != json!(true)).collect();
+        let ms: f64 = seeds.iter().filter_map(|s| s["ms"].as_f64()).sum();
+        let seed_text = match seeds.len() {
+            0 => "no seeds".to_string(),
+            1 => format!("seed {}", cell(&seeds[0]["seed"])),
+            n => format!(
+                "{n} seeds {}..{}: {} ok, {} failed",
+                cell(&seeds[0]["seed"]),
+                cell(&seeds[n - 1]["seed"]),
+                n - failed.len(),
+                failed.len()
+            ),
+        };
+        let _ = writeln!(
+            out,
+            "{}  {}  ({}, {seed_text}, {:.0} ms)",
+            if failed.is_empty() { "PASS" } else { "FAIL" },
+            sc["name"].as_str().unwrap_or("?"),
+            sc["scene"].as_str().unwrap_or("?"),
+            ms
+        );
+        for s in failed.iter().take(10) {
+            let seed = cell(&s["seed"]);
+            if let Some(e) = s["error"].as_str() {
+                let _ = writeln!(out, "    seed {seed}: error: {e}");
+            }
+            for ex in s["expectations"].as_array().into_iter().flatten() {
+                if ex["ok"] != json!(true) {
+                    let _ = writeln!(
+                        out,
+                        "    seed {seed}: {}",
+                        ex["message"].as_str().unwrap_or("?")
+                    );
+                }
+            }
+        }
+        if failed.len() > 10 {
+            let _ = writeln!(out, "    ... and {} more failing seeds", failed.len() - 10);
+        }
+    }
+    let n = r["scenarios"].as_array().map(Vec::len).unwrap_or(0);
+    let _ = writeln!(
+        out,
+        "{n} scenario{}, {} run{}, {} failed, {:.0} ms",
+        if n == 1 { "" } else { "s" },
+        r["total_runs"],
+        if r["total_runs"] == json!(1) { "" } else { "s" },
+        r["failed_runs"],
+        r["ms"].as_f64().unwrap_or(0.0)
+    );
     out
 }
 

@@ -63,6 +63,12 @@ pub struct Invocation {
     pub scene: Option<String>,
     /// See `scene`.
     pub seed: Option<u64>,
+    /// `--seeds <spec>`: the seed sweep for `argus test`.
+    pub seeds: Option<String>,
+    /// `--file <tests/x.luau>`: only that file's scenarios, for `argus test`.
+    pub file: Option<String>,
+    /// `--update`: rewrite goldens, for `argus test`.
+    pub update: bool,
 }
 
 /// Parse a command line (without the program name).
@@ -85,6 +91,9 @@ pub fn parse(argv: &[String]) -> Result<Invocation, String> {
             "--socket" => inv.socket = Some(need(&mut it)?),
             "--params" | "-p" => inv.params_json.push(need(&mut it)?),
             "--scene" => inv.scene = Some(need(&mut it)?),
+            "--seeds" => inv.seeds = Some(need(&mut it)?),
+            "--file" => inv.file = Some(need(&mut it)?),
+            "--update" => inv.update = true,
             "--seed" => {
                 let v = need(&mut it)?;
                 inv.seed = Some(
@@ -129,6 +138,8 @@ pub enum Command {
     Help(Vec<String>),
     /// `argus daemon <start|stop|status|run>`.
     Daemon(Vec<String>),
+    /// `argus test [name]`: `test.run` with a compact report (§9).
+    Test(Vec<String>),
     /// Nothing recognisable.
     Unknown(Vec<String>),
 }
@@ -143,6 +154,9 @@ pub fn resolve(words: &[String]) -> Command {
     match words[0].as_str() {
         "help" => return Command::Help(words[1..].to_vec()),
         "daemon" => return Command::Daemon(words[1..].to_vec()),
+        "test" if words.len() == 1 || !METHODS.iter().any(|m| m.name == words[..2].join(".")) => {
+            return Command::Test(words[1..].to_vec())
+        }
         _ => {}
     }
     let mut best: Option<(&'static str, usize)> = None;
@@ -199,6 +213,7 @@ pub fn run(argv: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
             EXIT_USAGE
         }
         Command::Daemon(words) => project::daemon_command(&inv, &words, out, err),
+        Command::Test(words) => test_command(&inv, &words, out, err),
         Command::Method(method, bare) => {
             let mut args = bare;
             args.extend(inv.args.iter().cloned());
@@ -227,6 +242,65 @@ pub fn run(argv: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
             }
             code
         }
+    }
+}
+
+/// `argus test [name] [--seeds 1..50] [--file tests/x.luau] [--update] [--json]`:
+/// `test.run` on the project's daemon, reported compactly (§9). Exit 0
+/// when every run passed, 1 otherwise.
+fn test_command(
+    inv: &Invocation,
+    words: &[String],
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> i32 {
+    let mut name: Vec<String> = words.to_vec();
+    name.extend(inv.args.iter().filter(|a| !a.contains('=')).cloned());
+    let mut params = json!({});
+    if !name.is_empty() {
+        params["name"] = json!(name.join(" "));
+    }
+    if let Some(s) = &inv.seeds {
+        params["seeds"] = json!(s);
+    }
+    if let Some(f) = &inv.file {
+        params["file"] = json!(f);
+    }
+    if inv.update {
+        params["update"] = json!(true);
+    }
+    let mut client = match project::connect(inv, err) {
+        Ok(c) => c,
+        Err(e) => {
+            let _ = writeln!(err, "argus: {e}");
+            return EXIT_CONNECT;
+        }
+    };
+    let resp = match client.call("test.run", params) {
+        Ok(r) => r,
+        Err(e) => {
+            let _ = writeln!(err, "argus: connection lost: {e}");
+            return EXIT_CONNECT;
+        }
+    };
+    if let Some(e) = resp.get("error") {
+        if inv.json {
+            let _ = writeln!(out, "{}", json!({ "error": e }));
+        } else {
+            let _ = write!(err, "{}", render::error(e));
+        }
+        return EXIT_RPC;
+    }
+    let report = resp.get("result").cloned().unwrap_or(Json::Null);
+    if inv.json {
+        let _ = writeln!(out, "{report}");
+    } else {
+        let _ = write!(out, "{}", render::test_report(&report));
+    }
+    if report["ok"] == json!(true) {
+        EXIT_OK
+    } else {
+        EXIT_RPC
     }
 }
 

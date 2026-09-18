@@ -96,6 +96,17 @@ Phase 0, piece 9: the command line, in [crates/argus-cli](crates/argus-cli), bin
 
 Its trace is [crates/argus-cli/SPEC-TRACE.md](crates/argus-cli/SPEC-TRACE.md).
 
+Phase 0, piece 10: the scenario test runner, in [crates/argus-test](crates/argus-test), reached as `argus test`.
+
+- A test is a scenario in `tests/*.luau`: `scenario "first wave clears" { scene = "arena", seed = 7, run = function(t) ... end }`. Inside, `t.input:hold` and `t.input:tap` inject actions, `t:run_until` runs to an event, a sim time, or a frame count, `t:advance` takes turns, and `t.expect` asserts on counts, fields, events, sums, series trends, stage timings, and reachability.
+- Everything `t` does is a protocol call, so the runner is a client of the daemon like the editor and the CLI. A run loads the scene fresh for every seed, and the scene that was open comes back afterwards.
+- State goldens: `t.expect:snapshot("wave1_end", { select, where })` stores the selected rows as JSON under `tests/goldens/` on the first run and compares on every later one. A mismatch is a field-level diff naming the entity, the field, the golden value, and the new one. `--update` rewrites.
+- Seed sweeps: `seeds = range(1, 200)` in the scenario, or `argus test --seeds 1..50` over any of them, shake out order-dependent bugs. Each seed is its own run in the report.
+- Perf assertions read the profiler and compare a percentile against the bound with a margin, so they can gate without flaking. A short scenario takes about ten milliseconds.
+- The report is one line per scenario, one per failing seed and expectation, and a summary; `--json` gives the whole thing. A scenario that throws is one failed seed with its `file:line`, never a crash.
+
+Its trace is [crates/argus-test/SPEC-TRACE.md](crates/argus-test/SPEC-TRACE.md).
+
 ## Building
 
 Rust stable (1.77 or newer for `offset_of!`) plus a C++ compiler, because the Luau VM is built from source by the `mlua` crate. On this machine the Rust toolchain is the GNU target and the compiler is WinLibs MinGW-w64 GCC (installed with `winget install BrechtSanders.WinLibs.POSIX.UCRT`); its `mingw64/bin` must be on `PATH` when building.
@@ -162,12 +173,17 @@ crates/
   argus-daemon/       argusd: JSON-RPC 2.0 over local socket or stdio; session, world, scene, edit, sim, script, obs, prof (piece 4)
   argus-index/        .argus/index.db: SQLite cache of entities, components, refs, prefabs, defs, schemas, docs; shared query evaluator (piece 6)
   argus-input/        input.toml action maps, the Actions component and input.actions system, injected input, the replayable log (piece 7)
-  argus-cli/          argus: every daemon method as a subcommand, help from the daemon's method table, daemon start/stop (piece 9)
+  argus-cli/          argus: every daemon method as a subcommand, help from the daemon's method table, daemon start/stop, argus test (piece 9)
+  argus-test/         the scenario harness (tests/*.luau), state goldens, seed sweeps; test.list and test.run (piece 10)
 docs/
   argus-engine-design-v0.3.html   the design document
   phase0-checklist.md             every phase-0 item and its status
 ```
 
-## Next pieces of phase 0
+## Where phase 0 stands
 
-The scenario test runner, `argus test`. See the checklist for the exact spec it has to satisfy.
+All ten items of the plan's phase-0 sentence are built, each with a trace from the design's sentences to code and tests. What remains is the gate in section 18: an agent, from an empty directory and a paragraph brief each, building headless cores of Swarm and Delve using only the CLI, and answering "why did the player die" from events. If either game fights the protocol, that finding is the phase's output.
+
+```bash
+cargo run -q -p argus-cli --bin argus -- --project path/to/game test --seeds 1..20
+```

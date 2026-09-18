@@ -51,4 +51,6 @@ pub mod codes {
     pub const UNKNOWN_METHOD: u32 = 4707;
     /// An `edit.lock` id is unknown or owned by someone else.
     pub const BAD_LOCK: u32 = 4708;
+    /// The scenario runner could not run (a broken harness or tests directory), as opposed to a failing test.
+    pub const TEST_RUNNER: u32 = 4709;
 }
