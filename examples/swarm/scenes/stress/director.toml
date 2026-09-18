@@ -1,0 +1,4 @@
+[Director]
+first = 50000
+growth = 1.0
+log_kills = false

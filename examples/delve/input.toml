@@ -1,0 +1,23 @@
+[actions.move]
+type = "axis2"
+doc = "Step direction; one step is one turn"
+[actions.move.bindings]
+keyboard = ["arrows"]
+gamepad = ["dpad"]
+
+[actions.wait]
+type = "button"
+doc = "Pass the turn"
+[actions.wait.bindings]
+keyboard = ["period"]
+gamepad = ["east"]
+
+[actions.descend]
+type = "button"
+doc = "Take the stairs when standing on them"
+[actions.descend.bindings]
+keyboard = ["greater"]
+gamepad = ["south"]
+
+[slots.1]
+devices = ["keyboard", "gamepad:0"]

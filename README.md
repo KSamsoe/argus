@@ -182,7 +182,9 @@ docs/
 
 ## Where phase 0 stands
 
-All ten items of the plan's phase-0 sentence are built, each with a trace from the design's sentences to code and tests. What remains is the gate in section 18: an agent, from an empty directory and a paragraph brief each, building headless cores of Swarm and Delve using only the CLI, and answering "why did the player die" from events. If either game fights the protocol, that finding is the phase's output.
+All ten items of the plan's phase-0 sentence are built, each with a trace from the design's sentences to code and tests, and the gate in section 18 is passed: [docs/phase0-gate.md](docs/phase0-gate.md) records an agent building headless cores of Swarm and Delve from a paragraph brief each, using only the CLI, with passing tests and "why did the player die" answered from the event log in both. The two games are in [examples/swarm](examples/swarm) and [examples/delve](examples/delve).
+
+The finding the gate was designed to produce: nothing in either game fought the protocol, but Luau at 50,000 live entities costs about 265 ms a tick, and `prof.alloc` shows it is table allocation per field access in the binding. The stress scene runs and its test passes; the two hot systems are the first candidates for promotion to Rust in phase 1, which the declared write sets make a local change.
 
 ```bash
 cargo run -q -p argus-cli --bin argus -- --project path/to/game test --seeds 1..20

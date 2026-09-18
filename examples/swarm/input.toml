@@ -1,0 +1,9 @@
+[actions.move]
+type = "axis2"
+doc = "Walk direction"
+[actions.move.bindings]
+keyboard = ["wasd"]
+gamepad = ["left_stick"]
+
+[slots.1]
+devices = ["keyboard", "gamepad:0"]

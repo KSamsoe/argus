@@ -1,0 +1,18 @@
+# The player: authored, stable id, the only entity with a slot.
+tags = ["player"]
+
+[PlayerSlot]
+slot = 1
+
+[Actions]
+
+[Transform]
+pos = [0.0, 0.0]
+
+[Player]
+speed = 6.0
+fire_every = 6
+
+[Health]
+cur = 10
+max = 10

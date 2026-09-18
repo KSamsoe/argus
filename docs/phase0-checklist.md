@@ -2,7 +2,7 @@
 
 Section 18 of the design document lists phase 0 as one sentence. This file breaks that sentence into pieces, attaches every constraint from elsewhere in the document that each piece has to meet, and records status. Update it as pieces land so nothing gets dropped between pieces.
 
-**All ten items are done (2026-09-18).** What remains against the phase-0 gate is the gate itself: an agent, using only the CLI, building headless cores of Swarm and Delve from a paragraph brief each. Carried forward by decision: `obs.trace` (phase 1), `code` in `run.toml` (phase 2 recorder), `argus docs --for-agent` and `argus mcp` (phase 2), tile pathfinding under `t.expect:path` (phase 1), replay and clip export on test failure (phase 2).
+**All ten items are done, and the gate is passed (2026-09-18).** The gate run is recorded in [phase0-gate.md](phase0-gate.md): headless cores of Swarm and Delve under `examples/`, built with the CLI alone, tests passing, and "why did the player die" answered from events in both. The phase's output is the finding that Luau at 50,000 entities costs 265 ms a tick, which `prof.alloc` attributes to per-field table allocation in the binding; the two hot systems are candidates for the Rust promotion §19 describes. Carried forward by decision: `obs.trace` (phase 1), `code` in `run.toml` (phase 2 recorder), `argus docs --for-agent` and `argus mcp` (phase 2), tile pathfinding under `t.expect:path` (phase 1), replay and clip export on test failure (phase 2).
 
 Phase 0 rule from the plan: no renderer, no audio, no input devices. Actions are injected only.
 

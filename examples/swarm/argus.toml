@@ -1,0 +1,4 @@
+name = "swarm"
+clock = "continuous@60"
+default_scene = "arena"
+plugins = []

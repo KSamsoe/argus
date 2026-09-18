@@ -1,0 +1,25 @@
+{
+  "rows": [
+    [
+      "@player",
+      [
+        5.999996662139893,
+        0
+      ],
+      10,
+      200
+    ]
+  ],
+  "scene": "arena",
+  "select": [
+    "id",
+    "Transform.pos",
+    "Health.cur",
+    "Player.kills"
+  ],
+  "where": {
+    "has": [
+      "Player"
+    ]
+  }
+}

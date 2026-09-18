@@ -1,0 +1,4 @@
+[Director]
+first = 200
+growth = 2.0
+log_kills = true

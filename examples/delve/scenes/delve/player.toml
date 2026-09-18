@@ -1,0 +1,16 @@
+# The hero: placed by sim.floor when a floor is generated.
+tags = ["player"]
+
+[PlayerSlot]
+slot = 1
+
+[Actions]
+
+[Transform]
+pos = [0.0, 0.0]
+
+[Player]
+
+[Health]
+cur = 10
+max = 10

@@ -1,0 +1,23 @@
+{
+  "rows": [
+    [
+      "@player",
+      [
+        21,
+        9
+      ],
+      8
+    ]
+  ],
+  "scene": "delve",
+  "select": [
+    "id",
+    "Transform.pos",
+    "Health.cur"
+  ],
+  "where": {
+    "has": [
+      "Health"
+    ]
+  }
+}
