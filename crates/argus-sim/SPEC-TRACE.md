@@ -91,6 +91,14 @@ Release build, one thread, development laptop. Gates in `tests/perf.rs`.
 |---|---|---|---|
 | The broadphase is rebuilt each tick. | Done | `run_tick` rebuilds it after `end_frame`, timed and allocation-counted as the `broadphase.rebuild` row at the end of the hierarchy stage, so the next tick's systems and any query between ticks see the tick's final positions. `SystemCtx::within`, `SystemCtx::nearest`, and `SystemCtx::spawn_with` (checked against the declared writes) are what the Luau binding wraps. | `prof_snapshot::every_system_is_timed_every_tick` (the row), `argus-luau/tests/systems.rs::vec2_fields_are_native_vectors_and_spawn_many_and_within_reach_the_broadphase` |
 
+## Phase 1, item 6: the physics step's place in the tick
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| The sim stage is the only stage that may mutate gameplay state (§3), so physics runs in sim, after the gameplay that sets velocities. | Done | `SystemDesc::last`: the system runs after every other system of its stage that does not order itself after it; `after` still holds, so a script may run after `physics.move`. `SystemInfo.last` reports it. Kahn's tie-break is now (last, registration index). | `stages::a_last_system_waits_for_the_rest_of_its_stage_and_events_are_seen_the_same_tick` |
+| Collision is an event gameplay reacts to (§8 L2, §12). | Done | `SystemCtx::events_now(name)`: the events emitted so far this tick (by frame), so a later system reacts the same tick and never to an old tick's events. | same |
+| The shared broadphase (§12). | Done | `SystemCtx::rebuild_broadphase`, which the physics step calls after moving bodies so its contact pass and later systems see where things are now. | `argus-physics/tests/physics.rs` |
+
 ## §18 Build plan
 
 Phase 0 item 2, "scheduler with stages, declared write sets, and both clock drivers", plus the `prof.*` data of item 8 that depends on it: this crate.

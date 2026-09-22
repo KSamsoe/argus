@@ -35,9 +35,19 @@ fn session_open_gives_the_one_screen_summary() {
         .iter()
         .map(|v| v.as_str().unwrap())
         .collect();
+    // The physics systems are in every scene and cost nothing without
+    // bodies; control runs first in sim, move and overlap last.
     assert_eq!(
         systems,
-        ["input.actions", "sim.damage", "sim.move", "present.hud"]
+        [
+            "input.actions",
+            "physics.control",
+            "sim.damage",
+            "sim.move",
+            "physics.move",
+            "physics.overlap",
+            "present.hud"
+        ]
     );
     assert!(
         s.to_string().len() < 2048,
@@ -518,7 +528,7 @@ fn sim_and_events_answer_why_the_bat_died() {
     assert_eq!(pf["tick"], 64, "the last tick that ran, numbered from 0");
     assert_eq!(pf["systems"][0][0], "input.actions", "stage order");
     let ps = ok(&mut d, "prof.systems", json!({ "last": 10 }));
-    assert_eq!(ps["rows"][1][0], "sim.damage");
+    assert_eq!(ps["rows"][2][0], "sim.damage");
     assert!(
         ok(&mut d, "prof.worst", json!({ "n": 2 }))["rows"]
             .as_array()
@@ -543,8 +553,19 @@ fn sim_and_events_answer_why_the_bat_died() {
     let pa = ok(&mut d, "prof.alloc", json!({ "last": 10 }));
     assert_eq!(pa["counted"], true);
     assert_eq!(
-        pa["rows"][1][0], "sim.damage",
+        pa["rows"][2][0], "sim.damage",
         "stage order, like prof.systems"
+    );
+    let physics: Vec<&serde_json::Value> = pa["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|r| r[0].as_str().unwrap().starts_with("physics."))
+        .collect();
+    assert_eq!(physics.len(), 3);
+    assert!(
+        physics.iter().all(|r| r[2].as_f64() == Some(0.0)),
+        "physics with no bodies allocates nothing: {physics:?}"
     );
     assert!(pa["rows"]
         .as_array()
@@ -623,8 +644,8 @@ fn scripts_reload_in_place_and_errors_are_data() {
     project(t.path());
     let mut d = open(t.path());
     let sys = ok(&mut d, "script.systems", json!({}));
-    assert_eq!(sys["total"], 4);
-    let dmg = &sys["rows"][1];
+    assert_eq!(sys["total"], 7);
+    let dmg = &sys["rows"][2];
     assert_eq!(dmg["name"], "sim.damage");
     assert_eq!(dmg["stage"], "sim");
     assert_eq!(dmg["writes"], json!(["Health"]));

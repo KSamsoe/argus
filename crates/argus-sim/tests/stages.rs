@@ -108,6 +108,77 @@ fn stages_run_in_fixed_order_and_after_orders_within_a_stage() {
     assert_eq!(names, got);
 }
 
+/// A `last` system (the physics step) runs after every other system of its
+/// stage, whatever the registration order, unless one orders itself after
+/// it; and a system sees the events emitted earlier in the same tick.
+#[test]
+fn a_last_system_waits_for_the_rest_of_its_stage_and_events_are_seen_the_same_tick() {
+    let mut w = World::new();
+    let mut s = Scheduler::new(SchedulerConfig::continuous(60.0));
+    let log = Rc::new(RefCell::new(Vec::new()));
+    s.add_system(SystemDesc::new("physics.move", Stage::Sim).last(), {
+        let log = log.clone();
+        Box::new(move |ctx| {
+            log.borrow_mut().push("physics.move".to_string());
+            ctx.emit("body.landed", vec![]);
+            Ok(())
+        })
+    })
+    .unwrap();
+    s.add_system(
+        SystemDesc::new("react", Stage::Sim).after("physics.move"),
+        {
+            let log = log.clone();
+            Box::new(move |ctx| {
+                let n = ctx.events_now("body.landed").count();
+                let all = ctx.events_now("").count();
+                log.borrow_mut().push(format!("react saw {n} of {all}"));
+                Ok(())
+            })
+        },
+    )
+    .unwrap();
+    s.add_system(
+        SystemDesc::new("gameplay", Stage::Sim),
+        logger(&log, "gameplay"),
+    )
+    .unwrap();
+    s.add_system(SystemDesc::new("late.read", Stage::Late), {
+        let log = log.clone();
+        Box::new(move |ctx| {
+            log.borrow_mut().push(format!(
+                "late saw {}",
+                ctx.events_now("body.landed").count()
+            ));
+            Ok(())
+        })
+    })
+    .unwrap();
+    s.step(&mut w, 2).unwrap();
+    let got = log.borrow().clone();
+    assert_eq!(
+        got,
+        vec![
+            "gameplay",
+            "physics.move",
+            "react saw 1 of 1",
+            "late saw 1",
+            // The next tick sees only its own events, not the last tick's.
+            "gameplay",
+            "physics.move",
+            "react saw 1 of 1",
+            "late saw 1",
+        ]
+    );
+    let listed: Vec<(String, bool)> = s
+        .systems(w.registry())
+        .unwrap()
+        .into_iter()
+        .map(|i| (i.name, i.last))
+        .collect();
+    assert_eq!(listed[1], ("physics.move".to_string(), true));
+}
+
 #[test]
 fn ordering_errors_are_structured() {
     let mut s = Scheduler::new(SchedulerConfig::default());

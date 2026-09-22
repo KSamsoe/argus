@@ -44,6 +44,13 @@ Every statement in the design document (v0.3) that constrains tilemaps as phase 
 | The tiles in one screen's view (3,680 tiles) | 0.18 ms |
 | Reopen with 324 chunks on disk | 3.8 ms |
 
+## Phase 1, item 6: what the physics step reads
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| Collision derived from tile properties, with slopes (§12 "slopes" in the kinematic tier). | Done | `Collide::Slope { left, right }` from a tile's `slope = [left, right]` property (a malformed one is solid, and the importer warns); `Collide::rank` settles layers that disagree (solid, then slope, then one-way). `scene.tiles.collision` shows slopes as `/` and a backslash. | `the_store_reads_slopes_and_notices_a_map_saved_elsewhere` |
+| The tick sees the chunk an edit wrote (§12 "both land in the same chunk"). | Done | `MapStore` holds the session's open maps; the daemon edits, draws, and answers `scene.tiles.*` through it, and the physics step reads collision from it, through per-tileset tables rebuilt when tilesets re-import. `open` reopens a map whose index another process saved. | same, `argus-daemon/tests/physics.rs` |
+
 ## §12 Rendering and the world
 
 | Spec | Status | Where | Test |

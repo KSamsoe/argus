@@ -30,6 +30,7 @@ argus-index = { path = "../argus-index", version = "0.0.1" }
 argus-input = { path = "../argus-input", version = "0.0.1" }
 argus-assets = { path = "../argus-assets", version = "0.0.1" }
 argus-tiles = { path = "../argus-tiles", version = "0.0.1" }
+argus-physics = { path = "../argus-physics", version = "0.0.1" }
 argus-test = { path = "../argus-test", version = "0.0.1" }
 argus-render = { path = "../argus-render", version = "0.0.1", optional = true }
 gilrs = { version = "0.11", optional = true }

@@ -106,6 +106,30 @@ impl SpatialHash {
         out
     }
 
+    /// Call `f` with every entity within `r` of `(x, y)` and its position,
+    /// in no particular order and without allocating: the physics tiers'
+    /// contact pass, which runs over every collider every tick.
+    pub fn for_each_within(&self, x: f32, y: f32, r: f32, mut f: impl FnMut(Entity, f32, f32)) {
+        if r < 0.0 {
+            return;
+        }
+        let (x0, y0) = self.key(x - r, y - r);
+        let (x1, y1) = self.key(x + r, y + r);
+        let r2 = r * r;
+        for cx in x0..=x1 {
+            for cy in y0..=y1 {
+                if let Some(list) = self.cells.get(&(cx, cy)) {
+                    for &i in list {
+                        let (e, ex, ey) = self.entries[i as usize];
+                        if (ex - x) * (ex - x) + (ey - y) * (ey - y) <= r2 {
+                            f(e, ex, ey);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     /// The nearest indexed entity accepted by `keep`, searching rings of
     /// cells outward up to `max_r`. `None` if nothing qualifies.
     pub fn nearest(

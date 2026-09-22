@@ -34,8 +34,8 @@ fn injected_actions_reach_gameplay_and_never_name_keys() {
     assert_eq!(desc["rows"][0]["written_by"], json!(["input.actions"]));
     assert_eq!(
         desc["rows"][0]["read_by"],
-        json!(["input.actions", "sim.move"]),
-        "a writer reads too"
+        json!(["input.actions", "physics.control", "sim.move"]),
+        "a writer reads too, and so does the character controller"
     );
     let sys = ok(&mut d, "script.systems", json!({}));
     assert_eq!(sys["rows"][0]["name"], "input.actions");

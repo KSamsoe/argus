@@ -144,6 +144,8 @@ pub struct SystemInfo {
     pub source: Option<String>,
     /// Doc string.
     pub doc: String,
+    /// Runs at the end of its stage.
+    pub last: bool,
 }
 
 /// Runs systems over a world on two clocks.
@@ -329,6 +331,7 @@ impl Scheduler {
                     disabled_reason: s.disabled_reason.clone(),
                     source: s.desc.source.clone(),
                     doc: s.desc.doc.clone(),
+                    last: s.desc.last,
                 });
             }
         }
@@ -381,7 +384,8 @@ impl Scheduler {
                 .filter(|&i| self.systems[i].desc.stage == stage)
                 .collect();
             // Kahn's algorithm, always taking the lowest registration index
-            // among ready systems so ties are deterministic.
+            // among ready systems so ties are deterministic; a `last` system
+            // waits while anything else is ready.
             let mut indeg: HashMap<usize, usize> = members.iter().map(|&i| (i, 0)).collect();
             let mut edges: HashMap<usize, Vec<usize>> = HashMap::new();
             for &i in &members {
@@ -416,8 +420,10 @@ impl Scheduler {
             }
             let mut ready: Vec<usize> = members.iter().copied().filter(|i| indeg[i] == 0).collect();
             let mut out = Vec::with_capacity(members.len());
+            let systems = &self.systems;
+            let key = |i: &usize| (systems[*i].desc.last, *i);
             while !ready.is_empty() {
-                ready.sort_unstable_by(|a, b| b.cmp(a));
+                ready.sort_unstable_by_key(|i| std::cmp::Reverse(key(i)));
                 let i = ready.pop().unwrap();
                 out.push(i);
                 if let Some(next) = edges.get(&i) {

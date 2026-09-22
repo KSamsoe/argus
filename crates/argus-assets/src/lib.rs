@@ -104,6 +104,24 @@ impl SpriteAsset {
     }
 }
 
+/// A tile's `slope` property: `[left, right]`, the floor's height at the
+/// tile's left and right edges as fractions of the tile, from its bottom
+/// (`[0, 1]` rises to the right at 45 degrees, `[0, 0.5]` is the low half of
+/// a 22.5-degree pair). Accepts the TOML array or two numbers.
+pub fn parse_slope(s: &str) -> Option<(f32, f32)> {
+    let t = s.trim().trim_start_matches('[').trim_end_matches(']');
+    let v: Vec<f32> = t
+        .split([',', ' '])
+        .filter(|p| !p.trim().is_empty())
+        .map(|p| p.trim().parse::<f32>())
+        .collect::<std::result::Result<_, _>>()
+        .ok()?;
+    match v[..] {
+        [l, r] if (0.0..=1.0).contains(&l) && (0.0..=1.0).contains(&r) => Some((l, r)),
+        _ => None,
+    }
+}
+
 /// A WAV a sound plays.
 #[derive(Clone, Debug, PartialEq)]
 pub struct WavInfo {
@@ -775,6 +793,15 @@ impl Importer {
                 fr.duration_ms = d;
             }
             fr.properties.extend(f.properties.clone());
+            if let Some(s) = fr.properties.get("slope") {
+                if parse_slope(s).is_none() {
+                    warn(
+                        &mut warnings,
+                        format!("slope = {s} is not [left, right] with heights from 0 to 1; the tile is solid"),
+                        &f.at,
+                    );
+                }
+            }
         }
         for (i, fr) in frames.iter_mut().enumerate() {
             if !(0.0..=1.0).contains(&fr.pivot[0]) || !(0.0..=1.0).contains(&fr.pivot[1]) {

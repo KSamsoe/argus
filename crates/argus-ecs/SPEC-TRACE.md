@@ -101,9 +101,16 @@ Release build, one thread, development laptop. Gates are `tests/perf.rs`; number
 
 | Spec | Status | Where | Test |
 |---|---|---|---|
-| Three physics tiers sharing one broadphase: a spatial hash over the live world, rebuilt incrementally each tick. | Done (the hash; the tiers are phase-1 item 6) | `spatial.rs`: `SpatialHash` of uniform cells over `(entity, x, y)`; `World::rebuild_broadphase` reads `GlobalTransform.pos` when present, else `Transform.pos`, straight from the columns; `World::within(x, y, r)` visits the cells a circle covers and checks distance exactly, nearest first; `SpatialHash::nearest` searches rings outward with a filter. Rebuilt from scratch each tick (2.3 ms at 100k); incremental maintenance is a later optimisation behind the same calls. | `spatial::within_and_nearest_come_from_the_hash_with_exact_distances`, `perf::perf_broadphase_rebuild_and_within_100k` |
+| Three physics tiers sharing one broadphase: a spatial hash over the live world, rebuilt incrementally each tick. | Done (the hash; the overlap and kinematic tiers are item 6, in `argus-physics`) | Item 6 added `SpatialHash::for_each_within`, a visit that allocates nothing, for the contact pass over every collider each tick. | `spatial.rs`: `SpatialHash` of uniform cells over `(entity, x, y)`; `World::rebuild_broadphase` reads `GlobalTransform.pos` when present, else `Transform.pos`, straight from the columns; `World::within(x, y, r)` visits the cells a circle covers and checks distance exactly, nearest first; `SpatialHash::nearest` searches rings outward with a filter. Rebuilt from scratch each tick (2.3 ms at 100k); incremental maintenance is a later optimisation behind the same calls. | `spatial::within_and_nearest_come_from_the_hash_with_exact_distances`, `perf::perf_broadphase_rebuild_and_within_100k` |
 | `world.query` over 100k entities under 2 ms: spatial predicates hit the broadphase hash, not a scan (§17). | Done | `within` at r=30 over 100k uniformly spread entities: 8 µs. The evaluator narrows its candidates through `Source::near` before reading a field. | `perf::perf_broadphase_rebuild_and_within_100k` |
 | Spawning many entities is one placement, not one move per component (§19 batch spawn). | Done | `World::spawn_with(&[ComponentId])` builds the default rows and pushes the entity into the target archetype once; `ComponentAdded` events still fire per component. | `spatial::spawn_with_places_the_entity_in_its_archetype_at_defaults` |
+
+## Phase 1, item 6: what the physics step needed from the core
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| A system's queries are checked against its declared access (§3). | Done | A query now borrows the running system's access set (`Query::access_ref`) instead of copying it, which was two allocations per query in every Rust system; `Query::access` still takes an owned set. | `argus-daemon/tests/protocol.rs` (physics with no bodies allocates nothing) |
+| Schemas describe fields with their defaults (§3, §8 L1). | Done | A Rust `f32` default is described by its shortest decimal (`0.12`, not `0.11999999731779099`). Found by item 6: the index keeps 15 significant digits, so the live and index answers of `world.describe` disagreed on the controller's defaults. | `argus-daemon/tests/index_shapes.rs::live_and_index_reads_have_identical_shapes` |
 
 ## §18 Build plan
 

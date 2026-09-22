@@ -102,6 +102,12 @@ What remains in `sim.chase` is the binding's call path: each iteration is three 
 |---|---|---|---|
 | The game asks for sfx/step and the mixer chooses (§13). | Done | `q:play(name, {entity, gain, pitch, bus, pan, loop})` emits a `sound.play` event with those fields; the daemon's mixer answers with `sound.played`. Event fields now carry vectors as `vec2`. | `argus-daemon/tests/audio.rs::scripts_ask_for_sounds_and_the_log_says_what_played` |
 
+## Phase 1, item 6: reacting to contacts
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| Collision is an event (§8 L2); a script reacts to it. | Done | `q:events(name)` returns the game events emitted so far this tick with that name (all of them with no name), oldest first, each a table of its fields plus `name`; entity fields are entity handles. A late-stage system reads the physics step's `body.landed` or `overlap.begin` the tick they happen. | `systems::a_script_reads_the_events_emitted_earlier_in_its_tick`, `argus-daemon/tests/physics.rs` |
+
 ## §18 Build plan
 
 Phase 0 item 3, "Luau binding with component and def schemas": this crate.

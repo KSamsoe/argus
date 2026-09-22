@@ -187,7 +187,7 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "scene.tiles.collision",
-        doc: "What bodies hit in a rect of a tilemap, one string per row: # solid, - one-way, . empty. From every collision layer's tiles' solid and one_way properties.",
+        doc: "What bodies hit in a rect of a tilemap, one string per row: # solid, - one-way, / and \\ slopes rising right and left, _ a low flat block, . empty. From every collision layer's tiles' solid, slope, and one_way properties, as the physics step reads them.",
         params: "file: string; rect: {x, y, w, h}",
         returns: "{file, rect, rows: [string]}",
     },

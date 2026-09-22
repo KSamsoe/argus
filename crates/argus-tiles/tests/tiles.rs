@@ -402,3 +402,68 @@ fn perf_4096_square_8_layers_without_pauses() {
     assert!(open.as_millis() < 50, "{open:?}");
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// The store the daemon and the physics step share (item 6): collision
+/// through the tileset's table, slopes, and a map another process saved.
+#[test]
+fn the_store_reads_slopes_and_notices_a_map_saved_elsewhere() {
+    let dir = project("store");
+    let imp = tileset(
+        &dir,
+        "set",
+        3,
+        1,
+        "[[frames]]\nindex = 0\nproperties = { solid = true }\n\n[[frames]]\nindex = 1\nproperties = { slope = [0, 1] }\n\n[[frames]]\nindex = 2\nproperties = { slope = \"steep\" }\n",
+    );
+    let w = &imp.entries()["tiles/set"].warnings;
+    assert!(
+        w.iter().any(|w| w.message.contains("slope = steep")),
+        "{w:?}"
+    );
+    let rel = "scenes/a/s.tilemap.toml";
+    let mut m = MapFile::create(
+        &dir,
+        rel,
+        4,
+        2,
+        1.0,
+        4,
+        1,
+        vec![layer("g", Some("tiles/set"), true)],
+    )
+    .unwrap();
+    m.set(0, Rect::new(0, 0, 4, 1), &[1, 2, 3, 0]).unwrap();
+    m.save().unwrap();
+    let mut st = argus_tiles::MapStore::new(&dir);
+    st.set_tilesets(&imp);
+    let g = st.grid(rel, [0.0, 2.0]).unwrap();
+    assert_eq!(st.collide(&g, 0, 0), Collide::Solid);
+    assert_eq!(
+        st.collide(&g, 1, 0),
+        Collide::Slope {
+            left: 0.0,
+            right: 1.0
+        }
+    );
+    assert_eq!(st.collide(&g, 1, 0).ch(), '/');
+    assert_eq!(
+        st.collide(&g, 2, 0),
+        Collide::Solid,
+        "a malformed slope is solid"
+    );
+    assert_eq!(st.collide(&g, 9, 0), Collide::Empty, "outside the map");
+    assert_eq!((g.col(1.5), g.row(1.5), g.top(1)), (1, 0, 1.0));
+    // The same cells through collision(): one answer, whoever asks.
+    let rows = collision(&mut m, &imp, Rect::new(0, 0, 4, 1)).unwrap();
+    assert_eq!(rows.iter().map(|c| c.ch()).collect::<String>(), "#/#.");
+
+    // Another process saves; the next open sees it.
+    std::thread::sleep(std::time::Duration::from_millis(30));
+    let mut other = MapFile::open(&dir, rel).unwrap();
+    other.set(0, Rect::new(3, 0, 1, 1), &[1]).unwrap();
+    other.save().unwrap();
+    st.open(rel).unwrap();
+    let g = st.grid(rel, [0.0, 2.0]).unwrap();
+    assert_eq!(st.collide(&g, 3, 0), Collide::Solid);
+    std::fs::remove_dir_all(&dir).ok();
+}

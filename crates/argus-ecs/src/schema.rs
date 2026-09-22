@@ -309,10 +309,21 @@ field_value! {
     i16  => I16, |v: i16| Value::Int(v as i64);
     i32  => I32, |v: i32| Value::Int(v as i64);
     i64  => I64, Value::Int;
-    f32  => F32, |v: f32| Value::Float(v as f64);
+    f32  => F32, |v: f32| Value::Float(shortest_f64(v));
     f64  => F64, Value::Float;
     Vec2 => Vec2, Value::Vec2;
     Entity => Entity, Value::Entity;
+}
+
+/// The f64 nearest the shortest decimal that reads back as `v`: a Rust
+/// default of `0.12f32` is described as 0.12, not 0.11999999731779099, and
+/// it survives any store that keeps 15 significant digits (the index).
+fn shortest_f64(v: f32) -> f64 {
+    if v.is_finite() {
+        v.to_string().parse().unwrap_or(v as f64)
+    } else {
+        v as f64
+    }
 }
 
 /// Interned string field. Its default schema value is the empty string; the

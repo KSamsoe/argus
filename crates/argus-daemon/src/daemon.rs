@@ -47,8 +47,9 @@ struct Session {
     run_dir: Option<PathBuf>,
     /// The asset importer and its catalog (phase 1, item 4).
     assets: argus_assets::Importer,
-    /// Open tilemaps by file, with the index's mtime when read (phase 1, item 5).
-    maps: BTreeMap<String, (argus_tiles::MapFile, Option<std::time::SystemTime>)>,
+    /// Open tilemaps (phase 1, item 5), shared with the physics step so a
+    /// tile edit is ground on the next tick (item 6).
+    tiles: Rc<RefCell<argus_tiles::MapStore>>,
 }
 
 struct EventLog {
@@ -584,7 +585,8 @@ impl Daemon {
         argus_render::register(&mut self.world)?;
         #[cfg(feature = "audio")]
         argus_audio::register(&mut self.world)?;
-        argus_tiles::register(&mut self.world)?;
+        let tiles = Rc::new(RefCell::new(argus_tiles::MapStore::new(&root)));
+        argus_physics::install(&mut self.world, &mut self.sched, tiles.clone())?;
         let mut host = ScriptHost::new(ScriptConfig::default())?;
         host.load_project(&mut self.world, &mut self.sched, &root)?;
         let def_schemas: Vec<DefSchema> = host
@@ -623,6 +625,7 @@ impl Daemon {
         // The asset importer: scan once now; the server polls it after.
         let mut assets = argus_assets::Importer::new(&root);
         let asset_report = assets.scan();
+        tiles.borrow_mut().set_tilesets(&assets);
         #[cfg(feature = "render")]
         {
             self.render.offscreen = None;
@@ -661,7 +664,7 @@ impl Daemon {
             input,
             run_dir: None,
             assets,
-            maps: BTreeMap::new(),
+            tiles,
         });
         self.asset_events(&asset_report, true);
         self.pump_events();
@@ -881,6 +884,7 @@ impl Daemon {
             .collect();
         if !changed.is_empty() {
             let ses = self.session.as_ref().expect("session");
+            ses.tiles.borrow_mut().set_tilesets(&ses.assets);
             #[cfg(feature = "render")]
             {
                 if let Some((_, r)) = &mut self.render.window {
@@ -1353,22 +1357,21 @@ impl Daemon {
         let file = json::str_param(params, "file")?.to_string();
         if argus_tiles::MapFile::is_tilemap(&root, &file) {
             let rect = rect_param(params)?;
-            let m = self.map_file(&file)?;
-            let layer = match json::opt_str(params, "layer")? {
-                Some(l) => l.to_string(),
-                None => m.index.layers[0].name.clone(),
-            };
-            let li = m.layer(&layer)?;
-            let cells = m.get(li, rect)?;
-            return Ok(json!({
-                "file": file,
-                "layer": layer,
-                "rect": { "x": rect.x, "y": rect.y, "w": rect.w, "h": rect.h },
-                "width": m.index.width,
-                "height": m.index.height,
-                "layers": m.index.layers.iter().map(|l| l.name.clone()).collect::<Vec<_>>(),
-                "cells": cells,
-            }));
+            let layer = json::opt_str(params, "layer")?.map(str::to_string);
+            return self.with_map(&file, |m| {
+                let layer = layer.unwrap_or_else(|| m.index.layers[0].name.clone());
+                let li = m.layer(&layer)?;
+                let cells = m.get(li, rect)?;
+                Ok(json!({
+                    "file": file,
+                    "layer": layer,
+                    "rect": { "x": rect.x, "y": rect.y, "w": rect.w, "h": rect.h },
+                    "width": m.index.width,
+                    "height": m.index.height,
+                    "layers": m.index.layers.iter().map(|l| l.name.clone()).collect::<Vec<_>>(),
+                    "cells": cells,
+                }))
+            });
         }
         let ses = self.require_session()?;
         let file = file.as_str();
@@ -1404,35 +1407,23 @@ impl Daemon {
 
     // ----- tilemaps ----------------------------------------------------------
 
-    /// An open tilemap, reopened when its index changed on disk.
-    fn map_file(&mut self, file: &str) -> Result<&mut argus_tiles::MapFile> {
-        let ses = self
-            .session
-            .as_mut()
-            .ok_or_else(|| ArgusError::new(codes::NO_PROJECT, "no project is open"))?;
-        let mtime = std::fs::metadata(ses.root.join(file))
-            .and_then(|m| m.modified())
-            .ok();
-        let stale = ses.maps.get(file).is_none_or(|(_, t)| *t != mtime);
-        if stale {
-            let m = argus_tiles::MapFile::open(&ses.root, file)?;
-            ses.maps.insert(file.to_string(), (m, mtime));
-        }
-        Ok(&mut ses.maps.get_mut(file).expect("just opened").0)
+    /// Run `f` on an open tilemap, reopened first if its index changed on
+    /// disk since it was read.
+    fn with_map<R>(
+        &mut self,
+        file: &str,
+        f: impl FnOnce(&mut argus_tiles::MapFile) -> Result<R>,
+    ) -> Result<R> {
+        let tiles = self.require_session()?.tiles.clone();
+        let mut st = tiles.borrow_mut();
+        f(st.open(file)?)
     }
 
-    /// Save a map and remember the index's new mtime (our own write is not
-    /// a change from outside).
+    /// Save a map through the store (which remembers our own write).
     fn map_save(&mut self, file: &str) -> Result<argus_tiles::SaveReport> {
-        let rep = self.map_file(file)?.save()?;
-        let ses = self.session.as_mut().expect("session");
-        let mtime = std::fs::metadata(ses.root.join(file))
-            .and_then(|m| m.modified())
-            .ok();
-        if let Some(e) = ses.maps.get_mut(file) {
-            e.1 = mtime;
-        }
-        Ok(rep)
+        let tiles = self.require_session()?.tiles.clone();
+        let rep = tiles.borrow_mut().save(file);
+        rep
     }
 
     fn tiles_create(&mut self, params: &Json) -> Result<Json> {
@@ -1467,7 +1458,7 @@ impl Daemon {
                 collision: l["collision"].as_bool().unwrap_or(false),
             });
         }
-        argus_tiles::MapFile::create(
+        let map = argus_tiles::MapFile::create(
             &root,
             &file,
             json::u64_param(params, "width", 0)? as u32,
@@ -1477,14 +1468,16 @@ impl Daemon {
             json::u64_param(params, "cell", 2)? as u8,
             layers,
         )?;
+        self.require_session()?
+            .tiles
+            .borrow_mut()
+            .insert(&file, map);
         self.tiles_info(&file)
     }
 
     fn tiles_info(&mut self, file: &str) -> Result<Json> {
-        let (index, chunks, loaded) = {
-            let m = self.map_file(file)?;
-            (m.index.clone(), m.chunk_count(), m.loaded())
-        };
+        let (index, chunks, loaded) =
+            self.with_map(file, |m| Ok((m.index.clone(), m.chunk_count(), m.loaded())))?;
         let ses = self.session.as_ref().expect("session");
         let layers: Vec<Json> = index
             .layers
@@ -1519,13 +1512,28 @@ impl Daemon {
     fn tiles_collision(&mut self, params: &Json) -> Result<Json> {
         let file = json::str_param(params, "file")?.to_string();
         let rect = rect_param(params)?;
-        self.map_file(&file)?;
-        let ses = self.session.as_mut().expect("session");
-        let m = &mut ses.maps.get_mut(&file).expect("open").0;
-        let c = argus_tiles::collision(m, &ses.assets, rect)?;
-        let rows: Vec<String> = c
-            .chunks(rect.w as usize)
-            .map(|r| r.iter().map(|c| c.ch()).collect())
+        let tiles = self.require_session()?.tiles.clone();
+        let mut st = tiles.borrow_mut();
+        let (w, h) = {
+            let m = st.open(&file)?;
+            (m.index.width, m.index.height)
+        };
+        if rect.w == 0 || rect.h == 0 || rect.x + rect.w > w || rect.y + rect.h > h {
+            return Err(ArgusError::new(
+                argus_ecs::codes::OUT_OF_RANGE,
+                format!(
+                    "rect {}x{} at ({}, {}) is outside the {w}x{h} map",
+                    rect.w, rect.h, rect.x, rect.y
+                ),
+            ));
+        }
+        let g = st.grid(&file, [0.0, 0.0]).expect("opened");
+        let rows: Vec<String> = (rect.y..rect.y + rect.h)
+            .map(|y| {
+                (rect.x..rect.x + rect.w)
+                    .map(|x| st.collide(&g, x as i64, y as i64).ch())
+                    .collect()
+            })
             .collect();
         Ok(
             json!({ "file": file, "rect": { "x": rect.x, "y": rect.y, "w": rect.w, "h": rect.h }, "rows": rows }),
@@ -1606,12 +1614,22 @@ impl Daemon {
             _ => return Ok(None),
         };
         let r = argus_tiles::Rect::new(rect[0], rect[1], rect[2], rect[3]);
-        let m = self.map_file(&file)?;
-        let li = m.layer(&layer)?;
+        let (li, w, h, tileset) = self.with_map(&file, |m| {
+            let li = m.layer(&layer)?;
+            Ok((
+                li,
+                m.index.width,
+                m.index.height,
+                m.index.layers[li].tileset.clone(),
+            ))
+        })?;
         let inverse = match op {
             Op::Tiles { cells, .. } => {
-                let old = m.get(li, r)?;
-                m.set(li, r, cells)?;
+                let old = self.with_map(&file, |m| {
+                    let old = m.get(li, r)?;
+                    m.set(li, r, cells)?;
+                    Ok(old)
+                })?;
                 Op::Tiles {
                     file: file.clone(),
                     layer: layer.clone(),
@@ -1620,8 +1638,7 @@ impl Daemon {
                 }
             }
             Op::Terrain { terrain, .. } => {
-                let (w, h) = (m.index.width, m.index.height);
-                let tileset = m.index.layers[li].tileset.clone().ok_or_else(|| {
+                let tileset = tileset.ok_or_else(|| {
                     ArgusError::new(argus_tiles::codes::NO_TILESET, format!("layer {layer} of {file} has no tileset to auto-tile with"))
                         .hint("Give the layer a tileset (a sprite asset with [autotile.<terrain>] rules), or write tiles with cells or tile.")
                 })?;
@@ -1632,9 +1649,11 @@ impl Daemon {
                 })?;
                 let rules = argus_tiles::Rules::new(&ts);
                 let area = r.grow(1, w, h);
-                let m = &mut ses.maps.get_mut(&file).expect("open").0;
-                let old = m.get(li, area)?;
-                argus_tiles::paint(m, li, r, terrain.as_deref(), &rules)?;
+                let old = self.with_map(&file, |m| {
+                    let old = m.get(li, area)?;
+                    argus_tiles::paint(m, li, r, terrain.as_deref(), &rules)?;
+                    Ok(old)
+                })?;
                 Op::Tiles {
                     file: file.clone(),
                     layer: layer.clone(),
@@ -1680,18 +1699,18 @@ impl Daemon {
         }
         let mut out = Vec::new();
         for (file, origin) in maps {
-            let Ok(m) = self.map_file(&file) else {
+            let Ok(tiles) =
+                self.with_map(&file, |m| argus_tiles::visible(m, origin, view.0, view.1))
+            else {
                 continue;
             };
-            if let Ok(tiles) = argus_tiles::visible(m, origin, view.0, view.1) {
-                out.extend(tiles.into_iter().map(|t| argus_render::Extra {
-                    atlas: t.tileset,
-                    frame: t.frame,
-                    pos: t.pos,
-                    size: [t.size, t.size],
-                    z: t.z,
-                }));
-            }
+            out.extend(tiles.into_iter().map(|t| argus_render::Extra {
+                atlas: t.tileset,
+                frame: t.frame,
+                pos: t.pos,
+                size: [t.size, t.size],
+                z: t.z,
+            }));
         }
         out
     }

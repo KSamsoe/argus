@@ -121,6 +121,10 @@ pub struct SystemDesc {
     pub source: Option<String>,
     /// What the system does.
     pub doc: String,
+    /// Run after every other system of the stage that does not order itself
+    /// after this one (the physics step: gameplay sets velocities, then
+    /// bodies move). `after` constraints still hold.
+    pub last: bool,
 }
 
 impl SystemDesc {
@@ -135,7 +139,14 @@ impl SystemDesc {
             rng: None,
             source: None,
             doc: String::new(),
+            last: false,
         }
+    }
+    /// Run at the end of the stage: after every system that is not itself
+    /// last and does not order itself after this one.
+    pub fn last(mut self) -> Self {
+        self.last = true;
+        self
     }
     /// Run after another system in the same stage.
     pub fn after(mut self, name: impl Into<String>) -> Self {
@@ -214,7 +225,7 @@ impl<'a> SystemCtx<'a> {
 
     /// A query bound to the declared access set.
     pub fn query(&self) -> Query<'_> {
-        self.world.query().access(self.access.clone())
+        self.world.query().access_ref(self.access)
     }
 
     /// The declared RNG stream.
@@ -286,9 +297,32 @@ impl<'a> SystemCtx<'a> {
     }
 
     /// Live entities within `r` of a point, nearest first, from the
-    /// broadphase rebuilt at the start of this tick (§12).
+    /// broadphase rebuilt at the start of this tick (§12), or since then by
+    /// [`SystemCtx::rebuild_broadphase`].
     pub fn within(&self, x: f32, y: f32, r: f32) -> Vec<(Entity, f32)> {
         self.world.within(x, y, r)
+    }
+
+    /// Rebuild the shared broadphase from positions as they are now. The
+    /// physics step calls this after moving bodies, so its contact pass and
+    /// every later system this tick see where things are, not where they were.
+    pub fn rebuild_broadphase(&mut self) -> usize {
+        self.world.rebuild_broadphase()
+    }
+
+    /// Events emitted so far this tick with this name (every event when
+    /// `name` is empty), oldest first: how gameplay reacts to a contact or a
+    /// landing the physics step reported earlier in the tick.
+    pub fn events_now<'b>(
+        &'b self,
+        name: &'b str,
+    ) -> impl Iterator<Item = &'b argus_ecs::EventRecord> + 'b {
+        let frame = self.world.frame();
+        self.world.events().iter().filter(move |r| {
+            r.frame == frame
+                && (name.is_empty()
+                    || matches!(&r.event, argus_ecs::Event::Game { name: n, .. } if n == name))
+        })
     }
 
     /// The nearest live entity to a point that `keep` accepts, within `max_r`.

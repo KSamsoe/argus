@@ -43,6 +43,12 @@ Every statement in the design document (v0.3) that constrains the daemon and the
 | The local socket needs no auth; remote access via tokens is later. | Done (phase-0 half) | Nothing listens beyond the local socket. | |
 | Identical result shapes from the live world or the index. | Deferred | Piece 6 will serve `world.*` and `scene.*` from the index when no world is loaded, with these shapes. | |
 
+## Phase 1, item 6: physics in every scene
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| The kinematic tier runs in the sim stage and its contacts are events (§12, §8 L2). | Done | Opening a scene installs `argus-physics` before scripts load, with the session's `MapStore`, so every scene has `physics.control`, `physics.move`, and `physics.overlap`; with no bodies or colliders they return at once and allocate nothing. Tile edits, `scene.tiles.*`, and drawing go through the store, and a re-import of a tileset rebuilds its collision table. | `physics::a_player_runs_jumps_and_lands_on_carved_tiles`, `protocol::sim_and_events_answer_why_the_bat_died` |
+
 ## §8 Observation
 
 | Spec | Status | Where | Test |

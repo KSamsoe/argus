@@ -652,6 +652,28 @@ impl UserData for QueryHandle {
                 Ok(())
             },
         );
+        // events("body.landed"): the game events emitted so far this tick
+        // with that name (all of them for no name), oldest first, each a
+        // table of its fields plus `name`. How a script reacts to a contact
+        // or a landing the physics step reported (section 8 L2, section 12).
+        m.add_method("events", |lua, this, name: Option<String>| {
+            let c = ctx(&this.link)?;
+            let name = name.unwrap_or_default();
+            let out = lua.create_table()?;
+            let mut n = 0;
+            for r in c.events_now(&name) {
+                if let argus_ecs::Event::Game { name: en, fields } = &r.event {
+                    let t = lua.create_table()?;
+                    t.set("name", en.as_str())?;
+                    for (k, v) in fields {
+                        t.set(k.as_str(), value_to_lua(lua, v.clone(), &this.link)?)?;
+                    }
+                    n += 1;
+                    out.set(n, t)?;
+                }
+            }
+            Ok(out)
+        });
         // play("sfx/step", {entity = e, gain = 0.8, pitch = 1.2}): ask the
         // mixer for a sound. It is a `sound.play` event; the daemon answers
         // with `sound.played` naming the variation it chose (section 13).

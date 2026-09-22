@@ -509,3 +509,54 @@ return system "sim.vec" {
         vec.max_allocs
     );
 }
+
+/// `q:events(name)`: the game events emitted so far this tick, as tables
+/// of their fields plus `name`; a later tick sees only its own (section 8
+/// L2, how a script reacts to what the physics step reported).
+#[test]
+fn a_script_reads_the_events_emitted_earlier_in_its_tick() {
+    let (mut h, mut w, mut s) = host(1);
+    assert!(h.load_source(&mut w, &mut s, "components/all.luau", COMPONENTS));
+    let sys = r#"
+component "Heard" { pings = field.u32 { default = 0 }, last = field.i32 { default = 0 } }
+system "sim.ping" {
+  stage = "sim", writes = { "Heard" },
+  run = function(q)
+    if q.tick == 0 then
+      q:spawn({ "Heard" })
+      q:emit("ping", { n = 7 })
+      q:emit("other", {})
+    end
+  end,
+}
+return system "late.hear" {
+  stage = "late", reads = { "Heard" }, writes = { "Heard" },
+  run = function(q)
+    local pings = q:events("ping")
+    local all = q:events()
+    for e, h in q:each("Heard") do
+      h.pings += #pings
+      if #pings > 0 then
+        assert(pings[1].name == "ping" and pings[1].n == 7, tostring(pings[1].n))
+        assert(#all >= 2, "every game event without a name: " .. #all)
+        h.last = pings[1].n
+      end
+    end
+  end,
+}"#;
+    assert!(
+        h.load_source(&mut w, &mut s, "systems/hear.luau", sys),
+        "{:?}",
+        h.errors()
+    );
+    s.step(&mut w, 3).unwrap();
+    assert!(fault_messages(&w).is_empty(), "{:?}", fault_messages(&w));
+    let heard = w.component_id("Heard").unwrap();
+    let e = w.query().has(heard).entities()[0];
+    assert_eq!(
+        w.get_field(e, "Heard.pings").unwrap(),
+        Value::UInt(1),
+        "seen once, on its own tick"
+    );
+    assert_eq!(w.get_field(e, "Heard.last").unwrap(), Value::Int(7));
+}

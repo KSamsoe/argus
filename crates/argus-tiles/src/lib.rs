@@ -13,8 +13,10 @@
 #![warn(missing_docs)]
 
 pub mod map;
+pub mod store;
 
 pub use map::{fnv1a64, LayerDef, MapFile, MapIndex, Rect, SaveReport};
+pub use store::{MapStore, TileGrid};
 
 use argus_assets::{AutoMode, AutoTileSpec, Importer, SpriteAsset};
 use argus_ecs::{ArgusError, Component, Result, StrId};
@@ -232,7 +234,7 @@ pub fn paint(
 // ----- collision --------------------------------------------------------------
 
 /// What a cell does to a body.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Collide {
     /// Nothing.
     Empty,
@@ -240,15 +242,51 @@ pub enum Collide {
     Solid,
     /// Blocks only from above (a one-way platform).
     OneWay,
+    /// A floor slope (the `slope = [left, right]` property): solid below
+    /// the line from the left edge's height to the right edge's, heights as
+    /// fractions of the tile from its bottom. A body stands on it at its
+    /// centre and walks up and down it; from below it is a solid tile.
+    Slope {
+        /// Height at the left edge, 0 to 1.
+        left: f32,
+        /// Height at the right edge, 0 to 1.
+        right: f32,
+    },
 }
 
 impl Collide {
-    /// One character: `#` solid, `-` one-way, `.` empty.
+    /// One character: `#` solid, `-` one-way, `/` and `\` slopes rising
+    /// right and left, `_` a flat partial block, `.` empty.
     pub fn ch(self) -> char {
         match self {
             Collide::Empty => '.',
             Collide::Solid => '#',
             Collide::OneWay => '-',
+            Collide::Slope { left, right } if right > left => '/',
+            Collide::Slope { left, right } if left > right => '\\',
+            Collide::Slope { left, .. } if left >= 1.0 => '#',
+            Collide::Slope { .. } => '_',
+        }
+    }
+
+    /// Which wins when two collision layers disagree: solid, then slope,
+    /// then one-way, then empty.
+    pub fn rank(self) -> u8 {
+        match self {
+            Collide::Empty => 0,
+            Collide::OneWay => 1,
+            Collide::Slope { .. } => 2,
+            Collide::Solid => 3,
+        }
+    }
+
+    /// The floor height at `f` (0 to 1 across the tile, left to right) as
+    /// a fraction of the tile: 1 for a solid tile, the line for a slope.
+    pub fn height_at(self, f: f32) -> f32 {
+        match self {
+            Collide::Solid | Collide::OneWay => 1.0,
+            Collide::Slope { left, right } => left + (right - left) * f.clamp(0.0, 1.0),
+            Collide::Empty => 0.0,
         }
     }
 }
@@ -257,7 +295,8 @@ fn truthy(v: Option<&str>) -> bool {
     matches!(v, Some("true") | Some("1") | Some("yes"))
 }
 
-/// What a tile of a tileset does: its `solid` or `one_way` property.
+/// What a tile of a tileset does: its `solid`, `slope`, or `one_way`
+/// property. A malformed slope is solid (the importer warns about it).
 pub fn collide_of(ts: Option<&SpriteAsset>, tile: u32) -> Collide {
     if tile == 0 {
         return Collide::Empty;
@@ -268,6 +307,11 @@ pub fn collide_of(ts: Option<&SpriteAsset>, tile: u32) -> Collide {
     };
     if truthy(ts.tile_property(tile, "solid")) {
         Collide::Solid
+    } else if let Some(s) = ts.tile_property(tile, "slope") {
+        match argus_assets::parse_slope(s) {
+            Some((left, right)) => Collide::Slope { left, right },
+            None => Collide::Solid,
+        }
     } else if truthy(ts.tile_property(tile, "one_way")) {
         Collide::OneWay
     } else {
@@ -275,8 +319,15 @@ pub fn collide_of(ts: Option<&SpriteAsset>, tile: u32) -> Collide {
     }
 }
 
-/// Collision over a rect, from every `collision = true` layer: solid wins
-/// over one-way. Row-major.
+/// Every tile's collision for one tileset, indexed by tile id (0 is empty).
+pub fn table_of(ts: &SpriteAsset) -> Vec<Collide> {
+    (0..=ts.frames.len() as u32)
+        .map(|t| collide_of(Some(ts), t))
+        .collect()
+}
+
+/// Collision over a rect, from every `collision = true` layer: solid wins,
+/// then slope, then one-way ([`Collide::rank`]). Row-major.
 pub fn collision(map: &mut MapFile, assets: &Importer, rect: Rect) -> Result<Vec<Collide>> {
     let mut out = vec![Collide::Empty; rect.area()];
     let layers: Vec<(usize, Option<String>)> = map
@@ -295,7 +346,7 @@ pub fn collision(map: &mut MapFile, assets: &Importer, rect: Rect) -> Result<Vec
         let mut memo: HashMap<u32, Collide> = HashMap::new();
         for (o, t) in out.iter_mut().zip(cells) {
             let c = *memo.entry(t).or_insert_with(|| collide_of(tileset, t));
-            if c == Collide::Solid || (c == Collide::OneWay && *o == Collide::Empty) {
+            if c.rank() > o.rank() {
                 *o = c;
             }
         }

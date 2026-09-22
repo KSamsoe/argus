@@ -80,7 +80,9 @@ pub struct Query<'w> {
     world: &'w World,
     has: Vec<ComponentId>,
     not: Vec<ComponentId>,
-    access: Option<Access>,
+    /// Borrowed from the system that runs the query (no copy per query), or
+    /// owned when built for one call.
+    access: Option<std::borrow::Cow<'w, Access>>,
     /// Set when a `with::<T>` names an unregistered type: matches nothing.
     impossible: bool,
 }
@@ -127,7 +129,13 @@ impl<'w> Query<'w> {
     }
     /// Attach a declared access set; fetches outside it fail.
     pub fn access(mut self, access: Access) -> Self {
-        self.access = Some(access);
+        self.access = Some(std::borrow::Cow::Owned(access));
+        self
+    }
+    /// Attach a declared access set by reference (a system's, for the length
+    /// of its run), without copying it.
+    pub fn access_ref(mut self, access: &'w Access) -> Self {
+        self.access = Some(std::borrow::Cow::Borrowed(access));
         self
     }
 
@@ -167,7 +175,7 @@ impl<'w> Query<'w> {
             f(ArchetypeView {
                 arch,
                 world: self.world,
-                access: self.access.as_ref(),
+                access: self.access.as_deref(),
             })?;
         }
         Ok(())
@@ -197,7 +205,7 @@ impl<'w> Query<'w> {
             let view = ArchetypeView {
                 arch,
                 world: self.world,
-                access: self.access.as_ref(),
+                access: self.access.as_deref(),
             };
             let mut cols = F::cols(&view)?;
             let entities = arch.entities();

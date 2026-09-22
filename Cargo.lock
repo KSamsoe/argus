@@ -146,6 +146,7 @@ dependencies = [
  "argus-index",
  "argus-input",
  "argus-luau",
+ "argus-physics",
  "argus-render",
  "argus-scene",
  "argus-sim",
@@ -203,6 +204,16 @@ dependencies = [
  "argus-ecs",
  "argus-sim",
  "mlua",
+]
+
+[[package]]
+name = "argus-physics"
+version = "0.0.1"
+dependencies = [
+ "argus-assets",
+ "argus-ecs",
+ "argus-sim",
+ "argus-tiles",
 ]
 
 [[package]]
