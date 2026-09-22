@@ -99,7 +99,8 @@ pub struct Room {
     pub doc: RoomDoc,
     /// Full ids of the entity files in it, sorted.
     pub entities: Vec<String>,
-    /// Bulk index files (`*.map.toml`), project-relative.
+    /// Data index files beside the entities, project-relative: bulk
+    /// indexes (`*.map.toml`) and tilemaps (`*.tilemap.toml`).
     pub bulk: Vec<String>,
 }
 
@@ -315,7 +316,7 @@ impl Scene {
             if stem == "scene" || stem == "room" {
                 continue;
             }
-            if stem.ends_with(".map") {
+            if crate::bulk::is_data_index(&rel) {
                 bulk.push(rel);
                 continue;
             }
@@ -1210,6 +1211,13 @@ impl Scene {
                 format!("{local:?} is not a valid entity id"),
             )
             .hint("Ids look like player or door.east; they become file names."));
+        }
+        if crate::bulk::reserved_stem(local) {
+            return Err(ArgusError::new(
+                argus_ecs::codes::BAD_ID,
+                format!("{local:?} is a reserved file name, not an entity id"),
+            )
+            .hint("scene and room are the scene and room documents, and names ending .map or .tilemap are data indexes; pick another id."));
         }
         let (dir, full) = match (self.has_rooms(), room) {
             (true, Some(r)) => {

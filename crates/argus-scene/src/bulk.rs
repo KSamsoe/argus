@@ -25,6 +25,20 @@ use crate::tomlv;
 use argus_ecs::{ArgusError, Result};
 use std::path::{Path, PathBuf};
 
+/// True for a data index that sits beside entity files but is not one: a
+/// bulk index (`*.map.toml`) or a tilemap (`*.tilemap.toml`, argus-tiles).
+/// Scene loading, moves, and the index all skip these.
+pub fn is_data_index(path: &str) -> bool {
+    path.ends_with(".map.toml") || path.ends_with(".tilemap.toml")
+}
+
+/// True for a file stem an entity may not have: `scene` and `room` are the
+/// scene and room documents, and `.map` / `.tilemap` stems are data indexes.
+/// An entity by such a name would be written and then skipped on load.
+pub fn reserved_stem(stem: &str) -> bool {
+    stem == "scene" || stem == "room" || is_data_index(&format!("{stem}.toml"))
+}
+
 /// A rectangle of cells, `x`/`y` at the top-left.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Rect {

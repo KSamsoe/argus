@@ -169,9 +169,33 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "scene.tiles.get",
-        doc: "A rectangle of cells from a bulk index file (tiles.map.toml) in the current scene, without reading the chunk yourself.",
+        doc: "A rectangle of cells from a tilemap (*.tilemap.toml) or a phase-0 bulk index (*.map.toml), without reading the chunks yourself. Tile ids: 0 is empty, n is frame n - 1 of the layer's tileset.",
         params: "file: string (project-relative *.map.toml); layer: string; rect: {x, y, w, h}",
         returns: "{file, layer, rect, width, height, layers, cells: [integer]}",
+    },
+    MethodDoc {
+        name: "scene.tiles.create",
+        doc: "Create an empty tilemap: a text index (*.tilemap.toml) and a folder of chunk files that only holds chunks with tiles in them. Place it in the world with a Tilemap component whose map names the file.",
+        params: "file: string (project-relative, ending .tilemap.toml); width: integer; height: integer; layers: [{name, tileset (a sprite asset), z, collision}]; tile_size: number (world units, default 1); chunk: integer (default 64); cell: 1 | 2 | 4 (bytes per tile id, default 2)",
+        returns: "scene.tiles.info",
+    },
+    MethodDoc {
+        name: "scene.tiles.info",
+        doc: "A tilemap's index: size, tile size, layers with their tileset and its terrains, chunks on disk and in memory.",
+        params: "file: string",
+        returns: "{file, width, height, tile_size, chunk, cell, hash, layers: [{name, tileset, z, collision, terrains, tileset_found}], chunks, loaded}",
+    },
+    MethodDoc {
+        name: "scene.tiles.collision",
+        doc: "What bodies hit in a rect of a tilemap, one string per row: # solid, - one-way, . empty. From every collision layer's tiles' solid and one_way properties.",
+        params: "file: string; rect: {x, y, w, h}",
+        returns: "{file, rect, rows: [string]}",
+    },
+    MethodDoc {
+        name: "edit.tiles",
+        doc: "Queue a tile edit in a transaction: cells (row-major ids), one tile to fill the rect, a terrain to paint and auto-tile, or erase. Applied at commit, saved to the changed chunks only, undoable per author, in the change feed.",
+        params: "tx: integer; file: string; layer: string; rect: {x, y, w, h}; then one of cells: [integer], tile: integer, terrain: string, erase: true",
+        returns: "{queued}",
     },
     MethodDoc {
         name: "edit.begin",

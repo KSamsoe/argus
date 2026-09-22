@@ -188,6 +188,45 @@ pub struct FrameReport {
     pub ms: f64,
 }
 
+/// A sprite that is not an entity: a tile, drawn from an atlas frame.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Extra {
+    /// Atlas (a sprite asset name).
+    pub atlas: String,
+    /// Frame.
+    pub frame: u32,
+    /// Centre in world units.
+    pub pos: [f32; 2],
+    /// Size in world units.
+    pub size: [f32; 2],
+    /// Draw order.
+    pub z: f32,
+}
+
+/// The view a `width` x `height` target draws: centre and half extents in
+/// world units, from the first active `Camera` (else the origin, 40 tall).
+pub fn view_for(world: &World, width: u32, height: u32) -> ([f32; 2], [f32; 2]) {
+    let aspect = width as f32 / height.max(1) as f32;
+    let mut center = [0.0f32, 0.0];
+    let mut tall = 40.0f32;
+    if let Some(cam) = world.component_id_of::<Camera>() {
+        for e in world.query().has(cam).entities() {
+            let c = world.get::<Camera>(e).unwrap();
+            if !c.active {
+                continue;
+            }
+            if let Ok(g) = world.get::<GlobalTransform>(e) {
+                center = [g.pos.x, g.pos.y];
+            } else if let Ok(t) = world.get::<Transform>(e) {
+                center = [t.pos.x, t.pos.y];
+            }
+            tall = c.height.max(0.01);
+            break;
+        }
+    }
+    (center, [tall * 0.5 * aspect, tall * 0.5])
+}
+
 /// One entity's position and rotation as of a sim tick: entity, x, y, rot, tick.
 type PrevPose = Option<(Entity, f32, f32, f32, u64)>;
 
@@ -312,6 +351,24 @@ impl Renderer {
         world: &World,
         tick: u64,
         alpha: f32,
+    ) -> argus_ecs::Result<FrameReport> {
+        self.render_with(world, tick, alpha, &[])
+    }
+
+    /// The view this target would draw: centre and half extents in world
+    /// units, from the first active camera (or the origin).
+    pub fn view(&self, world: &World) -> ([f32; 2], [f32; 2]) {
+        let (w, h) = self.gpu.size();
+        view_for(world, w, h)
+    }
+
+    /// `render` plus sprites that are not entities (tilemaps).
+    pub fn render_with(
+        &mut self,
+        world: &World,
+        tick: u64,
+        alpha: f32,
+        extras: &[Extra],
     ) -> argus_ecs::Result<FrameReport> {
         let started = Instant::now();
         let (w, h) = self.gpu.size();
@@ -467,6 +524,58 @@ impl Renderer {
             }
         }
         self.prev = next_prev;
+
+        // Tiles and other sprites that are not entities.
+        if !extras.is_empty() {
+            let names = self.gpu.atlas_names().to_vec();
+            let index: HashMap<&str, u32> = names
+                .iter()
+                .enumerate()
+                .map(|(i, n)| (n.as_str(), i as u32))
+                .collect();
+            let rect = index["rect"];
+            for x in extras {
+                let (ai, uv, pivot, color) = match index.get(x.atlas.as_str()) {
+                    Some(&ai) => {
+                        let a = self.gpu.atlas(&names[ai as usize]).expect("indexed");
+                        let f = if (x.frame as usize) < a.frames.len() {
+                            x.frame as usize
+                        } else {
+                            0
+                        };
+                        (
+                            ai,
+                            a.frames[f],
+                            a.pivots.get(f).copied().unwrap_or([0.5, 0.5]),
+                            [1.0, 1.0, 1.0, 1.0],
+                        )
+                    }
+                    None => {
+                        if !missing.contains(&x.atlas) {
+                            missing.push(x.atlas.clone());
+                        }
+                        (rect, [0.0, 0.0, 1.0, 1.0], [0.5, 0.5], [1.0, 0.0, 1.0, 1.0])
+                    }
+                };
+                // Tiles are placed by their centre whatever the frame's pivot.
+                let _ = pivot;
+                let zb = x.z.to_bits();
+                let zo = if zb & 0x8000_0000 != 0 {
+                    !zb
+                } else {
+                    zb | 0x8000_0000
+                } as u64;
+                instances.push((
+                    (zo << 32) | ai as u64,
+                    Instance {
+                        pos_size: [x.pos[0], x.pos[1], x.size[0], x.size[1]],
+                        rot_z: [0.0, x.z, 0.5, 0.5],
+                        uv,
+                        color,
+                    },
+                ));
+            }
+        }
 
         // Back to front by z, atlas runs within equal z: one draw per run.
         instances.sort_unstable_by_key(|x| x.0);

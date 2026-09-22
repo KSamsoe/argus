@@ -80,6 +80,29 @@ pub enum Op {
         /// Components with field values.
         components: Vec<(String, Vec<(String, Json)>)>,
     },
+    /// Write a rect of tiles (and the inverse of every tile edit).
+    Tiles {
+        /// Project-relative `*.tilemap.toml`.
+        file: String,
+        /// Layer name.
+        layer: String,
+        /// x, y, w, h.
+        rect: [u32; 4],
+        /// Row-major tile ids, `w * h` of them.
+        cells: Vec<u32>,
+    },
+    /// Paint a terrain over a rect (or erase it) and re-pick the tiles
+    /// around it by the tileset's auto-tiling rules.
+    Terrain {
+        /// Project-relative `*.tilemap.toml`.
+        file: String,
+        /// Layer name.
+        layer: String,
+        /// x, y, w, h.
+        rect: [u32; 4],
+        /// Terrain, or `None` to erase.
+        terrain: Option<String>,
+    },
 }
 
 impl Op {
@@ -100,6 +123,15 @@ impl Op {
             Op::SpawnDoc { local, room, .. } => json!(["spawn", local, room]),
             Op::Despawn { entity } => json!(["despawn", entity]),
             Op::Respawn { .. } => json!(["respawn"]),
+            Op::Tiles {
+                file, layer, rect, ..
+            } => json!(["tiles", file, layer, rect]),
+            Op::Terrain {
+                file,
+                layer,
+                rect,
+                terrain,
+            } => json!(["terrain", file, layer, rect, terrain]),
         }
     }
 }

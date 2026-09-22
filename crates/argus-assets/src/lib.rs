@@ -22,6 +22,7 @@ pub mod sidecar;
 use argus_audio::{SoundDef, Source};
 use argus_ecs::{ArgusError, Result};
 use serde_json::{json, Value as Json};
+pub use sidecar::{AutoMode, AutoTileSpec};
 use sidecar::{Direction, Shape, SidecarKind};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -91,6 +92,16 @@ pub struct SpriteAsset {
     pub pixels_per_unit: f32,
     /// The described shape, when the sprite is a placeholder.
     pub shape: Option<Shape>,
+    /// Auto-tiling rules by terrain, when the sprite is a tileset.
+    pub autotile: BTreeMap<String, AutoTileSpec>,
+}
+
+impl SpriteAsset {
+    /// A tile's property (tile n is frame n - 1).
+    pub fn tile_property(&self, tile: u32, key: &str) -> Option<&str> {
+        let f = self.frames.get((tile as usize).checked_sub(1)?)?;
+        f.properties.get(key).map(String::as_str)
+    }
 }
 
 /// A WAV a sound plays.
@@ -207,6 +218,19 @@ impl Entry {
                         })
                         .collect(),
                 );
+                if !s.autotile.is_empty() {
+                    o["autotile"] = Json::Object(
+                        s.autotile
+                            .iter()
+                            .map(|(n, a)| {
+                                (
+                                    n.clone(),
+                                    json!({ "mode": a.mode.name(), "tiles": a.tiles, "edges": if a.connect_edges { "connect" } else { "open" } }),
+                                )
+                            })
+                            .collect(),
+                    );
+                }
                 if let Some(sh) = &s.shape {
                     o["shape"] = json!({ "kind": sh.kind, "size": sh.size, "color": sh.color });
                 }
@@ -808,6 +832,18 @@ impl Importer {
                 },
             );
         }
+        // Auto-tiling rules must name tiles the sheet has.
+        let mut autotile = BTreeMap::new();
+        for a in &sc.autotile {
+            if let Some(bad) = a.tiles.iter().find(|&&t| t as usize > frames.len()) {
+                return Err(ArgusError::new(
+                    codes::BAD_SIDECAR,
+                    format!("autotile.{} names tile {bad}; the sheet has {} frames (tile n is frame n - 1)", a.terrain, frames.len()),
+                )
+                .at(Some(a.at.clone())));
+            }
+            autotile.insert(a.terrain.clone(), a.clone());
+        }
         // Pad to powers of two for the GPU, and say so.
         let (tw, th) = (pow2(w), pow2(h));
         if (tw, th) != (w, h) {
@@ -842,6 +878,7 @@ impl Importer {
                     frames,
                     clips,
                     pixels_per_unit: sc.pixels_per_unit.unwrap_or(16.0),
+                    autotile,
                     shape: if g.png.is_none() {
                         sc.shape.clone()
                     } else {

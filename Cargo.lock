@@ -150,6 +150,7 @@ dependencies = [
  "argus-scene",
  "argus-sim",
  "argus-test",
+ "argus-tiles",
  "gilrs",
  "interprocess",
  "serde_json",
@@ -242,6 +243,16 @@ dependencies = [
  "argus-ecs",
  "mlua",
  "serde_json",
+]
+
+[[package]]
+name = "argus-tiles"
+version = "0.0.1"
+dependencies = [
+ "argus-assets",
+ "argus-ecs",
+ "serde_json",
+ "toml_edit 0.22.27",
 ]
 
 [[package]]

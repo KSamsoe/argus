@@ -266,7 +266,7 @@ fn classify(root: &Path, from: &str) -> Result<(MoveKind, String)> {
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("");
-        if name != "scene" && name != "room" && !name.ends_with(".map") {
+        if !crate::bulk::reserved_stem(name) {
             return Ok((MoveKind::Entity, name.to_string()));
         }
     }
@@ -484,6 +484,13 @@ fn classify_target(kind: MoveKind, to: &str) -> Result<(MoveKind, String)> {
                     codes::BAD_MOVE,
                     format!("{to} must be scenes/<scene>/[rooms/<room>/]<id>.toml"),
                 ));
+            }
+            if crate::bulk::reserved_stem(name) {
+                return Err(ArgusError::new(
+                    codes::BAD_MOVE,
+                    format!("{name:?} is a reserved file name, not an entity id"),
+                )
+                .hint("scene and room are the scene and room documents, and names ending .map or .tilemap are data indexes."));
             }
             Ok((MoveKind::Entity, name.to_string()))
         }

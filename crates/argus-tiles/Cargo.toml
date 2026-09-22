@@ -1,0 +1,12 @@
+[package]
+name = "argus-tiles"
+description = "Argus Engine tilemaps: layers over a grid in sparse chunk files with a text index, rect edits, auto-tiling rules from the tileset, collision from tile properties"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+argus-ecs = { path = "../argus-ecs", version = "0.0.1" }
+argus-assets = { path = "../argus-assets", version = "0.0.1" }
+toml_edit = "0.22"
+serde_json = "1"

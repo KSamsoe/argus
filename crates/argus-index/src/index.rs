@@ -573,7 +573,7 @@ impl Index {
             &self.root,
             &mut on_disk,
         );
-        on_disk.retain(|p, _| !p.ends_with(".map.toml"));
+        on_disk.retain(|p, _| !argus_scene::bulk::is_data_index(p));
         let recorded: BTreeSet<&str> = rows.iter().map(|r| r.0.as_str()).collect();
         if let Some(new) = on_disk.keys().find(|p| !recorded.contains(p.as_str())) {
             return Ok(Some(format!("{new} is new")));

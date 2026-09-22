@@ -19,6 +19,15 @@
 //! loop = true
 //! direction = "forward"          # forward, reverse, pingpong
 //!
+//! # A tileset is a sprite sheet: tile n is frame n - 1, 0 is empty, and a
+//! # frame's properties are the tile's (solid = true, one_way = true).
+//! [autotile.rock]                # auto-tiling rules for one terrain (section 12)
+//! mode = "4bit"                  # 16 tiles by N=1, E=2, S=4, W=8 neighbours;
+//! tiles = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+//!                                # "blob47": 47 tiles by the 8-neighbour blob;
+//!                                # "single": one tile
+//! edges = "connect"              # the map's edge counts as the same terrain
+//!
 //! # With no hero.png, the sprite is a described shape the importer draws:
 //! kind = "rect"                  # rect or circle
 //! size = [8, 8]                  # pixels
@@ -86,6 +95,53 @@ pub struct FrameSpec {
     pub at: String,
 }
 
+/// How a terrain picks its tile from its neighbours.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AutoMode {
+    /// One tile, whatever the neighbours.
+    Single,
+    /// 16 tiles indexed by the four edge neighbours (N=1, E=2, S=4, W=8).
+    FourBit,
+    /// 47 tiles indexed by the 8-neighbour blob (corners count only when
+    /// both edges beside them do), in ascending order of the reduced mask.
+    Blob47,
+}
+
+impl AutoMode {
+    /// Name as written.
+    pub fn name(self) -> &'static str {
+        match self {
+            AutoMode::Single => "single",
+            AutoMode::FourBit => "4bit",
+            AutoMode::Blob47 => "blob47",
+        }
+    }
+
+    /// Tiles the mode needs.
+    pub fn tiles(self) -> usize {
+        match self {
+            AutoMode::Single => 1,
+            AutoMode::FourBit => 16,
+            AutoMode::Blob47 => 47,
+        }
+    }
+}
+
+/// An auto-tiling rule as the sidecar declares it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct AutoTileSpec {
+    /// Terrain name.
+    pub terrain: String,
+    /// Mode.
+    pub mode: AutoMode,
+    /// Tile ids (1-based frames), in the mode's order.
+    pub tiles: Vec<u32>,
+    /// The map's edge counts as this terrain.
+    pub connect_edges: bool,
+    /// `file:line`.
+    pub at: String,
+}
+
 /// A described shape the importer draws when there is no image.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Shape {
@@ -114,6 +170,8 @@ pub struct SpriteSidecar {
     pub clips: Vec<ClipSpec>,
     /// A described shape.
     pub shape: Option<Shape>,
+    /// Auto-tiling rules by terrain.
+    pub autotile: Vec<AutoTileSpec>,
     /// Keys the importer did not recognise (reported as warnings).
     pub unknown: Vec<String>,
 }
@@ -200,6 +258,7 @@ const SPRITE_KEYS: &[&str] = &[
     "kind",
     "size",
     "color",
+    "autotile",
 ];
 
 fn pivot_of(v: &toml_edit::Value) -> Option<[f32; 2]> {
@@ -327,6 +386,84 @@ pub fn parse_sprite(file: &str, text: &str) -> Result<SpriteSidecar> {
                 looping: ct.get("loop").and_then(|l| l.as_bool()).unwrap_or(true),
                 direction,
                 at: format!("{file}:{cl}"),
+            });
+        }
+    }
+    if let Some(item) = doc.get("autotile") {
+        let t = item.as_table_like().ok_or_else(|| {
+            err(
+                file,
+                line_of(text, item),
+                "autotile must be [autotile.terrain] tables",
+            )
+        })?;
+        for (terrain, a) in t.iter() {
+            let al = line_of(text, a);
+            let at = a
+                .as_table_like()
+                .ok_or_else(|| err(file, al, format!("autotile.{terrain} must be a table")))?;
+            let mode = match at.get("mode").and_then(|m| m.as_str()).unwrap_or("4bit") {
+                "single" => AutoMode::Single,
+                "4bit" => AutoMode::FourBit,
+                "blob47" | "blob" => AutoMode::Blob47,
+                other => {
+                    return Err(err(
+                        file,
+                        al,
+                        format!(
+                            "autotile.{terrain}.mode = {other:?}; modes are single, 4bit, blob47"
+                        ),
+                    ))
+                }
+            };
+            let tiles: Vec<u32> = at
+                .get("tiles")
+                .and_then(|v| v.as_value())
+                .map(nums)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|x| x.max(0.0) as u32)
+                .collect();
+            if tiles.len() != mode.tiles() {
+                return Err(err(
+                    file,
+                    al,
+                    format!(
+                        "autotile.{terrain} is {} and needs {} tiles; it lists {}",
+                        mode.name(),
+                        mode.tiles(),
+                        tiles.len()
+                    ),
+                ));
+            }
+            if tiles.contains(&0) {
+                return Err(err(
+                    file,
+                    al,
+                    format!("autotile.{terrain}: tile 0 is empty; tiles start at 1 (frame 0)"),
+                ));
+            }
+            let connect_edges = match at
+                .get("edges")
+                .and_then(|e| e.as_str())
+                .unwrap_or("connect")
+            {
+                "connect" => true,
+                "open" => false,
+                other => {
+                    return Err(err(
+                        file,
+                        al,
+                        format!("autotile.{terrain}.edges = {other:?}; edges are connect or open"),
+                    ))
+                }
+            };
+            out.autotile.push(AutoTileSpec {
+                terrain: terrain.to_string(),
+                mode,
+                tiles,
+                connect_edges,
+                at: format!("{file}:{al}"),
             });
         }
     }

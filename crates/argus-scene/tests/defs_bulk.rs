@@ -179,10 +179,37 @@ fn bulk_chunks_round_trip_and_check_their_hash() {
         "{e}"
     );
 
-    // The room lists its bulk files.
+    // The room lists its bulk files, and a tilemap index (argus-tiles, phase
+    // 1) beside them is data too, not an entity file with unknown keys.
+    let tilemap = "scenes/hollow/rooms/cavern-04/floor.tilemap.toml";
+    write(
+        t.path(),
+        tilemap,
+        "kind = \"tilemap\"
+width = 8
+height = 4
+",
+    );
     let p = open(t.path());
     let w = world();
     let s = argus_scene::Scene::open(&p, "hollow", w.registry()).unwrap();
-    assert_eq!(s.bulk_files("cavern-04"), [rel]);
+    assert_eq!(s.bulk_files("cavern-04"), [tilemap, rel]);
     assert!(s.issues().is_empty(), "{:?}", s.issues());
+}
+
+#[test]
+fn reserved_names_are_not_entity_ids() {
+    use argus_scene::bulk::{is_data_index, reserved_stem};
+    assert!(is_data_index("scenes/a/tiles.map.toml"));
+    assert!(is_data_index("scenes/a/floor.tilemap.toml"));
+    assert!(
+        !is_data_index("scenes/a/tilemap.toml"),
+        "an entity named tilemap is fine"
+    );
+    for stem in ["scene", "room", "tiles.map", "floor.tilemap"] {
+        assert!(reserved_stem(stem), "{stem}");
+    }
+    for stem in ["player", "roomba", "map", "tilemap", "door.east"] {
+        assert!(!reserved_stem(stem), "{stem}");
+    }
 }
