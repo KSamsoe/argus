@@ -96,6 +96,12 @@ Measured on the phase-0 gate's stress scene (50,000 enemies alive, release build
 
 What remains in `sim.chase` is the binding's call path: each iteration is three calls across the boundary (the iterator, a field read, a field write), and mlua allocates its argument and result lists per call, about a microsecond per entity per system. That is the floor for per-entity Luau loops, and it is what the promotion to Rust removes; the §17 target of 6 ms at 50k stays a Rust target, as §19 says.
 
+## Phase 1, item 3: asking for a sound
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| The game asks for sfx/step and the mixer chooses (§13). | Done | `q:play(name, {entity, gain, pitch, bus, pan, loop})` emits a `sound.play` event with those fields; the daemon's mixer answers with `sound.played`. Event fields now carry vectors as `vec2`. | `argus-daemon/tests/audio.rs::scripts_ask_for_sounds_and_the_log_says_what_played` |
+
 ## §18 Build plan
 
 Phase 0 item 3, "Luau binding with component and def schemas": this crate.

@@ -151,6 +151,32 @@ pub struct EntityRef {
     pub(crate) link: Link,
 }
 
+/// A Lua table of event fields to values, sorted by key.
+fn event_fields(fields: Option<mlua::Table>) -> LuaResult<Vec<(String, Value)>> {
+    let mut out = Vec::new();
+    if let Some(t) = fields {
+        for pair in t.pairs::<String, LuaValue>() {
+            let (k, v) = pair?;
+            let v = match v {
+                LuaValue::Boolean(b) => Value::Bool(b),
+                LuaValue::Integer(i) => Value::Int(i as i64),
+                LuaValue::Number(n) if n.fract() == 0.0 && n.abs() < 9.0e15 => Value::Int(n as i64),
+                LuaValue::Number(n) => Value::Float(n),
+                LuaValue::String(s) => Value::Str(s.to_str()?.to_string()),
+                LuaValue::Vector(v) => Value::Vec2(Vec2::new(v.x(), v.y())),
+                LuaValue::UserData(ud) => match ud.borrow::<EntityRef>() {
+                    Ok(e) => Value::Entity(e.entity),
+                    Err(_) => Value::Str(format!("{ud:?}")),
+                },
+                other => Value::Str(format!("{other:?}")),
+            };
+            out.push((k, v));
+        }
+        out.sort_by(|a, b| a.0.cmp(&b.0));
+    }
+    Ok(out)
+}
+
 /// A list of component names to ids.
 fn component_ids(link: &Link, names: &LuaTable) -> LuaResult<Vec<ComponentId>> {
     let mut ids = Vec::new();
@@ -621,30 +647,22 @@ impl UserData for QueryHandle {
         m.add_method(
             "emit",
             |_, this, (name, fields): (String, Option<mlua::Table>)| {
-                let c = ctx(&this.link)?;
-                let mut out = Vec::new();
-                if let Some(t) = fields {
-                    for pair in t.pairs::<String, LuaValue>() {
-                        let (k, v) = pair?;
-                        let v = match v {
-                            LuaValue::Boolean(b) => Value::Bool(b),
-                            LuaValue::Integer(i) => Value::Int(i as i64),
-                            LuaValue::Number(n) if n.fract() == 0.0 && n.abs() < 9.0e15 => {
-                                Value::Int(n as i64)
-                            }
-                            LuaValue::Number(n) => Value::Float(n),
-                            LuaValue::String(s) => Value::Str(s.to_str()?.to_string()),
-                            LuaValue::UserData(ud) => match ud.borrow::<EntityRef>() {
-                                Ok(e) => Value::Entity(e.entity),
-                                Err(_) => Value::Str(format!("{ud:?}")),
-                            },
-                            other => Value::Str(format!("{other:?}")),
-                        };
-                        out.push((k, v));
-                    }
-                    out.sort_by(|a, b| a.0.cmp(&b.0));
-                }
-                c.emit(name, out);
+                let out = event_fields(fields)?;
+                ctx(&this.link)?.emit(name, out);
+                Ok(())
+            },
+        );
+        // play("sfx/step", {entity = e, gain = 0.8, pitch = 1.2}): ask the
+        // mixer for a sound. It is a `sound.play` event; the daemon answers
+        // with `sound.played` naming the variation it chose (section 13).
+        m.add_method(
+            "play",
+            |_, this, (sound, fields): (String, Option<mlua::Table>)| {
+                let mut out = event_fields(fields)?;
+                out.retain(|(k, _)| k != "sound");
+                out.push(("sound".to_string(), Value::Str(sound)));
+                out.sort_by(|a, b| a.0.cmp(&b.0));
+                ctx(&this.link)?.emit("sound.play", out);
                 Ok(())
             },
         );

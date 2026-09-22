@@ -386,7 +386,7 @@ pub const METHODS: &[MethodDoc] = &[
     MethodDoc {
         name: "render.window",
         doc: "Open or close the window the daemon presents into every frame (playable by a human, section 18 phase 1). Device events from it feed the input layer.",
-        params: "open: boolean (default true); width: integer (default 1280); height: integer (default 720); title: string; software: boolean",
+        params: "open: boolean (default true); width: integer (default 1280); height: integer (default 720); title: string; software: boolean; audio: boolean (default true: open the audio output too)",
         returns: "render.status",
     },
     MethodDoc {
@@ -394,6 +394,42 @@ pub const METHODS: &[MethodDoc] = &[
         doc: "Whether a window is open, the adapter in use, and the last frame's statistics.",
         params: "",
         returns: "{window, size: [w, h], adapter, software, last: {sprites, draw_calls, atlases, interpolated, missing_atlases, ms}, atlases: [name]}",
+    },
+    MethodDoc {
+        name: "audio.status",
+        doc: "The mixer: output device, buses with gain, ducking, and meters since the last read (peak and RMS dBFS of everything the bus sends on; master is the whole mix before the limiter, and master.limiter_db is how far the limiter turned it down), voices, the music track and its layers, sounds known, sounds asked for that do not exist, and load warnings. Audio is read as data (section 8): the event log has every sound.played.",
+        params: "",
+        returns: "{device, rate, voices, played, master: {peak_db, rms_db, limiter_db}, columns, rows: [[bus, parent, gain_db, mute, duck_db, peak_db, rms_db, voices]], music, sounds, missing, warnings, error}",
+    },
+    MethodDoc {
+        name: "audio.play",
+        doc: "Play a sound as gameplay would (a sound.play event): the mixer picks the variation from the run seed and answers with sound.played.",
+        params: "sound: string; entity: string (optional, spatial); gain: number; pitch: number; bus: string; pan: number (-1..1, when not spatial); loop: boolean",
+        returns: "the sound.played (or sound.missing) event row",
+    },
+    MethodDoc {
+        name: "audio.stop",
+        doc: "Stop a voice, or every voice playing on an entity.",
+        params: "voice: integer | entity: string; fade_ms: number",
+        returns: "{stopped: [voice]}",
+    },
+    MethodDoc {
+        name: "audio.bus",
+        doc: "Set a bus's gain or mute (tuning). Lasts until the scene reloads; the file is audio.toml.",
+        params: "bus: string; gain_db: number; mute: boolean",
+        returns: "audio.status",
+    },
+    MethodDoc {
+        name: "audio.clip",
+        doc: "Write the last seconds of the master output as a WAV, for a human to hear (section 10). Headless, the mixer runs on sim time, so the clip is the same on every run.",
+        params: "seconds: number (default 5, at most 10); path: string (default .argus/clips/audio-<tick>.wav)",
+        returns: "{path, seconds, frames, peak_db}",
+    },
+    MethodDoc {
+        name: "audio.device",
+        doc: "Open or close the system's audio output. render.window opens it; headless runs never need it.",
+        params: "open: boolean (default true)",
+        returns: "audio.status",
     },
     MethodDoc {
         name: "prof.frame",

@@ -27,5 +27,6 @@ return system "sim.fire" {
       sp.z = 3
     end)
     pl.aim = (base + 2.399963) % (2 * math.pi)
+    q:play("sfx/shot")
   end,
 }

@@ -1,0 +1,18 @@
+[package]
+name = "argus-audio"
+description = "Argus Engine audio: a bus-routed mixer with ducking, 2D spatialization, variation sets, layered music, described placeholder tones, and every sound observable as an event"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = ["device"]
+# Output to the system's audio device (cpal). Off for a silent build.
+device = ["dep:cpal"]
+
+[dependencies]
+argus-ecs = { path = "../argus-ecs", version = "0.0.1" }
+argus-sim = { path = "../argus-sim", version = "0.0.1" }
+toml_edit = "0.22"
+hound = "3"
+cpal = { version = "0.15", optional = true }

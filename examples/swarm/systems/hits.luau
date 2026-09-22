@@ -28,6 +28,7 @@ return system "sim.hits" {
             pl.kills += 1
             if d.log_kills then
               q:emit("death", { entity = target, cause = "bullet", wave = target:get("Enemy").wave, tick = q.tick })
+              q:play("sfx/pop", { entity = target })
             end
           end
         end
@@ -51,6 +52,7 @@ return system "sim.hits" {
       if left < 0 then left = 0 end
       php.cur = left
       pl.iframes = 10
+      q:play("sfx/hurt")
       q:emit("damage", { target = "@player", by = touched_by, amount = amount, crowd = touched, wave = d.wave, tick = q.tick })
       if left == 0 then
         pl.dead = true

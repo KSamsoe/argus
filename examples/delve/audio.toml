@@ -1,0 +1,23 @@
+[spatial]
+min_distance = 3
+max_distance = 25
+
+[sounds."sfx/step"]
+spatial = false
+gain = 0.3
+pitch_jitter = 0.08
+variations = [ { wave = "noise", ms = 40, release_ms = 30 }, { wave = "noise", ms = 30, release_ms = 25, gain = 0.4 } ]
+
+[sounds."sfx/hit"]
+gain = 0.6
+pitch_jitter = 0.05
+variations = [ { wave = "square", freq = 330, slide = -900, ms = 90 } ]
+
+[sounds."sfx/bump"]
+spatial = false
+gain = 0.3
+variations = [ { wave = "triangle", freq = 90, ms = 60 } ]
+
+[sounds."sfx/death"]
+gain = 0.7
+variations = [ { wave = "saw", freq = 220, slide = -400, ms = 400, release_ms = 200 } ]

@@ -78,9 +78,11 @@ return system "sim.monsters" {
         if left < 0 then left = 0 end
         php.cur = left
         q:emit("damage", { target = "@player", by = m.id, kind = m.kind, amount = m.atk, turn = turn })
+        q:play("sfx/hit", { entity = q:entity(m.id) })
         if left == 0 then
           pl.dead = true
           q:emit("player.died", { floor = pl.floor, turn = turn, killer = m.id, kind = m.kind, kills = pl.kills })
+          q:play("sfx/death")
           break
         end
       elseif here ~= nil and here <= m.sight then

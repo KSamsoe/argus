@@ -48,6 +48,7 @@ return system "sim.player_turn" {
         if left < 0 then left = 0 end
         hp.cur = left
         q:emit("damage", { target = e, kind = mo.kind, by = "@player", amount = pl.atk, turn = turn.n })
+        q:play("sfx/hit", { entity = e })
         if left == 0 then
           pl.kills += 1
           q:emit("death", { entity = e, kind = mo.kind, cause = "hero", turn = turn.n })
@@ -59,8 +60,10 @@ return system "sim.player_turn" {
     local f = q:entity("@floor"):get("Floor")
     if walkable(f, nx, ny) then
       pe:get("Transform").pos = { x = nx, y = ny }
+      q:play("sfx/step")
     else
       q:emit("bump", { x = nx, y = ny, turn = turn.n })
+      q:play("sfx/bump")
     end
   end,
 }

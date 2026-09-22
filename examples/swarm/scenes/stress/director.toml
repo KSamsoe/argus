@@ -1,3 +1,6 @@
+[Music]
+track = "swarm"
+
 [Director]
 first = 50000
 growth = 1.0

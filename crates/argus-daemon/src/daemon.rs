@@ -76,6 +76,11 @@ pub struct Daemon {
     render: render::RenderState,
     /// Raw device state resolved through the action map (phase 1, item 2).
     devices: argus_input::Devices,
+    /// The mixer (phase 1, item 3); rebuilt with every scene.
+    #[cfg(feature = "audio")]
+    audio: Option<argus_audio::AudioEngine>,
+    /// Why the mixer could not load, when it could not.
+    audio_error: Option<Json>,
     /// Turns taken by device commands on a discrete scene.
     device_turns: u64,
     /// Notifications waiting for the transport, per connection.
@@ -109,6 +114,9 @@ impl Daemon {
             #[cfg(feature = "render")]
             render: render::RenderState::default(),
             devices: argus_input::Devices::default(),
+            #[cfg(feature = "audio")]
+            audio: None,
+            audio_error: None,
             device_turns: 0,
             outbox: Vec::new(),
         }
@@ -327,6 +335,12 @@ impl Daemon {
             "prof.alloc" => self.prof_alloc(params),
             "prof.capture" => self.prof_capture(params),
             "obs.frame" => self.obs_frame(params),
+            "audio.status" => self.audio_status(),
+            "audio.play" => self.audio_play(params),
+            "audio.stop" => self.audio_stop(params),
+            "audio.bus" => self.audio_bus(params),
+            "audio.clip" => self.audio_clip(params),
+            "audio.device" => self.audio_device(params),
             "render.window" => self.render_window(params),
             "render.status" => Ok(self.render_status()),
             "test.list" => {
@@ -405,6 +419,10 @@ impl Daemon {
             let evs = self.render.poll();
             if self.render.closed_now {
                 self.render.closed_now = false;
+                #[cfg(feature = "audio")]
+                if let Some(a) = self.audio.as_mut() {
+                    a.close_device();
+                }
                 self.world.emit(Event::Game {
                     name: "window.closed".to_string(),
                     fields: Vec::new(),
@@ -541,6 +559,8 @@ impl Daemon {
         };
         #[cfg(feature = "render")]
         argus_render::register(&mut self.world)?;
+        #[cfg(feature = "audio")]
+        argus_audio::register(&mut self.world)?;
         let mut host = ScriptHost::new(ScriptConfig::default())?;
         host.load_project(&mut self.world, &mut self.sched, &root)?;
         let def_schemas: Vec<DefSchema> = host
@@ -576,6 +596,23 @@ impl Daemon {
             Ok(i) => (Some(i), None),
             Err(e) => (None, Some(e.message)),
         };
+        #[cfg(feature = "audio")]
+        {
+            // Variations come from the run seed, so sound.played replays.
+            match argus_audio::AudioEngine::load(&root, seed) {
+                Ok(mut a) => {
+                    if self.has_window() {
+                        let _ = a.open_device();
+                    }
+                    self.audio = Some(a);
+                    self.audio_error = None;
+                }
+                Err(e) => {
+                    self.audio = None;
+                    self.audio_error = Some(json::error_json(&e));
+                }
+            }
+        }
         self.session = Some(Session {
             root,
             project,
@@ -609,6 +646,9 @@ impl Daemon {
             .as_ref()
             .map(|s| s.host.errors().len())
             .unwrap_or(0));
+        if let Some(e) = &self.audio_error {
+            out["audio_error"] = e.clone();
+        }
         Ok(out)
     }
 
@@ -1884,11 +1924,49 @@ impl Daemon {
     /// Move the world's pending events into the log and notify subscribers.
     fn pump_events(&mut self) {
         self.finish_capture();
-        if self.world.events().is_empty() {
-            return;
+        let drained = if self.world.events().is_empty() {
+            Vec::new()
+        } else {
+            self.world.drain_events()
+        };
+        // The mixer answers each sound request right after it in the log,
+        // then reports what moving sources and the music did (section 8).
+        #[allow(unused_mut)]
+        let mut records: Vec<EventRecord> = Vec::with_capacity(drained.len());
+        #[cfg(feature = "audio")]
+        {
+            for rec in drained {
+                let answer = match (&rec.event, self.audio.as_mut()) {
+                    (Event::Game { name, fields }, Some(a))
+                        if name == "sound.play" || name == "sound.stop" =>
+                    {
+                        a.request(&self.world, name, fields)
+                    }
+                    _ => Vec::new(),
+                };
+                let frame = rec.frame;
+                records.push(rec);
+                records.extend(answer.into_iter().map(|(name, fields)| EventRecord {
+                    frame,
+                    event: Event::Game { name, fields },
+                }));
+            }
+            if let Some(a) = self.audio.as_mut() {
+                let frame = self.world.frame();
+                records.extend(a.update(&self.world).into_iter().map(|(name, fields)| {
+                    EventRecord {
+                        frame,
+                        event: Event::Game { name, fields },
+                    }
+                }));
+                a.advance_to(self.sched.driving().time());
+            }
         }
-        let drained = self.world.drain_events();
-        for rec in drained {
+        #[cfg(not(feature = "audio"))]
+        {
+            records = drained;
+        }
+        for rec in records {
             let seq = self.events.next_seq;
             self.events.next_seq += 1;
             let row = event_json(&self.world, seq, &rec);
@@ -2032,6 +2110,10 @@ impl Daemon {
         let open = json::bool_param(params, "open", true)?;
         if !open {
             self.render.window = None;
+            #[cfg(feature = "audio")]
+            if let Some(a) = self.audio.as_mut() {
+                a.close_device();
+            }
             return Ok(self.render_status());
         }
         self.require_session()?;
@@ -2047,6 +2129,14 @@ impl Daemon {
         let root = self.session.as_ref().expect("session").root.clone();
         self.render
             .open_window(&title, width, height, software, &root)?;
+        #[cfg(feature = "audio")]
+        if json::bool_param(params, "audio", true)? {
+            if let Some(a) = self.audio.as_mut() {
+                if let Err(e) = a.open_device() {
+                    eprintln!("argusd: no audio output: {e}");
+                }
+            }
+        }
         Ok(self.render_status())
     }
 
@@ -2122,6 +2212,216 @@ impl Daemon {
     #[cfg(not(feature = "render"))]
     fn render_status(&self) -> Json {
         json!({ "window": false, "adapter": null })
+    }
+
+    // ----- audio ------------------------------------------------------------
+
+    #[cfg(feature = "audio")]
+    fn audio_engine(&mut self) -> Result<&mut argus_audio::AudioEngine> {
+        self.require_session()?;
+        let err = self.audio_error.clone();
+        self.audio.as_mut().ok_or_else(|| {
+            let msg = err
+                .as_ref()
+                .and_then(|e| e["message"].as_str().map(str::to_string))
+                .unwrap_or_else(|| "the mixer is not loaded".to_string());
+            ArgusError::new(
+                argus_audio::codes::BAD_AUDIO_TOML,
+                format!("no mixer: {msg}"),
+            )
+            .hint("Fix audio.toml and scene.load again; audio.status shows the error.")
+        })
+    }
+
+    #[cfg(feature = "audio")]
+    fn audio_status(&mut self) -> Result<Json> {
+        self.require_session()?;
+        let Some(a) = self.audio.as_ref() else {
+            return Ok(json!({ "device": null, "error": self.audio_error }));
+        };
+        let (meters, peak, rms, limiter) = a.meters();
+        let voices: std::collections::BTreeMap<String, usize> =
+            a.bus_voices().into_iter().collect();
+        let r1 = |x: f32| (x as f64 * 10.0).round() / 10.0;
+        let rows: Vec<Json> = meters
+            .iter()
+            .map(|m| {
+                json!([
+                    m.name,
+                    m.parent,
+                    r1(m.gain_db),
+                    m.mute,
+                    r1(m.duck_db),
+                    r1(m.peak_db),
+                    r1(m.rms_db),
+                    voices.get(&m.name).copied().unwrap_or(0)
+                ])
+            })
+            .collect();
+        Ok(json!({
+            "device": a.device_name(),
+            "rate": a.rate(),
+            "voices": a.voices(),
+            "played": a.played,
+            "master": { "peak_db": r1(peak), "rms_db": r1(rms), "limiter_db": r1(limiter) },
+            "columns": ["bus", "parent", "gain_db", "mute", "duck_db", "peak_db", "rms_db", "voices"],
+            "rows": rows,
+            "music": a.music().map(|(t, l)| json!({
+                "track": t,
+                "layers": l.iter().map(|(n, on)| json!([n, on])).collect::<Vec<_>>(),
+            })),
+            "sounds": a.sound_names(),
+            "missing": a.missing(),
+            "warnings": a.warnings,
+            "error": self.audio_error,
+        }))
+    }
+
+    #[cfg(feature = "audio")]
+    fn audio_play(&mut self, params: &Json) -> Result<Json> {
+        self.audio_engine()?;
+        let sound = json::str_param(params, "sound")?.to_string();
+        let mut fields = vec![("sound".to_string(), Value::Str(sound))];
+        if let Some(e) = json::opt_str(params, "entity")? {
+            fields.push(("entity".to_string(), Value::Entity(self.world.entity(e)?)));
+        }
+        for k in ["gain", "pitch", "pan"] {
+            if let Some(v) = params.get(k).and_then(Json::as_f64) {
+                fields.push((k.to_string(), Value::Float(v)));
+            }
+        }
+        if let Some(b) = json::opt_str(params, "bus")? {
+            fields.push(("bus".to_string(), Value::Str(b.to_string())));
+        }
+        if json::bool_param(params, "loop", false)? {
+            fields.push(("loop".to_string(), Value::Bool(true)));
+        }
+        fields.sort_by(|a, b| a.0.cmp(&b.0));
+        let before = self.events.next_seq;
+        self.world.emit(Event::Game {
+            name: "sound.play".to_string(),
+            fields,
+        });
+        self.pump_events();
+        let answer = self.events.records.iter().rev().find(|(seq, r)| {
+            *seq >= before
+                && matches!(&r.event, Event::Game { name, .. } if name == "sound.played" || name == "sound.missing")
+        });
+        match answer {
+            Some((seq, r)) => Ok(event_json(&self.world, *seq, r)),
+            None => Ok(json!({ "name": "sound.missing", "fields": {} })),
+        }
+    }
+
+    #[cfg(feature = "audio")]
+    fn audio_stop(&mut self, params: &Json) -> Result<Json> {
+        self.audio_engine()?;
+        let mut fields = Vec::new();
+        if let Some(v) = params.get("voice").and_then(Json::as_u64) {
+            fields.push(("voice".to_string(), Value::Int(v as i64)));
+        }
+        if let Some(e) = json::opt_str(params, "entity")? {
+            fields.push(("entity".to_string(), Value::Entity(self.world.entity(e)?)));
+        }
+        if let Some(f) = params.get("fade_ms").and_then(Json::as_f64) {
+            fields.push(("fade_ms".to_string(), Value::Float(f)));
+        }
+        let before = self.events.next_seq;
+        self.world.emit(Event::Game {
+            name: "sound.stop".to_string(),
+            fields,
+        });
+        self.pump_events();
+        let stopped: Vec<Json> = self
+            .events
+            .records
+            .iter()
+            .filter(|(seq, r)| {
+                *seq >= before
+                    && matches!(&r.event, Event::Game { name, .. } if name == "sound.stopped")
+            })
+            .filter_map(|(_, r)| match &r.event {
+                Event::Game { fields, .. } => fields
+                    .iter()
+                    .find(|f| f.0 == "voice")
+                    .map(|f| json::to_json(&self.world, &f.1)),
+                _ => None,
+            })
+            .collect();
+        Ok(json!({ "stopped": stopped }))
+    }
+
+    #[cfg(feature = "audio")]
+    fn audio_bus(&mut self, params: &Json) -> Result<Json> {
+        let bus = json::str_param(params, "bus")?.to_string();
+        let gain = params
+            .get("gain_db")
+            .and_then(Json::as_f64)
+            .map(|g| g as f32);
+        let mute = match params.get("mute") {
+            None | Some(Json::Null) => None,
+            Some(_) => Some(json::bool_param(params, "mute", false)?),
+        };
+        self.audio_engine()?.set_bus(&bus, gain, mute)?;
+        self.audio_status()
+    }
+
+    #[cfg(feature = "audio")]
+    fn audio_clip(&mut self, params: &Json) -> Result<Json> {
+        let seconds = json::f64_param(params, "seconds", 5.0)?.clamp(0.01, 10.0) as f32;
+        let root = self.require_session()?.root.clone();
+        let path = match json::opt_str(params, "path")? {
+            Some(p) if PathBuf::from(p).is_absolute() => PathBuf::from(p),
+            Some(p) => root.join(p),
+            None => root
+                .join(".argus")
+                .join("clips")
+                .join(format!("audio-{}.wav", self.sched.tick())),
+        };
+        let (frames, peak) = self.audio_engine()?.clip(seconds, &path)?;
+        Ok(json!({
+            "path": path.to_string_lossy(),
+            "seconds": seconds,
+            "frames": frames,
+            "peak_db": (peak as f64 * 10.0).round() / 10.0,
+        }))
+    }
+
+    #[cfg(feature = "audio")]
+    fn audio_device(&mut self, params: &Json) -> Result<Json> {
+        let open = json::bool_param(params, "open", true)?;
+        let a = self.audio_engine()?;
+        if open {
+            a.open_device()?;
+        } else {
+            a.close_device();
+        }
+        self.audio_status()
+    }
+
+    #[cfg(not(feature = "audio"))]
+    fn audio_status(&mut self) -> Result<Json> {
+        Ok(json!({ "device": null, "error": "this daemon was built without audio" }))
+    }
+    #[cfg(not(feature = "audio"))]
+    fn audio_play(&mut self, _p: &Json) -> Result<Json> {
+        Err(ArgusError::new(5103, "this daemon was built without audio"))
+    }
+    #[cfg(not(feature = "audio"))]
+    fn audio_stop(&mut self, _p: &Json) -> Result<Json> {
+        Err(ArgusError::new(5103, "this daemon was built without audio"))
+    }
+    #[cfg(not(feature = "audio"))]
+    fn audio_bus(&mut self, _p: &Json) -> Result<Json> {
+        Err(ArgusError::new(5103, "this daemon was built without audio"))
+    }
+    #[cfg(not(feature = "audio"))]
+    fn audio_clip(&mut self, _p: &Json) -> Result<Json> {
+        Err(ArgusError::new(5103, "this daemon was built without audio"))
+    }
+    #[cfg(not(feature = "audio"))]
+    fn audio_device(&mut self, _p: &Json) -> Result<Json> {
+        Err(ArgusError::new(5103, "this daemon was built without audio"))
     }
 
     // ----- test -------------------------------------------------------------
