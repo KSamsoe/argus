@@ -45,6 +45,8 @@ struct Session {
     input: Option<Rc<RefCell<InputState>>>,
     /// Where `input.record` writes, if on.
     run_dir: Option<PathBuf>,
+    /// The asset importer and its catalog (phase 1, item 4).
+    assets: argus_assets::Importer,
 }
 
 struct EventLog {
@@ -251,6 +253,18 @@ impl Daemon {
                 Ok(st.state_json(slot))
             }
             "asset.move" => self.asset_move(params),
+            "asset.list" => self.asset_list(params),
+            "asset.get" => {
+                let name = json::str_param(params, "name")?;
+                Ok(self.require_session()?.assets.get(name)?.to_json())
+            }
+            "asset.import" => {
+                self.require_session()?;
+                let force = json::bool_param(params, "force", false)?;
+                let ses = self.session.as_mut().expect("session");
+                let report = if force { ses.assets.rescan_all() } else { ses.assets.scan() };
+                Ok(self.apply_asset_report(report))
+            }
             "scene.list" => self.scene_list(),
             "scene.load" => self.scene_load(params),
             "scene.issues" => self.scene_issues(),
@@ -596,11 +610,22 @@ impl Daemon {
             Ok(i) => (Some(i), None),
             Err(e) => (None, Some(e.message)),
         };
+        // The asset importer: scan once now; the server polls it after.
+        let mut assets = argus_assets::Importer::new(&root);
+        let asset_report = assets.scan();
+        #[cfg(feature = "render")]
+        {
+            self.render.offscreen = None;
+            if let Some((_, r)) = &mut self.render.window {
+                let _ = r.load_catalog(&assets);
+            }
+        }
         #[cfg(feature = "audio")]
         {
             // Variations come from the run seed, so sound.played replays.
             match argus_audio::AudioEngine::load(&root, seed) {
                 Ok(mut a) => {
+                    a.set_asset_sounds(assets.sidecar_sounds());
                     if self.has_window() {
                         let _ = a.open_device();
                     }
@@ -625,7 +650,9 @@ impl Daemon {
             index_error,
             input,
             run_dir: None,
+            assets,
         });
+        self.asset_events(&asset_report, true);
         self.pump_events();
         self.sync_index(false);
         let mut out = self.world_summary()?;
@@ -649,6 +676,11 @@ impl Daemon {
         if let Some(e) = &self.audio_error {
             out["audio_error"] = e.clone();
         }
+        out["assets"] = json!({
+            "total": self.session.as_ref().map(|s| s.assets.entries().len()).unwrap_or(0),
+            "failed": asset_report.failed.len(),
+            "warnings": self.session.as_ref().map(|s| s.assets.entries().values().map(|e| e.warnings.len()).sum::<usize>()).unwrap_or(0),
+        });
         Ok(out)
     }
 
@@ -816,6 +848,174 @@ impl Daemon {
         }
     }
 
+    /// Poll `assets/` and import what changed (the watcher). The server
+    /// calls this twice a second; `obs.frame` calls it first so an edit
+    /// to a sidecar shows in the next picture.
+    pub fn refresh_assets(&mut self) {
+        let Some(ses) = self.session.as_mut() else {
+            return;
+        };
+        if let Some(report) = ses.assets.poll() {
+            self.apply_asset_report(report);
+        }
+    }
+
+    /// Reload what an import changed, log it, and report it.
+    fn apply_asset_report(&mut self, report: argus_assets::Report) -> Json {
+        let changed: Vec<String> = report
+            .imported
+            .iter()
+            .chain(report.removed.iter())
+            .cloned()
+            .collect();
+        if !changed.is_empty() {
+            let ses = self.session.as_ref().expect("session");
+            #[cfg(feature = "render")]
+            {
+                if let Some((_, r)) = &mut self.render.window {
+                    let _ = r.reload_sprites(&ses.assets, &changed);
+                }
+                if let Some((_, _, r)) = &mut self.render.offscreen {
+                    let _ = r.reload_sprites(&ses.assets, &changed);
+                }
+            }
+            #[cfg(feature = "audio")]
+            {
+                let sounds_changed = changed.iter().any(|n| {
+                    ses.assets
+                        .entries()
+                        .get(n)
+                        .is_none_or(|e| e.kind() == "sound")
+                });
+                if sounds_changed {
+                    if let Some(a) = self.audio.as_mut() {
+                        a.set_asset_sounds(ses.assets.sidecar_sounds());
+                    }
+                }
+            }
+        }
+        self.asset_events(&report, false);
+        self.pump_events();
+        json!({
+            "imported": report.imported,
+            "unchanged": report.unchanged,
+            "removed": report.removed,
+            "failed": report.failed.iter().map(|f| json!({
+                "name": f.name, "message": f.error.message, "at": f.error.r#ref,
+            })).collect::<Vec<_>>(),
+            "ms": report.ms,
+        })
+    }
+
+    /// Every import as events (section 14 "reports every import as an
+    /// event with warnings"). On a scene open the imports are one summary
+    /// event; warnings and failures are always one event each.
+    fn asset_events(&mut self, report: &argus_assets::Report, opening: bool) {
+        let Some(ses) = self.session.as_ref() else {
+            return;
+        };
+        let mut evs: Vec<(String, Vec<(String, Value)>)> = Vec::new();
+        let s = |x: &str| Value::Str(x.to_string());
+        if opening {
+            evs.push((
+                "assets.scanned".into(),
+                vec![
+                    (
+                        "assets".into(),
+                        Value::Int(ses.assets.entries().len() as i64),
+                    ),
+                    ("failed".into(), Value::Int(report.failed.len() as i64)),
+                    ("ms".into(), Value::Float((report.ms * 10.0).round() / 10.0)),
+                ],
+            ));
+        }
+        for name in &report.imported {
+            let Some(e) = ses.assets.entries().get(name) else {
+                continue;
+            };
+            if !opening {
+                evs.push((
+                    "asset.imported".into(),
+                    vec![
+                        ("asset".into(), s(name)),
+                        ("kind".into(), s(e.kind())),
+                        ("warnings".into(), Value::Int(e.warnings.len() as i64)),
+                    ],
+                ));
+            }
+            for w in &e.warnings {
+                evs.push((
+                    "asset.warning".into(),
+                    vec![
+                        ("asset".into(), s(name)),
+                        ("at".into(), s(&w.at)),
+                        ("message".into(), s(&w.message)),
+                    ],
+                ));
+            }
+        }
+        for f in &report.failed {
+            evs.push((
+                "asset.failed".into(),
+                vec![
+                    ("asset".into(), s(&f.name)),
+                    ("at".into(), s(f.error.r#ref.as_deref().unwrap_or(""))),
+                    ("message".into(), s(&f.error.message)),
+                ],
+            ));
+        }
+        for name in &report.removed {
+            evs.push(("asset.removed".into(), vec![("asset".into(), s(name))]));
+        }
+        for (name, fields) in evs {
+            self.world.emit(Event::Game { name, fields });
+        }
+    }
+
+    fn asset_list(&self, params: &Json) -> Result<Json> {
+        let ses = self.require_session()?;
+        let kind = json::opt_str(params, "kind")?;
+        let rows: Vec<Json> = ses
+            .assets
+            .entries()
+            .values()
+            .filter(|e| kind.is_none_or(|k| k == e.kind()))
+            .map(|e| match &e.asset {
+                argus_assets::Asset::Sprite(sp) => json!([
+                    e.name,
+                    "sprite",
+                    sp.source.clone().unwrap_or_else(|| "shape".to_string()),
+                    sp.frames.len(),
+                    sp.clips.keys().collect::<Vec<_>>(),
+                    e.warnings.len()
+                ]),
+                argus_assets::Asset::Sound(so) => json!([
+                    e.name,
+                    "sound",
+                    if so.from_sidecar {
+                        e.sidecar.clone().unwrap_or_default()
+                    } else {
+                        so.files.first().map(|f| f.path.clone()).unwrap_or_default()
+                    },
+                    so.def.variations.len(),
+                    Json::Array(Vec::new()),
+                    e.warnings.len()
+                ]),
+            })
+            .collect();
+        let failed: Vec<Json> = ses
+            .assets
+            .failures()
+            .values()
+            .map(|f| json!({ "name": f.name, "message": f.error.message, "at": f.error.r#ref }))
+            .collect();
+        let (limit, offset) = query::page(params)?;
+        let mut out = query::paged(rows, limit, offset);
+        out["columns"] = json!(["name", "kind", "source", "frames", "clips", "warnings"]);
+        out["failed"] = Json::Array(failed);
+        Ok(out)
+    }
+
     /// Idle-time refresh: pick up files edited outside the daemon.
     pub fn refresh_index(&mut self) {
         self.sync_index(false);
@@ -884,6 +1084,7 @@ impl Daemon {
         ses.scene.reload_files(&ses.project.ctx(&registry));
         let entity_move = report.record.kind == argus_scene::MoveKind::Entity;
         self.sync_index(true);
+        self.refresh_assets();
         let mut out = json!({
             "kind": report.record.kind.name(),
             "from": report.record.from,
@@ -2083,7 +2284,13 @@ impl Daemon {
         };
         let tick = self.sched.tick();
         let alpha = self.sched.alpha();
-        let r = self.render.offscreen(width, height, software, &root)?;
+        self.refresh_assets();
+        let r = self.render.offscreen(
+            width,
+            height,
+            software,
+            &self.session.as_ref().expect("session").assets,
+        )?;
         let _ = self.sched.present(&mut self.world);
         let rep = r.render(&self.world, tick, alpha)?;
         let img = r.capture()?;
@@ -2126,9 +2333,13 @@ impl Daemon {
                 let ses = self.session.as_ref().expect("session");
                 format!("argus: {} ({})", ses.project.config.name, ses.scene_name)
             });
-        let root = self.session.as_ref().expect("session").root.clone();
-        self.render
-            .open_window(&title, width, height, software, &root)?;
+        self.render.open_window(
+            &title,
+            width,
+            height,
+            software,
+            &self.session.as_ref().expect("session").assets,
+        )?;
         #[cfg(feature = "audio")]
         if json::bool_param(params, "audio", true)? {
             if let Some(a) = self.audio.as_mut() {
@@ -2724,7 +2935,6 @@ pub(crate) mod render {
     use argus_render::window::{DeviceEvent, WindowHost};
     use argus_render::Renderer;
     use std::collections::BTreeMap;
-    use std::path::Path;
 
     #[derive(Default)]
     pub(crate) struct RenderState {
@@ -2894,7 +3104,7 @@ pub(crate) mod render {
             width: u32,
             height: u32,
             software: bool,
-            root: &Path,
+            assets: &argus_assets::Importer,
         ) -> Result<&mut Renderer> {
             let fresh = match &self.offscreen {
                 Some((w, h, r)) => *w != width || *h != height || r.gpu().software != software,
@@ -2902,7 +3112,7 @@ pub(crate) mod render {
             };
             if fresh {
                 let mut r = Renderer::offscreen(width, height, software)?;
-                r.load_atlases(root)?;
+                r.load_catalog(assets)?;
                 self.offscreen = Some((width, height, r));
             }
             Ok(&mut self.offscreen.as_mut().expect("just set").2)
@@ -2914,7 +3124,7 @@ pub(crate) mod render {
             width: u32,
             height: u32,
             software: bool,
-            root: &Path,
+            assets: &argus_assets::Importer,
         ) -> Result<()> {
             if self.window.is_some() {
                 return Ok(());
@@ -2922,7 +3132,7 @@ pub(crate) mod render {
             let host = WindowHost::open(title, width, height)?;
             let window = host.window().expect("open");
             let mut r = Renderer::windowed(window, software)?;
-            r.load_atlases(root)?;
+            r.load_catalog(assets)?;
             self.window = Some((host, r));
             if self.pads.is_none() {
                 // Pads already plugged in are reported as connected on the first poll.

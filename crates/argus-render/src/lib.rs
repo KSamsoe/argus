@@ -252,29 +252,52 @@ impl Renderer {
         &mut self.gpu
     }
 
-    /// Load every `assets/*.png` under `root` as an atlas named by its
-    /// stem, with `<stem>.atlas.toml` beside it when present. Returns
-    /// the names loaded; a bad file is an error naming it.
+    /// Import `assets/` (the importer writes its cache under `.argus/`)
+    /// and load every sprite as an atlas. Returns the names loaded.
     pub fn load_atlases(&mut self, root: &Path) -> argus_ecs::Result<Vec<String>> {
-        let dir = root.join("assets");
-        let mut names = Vec::new();
-        let Ok(rd) = std::fs::read_dir(&dir) else {
-            return Ok(names);
-        };
-        let mut files: Vec<_> = rd
-            .flatten()
-            .map(|e| e.path())
-            .filter(|p| p.extension().is_some_and(|x| x == "png"))
-            .collect();
-        files.sort();
-        for p in files {
-            let name = p.file_stem().unwrap().to_string_lossy().into_owned();
-            let side = dir.join(format!("{name}.atlas.toml"));
-            self.gpu
-                .load_atlas(&name, &p, if side.is_file() { Some(&side) } else { None })?;
-            names.push(name);
-        }
+        let mut imp = argus_assets::Importer::new(root);
+        imp.scan();
+        self.load_catalog(&imp)
+    }
+
+    /// Load every sprite of an importer's catalog as an atlas named by
+    /// the asset (`sprites/hero`), with its frames and pivots.
+    pub fn load_catalog(&mut self, imp: &argus_assets::Importer) -> argus_ecs::Result<Vec<String>> {
+        let names: Vec<String> = imp.sprites().map(|(n, _)| n.clone()).collect();
+        self.reload_sprites(imp, &names)?;
         Ok(names)
+    }
+
+    /// Reload the named sprites from the catalog (hot reload after an
+    /// import); a name no longer in the catalog is dropped.
+    pub fn reload_sprites(
+        &mut self,
+        imp: &argus_assets::Importer,
+        names: &[String],
+    ) -> argus_ecs::Result<()> {
+        for name in names {
+            let Some(s) = imp.sprites().find(|(n, _)| *n == name).map(|(_, s)| s) else {
+                self.gpu.remove_atlas(name);
+                continue;
+            };
+            let (w, h, rgba) = argus_assets::decode_png(&s.texture)?;
+            let (tw, th) = (w.max(1) as f32, h.max(1) as f32);
+            let frames: Vec<[f32; 4]> = s
+                .frames
+                .iter()
+                .map(|f| {
+                    [
+                        f.rect[0] as f32 / tw,
+                        f.rect[1] as f32 / th,
+                        f.rect[2] as f32 / tw,
+                        f.rect[3] as f32 / th,
+                    ]
+                })
+                .collect();
+            let pivots: Vec<[f32; 2]> = s.frames.iter().map(|f| f.pivot).collect();
+            self.gpu.add_atlas_frames(name, w, h, &rgba, frames, pivots);
+        }
+        Ok(())
     }
 
     /// The last frame's report.
@@ -359,7 +382,7 @@ impl Renderer {
                 if !s.visible {
                     return;
                 }
-                let (ai, uv, mut color) = if s.atlas == StrId::EMPTY {
+                let (ai, uv, pivot, mut color) = if s.atlas == StrId::EMPTY {
                     let k = *kind_of.entry(s.kind).or_insert_with(|| {
                         if &*strings.get(s.kind) == "circle" {
                             circle
@@ -367,7 +390,7 @@ impl Renderer {
                             rect
                         }
                     });
-                    (k, [0.0, 0.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0])
+                    (k, [0.0, 0.0, 1.0, 1.0], [0.5, 0.5], [1.0, 1.0, 1.0, 1.0])
                 } else {
                     let ai = *atlas_of.entry(s.atlas).or_insert_with(|| {
                         let name = strings.resolve(s.atlas);
@@ -380,15 +403,16 @@ impl Renderer {
                         }
                     });
                     if ai == u32::MAX {
-                        (rect, [0.0, 0.0, 1.0, 1.0], [1.0, 0.0, 1.0, 1.0])
+                        (rect, [0.0, 0.0, 1.0, 1.0], [0.5, 0.5], [1.0, 0.0, 1.0, 1.0])
                     } else {
                         let a = gpu.atlas(&names[ai as usize]).expect("indexed");
-                        let uv = a
-                            .frames
-                            .get(s.frame as usize)
-                            .copied()
-                            .unwrap_or(a.frames[0]);
-                        (ai, uv, [1.0, 1.0, 1.0, 1.0])
+                        let f = if (s.frame as usize) < a.frames.len() {
+                            s.frame as usize
+                        } else {
+                            0
+                        };
+                        let pivot = a.pivots.get(f).copied().unwrap_or([0.5, 0.5]);
+                        (ai, a.frames[f], pivot, [1.0, 1.0, 1.0, 1.0])
                     }
                 };
                 if s.color != StrId::EMPTY {
@@ -403,8 +427,10 @@ impl Renderer {
                     ];
                 }
                 let mut uv = uv;
+                let mut pivot = pivot;
                 if s.flip_x {
                     uv = [uv[0] + uv[2], uv[1], -uv[2], uv[3]];
+                    pivot[0] = 1.0 - pivot[0];
                 }
                 // Sort key: z as an order-preserving integer, then atlas.
                 let zb = s.z.to_bits();
@@ -417,7 +443,7 @@ impl Renderer {
                     (zo << 32) | ai as u64,
                     Instance {
                         pos_size: [x, y, s.size.x * scale.x, s.size.y * scale.y],
-                        rot_z: [rot, s.z, 0.0, 0.0],
+                        rot_z: [rot, s.z, pivot[0], pivot[1]],
                         uv,
                         color,
                     },

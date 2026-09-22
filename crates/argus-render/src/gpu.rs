@@ -4,7 +4,6 @@
 
 use argus_ecs::{ArgusError, Result};
 use std::collections::HashMap;
-use std::path::Path;
 use std::sync::Arc;
 
 /// One instance as the shader reads it (64 bytes).
@@ -37,6 +36,8 @@ pub struct Atlas {
     pub height: u32,
     /// Frame rects in texture space (u, v, w, h), frame 0 first.
     pub frames: Vec<[f32; 4]>,
+    /// Each frame's pivot, a fraction of the frame, y up (0.5, 0.5 is the centre).
+    pub pivots: Vec<[f32; 2]>,
     bind_group: wgpu::BindGroup,
 }
 
@@ -386,7 +387,8 @@ impl Gpu {
         }
     }
 
-    /// Register an atlas from RGBA8 pixels with explicit frame rects.
+    /// Register an atlas from RGBA8 pixels with explicit frame rects,
+    /// every pivot at the frame's centre.
     pub fn add_atlas_rgba(
         &mut self,
         name: &str,
@@ -394,6 +396,20 @@ impl Gpu {
         height: u32,
         rgba: &[u8],
         frames: Vec<[f32; 4]>,
+    ) {
+        let pivots = vec![[0.5, 0.5]; frames.len()];
+        self.add_atlas_frames(name, width, height, rgba, frames, pivots);
+    }
+
+    /// Register (or replace) an atlas with frame rects and pivots.
+    pub fn add_atlas_frames(
+        &mut self,
+        name: &str,
+        width: u32,
+        height: u32,
+        rgba: &[u8],
+        frames: Vec<[f32; 4]>,
+        pivots: Vec<[f32; 2]>,
     ) {
         let texture = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some(name),
@@ -452,106 +468,16 @@ impl Gpu {
                 width,
                 height,
                 frames,
+                pivots,
                 bind_group,
             },
         );
     }
 
-    /// Load an atlas from a PNG and an optional sidecar (`<name>.atlas.toml`
-    /// with `[[frames]] rect = [x, y, w, h]` in pixels, or `grid = [cols,
-    /// rows]`); without one the whole image is frame 0.
-    pub fn load_atlas(
-        &mut self,
-        name: &str,
-        png_path: &Path,
-        sidecar: Option<&Path>,
-    ) -> Result<()> {
-        let file = std::fs::File::open(png_path).map_err(|e| {
-            ArgusError::new(
-                crate::codes::ATLAS,
-                format!("cannot open atlas {}: {e}", png_path.display()),
-            )
-        })?;
-        let decoder = png::Decoder::new(std::io::BufReader::new(file));
-        let mut reader = decoder.read_info().map_err(err)?;
-        let mut buf = vec![0u8; reader.output_buffer_size()];
-        let info = reader.next_frame(&mut buf).map_err(err)?;
-        let (w, h) = (info.width, info.height);
-        let rgba: Vec<u8> = match info.color_type {
-            png::ColorType::Rgba => buf[..info.buffer_size()].to_vec(),
-            png::ColorType::Rgb => buf[..info.buffer_size()]
-                .chunks(3)
-                .flat_map(|p| [p[0], p[1], p[2], 255])
-                .collect(),
-            png::ColorType::Grayscale => buf[..info.buffer_size()]
-                .iter()
-                .flat_map(|&g| [g, g, g, 255])
-                .collect(),
-            png::ColorType::GrayscaleAlpha => buf[..info.buffer_size()]
-                .chunks(2)
-                .flat_map(|p| [p[0], p[0], p[0], p[1]])
-                .collect(),
-            other => {
-                return Err(ArgusError::new(
-                    crate::codes::ATLAS,
-                    format!(
-                        "{}: unsupported PNG colour type {other:?}",
-                        png_path.display()
-                    ),
-                ))
-            }
-        };
-        let mut frames = vec![[0.0, 0.0, 1.0, 1.0]];
-        if let Some(side) = sidecar {
-            if let Ok(text) = std::fs::read_to_string(side) {
-                let doc: toml_edit::DocumentMut = text.parse().map_err(|e| {
-                    ArgusError::new(crate::codes::ATLAS, format!("{}: {e}", side.display()))
-                })?;
-                let mut out = Vec::new();
-                if let Some(arr) = doc.get("frames").and_then(|f| f.as_array_of_tables()) {
-                    for t in arr {
-                        if let Some(r) = t.get("rect").and_then(|r| r.as_array()) {
-                            let v: Vec<f32> = r
-                                .iter()
-                                .filter_map(|x| x.as_float().or(x.as_integer().map(|i| i as f64)))
-                                .map(|x| x as f32)
-                                .collect();
-                            if v.len() == 4 {
-                                out.push([
-                                    v[0] / w as f32,
-                                    v[1] / h as f32,
-                                    v[2] / w as f32,
-                                    v[3] / h as f32,
-                                ]);
-                            }
-                        }
-                    }
-                } else if let Some(g) = doc.get("grid").and_then(|g| g.as_array()) {
-                    let v: Vec<u32> = g
-                        .iter()
-                        .filter_map(|x| x.as_integer())
-                        .map(|i| i as u32)
-                        .collect();
-                    if v.len() == 2 && v[0] > 0 && v[1] > 0 {
-                        for row in 0..v[1] {
-                            for col in 0..v[0] {
-                                out.push([
-                                    col as f32 / v[0] as f32,
-                                    row as f32 / v[1] as f32,
-                                    1.0 / v[0] as f32,
-                                    1.0 / v[1] as f32,
-                                ]);
-                            }
-                        }
-                    }
-                }
-                if !out.is_empty() {
-                    frames = out;
-                }
-            }
-        }
-        self.add_atlas_rgba(name, w, h, &rgba, frames);
-        Ok(())
+    /// Forget an atlas (its asset went away).
+    pub fn remove_atlas(&mut self, name: &str) -> bool {
+        self.atlas_order.retain(|n| n != name);
+        self.atlases.remove(name).is_some()
     }
 
     /// An atlas by name.

@@ -32,7 +32,7 @@ Carried in from phase 0 by decision: `obs.trace` (item 13 here), `code` in `run.
 
 ## 4. Asset importer with sidecars and watch
 
-**Status: not started.** Constraints: §14 `assets/` with sidecar TOML the agent can write (frames and pivots, clip lists and rates, gain and variation sets); the importer watches the tree, caches in `.argus/`, and reports every import as an event with warnings; described-shape placeholders; Aseprite and Tiled native import is phase 5, the sidecar shape must already carry their structure; §4 `.argus/` is a cache, never committed.
+**Status: done** (2026-09-22) in `crates/argus-assets`, with the renderer loading sprites from its catalog (frames and pivots) and the mixer loading sidecar sounds; the daemon scans on open, polls twice a second, logs `assets.scanned`, `asset.imported`, `asset.warning`, `asset.failed`, `asset.removed`, hot-reloads sprites and sounds, and answers `asset.list`, `asset.get`, `asset.import`. A described-shape sidecar is drawn into the cache as a real texture, so the art that replaces it later is the same asset under the same name. Both example heroes are such placeholders. Native Aseprite and Tiled readers stay in phase 5 as planned; the sidecar holds their structure. Trace: `crates/argus-assets/SPEC-TRACE.md`. Constraints: §14 `assets/` with sidecar TOML the agent can write (frames and pivots, clip lists and rates, gain and variation sets); the importer watches the tree, caches in `.argus/`, and reports every import as an event with warnings; described-shape placeholders; Aseprite and Tiled native import is phase 5, the sidecar shape must already carry their structure; §4 `.argus/` is a cache, never committed.
 
 ## 5. Tilemaps with chunks and auto-tiling
 

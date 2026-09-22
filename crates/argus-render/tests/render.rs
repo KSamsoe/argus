@@ -272,3 +272,62 @@ fn perf_200k_sprites_per_frame() {
     );
     assert!(best < 40.0, "{best} ms");
 }
+
+/// §14: a placeholder asset and the art that replaces it are one name; the
+/// sprite's pivot puts its feet on the position.
+#[test]
+fn a_placeholder_asset_draws_with_its_pivot_and_the_art_replaces_it() {
+    let Some(mut r) = renderer(100, 100) else {
+        return;
+    };
+    let dir = std::env::temp_dir().join(format!("argus-hero-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("assets/sprites")).unwrap();
+    std::fs::write(
+        dir.join("assets/sprites/hero.toml"),
+        "kind = \"rect\"\nsize = [8, 8]\ncolor = \"#00FF00\"\npivot = [0.5, 0.0]\n",
+    )
+    .unwrap();
+    let mut imp = argus_assets::Importer::new(&dir);
+    imp.scan();
+    assert_eq!(r.load_catalog(&imp).unwrap(), vec!["sprites/hero"]);
+
+    let mut w = world_with_camera(10.0);
+    let e = w.spawn();
+    w.insert(e, Transform::at(0.0, 0.0)).unwrap();
+    let hero = w.strings().intern("sprites/hero");
+    w.insert(
+        e,
+        Sprite {
+            atlas: hero,
+            size: Vec2::new(4.0, 4.0),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    r.render(&w, 0, 0.0).unwrap();
+    let img = r.capture().unwrap();
+    // Feet at the origin: the sprite covers y 0..4, above the centre row.
+    assert_eq!(img.pixel(50, 45)[..3], [0, 255, 0], "above the position");
+    assert_ne!(img.pixel(50, 55)[..3], [0, 255, 0], "nothing below it");
+
+    // The art arrives under the same name; the entity is untouched.
+    argus_assets::encode_png(
+        &dir.join("assets/sprites/hero.png"),
+        2,
+        2,
+        &[255, 0, 0, 255].repeat(4),
+    )
+    .unwrap();
+    let rep = imp.poll().unwrap();
+    assert_eq!(rep.imported, vec!["sprites/hero"]);
+    r.reload_sprites(&imp, &rep.imported).unwrap();
+    r.render(&w, 0, 0.0).unwrap();
+    let img = r.capture().unwrap();
+    assert_eq!(
+        img.pixel(50, 45)[..3],
+        [255, 0, 0],
+        "the real art, same reference"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}

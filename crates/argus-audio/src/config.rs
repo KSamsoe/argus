@@ -287,6 +287,81 @@ fn tone_from(t: &dyn toml_edit::TableLike, file: &str, line: u32) -> Result<Tone
     })
 }
 
+/// A sound from a table: the body of `[sounds."name"]` in `audio.toml`, or
+/// a whole sound sidecar (`assets/sfx/step.toml`). The bus is checked by
+/// the caller, who knows the buses.
+fn sound_from(name: &str, st: &dyn toml_edit::TableLike, file: &str, sl: u32) -> Result<SoundDef> {
+    let bus = get_str(st, "bus").unwrap_or_else(|| {
+        if name.starts_with("music/") {
+            "music"
+        } else {
+            "sfx"
+        }
+        .to_string()
+    });
+    let mut variations = Vec::new();
+    if let Some(a) = st
+        .get("variations")
+        .and_then(|i| i.as_value())
+        .and_then(|v| v.as_array())
+    {
+        for v in a.iter() {
+            if let Some(p) = v.as_str() {
+                variations.push(Source::File(p.to_string()));
+            } else if let Some(tt) = v.as_inline_table() {
+                variations.push(Source::Tone(tone_from(tt, file, sl)?));
+            } else {
+                return Err(err(
+                    file,
+                    sl,
+                    format!("sounds.{name:?}.variations: each item is a file path or a tone table"),
+                ));
+            }
+        }
+    }
+    if let Some(tv) = st.get("tone") {
+        let tt = tv
+            .as_table_like()
+            .ok_or_else(|| err(file, sl, format!("sounds.{name:?}.tone must be a table")))?;
+        variations.push(Source::Tone(tone_from(tt, file, sl)?));
+    }
+    if let Some(f) = get_str(st, "file") {
+        variations.push(Source::File(f));
+    }
+    if variations.is_empty() {
+        return Err(err(
+            file,
+            sl,
+            format!("sounds.{name:?} has nothing to play: give variations = [...], tone = {{...}}, or file = \"...\""),
+        ));
+    }
+    Ok(SoundDef {
+        name: name.to_string(),
+        bus,
+        gain: get_num(st, "gain").unwrap_or(1.0).max(0.0),
+        gain_jitter: get_num(st, "gain_jitter").unwrap_or(0.0).clamp(0.0, 1.0),
+        pitch_jitter: get_num(st, "pitch_jitter").unwrap_or(0.0).clamp(0.0, 0.9),
+        variations,
+        spatial: get_bool(st, "spatial").unwrap_or(true),
+        looping: get_bool(st, "loop").unwrap_or(false),
+        max_voices: get_num(st, "max_voices").unwrap_or(8.0).max(1.0) as u32,
+        at: format!("{file}:{sl}"),
+    })
+}
+
+/// Parse a sound sidecar: the whole file is one sound's table, with file
+/// variations relative to `assets/` (the importer rewrites them).
+pub fn parse_sound_sidecar(name: &str, file: &str, text: &str) -> Result<SoundDef> {
+    let doc: Doc = Doc::parse(text.to_string()).map_err(|e| {
+        let line = e
+            .span()
+            .map(|s| text[..s.start.min(text.len())].matches('\n').count() as u32 + 1)
+            .unwrap_or(1);
+        err(file, line, format!("not valid TOML: {}", e.message()))
+    })?;
+    sound_from(name, doc.as_table(), file, 1)
+}
+
 impl AudioConfig {
     /// Read `<root>/audio.toml`, or the defaults when there is none.
     pub fn load(root: &std::path::Path) -> Result<AudioConfig> {
@@ -428,68 +503,15 @@ impl AudioConfig {
                 let st = s
                     .as_table_like()
                     .ok_or_else(|| err(file, sl, format!("sounds.{name:?} must be a table")))?;
-                let bus = get_str(st, "bus").unwrap_or_else(|| {
-                    if name.starts_with("music/") {
-                        "music"
-                    } else {
-                        "sfx"
-                    }
-                    .to_string()
-                });
-                if !bus_exists(&cfg, &bus) {
+                let def = sound_from(name, st, file, sl)?;
+                if !bus_exists(&cfg, &def.bus) {
                     return Err(err(
                         file,
                         sl,
-                        format!("sounds.{name:?}.bus = {bus:?} is not a bus"),
+                        format!("sounds.{name:?}.bus = {:?} is not a bus", def.bus),
                     ));
                 }
-                let mut variations = Vec::new();
-                if let Some(a) = st
-                    .get("variations")
-                    .and_then(|i| i.as_value())
-                    .and_then(|v| v.as_array())
-                {
-                    for v in a.iter() {
-                        if let Some(p) = v.as_str() {
-                            variations.push(Source::File(p.to_string()));
-                        } else if let Some(tt) = v.as_inline_table() {
-                            variations.push(Source::Tone(tone_from(tt, file, sl)?));
-                        } else {
-                            return Err(err(file, sl, format!("sounds.{name:?}.variations: each item is a file path or a tone table")));
-                        }
-                    }
-                }
-                if let Some(tv) = st.get("tone") {
-                    let tt = tv.as_table_like().ok_or_else(|| {
-                        err(file, sl, format!("sounds.{name:?}.tone must be a table"))
-                    })?;
-                    variations.push(Source::Tone(tone_from(tt, file, sl)?));
-                }
-                if let Some(f) = get_str(st, "file") {
-                    variations.push(Source::File(f));
-                }
-                if variations.is_empty() {
-                    return Err(err(
-                        file,
-                        sl,
-                        format!("sounds.{name:?} has nothing to play: give variations = [...], tone = {{...}}, or file = \"...\""),
-                    ));
-                }
-                cfg.sounds.insert(
-                    name.to_string(),
-                    SoundDef {
-                        name: name.to_string(),
-                        bus,
-                        gain: get_num(st, "gain").unwrap_or(1.0).max(0.0),
-                        gain_jitter: get_num(st, "gain_jitter").unwrap_or(0.0).clamp(0.0, 1.0),
-                        pitch_jitter: get_num(st, "pitch_jitter").unwrap_or(0.0).clamp(0.0, 0.9),
-                        variations,
-                        spatial: get_bool(st, "spatial").unwrap_or(true),
-                        looping: get_bool(st, "loop").unwrap_or(false),
-                        max_voices: get_num(st, "max_voices").unwrap_or(8.0).max(1.0) as u32,
-                        at: format!("{file}:{sl}"),
-                    },
-                );
+                cfg.sounds.insert(name.to_string(), def);
             }
         }
 

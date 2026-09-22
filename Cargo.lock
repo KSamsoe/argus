@@ -103,6 +103,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "argus-assets"
+version = "0.0.1"
+dependencies = [
+ "argus-audio",
+ "argus-ecs",
+ "hound",
+ "png",
+ "serde_json",
+ "toml_edit 0.22.27",
+]
+
+[[package]]
 name = "argus-audio"
 version = "0.0.1"
 dependencies = [
@@ -128,6 +140,7 @@ dependencies = [
 name = "argus-daemon"
 version = "0.0.1"
 dependencies = [
+ "argus-assets",
  "argus-audio",
  "argus-ecs",
  "argus-index",
@@ -195,11 +208,11 @@ dependencies = [
 name = "argus-render"
 version = "0.0.1"
 dependencies = [
+ "argus-assets",
  "argus-ecs",
  "bytemuck",
  "png",
  "pollster",
- "toml_edit 0.22.27",
  "wgpu",
  "winit",
 ]

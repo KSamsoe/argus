@@ -18,9 +18,8 @@ cur = 10
 max = 10
 
 [Sprite]
-kind = "circle"
+atlas = "sprites/player"
 size = [1.2, 1.2]
-color = "#F2E6C8"
 z = 5.0
 
 [Camera]

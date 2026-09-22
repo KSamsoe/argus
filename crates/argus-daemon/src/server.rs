@@ -169,6 +169,7 @@ fn run_loop(
     let mut outs: BTreeMap<ConnId, Sender<String>> = BTreeMap::new();
     let mut next_frame = Instant::now();
     let mut last_refresh = Instant::now();
+    let mut last_assets = Instant::now();
     loop {
         let timeout = if daemon.wants_frames() || daemon.has_window() {
             next_frame.saturating_duration_since(Instant::now())
@@ -223,6 +224,11 @@ fn run_loop(
             if let Some(out) = outs.get(&conn) {
                 let _ = out.send(msg.to_string());
             }
+        }
+        // The asset watcher: twice a second, playing or not (section 14).
+        if last_assets.elapsed() >= Duration::from_millis(500) {
+            daemon.refresh_assets();
+            last_assets = Instant::now();
         }
         if daemon.shutdown {
             // Let the writer threads deliver the reply before the process ends.

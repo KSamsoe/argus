@@ -7,9 +7,9 @@ license.workspace = true
 
 [dependencies]
 argus-ecs = { path = "../argus-ecs", version = "0.0.1" }
+argus-assets = { path = "../argus-assets", version = "0.0.1" }
 wgpu = "24"
 winit = "0.30"
 pollster = "0.4"
 bytemuck = { version = "1", features = ["derive"] }
 png = "0.17"
-toml_edit = "0.22"

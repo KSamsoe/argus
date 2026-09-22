@@ -138,6 +138,24 @@ pub const METHODS: &[MethodDoc] = &[
         returns: "{scenes, entities, failed, ms, stats}",
     },
     MethodDoc {
+        name: "asset.list",
+        doc: "Every asset under assets/: sprites (a PNG, or a sidecar describing a shape) and sounds (a WAV, or a sidecar naming variations), with the warnings the importer found. A name is the path without the extension; sprites/hero is assets/sprites/hero.png with assets/sprites/hero.toml beside it.",
+        params: "kind: \"sprite\" | \"sound\" (optional); limit; cursor",
+        returns: "{total, columns: [name, kind, source, frames, clips, warnings], rows, failed: [{name, message, at}], next}",
+    },
+    MethodDoc {
+        name: "asset.get",
+        doc: "One asset as imported: frames with rects, pivots, durations, and properties; clips; the cached texture; a sound's bus, gain, and files with rate, channels, length, and peak; every warning with file:line.",
+        params: "name: string",
+        returns: "{name, kind, sidecar, hash, warnings, ...}",
+    },
+    MethodDoc {
+        name: "asset.import",
+        doc: "Scan assets/ now instead of waiting for the watcher (it polls twice a second). Changed sprites reload in every renderer and changed sounds in the mixer; each import is an asset.imported event, each warning an asset.warning, each failure an asset.failed. force re-imports everything.",
+        params: "force: boolean (default false)",
+        returns: "{imported: [name], unchanged, removed: [name], failed: [{name, message, at}], ms}",
+    },
+    MethodDoc {
         name: "asset.move",
         doc: "Rename a prefab, entity file, def row, or asset and rewrite every reference to it; appends to .argus/moves.log. The only sanctioned way to rename.",
         params: "from: string (project path, or defs/x.toml#key); to: string",

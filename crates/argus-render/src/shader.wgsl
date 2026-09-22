@@ -16,7 +16,7 @@ struct View {
 
 struct Inst {
     @location(0) pos_size: vec4<f32>,
-    @location(1) rot_z: vec4<f32>,
+    @location(1) rot_z: vec4<f32>,  // rotation, z, pivot x, pivot y
     @location(2) uv: vec4<f32>,
     @location(3) color: vec4<f32>,
 };
@@ -40,7 +40,8 @@ fn vs_main(@builtin(vertex_index) vi: u32, inst: Inst) -> VOut {
     out.color = inst.color;
     out.uv = vec2<f32>(inst.uv.x + (c.x + 0.5) * inst.uv.z, inst.uv.y + (0.5 - c.y) * inst.uv.w);
 
-    let radius = 0.5 * length(size);
+    // Conservative: a pivot at a corner puts the whole quad on one side.
+    let radius = length(size);
     let d = abs(pos - view.center);
     if (d.x > view.half.x + radius || d.y > view.half.y + radius) {
         out.clip = vec4<f32>(0.0, 0.0, 0.0, 0.0);
@@ -49,7 +50,9 @@ fn vs_main(@builtin(vertex_index) vi: u32, inst: Inst) -> VOut {
     let r = inst.rot_z.x;
     let cs = cos(r);
     let sn = sin(r);
-    let local = vec2<f32>(c.x * size.x, c.y * size.y);
+    // The pivot (a fraction of the frame, y up) sits on the position.
+    let pivot = inst.rot_z.zw;
+    let local = vec2<f32>((c.x + 0.5 - pivot.x) * size.x, (c.y + 0.5 - pivot.y) * size.y);
     let world = pos + vec2<f32>(local.x * cs - local.y * sn, local.x * sn + local.y * cs);
     let ndc = (world - view.center) / view.half;
     out.clip = vec4<f32>(ndc.x, ndc.y, 0.0, 1.0);

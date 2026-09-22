@@ -30,7 +30,7 @@ Every statement in the design document (v0.3) that constrains audio as phase 1 i
 
 | Spec | Status | Where | Test |
 |---|---|---|---|
-| An audio file's gain and variation set in a sidecar. | Partial | Gain and variations live in `audio.toml` per sound; every WAV under `assets/` is also a sound by its path (`assets/sfx/hit.wav` is `sfx/hit`, on `music` when under `music/`). Per-file sidecars come with the importer (item 4). WAV is the one format; a file that will not decode is a load warning naming it. | `audio::a_wav_under_assets_is_a_sound_by_its_path` |
+| An audio file's gain and variation set in a sidecar. | Done | Gain and variations live in `audio.toml` per sound, or in a sidecar beside the sound (item 4: `parse_sound_sidecar` reads the same table, and `set_asset_sounds` loads the importer's); every WAV under `assets/` is also a sound by its path (`assets/sfx/hit.wav` is `sfx/hit`, on `music` when under `music/`). Precedence: `audio.toml`, then sidecars, then bare WAVs. A sidecar naming a bus that does not exist plays on `sfx` with a warning. WAV is the one format. | `audio::a_wav_under_assets_is_a_sound_by_its_path`, `argus-assets/tests/importer.rs`, `argus-daemon/tests/assets.rs` |
 | Gameplay never waits on art. | Done | A variation can be a described tone (`{ wave = "square", freq = 440, ms = 80, slide, attack_ms, release_ms, notes, note_ms }`), synthesised deterministically at load, including note sequences for placeholder music. Both example games sound with no audio files at all. | `audio::the_routing_tree_and_its_errors_come_from_audio_toml` |
 
 ## Beyond the text, found by reading the meters

@@ -23,7 +23,10 @@ pub mod device;
 pub mod mixer;
 pub mod sound;
 
-pub use config::{AudioConfig, BusDef, DuckDef, LayerDef, SoundDef, Source, Tone, TrackDef, Wave};
+pub use config::{
+    parse_sound_sidecar, AudioConfig, BusDef, DuckDef, LayerDef, SoundDef, Source, Tone, TrackDef,
+    Wave,
+};
 pub use mixer::{db_to_lin, lin_to_db, BusMeter, Mixer};
 
 use argus_ecs::{
@@ -144,6 +147,8 @@ pub struct AudioEngine {
     spatial: Vec<SpatialVoice>,
     music: Option<Playing>,
     missing: BTreeSet<String>,
+    /// Sounds from asset sidecars (the importer), below audio.toml and above bare WAVs.
+    extra: Vec<SoundDef>,
     /// Voices of each sound, oldest first, for the per-sound cap.
     by_sound: BTreeMap<String, std::collections::VecDeque<u64>>,
     /// Problems found loading sounds: file:line and a sentence each.
@@ -214,6 +219,7 @@ impl AudioEngine {
             music: None,
             missing: BTreeSet::new(),
             by_sound: BTreeMap::new(),
+            extra: Vec::new(),
             warnings: Vec::new(),
             last_time: None,
             played: 0,
@@ -227,6 +233,22 @@ impl AudioEngine {
         self.warnings.clear();
         let assets = self.root.join("assets");
         let mut defs: Vec<SoundDef> = self.config.sounds.values().cloned().collect();
+        // Sidecar sounds, unless audio.toml defines the same name.
+        let buses = self.lock().bus_names();
+        for d in &self.extra {
+            if self.config.sounds.contains_key(&d.name) {
+                continue;
+            }
+            let mut d = d.clone();
+            if !buses.contains(&d.bus) {
+                self.warnings.push(format!(
+                    "{}: bus {:?} is not a bus in audio.toml; using sfx",
+                    d.at, d.bus
+                ));
+                d.bus = "sfx".to_string();
+            }
+            defs.push(d);
+        }
         // Every WAV under assets/ is a sound by its path, unless defined.
         let mut files = Vec::new();
         wav_files(&assets, &assets, &mut files);
@@ -235,7 +257,7 @@ impl AudioEngine {
                 .trim_end_matches(".wav")
                 .trim_end_matches(".WAV")
                 .to_string();
-            if !self.config.sounds.contains_key(&name) {
+            if !defs.iter().any(|d| d.name == name) {
                 defs.push(SoundDef {
                     bus: if name.starts_with("music/") {
                         "music"
@@ -281,6 +303,19 @@ impl AudioEngine {
                 }
             }
         }
+    }
+
+    /// Replace the sounds that come from asset sidecars and reload every
+    /// sound. The mixer keeps running: voices playing keep their old
+    /// samples, new plays get the new ones (hot reload).
+    pub fn set_asset_sounds(&mut self, defs: Vec<SoundDef>) {
+        self.extra = defs;
+        self.load_sounds();
+    }
+
+    /// Reload every sound from disk (a WAV changed).
+    pub fn reload_sounds(&mut self) {
+        self.load_sounds();
     }
 
     /// Sounds by name.
