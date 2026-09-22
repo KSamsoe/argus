@@ -14,7 +14,7 @@ Every statement in the design document (v0.3) that constrains the renderer as ph
 
 | Spec | Status | Where | Test |
 |---|---|---|---|
-| Rendering is decoupled from the fixed-rate sim and interpolates between the last two sim states. | Done | `Clock::alpha` (how far the next tick is owed, 1 on the discrete clock) reaches the renderer as `render(world, tick, alpha)`; `Renderer` keeps every sprite's position and rotation from the previous tick by entity index and lerps when exactly one tick passed. A tick gap draws the current state. | `render::positions_interpolate_between_the_last_two_ticks` |
+| Rendering is decoupled from the fixed-rate sim and interpolates between the last two sim states. | Done | `Clock::alpha` (how far the next tick is owed, 1 on the discrete clock) reaches the renderer as `render(world, tick, alpha)`; `Renderer` keeps every sprite's position and rotation from the previous tick by entity index and lerps when exactly one tick passed. A tick gap draws the current state. Fixed in item 7: the previous poses used to be replaced on every frame, so only the first frame after a tick interpolated and later frames of the same tick snapped; now they move on only when the tick does. The drawing camera is interpolated the same way. | `render::positions_interpolate_between_the_last_two_ticks` |
 
 ## §17 Targets
 
@@ -40,7 +40,7 @@ Every statement in the design document (v0.3) that constrains the renderer as ph
 
 | Spec | Status | Where | Test |
 |---|---|---|---|
-| Cameras are entities. | Partial | `Camera { height, active }` on an entity with a `Transform`: the first active one frames the view, world units visible vertically with the target's aspect. Follow, dead zones, lookahead, bounds, smoothing, shake, and cuts are item 7. | `render::described_shapes_render_where_the_camera_puts_them` |
+| Cameras are entities. | Done | Since item 7 `Camera` and `CameraShake` live in `argus-camera` (re-exported here). The view is the drawing camera's (`argus_camera::current`: active, highest priority), its position interpolated plus its shake offset, rolled by the shake's angle in the shader (the view uniform carries the roll; culling uses the rolled view's box). `FrameReport` says which camera drew and the view's centre, half size, and angle; `to_pixel` accounts for the roll. `view_for` gives a rolled view's bounding box for tile queries. | `render::described_shapes_render_where_the_camera_puts_them`, `render::the_priority_camera_draws_and_its_shake_moves_and_rolls_the_view` |
 
 ## Known limitations, stated so they are decisions
 

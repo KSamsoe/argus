@@ -204,7 +204,8 @@ fn a_player_runs_jumps_and_lands_on_carved_tiles() {
             "physics.control",
             "physics.move",
             "physics.overlap",
-            "late.listen"
+            "late.listen",
+            "camera.update"
         ]
     );
     let w = ok(

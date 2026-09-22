@@ -35,8 +35,9 @@ fn session_open_gives_the_one_screen_summary() {
         .iter()
         .map(|v| v.as_str().unwrap())
         .collect();
-    // The physics systems are in every scene and cost nothing without
-    // bodies; control runs first in sim, move and overlap last.
+    // The physics and camera systems are in every scene and cost nothing
+    // without bodies or cameras; physics control runs first in sim, move and
+    // overlap last, and the camera last in late.
     assert_eq!(
         systems,
         [
@@ -46,6 +47,7 @@ fn session_open_gives_the_one_screen_summary() {
             "sim.move",
             "physics.move",
             "physics.overlap",
+            "camera.update",
             "present.hud"
         ]
     );
@@ -560,12 +562,15 @@ fn sim_and_events_answer_why_the_bat_died() {
         .as_array()
         .unwrap()
         .iter()
-        .filter(|r| r[0].as_str().unwrap().starts_with("physics."))
+        .filter(|r| {
+            let n = r[0].as_str().unwrap();
+            n.starts_with("physics.") || n.starts_with("camera.")
+        })
         .collect();
-    assert_eq!(physics.len(), 3);
+    assert_eq!(physics.len(), 4);
     assert!(
         physics.iter().all(|r| r[2].as_f64() == Some(0.0)),
-        "physics with no bodies allocates nothing: {physics:?}"
+        "physics and cameras with none in the scene allocate nothing: {physics:?}"
     );
     assert!(pa["rows"]
         .as_array()
@@ -644,7 +649,7 @@ fn scripts_reload_in_place_and_errors_are_data() {
     project(t.path());
     let mut d = open(t.path());
     let sys = ok(&mut d, "script.systems", json!({}));
-    assert_eq!(sys["total"], 7);
+    assert_eq!(sys["total"], 8);
     let dmg = &sys["rows"][2];
     assert_eq!(dmg["name"], "sim.damage");
     assert_eq!(dmg["stage"], "sim");

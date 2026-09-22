@@ -43,6 +43,12 @@ Every statement in the design document (v0.3) that constrains the daemon and the
 | The local socket needs no auth; remote access via tokens is later. | Done (phase-0 half) | Nothing listens beyond the local socket. | |
 | Identical result shapes from the live world or the index. | Deferred | Piece 6 will serve `world.*` and `scene.*` from the index when no world is loaded, with these shapes. | |
 
+## Phase 1, item 7: cameras in every scene
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| Cameras follow within room bounds (§12); the semantic frame reports the camera rect (§8). | Done (the rect; the semantic frame is item 12) | Opening a scene installs `argus-camera` whether or not the renderer is built, and fills its zones from every room's `bounds` (or the flat scene's). `obs.frame` returns `camera` (which one drew) and `view {center, half, angle, rect}`. With no cameras, `camera.update` returns at once and allocates nothing. | `camera::a_camera_follows_the_player_through_two_rooms_and_keeps_to_each`, `protocol::sim_and_events_answer_why_the_bat_died` |
+
 ## Phase 1, item 6: physics in every scene
 
 | Spec | Status | Where | Test |

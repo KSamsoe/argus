@@ -86,35 +86,14 @@ impl Default for Sprite {
     }
 }
 
-/// The view: an entity with a `Camera` and a position frames the scene.
-/// Item 7 adds follow, dead zones, shake.
-#[derive(Component, Clone, Copy, Debug, PartialEq)]
-#[repr(C)]
-#[argus(
-    doc = "The view: world units visible vertically, and whether this camera is the one drawing"
-)]
-pub struct Camera {
-    /// World units visible from bottom to top.
-    #[argus(doc = "World units visible vertically", range(0.01, 100000.0), tune)]
-    pub height: f32,
-    /// The camera that draws (the first active one wins).
-    #[argus(doc = "Whether this camera draws")]
-    pub active: bool,
-}
+/// The view comes from a camera entity (item 7, `argus-camera`): the active
+/// camera with the highest priority, its position plus its shake.
+pub use argus_camera::{Camera, CameraShake};
 
-impl Default for Camera {
-    fn default() -> Self {
-        Camera {
-            height: 40.0,
-            active: true,
-        }
-    }
-}
-
-/// Register the renderer's components.
+/// Register the renderer's components (and the camera's, which it reads).
 pub fn register(world: &mut World) -> argus_ecs::Result<()> {
     world.register::<Sprite>()?;
-    world.register::<Camera>()?;
+    argus_camera::register(world)?;
     Ok(())
 }
 
@@ -184,6 +163,10 @@ pub struct FrameReport {
     pub view_center: [f32; 2],
     /// View half extents in world units.
     pub view_half: [f32; 2],
+    /// View roll in radians (camera shake).
+    pub view_angle: f32,
+    /// The camera that drew, if any.
+    pub camera: Option<Entity>,
     /// Wall time to build and submit, ms.
     pub ms: f64,
 }
@@ -203,38 +186,42 @@ pub struct Extra {
     pub z: f32,
 }
 
-/// The view a `width` x `height` target draws: centre and half extents in
-/// world units, from the first active `Camera` (else the origin, 40 tall).
+/// The area a `width` x `height` target shows: centre and half extents in
+/// world units, from the drawing camera with its shake (else the origin, 40
+/// tall). A rolled view is given as its bounding box, which is what culling
+/// and tile queries need.
 pub fn view_for(world: &World, width: u32, height: u32) -> ([f32; 2], [f32; 2]) {
     let aspect = width as f32 / height.max(1) as f32;
-    let mut center = [0.0f32, 0.0];
-    let mut tall = 40.0f32;
-    if let Some(cam) = world.component_id_of::<Camera>() {
-        for e in world.query().has(cam).entities() {
-            let c = world.get::<Camera>(e).unwrap();
-            if !c.active {
-                continue;
-            }
-            if let Ok(g) = world.get::<GlobalTransform>(e) {
-                center = [g.pos.x, g.pos.y];
-            } else if let Ok(t) = world.get::<Transform>(e) {
-                center = [t.pos.x, t.pos.y];
-            }
-            tall = c.height.max(0.01);
-            break;
-        }
+    match argus_camera::view(world, aspect) {
+        Some(v) => (v.center, rolled(v.half, v.angle)),
+        None => ([0.0, 0.0], [20.0 * aspect, 20.0]),
     }
-    (center, [tall * 0.5 * aspect, tall * 0.5])
+}
+
+/// The half extents of the box around a view of half size `half` rolled by `angle`.
+fn rolled(half: [f32; 2], angle: f32) -> [f32; 2] {
+    let (s, c) = angle.sin_cos();
+    let (s, c) = (s.abs(), c.abs());
+    [c * half[0] + s * half[1], s * half[0] + c * half[1]]
 }
 
 /// One entity's position and rotation as of a sim tick: entity, x, y, rot, tick.
 type PrevPose = Option<(Entity, f32, f32, f32, u64)>;
 
+/// The drawing camera as of a sim tick: entity, centre with shake, roll, tick.
+type CamPose = Option<(Entity, [f32; 2], f32, u64)>;
+
 /// A renderer over a target: builds a frame from a world and draws it.
 pub struct Renderer {
     gpu: Gpu,
-    /// Positions as of the previous sim tick by entity index, for interpolation (§6).
+    /// Poses as of the tick before `seen_tick`, by entity index: what every
+    /// frame of `seen_tick` interpolates from (§6).
     prev: Vec<PrevPose>,
+    /// Poses as of `seen_tick`, the latest tick drawn.
+    seen: Vec<PrevPose>,
+    seen_tick: Option<u64>,
+    cam_prev: CamPose,
+    cam_seen: CamPose,
     colors: HashMap<StrId, [f32; 4]>,
     /// Clear colour, linear RGBA.
     pub clear: [f32; 4],
@@ -275,6 +262,10 @@ impl Renderer {
         Renderer {
             gpu,
             prev: Vec::new(),
+            seen: Vec::new(),
+            seen_tick: None,
+            cam_prev: None,
+            cam_seen: None,
             colors: HashMap::new(),
             clear: [0.06, 0.06, 0.08, 1.0],
             last: FrameReport::default(),
@@ -355,8 +346,8 @@ impl Renderer {
         self.render_with(world, tick, alpha, &[])
     }
 
-    /// The view this target would draw: centre and half extents in world
-    /// units, from the first active camera (or the origin).
+    /// The area this target would show: centre and half extents in world
+    /// units, from the drawing camera (or the origin), not interpolated.
     pub fn view(&self, world: &World) -> ([f32; 2], [f32; 2]) {
         let (w, h) = self.gpu.size();
         view_for(world, w, h)
@@ -374,24 +365,33 @@ impl Renderer {
         let (w, h) = self.gpu.size();
         let aspect = w as f32 / h.max(1) as f32;
 
-        // The view: the first active camera, else the origin.
-        let mut center = [0.0f32, 0.0];
-        let mut height = 40.0f32;
-        if let Some(cam) = world.component_id_of::<Camera>() {
-            let mut chosen = false;
-            let mut q = world.query().has(cam);
-            if let Some(t) = world.component_id_of::<Transform>() {
-                q = q.has(t);
-            }
-            for e in q.entities() {
-                let c = world.get::<Camera>(e).unwrap();
-                if !c.active || chosen {
-                    continue;
+        // A new tick: what was the latest becomes what frames interpolate
+        // from. Every frame drawn within one tick interpolates from the same
+        // poses, however many frames a tick lasts.
+        if self.seen_tick != Some(tick) {
+            self.prev = std::mem::take(&mut self.seen);
+            self.cam_prev = self.cam_seen.take();
+            self.seen_tick = Some(tick);
+        }
+
+        // The view: the drawing camera with its shake, interpolated between
+        // the last two ticks like any entity; else the origin.
+        let (mut center, mut angle, mut height, mut camera) =
+            ([0.0f32, 0.0], 0.0f32, 40.0f32, None);
+        if let Some(v) = argus_camera::view(world, aspect) {
+            center = v.center;
+            angle = v.angle;
+            height = v.half[1] * 2.0;
+            camera = Some(v.camera);
+            self.cam_seen = Some((v.camera, v.center, v.angle, tick));
+            if let Some((pe, pc, pa, pt)) = self.cam_prev {
+                if pe == v.camera && pt + 1 == tick && alpha < 1.0 {
+                    center = [
+                        pc[0] + (v.center[0] - pc[0]) * alpha,
+                        pc[1] + (v.center[1] - pc[1]) * alpha,
+                    ];
+                    angle = pa + (v.angle - pa) * alpha;
                 }
-                let (x, y, _) = self.position(world, e);
-                center = [x, y];
-                height = c.height.max(0.01);
-                chosen = true;
             }
         }
         let half = [height * 0.5 * aspect, height * 0.5];
@@ -523,7 +523,7 @@ impl Renderer {
                     })?;
             }
         }
-        self.prev = next_prev;
+        self.seen = next_prev;
 
         // Tiles and other sprites that are not entities.
         if !extras.is_empty() {
@@ -590,26 +590,20 @@ impl Renderer {
             }
         }
         let flat: Vec<Instance> = instances.iter().map(|x| x.1).collect();
-        let stats = self.gpu.draw(center, half, self.clear, &flat, &runs)?;
+        let stats = self
+            .gpu
+            .draw(center, half, angle, self.clear, &flat, &runs)?;
         self.last = FrameReport {
             stats,
             missing_atlases: missing,
             interpolated,
             view_center: center,
             view_half: half,
+            view_angle: angle,
+            camera,
             ms: started.elapsed().as_secs_f64() * 1e3,
         };
         Ok(self.last.clone())
-    }
-
-    fn position(&self, world: &World, e: Entity) -> (f32, f32, f32) {
-        if let Ok(g) = world.get::<GlobalTransform>(e) {
-            return (g.pos.x, g.pos.y, g.rot);
-        }
-        match world.get::<Transform>(e) {
-            Ok(t) => (t.pos.x, t.pos.y, t.rot),
-            Err(_) => (0.0, 0.0, 0.0),
-        }
     }
 
     /// The last offscreen frame's pixels.
@@ -626,8 +620,12 @@ impl Renderer {
     pub fn to_pixel(&self, x: f32, y: f32) -> (f32, f32) {
         let (w, h) = self.gpu.size();
         let r = &self.last;
-        let px = (x - r.view_center[0]) / (2.0 * r.view_half[0]) * w as f32 + w as f32 / 2.0;
-        let py = h as f32 / 2.0 - (y - r.view_center[1]) / (2.0 * r.view_half[1]) * h as f32;
+        // Into the view's frame: unroll by the view's angle.
+        let (s, c) = r.view_angle.sin_cos();
+        let (dx, dy) = (x - r.view_center[0], y - r.view_center[1]);
+        let (vx, vy) = (dx * c + dy * s, -dx * s + dy * c);
+        let px = vx / (2.0 * r.view_half[0]) * w as f32 + w as f32 / 2.0;
+        let py = h as f32 / 2.0 - vy / (2.0 * r.view_half[1]) * h as f32;
         (px, py)
     }
 }

@@ -16,7 +16,7 @@ fn world_with_camera(height: f32) -> World {
         cam,
         Camera {
             height,
-            active: true,
+            ..Default::default()
         },
     )
     .unwrap();
@@ -153,6 +153,15 @@ fn positions_interpolate_between_the_last_two_ticks() {
         "drawn at x = -2, half way"
     );
     assert_ne!(img.pixel(50, 50)[..3], [255, 255, 255]);
+    // A second frame within the same tick still interpolates from tick 0
+    // (a display faster than the sim draws several frames per tick).
+    let rep = r.render(&w, 1, 0.75).unwrap();
+    assert_eq!(rep.interpolated, 1, "every frame of a tick interpolates");
+    assert_eq!(
+        r.capture().unwrap().pixel(40, 50)[..3],
+        [255, 255, 255],
+        "drawn at x = -1, three quarters of the way"
+    );
     // alpha 1 (or the discrete clock) draws the current state.
     let rep = r.render(&w, 1, 1.0).unwrap();
     assert_eq!(rep.interpolated, 0);
@@ -330,4 +339,71 @@ fn a_placeholder_asset_draws_with_its_pivot_and_the_art_replaces_it() {
         "the real art, same reference"
     );
     std::fs::remove_dir_all(&dir).ok();
+}
+
+/// Item 7: the drawing camera is the active one with the highest priority,
+/// and its shake moves and rolls the view (the camera's entity stays put).
+#[test]
+fn the_priority_camera_draws_and_its_shake_moves_and_rolls_the_view() {
+    let Some(mut r) = renderer(100, 100) else {
+        return;
+    };
+    let mut w = world_with_camera(10.0);
+    let boss = w.spawn();
+    w.insert(boss, Transform::at(20.0, 0.0)).unwrap();
+    w.insert(
+        boss,
+        Camera {
+            height: 10.0,
+            priority: 5,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    shape(&mut w, 20.0, 0.0, "rect", 2.0, "#FF0000", 0.0);
+    shape(&mut w, 0.0, 0.0, "rect", 2.0, "#00FF00", 0.0);
+    shape(&mut w, 22.0, 0.0, "rect", 1.0, "#0000FF", 1.0);
+    let rep = r.render(&w, 0, 0.0).unwrap();
+    assert_eq!(rep.camera, Some(boss));
+    assert_eq!(rep.view_center, [20.0, 0.0]);
+    let img = r.capture().unwrap();
+    assert_eq!(
+        img.pixel(50, 50)[..3],
+        [255, 0, 0],
+        "the boss camera frames the red box"
+    );
+    assert_eq!(img.pixel(70, 50)[..3], [0, 0, 255], "blue two units right");
+
+    // Shake moves the view one unit right: red lands ten pixels left.
+    w.insert(
+        boss,
+        argus_render::CameraShake {
+            offset: Vec2::new(1.0, 0.0),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    r.render(&w, 1, 1.0).unwrap();
+    assert_eq!(r.capture().unwrap().pixel(40, 50)[..3], [255, 0, 0]);
+    // A quarter-turn roll: what is to the right of centre shows below it.
+    w.update::<argus_render::CameraShake, _>(boss, |s| {
+        s.offset = Vec2::ZERO;
+        s.angle = std::f32::consts::FRAC_PI_2;
+    })
+    .unwrap();
+    let rep = r.render(&w, 2, 1.0).unwrap();
+    assert!((rep.view_angle - std::f32::consts::FRAC_PI_2).abs() < 1e-6);
+    let img = r.capture().unwrap();
+    assert_eq!(img.pixel(50, 70)[..3], [0, 0, 255], "rolled a quarter turn");
+    let (px, py) = r.to_pixel(22.0, 0.0);
+    assert!(
+        (px - 50.0).abs() < 0.5 && (py - 70.0).abs() < 0.5,
+        "to_pixel knows the roll: {px} {py}"
+    );
+
+    // Deactivated, it hands the view back to the other camera.
+    w.update::<Camera, _>(boss, |c| c.active = false).unwrap();
+    let rep = r.render(&w, 3, 1.0).unwrap();
+    assert_eq!(rep.view_center, [0.0, 0.0]);
+    assert_eq!(r.capture().unwrap().pixel(50, 50)[..3], [0, 255, 0]);
 }

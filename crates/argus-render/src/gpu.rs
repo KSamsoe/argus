@@ -491,11 +491,14 @@ impl Gpu {
     }
 
     /// Draw one frame: `runs` are `(atlas, start, count)` over `instances`,
-    /// already ordered. Clear colour is linear RGBA.
+    /// already ordered. The view is rolled by `view_angle` radians (camera
+    /// shake). Clear colour is linear RGBA.
+    #[allow(clippy::too_many_arguments)]
     pub fn draw(
         &mut self,
         view_center: [f32; 2],
         view_half: [f32; 2],
+        view_angle: f32,
         clear: [f32; 4],
         instances: &[Instance],
         runs: &[(String, usize, usize)],
@@ -514,7 +517,7 @@ impl Gpu {
             bytemuck::bytes_of(&ViewUniform {
                 center: view_center,
                 half: view_half,
-                pad: [0.0; 4],
+                pad: [view_angle.cos(), view_angle.sin(), 0.0, 0.0],
             }),
         );
         let (frame, view) = match &self.target {

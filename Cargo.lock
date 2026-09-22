@@ -118,11 +118,20 @@ dependencies = [
 name = "argus-audio"
 version = "0.0.1"
 dependencies = [
+ "argus-camera",
  "argus-ecs",
  "argus-sim",
  "cpal",
  "hound",
  "toml_edit 0.22.27",
+]
+
+[[package]]
+name = "argus-camera"
+version = "0.0.1"
+dependencies = [
+ "argus-ecs",
+ "argus-sim",
 ]
 
 [[package]]
@@ -142,6 +151,7 @@ version = "0.0.1"
 dependencies = [
  "argus-assets",
  "argus-audio",
+ "argus-camera",
  "argus-ecs",
  "argus-index",
  "argus-input",
@@ -221,6 +231,7 @@ name = "argus-render"
 version = "0.0.1"
 dependencies = [
  "argus-assets",
+ "argus-camera",
  "argus-ecs",
  "bytemuck",
  "png",

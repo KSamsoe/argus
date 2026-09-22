@@ -403,9 +403,9 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "obs.frame",
-        doc: "Render the current world offscreen and write it as a PNG (section 8 L5). Sprites and the active Camera come from the world; described shapes need no asset. Semantic frames and annotation arrive with phase-1 item 12.",
+        doc: "Render the current world offscreen and write it as a PNG (section 8 L5). Sprites come from the world and the view from the drawing camera (the active Camera with the highest priority, its shake included); described shapes need no asset. camera and view say which camera drew and the world rect it showed. Semantic frames and annotation arrive with phase-1 item 12.",
         params: "format: \"png\" (default); width: integer (default 640); height: integer (default 360); path: string (default .argus/frames/frame-<tick>.png); software: boolean (force the software rasteriser)",
-        returns: "{path, width, height, tick, alpha, sprites, draw_calls, atlases, missing_atlases, interpolated, adapter, ms}",
+        returns: "{path, width, height, tick, alpha, sprites, draw_calls, atlases, missing_atlases, interpolated, camera, view: {center, half, angle, rect: [x0, y0, x1, y1]}, adapter, ms}",
     },
     MethodDoc {
         name: "obs.subscribe",

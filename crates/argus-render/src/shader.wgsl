@@ -7,7 +7,8 @@
 struct View {
     center: vec2<f32>,
     half: vec2<f32>,
-    pad: vec4<f32>,
+    // cos and sin of the view's roll (camera shake), then padding.
+    roll: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> view: View;
@@ -43,7 +44,10 @@ fn vs_main(@builtin(vertex_index) vi: u32, inst: Inst) -> VOut {
     // Conservative: a pivot at a corner puts the whole quad on one side.
     let radius = length(size);
     let d = abs(pos - view.center);
-    if (d.x > view.half.x + radius || d.y > view.half.y + radius) {
+    let cr = abs(view.roll.x);
+    let sr = abs(view.roll.y);
+    let reach = vec2<f32>(cr * view.half.x + sr * view.half.y, sr * view.half.x + cr * view.half.y);
+    if (d.x > reach.x + radius || d.y > reach.y + radius) {
         out.clip = vec4<f32>(0.0, 0.0, 0.0, 0.0);
         return out;
     }
@@ -54,7 +58,9 @@ fn vs_main(@builtin(vertex_index) vi: u32, inst: Inst) -> VOut {
     let pivot = inst.rot_z.zw;
     let local = vec2<f32>((c.x + 0.5 - pivot.x) * size.x, (c.y + 0.5 - pivot.y) * size.y);
     let world = pos + vec2<f32>(local.x * cs - local.y * sn, local.x * sn + local.y * cs);
-    let ndc = (world - view.center) / view.half;
+    let rel = world - view.center;
+    let unrolled = vec2<f32>(rel.x * view.roll.x + rel.y * view.roll.y, -rel.x * view.roll.y + rel.y * view.roll.x);
+    let ndc = unrolled / view.half;
     out.clip = vec4<f32>(ndc.x, ndc.y, 0.0, 1.0);
     return out;
 }

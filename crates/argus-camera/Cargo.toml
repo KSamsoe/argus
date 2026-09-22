@@ -1,0 +1,10 @@
+[package]
+name = "argus-camera"
+description = "Argus Engine cameras: camera entities that follow with dead zones, lookahead, room bounds, and smoothing, or pan and zoom freely, with trauma shake; cuts between cameras are events"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+argus-ecs = { path = "../argus-ecs", version = "0.0.1" }
+argus-sim = { path = "../argus-sim", version = "0.0.1" }

@@ -587,6 +587,8 @@ impl Daemon {
         argus_audio::register(&mut self.world)?;
         let tiles = Rc::new(RefCell::new(argus_tiles::MapStore::new(&root)));
         argus_physics::install(&mut self.world, &mut self.sched, tiles.clone())?;
+        let zones = Rc::new(RefCell::new(argus_camera::Zones::default()));
+        argus_camera::install(&mut self.world, &mut self.sched, zones.clone())?;
         let mut host = ScriptHost::new(ScriptConfig::default())?;
         host.load_project(&mut self.world, &mut self.sched, &root)?;
         let def_schemas: Vec<DefSchema> = host
@@ -600,6 +602,10 @@ impl Daemon {
             .collect();
         let project = Project::open(&root, def_schemas)?;
         let mut scene = Scene::open(&project, scene_name, self.world.registry())?;
+        zones.borrow_mut().rects = scene
+            .rooms()
+            .filter_map(|r| r.doc.bounds.map(|b| (r.name.clone(), b)))
+            .collect();
         let mut issues: Vec<ArgusError> = project.issues().to_vec();
         issues.extend(scene.issues().iter().cloned());
         let mut load = None;
@@ -2653,6 +2659,18 @@ impl Daemon {
             "atlases": rep.stats.atlases,
             "missing_atlases": rep.missing_atlases,
             "interpolated": rep.interpolated,
+            "camera": rep.camera.map(|e| json::entity_str(&self.world, e)),
+            "view": {
+                "center": rep.view_center,
+                "half": rep.view_half,
+                "angle": rep.view_angle,
+                "rect": [
+                    rep.view_center[0] - rep.view_half[0],
+                    rep.view_center[1] - rep.view_half[1],
+                    rep.view_center[0] + rep.view_half[0],
+                    rep.view_center[1] + rep.view_half[1],
+                ],
+            },
             "adapter": r.gpu().adapter,
             "software": r.gpu().software,
             "ms": rep.ms,

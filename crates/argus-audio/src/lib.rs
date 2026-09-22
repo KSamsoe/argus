@@ -350,7 +350,8 @@ impl AudioEngine {
     }
 
     /// Where sounds are heard from: the first active `AudioListener`, else
-    /// the first active `Camera`, else the origin.
+    /// the drawing camera (the active one with the highest priority, item
+    /// 7), else the origin.
     pub fn listener(world: &World) -> (f32, f32) {
         if let Some(l) = world.component_id_of::<AudioListener>() {
             for e in world.query().has(l).entities() {
@@ -365,14 +366,8 @@ impl AudioEngine {
                 }
             }
         }
-        if let Some(c) = world.component_id("Camera") {
-            for e in world.query().has(c).entities() {
-                if matches!(world.get_field(e, "Camera.active"), Ok(Value::Bool(true))) {
-                    if let Some(p) = Self::position(world, e) {
-                        return p;
-                    }
-                }
-            }
+        if let Some(p) = argus_camera::current(world).and_then(|e| Self::position(world, e)) {
+            return p;
         }
         (0.0, 0.0)
     }
