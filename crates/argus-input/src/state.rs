@@ -186,6 +186,10 @@ pub struct InputState {
     log: Vec<LogEntry>,
     recorder: Option<(PathBuf, std::fs::File)>,
     last_tick: Option<u64>,
+    /// What devices last resolved to, per slot and action: only a change
+    /// is scheduled, so a device and an inject never fight over a value
+    /// neither is changing.
+    device_last: BTreeMap<(u8, String), ActionValue>,
 }
 
 impl InputState {
@@ -201,7 +205,50 @@ impl InputState {
             log: Vec::new(),
             recorder: None,
             last_tick: None,
+            device_last: BTreeMap::new(),
         }
+    }
+
+    /// Feed resolved device state in at `now` (the next tick to run).
+    /// Continuous: every value that changed since the last call is
+    /// scheduled for `now`, exactly like an inject, so the log and a
+    /// replay see actions, never keys (section 6). Discrete: a value that
+    /// became active is a one-turn command (like an inject) and a release
+    /// is nothing; the return is the number of commands, which is how
+    /// many turns the caller should advance.
+    pub fn apply_devices(&mut self, now: u64, devices: &crate::devices::Devices) -> usize {
+        let slots: Vec<u8> = self.map.slots.iter().map(|s| s.index).collect();
+        let mut commands = 0;
+        for slot in slots {
+            for (action, v) in devices.resolve(&self.map, slot) {
+                let Ok(a) = self.map.action(&action) else {
+                    continue;
+                };
+                let (kind, toggle) = (a.kind, a.toggle);
+                let key = (slot, action.clone());
+                let before = self
+                    .device_last
+                    .get(&key)
+                    .copied()
+                    .unwrap_or(ActionValue::default_for(kind));
+                if v == before {
+                    continue;
+                }
+                self.device_last.insert(key, v);
+                if self.discrete {
+                    if v.is_active() && !before.is_active() {
+                        self.schedule(now, slot, &action, v);
+                        if !toggle {
+                            self.schedule(now + 1, slot, &action, ActionValue::default_for(kind));
+                        }
+                        commands += 1;
+                    }
+                } else {
+                    self.schedule(now, slot, &action, v);
+                }
+            }
+        }
+        commands
     }
 
     /// The map.

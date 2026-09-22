@@ -17,7 +17,7 @@ use std::path::PathBuf;
 static ALLOC: argus_sim::alloc::Counting = argus_sim::alloc::Counting;
 
 fn usage() -> ! {
-    eprintln!("usage: argusd [--project <dir>] [--scene <name>] [--seed <n>] [--stdio | --socket [name]] [--headless | --window [WxH]]");
+    eprintln!("usage: argusd [--project <dir>] [--scene <name>] [--seed <n>] [--stdio | --socket [name]] [--headless | --window [WxH]] [--play]");
     std::process::exit(2)
 }
 
@@ -28,6 +28,7 @@ fn main() {
     let mut seed: Option<u64> = None;
     let mut transport: Option<Transport> = None;
     let mut window: Option<(u32, u32)> = None;
+    let mut play = false;
     while let Some(a) = args.next() {
         match a.as_str() {
             "--project" | "-p" => {
@@ -47,6 +48,7 @@ fn main() {
                 transport = Some(Transport::Socket(name.unwrap_or_default()));
             }
             "--headless" => {}
+            "--play" => play = true,
             "--window" => {
                 window = Some(match args.next() {
                     Some(s) if s.contains('x') => {
@@ -66,5 +68,6 @@ fn main() {
         seed,
         transport,
         window,
+        play,
     }));
 }

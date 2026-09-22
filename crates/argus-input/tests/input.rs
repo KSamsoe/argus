@@ -382,3 +382,182 @@ fn a_recorded_log_replays_to_the_same_run() {
     assert_eq!(e.code, codes::BAD_LOG);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+// ----- phase 1 item 2: real devices through the same schedule --------------
+
+use argus_input::{DeviceInput, Devices};
+
+fn key(name: &str, pressed: bool) -> DeviceInput {
+    DeviceInput::Key {
+        name: name.to_string(),
+        pressed,
+    }
+}
+
+#[test]
+fn keys_and_pads_resolve_through_the_bindings_per_slot() {
+    let m = map();
+    let mut d = Devices::default();
+    // winit spellings and binding spellings are the same key.
+    d.apply(&key("KeyW", true));
+    d.apply(&key("KeyD", true));
+    d.apply(&key("Space", true));
+    let v: std::collections::BTreeMap<_, _> = d.resolve(&m, 1).into_iter().collect();
+    let (x, y) = match v["move"] {
+        argus_input::ActionValue::Axis2(x, y) => (x, y),
+        other => panic!("{other:?}"),
+    };
+    assert!(
+        (x - std::f32::consts::FRAC_1_SQRT_2).abs() < 1e-3
+            && (y - std::f32::consts::FRAC_1_SQRT_2).abs() < 1e-3,
+        "diagonals are unit length"
+    );
+    assert_eq!(v["fire"], argus_input::ActionValue::Button(true));
+    assert!(
+        !v.contains_key("crouch"),
+        "an action no device binds is left to injects"
+    );
+    // Slot 2 lists only the second pad: the keyboard does not reach it.
+    assert!(d.resolve(&m, 2).is_empty(), "no second pad connected yet");
+
+    // Two pads are two players (section 12): pad index is connection order.
+    for (pad, name) in [(10, "first"), (11, "second")] {
+        d.apply(&DeviceInput::PadConnected {
+            pad,
+            name: name.into(),
+            connected: true,
+        });
+    }
+    d.apply(&DeviceInput::PadAxis {
+        pad: 11,
+        axis: "left_x".into(),
+        value: -1.0,
+    });
+    d.apply(&DeviceInput::PadAxis {
+        pad: 11,
+        axis: "left_y".into(),
+        value: 0.1,
+    }); // dead zone
+    d.apply(&DeviceInput::PadButton {
+        pad: 11,
+        button: "south".into(),
+        pressed: true,
+    });
+    let v2: std::collections::BTreeMap<_, _> = d.resolve(&m, 2).into_iter().collect();
+    assert_eq!(v2["move"], argus_input::ActionValue::Axis2(-1.0, 0.0));
+    assert_eq!(v2["fire"], argus_input::ActionValue::Button(true));
+    // The first pad's stick is idle, so slot 1 keeps the keyboard's larger vector.
+    let v1: std::collections::BTreeMap<_, _> = d.resolve(&m, 1).into_iter().collect();
+    assert!(matches!(v1["move"], argus_input::ActionValue::Axis2(x, _) if x > 0.7));
+
+    d.apply(&DeviceInput::ReleaseAll);
+    let v1: std::collections::BTreeMap<_, _> = d.resolve(&m, 1).into_iter().collect();
+    assert_eq!(
+        v1["fire"],
+        argus_input::ActionValue::Button(false),
+        "focus loss releases"
+    );
+}
+
+#[test]
+fn device_changes_are_logged_as_actions_and_replay_without_devices() {
+    let (mut w, mut s, st) = rig(false);
+    let mut d = Devices::default();
+    let p1 = w.entity("@p1").unwrap();
+    // Tick 0 with nothing held; then space and d go down before tick 1.
+    s.step(&mut w, 1).unwrap();
+    d.apply(&key("Space", true));
+    d.apply(&key("d", true));
+    assert_eq!(st.borrow_mut().apply_devices(s.tick(), &d), 0);
+    s.step(&mut w, 1).unwrap();
+    assert_eq!(w.get_field(p1, "Actions.fire").unwrap(), Value::Bool(true));
+    assert_eq!(
+        w.get_field(p1, "Actions.fire_pressed").unwrap(),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        w.get_field(p1, "Actions.move").unwrap(),
+        Value::Vec2(Vec2::new(1.0, 0.0))
+    );
+    // Held: nothing new is scheduled, the value stays, the edge is gone.
+    st.borrow_mut().apply_devices(s.tick(), &d);
+    s.step(&mut w, 1).unwrap();
+    assert_eq!(w.get_field(p1, "Actions.fire").unwrap(), Value::Bool(true));
+    assert_eq!(
+        w.get_field(p1, "Actions.fire_pressed").unwrap(),
+        Value::Bool(false)
+    );
+    d.apply(&key("Space", false));
+    st.borrow_mut().apply_devices(s.tick(), &d);
+    s.step(&mut w, 1).unwrap();
+    assert_eq!(
+        w.get_field(p1, "Actions.fire_released").unwrap(),
+        Value::Bool(true)
+    );
+
+    // The log is actions by tick, never keys.
+    let log: Vec<String> = st.borrow().log().iter().map(|e| e.line()).collect();
+    assert_eq!(log.len(), 3, "{log:?}");
+    assert!(log
+        .iter()
+        .all(|l| !l.contains("space") && !l.contains("KeyD")));
+    assert!(log[0].starts_with("1\t1\t"), "{log:?}");
+
+    // A fresh run replays the log with no devices at all and ends the same.
+    let entries = st.borrow().log().to_vec();
+    let (mut w2, mut s2, st2) = rig(false);
+    st2.borrow_mut().replay(&entries).unwrap();
+    s2.step(&mut w2, 4).unwrap();
+    let q1 = w2.entity("@p1").unwrap();
+    for f in ["Actions.fire", "Actions.move"] {
+        assert_eq!(
+            w2.get_field(q1, f).unwrap(),
+            w.get_field(p1, f).unwrap(),
+            "{f}"
+        );
+    }
+}
+
+#[test]
+fn in_a_discrete_scene_a_press_is_one_command_for_the_next_turn() {
+    let (mut w, mut s, st) = rig(true);
+    let mut d = Devices::default();
+    let p1 = w.entity("@p1").unwrap();
+    d.apply(&key("ArrowUp", true)); // not bound: wasd only
+    d.apply(&key("w", true));
+    let turns = st.borrow_mut().apply_devices(s.tick(), &d);
+    assert_eq!(turns, 1, "one command, so the caller advances one turn");
+    s.advance(&mut w, turns as u64).unwrap();
+    assert_eq!(
+        w.get_field(p1, "Actions.move").unwrap(),
+        Value::Vec2(Vec2::new(0.0, 1.0))
+    );
+    // Still held: no second command, and the move is back at rest next turn.
+    assert_eq!(st.borrow_mut().apply_devices(s.tick(), &d), 0);
+    s.advance(&mut w, 1).unwrap();
+    assert_eq!(
+        w.get_field(p1, "Actions.move").unwrap(),
+        Value::Vec2(Vec2::new(0.0, 0.0))
+    );
+    // Release then press again: a second command.
+    d.apply(&key("w", false));
+    assert_eq!(st.borrow_mut().apply_devices(s.tick(), &d), 0);
+    d.apply(&key("w", true));
+    assert_eq!(st.borrow_mut().apply_devices(s.tick(), &d), 1);
+}
+
+#[test]
+fn unknown_gamepad_and_mouse_names_are_refused_at_load() {
+    let e = ActionMap::parse(
+        "input.toml",
+        "[actions.jump]\ntype = \"button\"\n[actions.jump.bindings]\ngamepad = [\"souht\"]\n",
+    )
+    .unwrap_err();
+    assert!(e.message.contains("unknown gamepad input \"souht\""), "{e}");
+    assert!(e.message.contains("south"));
+    assert!(ActionMap::parse(
+        "input.toml",
+        "[actions.jump]\ntype = \"button\"\n[actions.jump.bindings]\nkeyboard = [\"anything\"]\nmouse = [\"left\"]\n",
+    )
+    .is_ok());
+}

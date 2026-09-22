@@ -17,7 +17,7 @@ path = "src/main.rs"
 default = ["render"]
 # The wgpu renderer: obs.frame, render.window, render.status. Off for a
 # headless-only build.
-render = ["dep:argus-render"]
+render = ["dep:argus-render", "dep:gilrs"]
 
 [dependencies]
 argus-ecs = { path = "../argus-ecs", version = "0.0.1" }
@@ -28,6 +28,7 @@ argus-index = { path = "../argus-index", version = "0.0.1" }
 argus-input = { path = "../argus-input", version = "0.0.1" }
 argus-test = { path = "../argus-test", version = "0.0.1" }
 argus-render = { path = "../argus-render", version = "0.0.1", optional = true }
+gilrs = { version = "0.11", optional = true }
 serde_json = "1"
 toml_edit = "0.22"
 interprocess = "2"

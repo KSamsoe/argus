@@ -270,6 +270,12 @@ pub const METHODS: &[MethodDoc] = &[
         returns: "{total, columns, rows: [[tick, slot, action, value]], recording, clock, next}",
     },
     MethodDoc {
+        name: "input.devices",
+        doc: "Real devices feeding the action map (phase 1): keys and mouse buttons held, gamepads connected in slot order, events seen. Keyboard and mouse arrive through the window; gamepads are polled while a window is open.",
+        params: "",
+        returns: "{window, keys: [name], mouse: [name], gamepads: [[index, name]], events_seen, turns_taken}",
+    },
+    MethodDoc {
         name: "input.bindings",
         doc: "The action map from input.toml: actions with type, doc, toggle, and bindings per device; player slots with their devices.",
         params: "",

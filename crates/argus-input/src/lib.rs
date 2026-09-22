@@ -18,10 +18,12 @@
 
 #![warn(missing_docs)]
 
+pub mod devices;
 pub mod map;
 pub mod state;
 pub mod system;
 
+pub use devices::{key_name, DeviceInput, Devices};
 pub use map::{Action, ActionKind, ActionMap, Slot};
 pub use state::{ActionValue, InjectReport, InputState, LogEntry};
 pub use system::{install, register, PlayerSlot, ACTIONS, SYSTEM};

@@ -20,6 +20,8 @@ pub struct Launch {
     pub transport: Option<Transport>,
     /// Open a window of this size after the scene opens.
     pub window: Option<(u32, u32)>,
+    /// Enter play mode after opening, so a human can play at once.
+    pub play: bool,
 }
 
 /// Open the project (if any), announce on stderr, serve until told to
@@ -42,6 +44,9 @@ pub fn launch(l: Launch) -> i32 {
         match daemon.call(0, "session.open", &params) {
             Ok(v) => {
                 eprintln!("argusd: opened {}", v["scene"]);
+                if l.play {
+                    let _ = daemon.call(0, "sim.play", &json!({}));
+                }
                 if let Some((w, h)) = l.window {
                     match daemon.call(
                         0,

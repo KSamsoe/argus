@@ -71,6 +71,8 @@ pub struct Invocation {
     pub update: bool,
     /// `--window [WxH]`: open a window, for `daemon start` and `daemon run`.
     pub window: Option<(u32, u32)>,
+    /// `--play`: enter play mode at start, for `daemon start` and `daemon run`.
+    pub play: bool,
 }
 
 /// Parse a command line (without the program name).
@@ -96,6 +98,7 @@ pub fn parse(argv: &[String]) -> Result<Invocation, String> {
             "--seeds" => inv.seeds = Some(need(&mut it)?),
             "--file" => inv.file = Some(need(&mut it)?),
             "--update" => inv.update = true,
+            "--play" => inv.play = true,
             "--window" => {
                 let size = match it.clone().next() {
                     Some(s) if s.contains('x') && !s.starts_with('-') => {

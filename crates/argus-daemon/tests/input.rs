@@ -229,3 +229,72 @@ fn a_recorded_run_replays_bit_for_bit_and_discrete_runs_log_turns() {
         "moved on the one turn"
     );
 }
+
+// ----- phase 1 item 2: real devices through the protocol path ---------------
+
+use argus_input::DeviceInput;
+
+fn key(name: &str, pressed: bool) -> DeviceInput {
+    DeviceInput::Key {
+        name: name.into(),
+        pressed,
+    }
+}
+
+#[test]
+fn keys_move_the_player_and_land_in_the_log_as_actions() {
+    let t = temp("devices");
+    project(t.path());
+    let mut d = open(t.path());
+    // The fixture binds move to wasd and fire to space for slot 1.
+    assert_eq!(
+        d.device_input(&[key("KeyD", true), key("Space", true)]),
+        0,
+        "continuous: no turns"
+    );
+    ok(&mut d, "sim.step", json!({ "n": 3 }));
+    let p = ok(&mut d, "world.get", json!({ "entity": "@player" }));
+    assert_eq!(
+        p["components"]["Transform"]["pos"],
+        json!([6.0, 0.0]),
+        "sim.move walked it 2 a tick"
+    );
+    assert_eq!(p["components"]["Actions"]["fire"], true);
+    let shots = ok(&mut d, "obs.events", json!({ "name": "shot" }));
+    assert_eq!(shots["total"], 1, "one press, one fire_pressed edge");
+
+    let st = ok(&mut d, "input.devices", json!({}));
+    assert_eq!(st["keys"], json!(["d", "space"]));
+    assert_eq!(st["events_seen"], 2);
+
+    d.device_input(&[key("KeyD", false), DeviceInput::ReleaseAll]);
+    ok(&mut d, "sim.step", json!({ "n": 1 }));
+    let log = ok(&mut d, "input.log.get", json!({}));
+    let rows = log["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 4, "{log}");
+    assert_eq!(rows[0], json!([0, 1, "fire", true]));
+    assert_eq!(rows[1], json!([0, 1, "move", [1.0, 0.0]]));
+    assert!(
+        rows.iter().all(|r| r[2] == "fire" || r[2] == "move"),
+        "actions, never keys"
+    );
+}
+
+#[test]
+fn a_key_press_takes_a_turn_on_a_discrete_scene_that_is_playing() {
+    let t = temp("devices-turn");
+    project(t.path());
+    let mut d = open(t.path());
+    ok(&mut d, "scene.load", json!({ "scene": "delve" }));
+    // Not playing: the command is scheduled but no turn is taken.
+    assert_eq!(d.device_input(&[key("w", true)]), 0);
+    assert_eq!(ok(&mut d, "sim.status", json!({}))["tick"], 0);
+    d.device_input(&[key("w", false)]);
+    ok(&mut d, "sim.play", json!({}));
+    assert_eq!(d.device_input(&[key("w", true)]), 1, "press: one turn");
+    assert_eq!(d.device_input(&[]), 0, "held: nothing more");
+    d.device_input(&[key("w", false)]);
+    assert_eq!(d.device_input(&[key("Space", true)]), 1);
+    assert_eq!(ok(&mut d, "sim.status", json!({}))["tick"], 2);
+    assert_eq!(ok(&mut d, "input.devices", json!({}))["turns_taken"], 2);
+}

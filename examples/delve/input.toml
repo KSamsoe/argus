@@ -16,7 +16,7 @@ gamepad = ["east"]
 type = "button"
 doc = "Take the stairs when standing on them"
 [actions.descend.bindings]
-keyboard = ["greater"]
+keyboard = ["enter"]
 gamepad = ["south"]
 
 [slots.1]

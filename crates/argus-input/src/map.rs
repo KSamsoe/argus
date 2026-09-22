@@ -173,6 +173,24 @@ impl ActionMap {
                             &format!("actions.{name}.bindings.{dev}"),
                             &aat,
                         )?;
+                        // Keyboard names are open-ended; mouse and gamepad
+                        // names are a fixed set, so a typo is an error now
+                        // rather than a button that never fires.
+                        let known: &[&str] = match dev {
+                            "mouse" => crate::devices::MOUSE_NAMES,
+                            "gamepad" => crate::devices::PAD_NAMES,
+                            _ => &[],
+                        };
+                        if !known.is_empty() {
+                            if let Some(bad_name) =
+                                items.iter().find(|i| !known.contains(&i.as_str()))
+                            {
+                                return Err(bad(
+                                    format!("actions.{name}.bindings.{dev}: unknown {dev} input {bad_name:?}; known: {}", known.join(", ")),
+                                    tomlv::item_ref(file, text, list),
+                                ));
+                            }
+                        }
                         bindings.insert(dev.to_string(), items);
                     }
                 }

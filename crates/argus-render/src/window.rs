@@ -45,6 +45,11 @@ pub enum DeviceEvent {
     },
     /// The user asked to close the window.
     CloseRequested,
+    /// The window gained or lost keyboard focus.
+    Focus {
+        /// Focused now.
+        focused: bool,
+    },
 }
 
 struct App {
@@ -73,6 +78,9 @@ impl ApplicationHandler for App {
 
     fn window_event(&mut self, _el: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         match event {
+            WindowEvent::Focused(focused) => {
+                self.events.push(DeviceEvent::Focus { focused });
+            }
             WindowEvent::CloseRequested => {
                 self.closed = true;
                 self.events.push(DeviceEvent::CloseRequested);

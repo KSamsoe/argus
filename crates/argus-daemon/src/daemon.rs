@@ -74,6 +74,10 @@ pub struct Daemon {
     /// The renderer's targets (phase 1, item 1).
     #[cfg(feature = "render")]
     render: render::RenderState,
+    /// Raw device state resolved through the action map (phase 1, item 2).
+    devices: argus_input::Devices,
+    /// Turns taken by device commands on a discrete scene.
+    device_turns: u64,
     /// Notifications waiting for the transport, per connection.
     pub outbox: Vec<(ConnId, Json)>,
 }
@@ -104,6 +108,8 @@ impl Daemon {
             broadphase_epoch: 0,
             #[cfg(feature = "render")]
             render: render::RenderState::default(),
+            devices: argus_input::Devices::default(),
+            device_turns: 0,
             outbox: Vec::new(),
         }
     }
@@ -228,6 +234,7 @@ impl Daemon {
             "input.replay" => self.input_replay(params),
             "input.log.get" => self.input_log_get(params),
             "input.bindings" => Ok(self.input()?.borrow().map().to_json()),
+            "input.devices" => Ok(self.input_devices()),
             "input.state" => {
                 let slot = json::u64_param(params, "slot", 1)? as u8;
                 let st = self.input()?;
@@ -359,8 +366,71 @@ impl Daemon {
         }
     }
 
-    /// Present one frame into the window, if open: pump its events, run
-    /// the `present` stage, draw. Closing the window drops it.
+    /// Real device input (phase 1, item 2): apply raw events, resolve them
+    /// through the action map, and schedule what changed for the next
+    /// tick. On a discrete scene that is playing, each new command takes
+    /// one turn, so a human plays Delve by pressing keys. Returns the
+    /// turns taken. Tests call this directly; the window and gamepads
+    /// reach it through `poll_devices`.
+    pub fn device_input(&mut self, events: &[argus_input::DeviceInput]) -> u64 {
+        for ev in events {
+            self.devices.apply(ev);
+        }
+        let Some(st) = self.session.as_ref().and_then(|s| s.input.clone()) else {
+            return 0;
+        };
+        let now = self.sched.tick();
+        let commands = st.borrow_mut().apply_devices(now, &self.devices);
+        let mut turns = 0;
+        if commands > 0
+            && self.sched.config().driving == ClockKind::Discrete
+            && self.sched.is_playing()
+            && !self.sched.is_paused()
+        {
+            // One command, one turn: several keys in one poll are one turn.
+            if self.sched.advance(&mut self.world, 1).is_ok() {
+                turns = 1;
+                self.device_turns += 1;
+            }
+            self.pump_events();
+        }
+        turns
+    }
+
+    /// Pump the window and the gamepads and feed what they report into
+    /// the action map. The server calls this every frame a window is open.
+    pub fn poll_devices(&mut self) {
+        #[cfg(feature = "render")]
+        {
+            let evs = self.render.poll();
+            if self.render.closed_now {
+                self.render.closed_now = false;
+                self.world.emit(Event::Game {
+                    name: "window.closed".to_string(),
+                    fields: Vec::new(),
+                });
+                self.pump_events();
+            }
+            if !evs.is_empty() {
+                self.device_input(&evs);
+            }
+        }
+    }
+
+    fn input_devices(&self) -> Json {
+        let (keys, mouse, pads) = self.devices.summary();
+        json!({
+            "window": self.has_window(),
+            "keys": keys,
+            "mouse": mouse,
+            "gamepads": pads.iter().map(|(i, n)| json!([i, n])).collect::<Vec<_>>(),
+            "events_seen": self.devices.events_seen,
+            "turns_taken": self.device_turns,
+        })
+    }
+
+    /// Present one frame into the window, if open: run the `present`
+    /// stage and draw. `poll_devices` pumps its events.
     pub fn present(&mut self) {
         #[cfg(feature = "render")]
         {
@@ -2017,36 +2087,14 @@ impl Daemon {
                 "ms": l.ms,
             })),
             "atlases": atlases,
-            "pending_events": self.render.events.len(),
+            "gamepads": self.render.pads.is_some(),
         })
     }
 
     #[cfg(feature = "render")]
     fn render_present(&mut self) {
-        let Some((host, _)) = &mut self.render.window else {
+        if self.render.window.is_none() {
             return;
-        };
-        if !host.pump() {
-            self.render.window = None;
-            self.world.emit(Event::Game {
-                name: "window.closed".to_string(),
-                fields: Vec::new(),
-            });
-            self.pump_events();
-            return;
-        }
-        let events = host.take_events();
-        for ev in &events {
-            if let argus_render::window::DeviceEvent::Resized { width, height } = ev {
-                if let Some((_, r)) = &mut self.render.window {
-                    r.gpu_mut().resize(*width, *height);
-                }
-            }
-        }
-        self.render.events.extend(events);
-        if self.render.events.len() > 4096 {
-            let n = self.render.events.len() - 4096;
-            self.render.events.drain(..n);
         }
         let _ = self.sched.present(&mut self.world);
         let tick = self.sched.tick();
@@ -2372,8 +2420,10 @@ impl argus_test::Driver for Daemon {
 #[cfg(feature = "render")]
 pub(crate) mod render {
     use argus_ecs::Result;
+    use argus_input::DeviceInput;
     use argus_render::window::{DeviceEvent, WindowHost};
     use argus_render::Renderer;
+    use std::collections::BTreeMap;
     use std::path::Path;
 
     #[derive(Default)]
@@ -2382,11 +2432,163 @@ pub(crate) mod render {
         pub window: Option<(WindowHost, Renderer)>,
         /// An offscreen renderer kept between `obs.frame` calls of one size.
         pub offscreen: Option<(u32, u32, Renderer)>,
-        /// Device events since the input layer last took them (item 2).
-        pub events: Vec<DeviceEvent>,
+        /// Gamepads, opened with the window; `None` if the platform has none.
+        pub pads: Option<gilrs::Gilrs>,
+        /// gilrs id -> the index the action map sees (connection order).
+        pad_index: BTreeMap<usize, u32>,
+        /// Set by `poll` when the user closed the window.
+        pub closed_now: bool,
+        pads_announced: bool,
+    }
+
+    fn pad_button(b: gilrs::Button) -> Option<&'static str> {
+        use gilrs::Button as B;
+        Some(match b {
+            B::South => "south",
+            B::East => "east",
+            B::West => "west",
+            B::North => "north",
+            B::LeftTrigger => "lb",
+            B::RightTrigger => "rb",
+            B::LeftTrigger2 => "lt",
+            B::RightTrigger2 => "rt",
+            B::Select => "select",
+            B::Start => "start",
+            B::Mode => "mode",
+            B::LeftThumb => "lthumb",
+            B::RightThumb => "rthumb",
+            B::DPadUp => "dpad_up",
+            B::DPadDown => "dpad_down",
+            B::DPadLeft => "dpad_left",
+            B::DPadRight => "dpad_right",
+            _ => return None,
+        })
+    }
+
+    fn pad_axis(a: gilrs::Axis) -> Option<&'static str> {
+        use gilrs::Axis as A;
+        Some(match a {
+            A::LeftStickX => "left_x",
+            A::LeftStickY => "left_y",
+            A::RightStickX => "right_x",
+            A::RightStickY => "right_y",
+            A::LeftZ => "lt",
+            A::RightZ => "rt",
+            _ => return None,
+        })
     }
 
     impl RenderState {
+        fn index_of(&mut self, id: usize) -> u32 {
+            let next = self.pad_index.len() as u32;
+            *self.pad_index.entry(id).or_insert(next)
+        }
+
+        /// Pump the window and the pads; device events in the input
+        /// layer's names. Resizes are handled here.
+        pub fn poll(&mut self) -> Vec<DeviceInput> {
+            let mut out = Vec::new();
+            let mut close = false;
+            if let Some((host, r)) = &mut self.window {
+                if !host.pump() {
+                    close = true;
+                }
+                for ev in host.take_events() {
+                    match ev {
+                        DeviceEvent::Key { code, pressed } => out.push(DeviceInput::Key {
+                            name: code,
+                            pressed,
+                        }),
+                        DeviceEvent::Mouse {
+                            button, pressed, ..
+                        } => out.push(DeviceInput::Mouse {
+                            button: button.to_ascii_lowercase(),
+                            pressed,
+                        }),
+                        DeviceEvent::Focus { focused: false } => out.push(DeviceInput::ReleaseAll),
+                        DeviceEvent::Resized { width, height } => r.gpu_mut().resize(width, height),
+                        _ => {}
+                    }
+                }
+            }
+            if close {
+                self.window = None;
+                self.closed_now = true;
+                out.push(DeviceInput::ReleaseAll);
+            }
+            let mut raw = Vec::new();
+            if let Some(g) = &mut self.pads {
+                if !self.pads_announced {
+                    self.pads_announced = true;
+                    for (id, gp) in g.gamepads() {
+                        raw.push((
+                            usize::from(id),
+                            gp.name().to_string(),
+                            gilrs::EventType::Connected,
+                        ));
+                    }
+                }
+                while let Some(ev) = g.next_event() {
+                    let name = g.gamepad(ev.id).name().to_string();
+                    raw.push((usize::from(ev.id), name, ev.event));
+                }
+            }
+            for (id, name, ev) in raw {
+                let pad = self.index_of(id);
+                use gilrs::EventType as E;
+                match ev {
+                    E::Connected => out.push(DeviceInput::PadConnected {
+                        pad,
+                        name,
+                        connected: true,
+                    }),
+                    E::Disconnected => out.push(DeviceInput::PadConnected {
+                        pad,
+                        name,
+                        connected: false,
+                    }),
+                    E::ButtonPressed(b, _) | E::ButtonRepeated(b, _) => {
+                        if let Some(b) = pad_button(b) {
+                            out.push(DeviceInput::PadButton {
+                                pad,
+                                button: b.into(),
+                                pressed: true,
+                            });
+                        }
+                    }
+                    E::ButtonReleased(b, _) => {
+                        if let Some(b) = pad_button(b) {
+                            out.push(DeviceInput::PadButton {
+                                pad,
+                                button: b.into(),
+                                pressed: false,
+                            });
+                        }
+                    }
+                    E::ButtonChanged(b, v, _) => {
+                        // Analog triggers arrive as button values.
+                        if let Some(n @ ("lt" | "rt")) = pad_button(b) {
+                            out.push(DeviceInput::PadAxis {
+                                pad,
+                                axis: n.into(),
+                                value: v,
+                            });
+                        }
+                    }
+                    E::AxisChanged(a, v, _) => {
+                        if let Some(a) = pad_axis(a) {
+                            out.push(DeviceInput::PadAxis {
+                                pad,
+                                axis: a.into(),
+                                value: v,
+                            });
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            out
+        }
         pub fn offscreen(
             &mut self,
             width: u32,
@@ -2422,6 +2624,16 @@ pub(crate) mod render {
             let mut r = Renderer::windowed(window, software)?;
             r.load_atlases(root)?;
             self.window = Some((host, r));
+            if self.pads.is_none() {
+                // Pads already plugged in are reported as connected on the first poll.
+                self.pads = gilrs::Gilrs::new().ok();
+                if let Some(g) = &self.pads {
+                    let ids: Vec<usize> = g.gamepads().map(|(id, _)| usize::from(id)).collect();
+                    for id in ids {
+                        self.index_of(id);
+                    }
+                }
+            }
             Ok(())
         }
     }

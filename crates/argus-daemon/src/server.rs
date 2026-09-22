@@ -204,6 +204,10 @@ fn run_loop(
             Err(RecvTimeoutError::Disconnected) => return Ok(()),
         }
         if (daemon.wants_frames() || daemon.has_window()) && Instant::now() >= next_frame {
+            // Devices first, so what the human pressed lands on this frame's ticks.
+            if daemon.has_window() {
+                daemon.poll_devices();
+            }
             if daemon.wants_frames() {
                 let _ = daemon.frame();
             }

@@ -24,7 +24,7 @@ Carried in from phase 0 by decision: `obs.trace` (item 13 here), `code` in `run.
 
 ## 2. Keyboard, mouse, gamepad input with recording
 
-**Status: not started.** Constraints: §12 bindings per device and per player slot already declared in `input.toml` are read now; two gamepads are two players; the input log records actions not device events (§6), so a replay survives a rebind; rebinding at runtime is a UI over the same table; accessibility hold/toggle options (§12); `input.record` from phase 0 captures the same log from real devices; injected and real input merge per slot.
+**Status: done** (2026-09-22) in `crates/argus-input` (`devices.rs`, `InputState::apply_devices`) and the daemon (window key and mouse events, gilrs gamepads, `input.devices`, `--play`). Device values enter the same schedule injects use, so the log is actions by tick (or commands by turn) and a device-driven log replays with no devices; on a discrete scene a key press takes a turn while playing. Trace: `crates/argus-input/SPEC-TRACE.md`. Not exercised by hand: pressing physical keys and a physical gamepad; the tests drive the same entry point with synthetic events, and the live window opens and reports its devices. Constraints: §12 bindings per device and per player slot already declared in `input.toml` are read now; two gamepads are two players; the input log records actions not device events (§6), so a replay survives a rebind; rebinding at runtime is a UI over the same table; accessibility hold/toggle options (§12); `input.record` from phase 0 captures the same log from real devices; injected and real input merge per slot.
 
 ## 3. Audio mixer with event log
 
@@ -72,4 +72,4 @@ Carried in from phase 0 by decision: `obs.trace` (item 13 here), `code` in `run.
 
 ## Gate
 
-Item 1 done: Swarm and Delve open in a window and draw; nothing reads the keyboard yet (item 2). The Hollow slice (items 5, 6, 7, 12); the animation with a footstep that fires a sound (items 3, 8).
+Items 1 and 2 done: Swarm and Delve open in a window, draw, and take keyboard and gamepad input (`argus daemon start --window --play`); sound is item 3. The Hollow slice (items 5, 6, 7, 12); the animation with a footstep that fires a sound (items 3, 8).
