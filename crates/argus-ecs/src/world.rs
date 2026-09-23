@@ -28,6 +28,8 @@ pub struct World {
     strings: Interner,
     events: Vec<EventRecord>,
     frame: u64,
+    /// The system running now, which every event it emits is tagged with.
+    emitter: Option<std::sync::Arc<str>>,
     /// The shared broadphase over `Transform.pos` (or `GlobalTransform`
     /// when present), rebuilt by [`World::rebuild_broadphase`].
     broadphase: SpatialHash,
@@ -56,6 +58,7 @@ impl World {
             strings: Interner::new(),
             events: Vec::new(),
             frame: 0,
+            emitter: None,
             broadphase: SpatialHash::default(),
         }
     }
@@ -298,6 +301,11 @@ impl World {
         let mut v: Vec<_> = self.names.iter().map(|(k, v)| (k.as_str(), *v)).collect();
         v.sort_by(|a, b| a.0.cmp(b.0));
         v
+    }
+
+    /// Every named entity, in no order, without collecting them.
+    pub fn named(&self) -> impl Iterator<Item = (&str, Entity)> + '_ {
+        self.names.iter().map(|(k, v)| (k.as_str(), *v))
     }
 
     // ----- broadphase -------------------------------------------------------
@@ -671,7 +679,48 @@ impl World {
         self.events.push(EventRecord {
             frame: self.frame,
             event,
+            by: self.emitter.clone(),
         });
+    }
+
+    /// The system running now (the scheduler sets it around each system),
+    /// so the events it emits say who emitted them (§8 `obs.why`).
+    pub fn set_emitter(&mut self, system: Option<std::sync::Arc<str>>) {
+        self.emitter = system;
+    }
+
+    /// Every live entity, archetype by archetype.
+    pub fn live(&self) -> impl Iterator<Item = Entity> + '_ {
+        self.archetypes
+            .iter()
+            .flat_map(|a| a.entities().iter().copied())
+    }
+
+    /// Look at one component's row as bytes, fields at their schema
+    /// offsets (a tag's row is empty): how history and diffs compare and
+    /// keep rows without building values.
+    pub fn with_row<R>(&self, e: Entity, c: ComponentId, f: impl FnOnce(&[u8]) -> R) -> Result<R> {
+        let size = self.registry.schema(c).size;
+        let (col, row) = self.locate(e, c)?;
+        if size == 0 {
+            return Ok(f(&[]));
+        }
+        col.acquire_shared()?;
+        // SAFETY: the row is `size` initialised bytes inside the column,
+        // and the shared borrow is held while `f` looks at them.
+        let r = f(unsafe { std::slice::from_raw_parts(col.row_ptr(row), size) });
+        col.release_shared();
+        Ok(r)
+    }
+
+    /// One field's value out of a row's bytes (as [`World::with_row`] gave
+    /// them, now or kept from before); `None` if the row is too short.
+    pub fn decode_field(&self, field: &FieldSchema, row: &[u8]) -> Option<Value> {
+        if field.offset + field.ty.size() > row.len() {
+            return None;
+        }
+        // SAFETY: the field's bytes are inside `row`; reads are unaligned.
+        Some(unsafe { field.ty.read(row.as_ptr().add(field.offset), &self.strings) })
     }
 
     /// Pending events.

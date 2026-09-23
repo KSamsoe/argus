@@ -43,6 +43,14 @@ Every statement in the design document (v0.3) that constrains the daemon and the
 | The local socket needs no auth; remote access via tokens is later. | Done (phase-0 half) | Nothing listens beyond the local socket. | |
 | Identical result shapes from the live world or the index. | Deferred | Piece 6 will serve `world.*` and `scene.*` from the index when no world is loaded, with these shapes. | |
 
+## Phase 1, item 13: obs.diff, obs.trace, obs.why
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| L3 `obs.diff {since: frame}`: which entities appeared, vanished, or changed which fields, with counts, about 1 KB (§8). | Done | `history.rs`. The world is kept (a snapshot, a copy of its columns) at each frame something looked at it, any `world.*` or `obs.*` call, the last eight within 256 MB; an edit at the same frame replaces that frame's. `obs.diff` compares the world now with the newest kept at or before `since`, entity by entity and field by field on row bytes: appeared and vanished by kind (game components) with counts and the first ids; changed with each field and how many entities changed it, the components gained and lost, and the named entities first with each field's from and to. With no `since`, it is the last look, so it answers "what changed since I last looked"; the first call on a world says it is the first look. A frame not yet run is refused. Swarm's arena over 300 ticks is 896 bytes. | `history::diff_trace_and_why_answer_what_happened_to_the_hero`, `history::a_diff_lists_six_fields_and_counts_the_rest_and_the_components` |
+| `obs.trace {entity, frames}`: one entity's component history over a window, the tool for "why did the player die at 812"; it needs a bounded history, the snapshot ring proper being phase 2 (§8, checklist). | Done | A scheduler observer reads the world at the end of every tick and keeps, for every named entity and any the agent asks for, each component row when it changes, for the last 3,600 frames (older changes fold into the start). Frames are those the tick's events carry. `obs.trace` rebuilds the fields over the window: each field that changed with its start, end, count, and the frames and values (the first and last six of a field that changed often), the components gained and lost, the entity's events (the latest 24, `by` included), and the systems that write each changed component. An unnamed entity is watched from the first time it is asked for; a gone one is found by the id it had, with the frame it went. Recording 1,000 named entities, 100 of them moving, costs 0.05 ms a tick in release. | `history::diff_trace_and_why_answer_what_happened_to_the_hero`, `history::the_history_keeps_a_window_and_folds_the_rest_into_its_start`, `history::perf_a_thousand_named_entities` (ignored) |
+| `obs.why {event}` walks the declared write sets backwards from an event to list the systems that could have caused it, in stage order; a static answer, usually enough to point at the right file (§8). | Done | Every event now records the system that emitted it (`by`, in `obs.events` too). `obs.why` starts from it, then adds the systems that write what it reads or writes, and theirs, for `depth` steps (3 by default), each row with the stage, the depth, why ("writes Transform, which sim.bite reads"), and the file:line that declares it, in the scheduler's run order; plus, for each entity the event names, the systems that write each of its components. An event no system emitted (an edit, the mixer) starts from the writers of the entities it names. By `event` (a seq) or `name` (the latest). | same |
+
 ## Phase 1, item 12: semantic frames and annotated screenshots
 
 | Spec | Status | Where | Test |
@@ -96,7 +104,7 @@ Every statement in the design document (v0.3) that constrains the daemon and the
 | Spec | Status | Where | Test |
 |---|---|---|---|
 | L0 summary, L1 query, L2 events. | Done | `world.summary`, `world.query`, `obs.events` / `obs.subscribe`. | `protocol::*` |
-| L3 diff, L4 semantic frame, L5 pixels, `obs.trace`, `obs.why`. | Partial | L4 and L5 are phase 1's items 1 and 12; L3, `obs.trace`, and `obs.why` are item 13. See the decision below. | |
+| L3 diff, L4 semantic frame, L5 pixels, `obs.trace`, `obs.why`. | Done | L4 and L5 are phase 1's items 1 and 12; L3, `obs.trace`, and `obs.why` are item 13 (below). See the decision below. | |
 
 ## §10 Human–agent collaboration
 
@@ -109,10 +117,14 @@ Every statement in the design document (v0.3) that constrains the daemon and the
 
 Phase 0 item 4, "JSON-RPC daemon with session, world, edit, sim (play, pause, step, advance, speed, run_until), script": this crate.
 
-**Decision on the gate's "events and traces".** The phase-0 gate asks that the agent answer "why did the player die" from events and traces, while `obs.trace` is listed under phase 1. The daemon ships `obs.events` (with entity and name filters) and `world.who_writes`, which together answer the question the gate poses: the event says what happened and when, `who_writes` says which systems could have done it. `obs.trace` (one entity's component history over a window) stays in phase 1 with the snapshot ring it needs. The scenario runner (item 10) will show whether that is enough; if it is not, `obs.trace` moves.
+**Decision on the gate's "events and traces".** The phase-0 gate asks that the agent answer "why did the player die" from events and traces, while `obs.trace` is listed under phase 1. The daemon ships `obs.events` (with entity and name filters) and `world.who_writes`, which together answer the question the gate poses: the event says what happened and when, `who_writes` says which systems could have done it. `obs.trace` (one entity's component history over a window) stays in phase 1 with the snapshot ring it needs. The scenario runner (item 10) will show whether that is enough; if it is not, `obs.trace` moves. **Outcome:** it was enough for the phase-0 gate (Swarm's last-stand scenario answers "why did the player die" from `obs.events` and `who_writes`), and `obs.trace` landed where the plan put it, in phase 1 item 13, on a bounded history of its own rather than the phase-2 ring.
 
 ## Known limitations, stated so they are decisions
 
+- `obs.diff` has the world only at frames something looked at it. A `since` between two looks is compared from the look before it, and `from` says which. Something that appeared and vanished between the two ends is in neither list; `obs.events` has it.
+- `obs.trace` covers named entities from the start and any other from the first time it is asked for, so an unnamed rat's history begins when the agent first names it. Frames past the window (3,600) fold into where the trace starts.
+- `obs.why` is static: it reads the declared write sets, so it lists every system that could have fed the emitter, on this tick or earlier ones, not the ones that did. `obs.trace` says what did change, and when.
+- The history is cleared when play stops (`sim.stop` restores the world) and when a scene loads.
 - One open scene per daemon; `scene.load` rebuilds the world (scripts, prefabs, defs, files) from scratch rather than diffing.
 - Undo of a runtime despawn spawns a new handle; the string id (if any) is preserved, the `e:n` handle is not. Authored despawns come back from their former file text.
 - Locks are in memory; they do not survive the daemon.

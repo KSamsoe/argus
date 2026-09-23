@@ -91,6 +91,13 @@ Release build, one thread, development laptop. Gates in `tests/perf.rs`.
 |---|---|---|---|
 | The broadphase is rebuilt each tick. | Done | `run_tick` rebuilds it after `end_frame`, timed and allocation-counted as the `broadphase.rebuild` row at the end of the hierarchy stage, so the next tick's systems and any query between ticks see the tick's final positions. `SystemCtx::within`, `SystemCtx::nearest`, and `SystemCtx::spawn_with` (checked against the declared writes) are what the Luau binding wraps. | `prof_snapshot::every_system_is_timed_every_tick` (the row), `argus-luau/tests/systems.rs::vec2_fields_are_native_vectors_and_spawn_many_and_within_reach_the_broadphase` |
 
+## Phase 1, item 13: who emitted an event, and what reads the world after a tick
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| `obs.why` walks back from an event to the systems that could have caused it (§8). | Done | The scheduler sets the world's emitter to each system's name around its run (the name it already holds, so nothing is allocated), and `World::emit` stamps it on every event: what a system emits, spawns, and despawns says which system. | `observe::events_say_who_emitted_them_and_observers_see_each_tick` |
+| `obs.trace` needs a bounded history (§8). | Done | `Scheduler::observe`: observers read the world at the end of every tick, after the hierarchy stage and before the frame moves on, with the frame the tick's events carry. They are not systems (they declare, change, and list nothing); their time is sampled as `obs.observe` in `prof.worst` and captures. | same |
+
 ## Phase 1, item 9: write sets for data-driven systems
 
 | Spec | Status | Where | Test |

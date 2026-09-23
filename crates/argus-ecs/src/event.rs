@@ -89,11 +89,15 @@ pub enum Event {
     },
 }
 
-/// An event tagged with the frame it happened on.
+/// An event tagged with the frame it happened on and the system that
+/// emitted it.
 #[derive(Clone, Debug, PartialEq)]
 pub struct EventRecord {
     /// Frame counter of the world when the event was emitted.
     pub frame: u64,
     /// The event.
     pub event: Event,
+    /// The system running when it was emitted; none for the daemon, an
+    /// edit, or anything else outside a system.
+    pub by: Option<std::sync::Arc<str>>,
 }

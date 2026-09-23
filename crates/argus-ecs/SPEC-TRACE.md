@@ -111,6 +111,12 @@ Release build, one thread, development laptop. Gates are `tests/perf.rs`; number
 |---|---|---|---|
 | Transitions are field comparisons, 2,000 animators under 0.3 ms (§17). | Done | `DynColumn::num_by(row, field, axis)` reads a numeric, bool, or vec2-axis field as a number, and `DynColumn::str_id_by` a string field's id, without building a `Value` (which resolves strings and allocates). The animator reads every condition this way. | `argus-anim/tests/anim.rs::perf_two_thousand_animators` |
 
+## Phase 1, item 13: what the history and diffs read
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| `obs.diff`, `obs.trace`, `obs.why` (§8). | Done | `EventRecord.by`: the system that emitted it, from `World::set_emitter`. `World::with_row` shows a component's row as bytes, so a history keeps rows and a diff compares them without building values; `World::decode_field` reads a field out of kept bytes; `World::live` walks every live entity; `World::named` walks the named ones without collecting them. | `argus-daemon/tests/history.rs`, `argus-sim/tests/observe.rs` |
+
 ## Phase 1, item 6: what the physics step needed from the core
 
 | Spec | Status | Where | Test |

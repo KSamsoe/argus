@@ -397,9 +397,27 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "obs.events",
-        doc: "The structured event log: spawns, despawns, gameplay events, system faults, room transitions, edits. Filter by name, entity, or frame; page with since.",
+        doc: "The structured event log: spawns, despawns, gameplay events, system faults, room transitions, edits. Filter by name, entity, or frame; page with since. by names the system that emitted an event; it is absent for the daemon's own (edits, the mixer's answers).",
         params: "since: integer (sequence number, exclusive); name: string (optional); entity: string (optional); from_frame: integer; limit; cursor",
-        returns: "{total, rows: [{seq, frame, name, fields}], next, last_seq}",
+        returns: "{total, rows: [{seq, frame, name, by?, fields}], next, last_seq}",
+    },
+    MethodDoc {
+        name: "obs.diff",
+        doc: "What changed since a frame (section 8 L3), in about 1 KB: the entities that appeared and vanished, by kind (their game components) with counts and the first ids; and the entities that changed, with each field and how many changed it, the components gained and lost, and the named entities first with what each field went from and to. The world is kept at each frame something looked at it (any world.* or obs.* call), the last few; since is compared with the newest of those at or before it (from). With no since, it is the last look: what changed since I last looked.",
+        params: "since: integer (a frame, as world.summary or sim.status gave it; default the last look); limit: entities listed with their changes (default 12)",
+        returns: "{since, from, to, appeared: {count, kinds: [[kind, count, ids]]}, vanished: {...}, changed: {count, fields: [[path, count]], components: {added, removed}, entities: [[id, {path: [from, to]}, {more_fields?, added?, removed?}?]], omitted}, bytes}",
+    },
+    MethodDoc {
+        name: "obs.trace",
+        doc: "One entity's component history over a window of frames (section 8): every field that changed in it, from what to what and on which frames (the first and last points of a field that changed often); the components it gained and lost; its events; and the systems that write the components that changed. Frames are those events carry. Named entities are traced from the start, for the last 3,600 frames; any other is watched from the first time it is asked for. A gone entity is found by the id it had.",
+        params: "entity: string (@id or e:N); frames: integer (the last N) or [from, to] (default all kept); fields: [Component or Component.field] (default every field); points: integer (per field, default 12)",
+        returns: "{entity, traced, from, to, fields: [{path, start, end, changes, points: [[frame, value]], skipped?}], steady, components: [[frame, component, added|removed]], event_columns, events, writers: {component: [system]}, gone?, bytes}",
+    },
+    MethodDoc {
+        name: "obs.why",
+        doc: "Walk the declared write sets backwards from an event (section 8): the system that emitted it, then the systems that write what that system reads, and so on for depth steps, each with why, in stage order, with the file:line that declares it. A static answer from the declarations; obs.trace says what actually changed. For an event no system emitted, the systems that write the entities it names.",
+        params: "event: integer (a seq from obs.events), or name: string (the latest such event); depth: integer (default 3)",
+        returns: "{event, columns: [system, stage, depth, because, source], rows, entities: [{id, writers: {component: [system]}}], note?}",
     },
     MethodDoc {
         name: "obs.frame",

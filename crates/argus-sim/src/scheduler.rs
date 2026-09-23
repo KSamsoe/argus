@@ -162,7 +162,13 @@ pub struct Scheduler {
     edit_snapshot: Option<SimSnapshot>,
     prof: Profiler,
     capture: Option<Capture>,
+    observers: Vec<Observer>,
 }
+
+/// Something that reads the world at the end of every tick and cannot
+/// change it: the daemon's history for `obs.trace`. Called with the frame
+/// the tick ran as, the frame its events carry.
+pub type Observer = Box<dyn FnMut(&World, u64)>;
 
 /// What one tick collects while it runs.
 struct TickSamples {
@@ -186,7 +192,21 @@ impl Scheduler {
             edit_snapshot: None,
             prof,
             capture: None,
+            observers: Vec::new(),
         }
+    }
+
+    /// Read the world at the end of every tick, after the hierarchy stage
+    /// and before the frame counter moves on. Observers are not systems:
+    /// they declare nothing, change nothing, and are not listed; their time
+    /// is sampled as `obs.observe`.
+    pub fn observe(&mut self, f: Observer) {
+        self.observers.push(f);
+    }
+
+    /// Remove every observer.
+    pub fn clear_observers(&mut self) {
+        self.observers.clear();
     }
 
     /// The configuration.
@@ -685,6 +705,16 @@ impl Scheduler {
             );
         }
         self.run_stage(world, Stage::Hierarchy, kind, tick, time, dt, &mut samples);
+        if !self.observers.is_empty() {
+            let t = Instant::now();
+            let (pa, pb) = alloc::counters();
+            let frame = world.frame();
+            for o in &mut self.observers {
+                o(world, frame);
+            }
+            let (qa, qb) = alloc::counters();
+            self.sample(&mut samples, Arc::from("obs.observe"), t, qa - pa, qb - pb);
+        }
         world.end_frame();
         {
             // The shared broadphase (§12), rebuilt once per tick from the
@@ -832,7 +862,10 @@ impl Scheduler {
                 dt,
                 learned: Vec::new(),
             };
+            // What the system emits says it did (obs.why).
+            ctx.world.set_emitter(Some(slot.name.clone()));
             let r = catch_unwind(AssertUnwindSafe(|| (slot.run)(&mut ctx)));
+            ctx.world.set_emitter(None);
             let learned = std::mem::take(&mut ctx.learned);
             drop(ctx);
             // What the system's data named joins its declared access.

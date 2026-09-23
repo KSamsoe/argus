@@ -55,6 +55,9 @@ struct Session {
     /// Particle effects and every emitter's pool (item 10), refreshed on
     /// import and drawn by the renderer.
     particles: Rc<RefCell<argus_particles::ParticleStore>>,
+    /// Baselines for obs.diff and traces for obs.trace (item 13), fed by
+    /// a scheduler observer at the end of every tick.
+    history: Rc<RefCell<crate::history::History>>,
 }
 
 struct EventLog {
@@ -332,9 +335,17 @@ impl Daemon {
             }
             "sim.stop" => {
                 self.sched.stop(&mut self.world);
+                // The world went back to before play: its history is of a
+                // run that no longer happened.
+                if let Some(s) = &self.session {
+                    s.history.borrow_mut().clear();
+                }
                 self.pump_events();
                 Ok(self.sim_status())
             }
+            "obs.diff" => self.obs_diff(params),
+            "obs.trace" => self.obs_trace(params),
+            "obs.why" => self.obs_why(params),
             "sim.step" => {
                 let n = json::u64_param(params, "n", 1)?;
                 self.sched.step(&mut self.world, n)?;
@@ -398,9 +409,15 @@ impl Daemon {
                 codes::UNKNOWN_METHOD,
                 format!("no method {other:?}"),
             )
-            .hint("session.capabilities lists every method; obs.diff, obs.trace, and sim.seek arrive in later phases.")),
+            .hint("session.capabilities lists every method; sim.seek and sim.fork arrive in phase 2.")),
         };
         self.pump_events();
+        // Whatever the agent looked at is a baseline for obs.diff.
+        if r.is_ok() && (method.starts_with("world.") || method.starts_with("obs.")) {
+            if let Some(s) = &self.session {
+                s.history.borrow_mut().looked(&self.world, self.mutations);
+            }
+        }
         r
     }
 
@@ -590,6 +607,10 @@ impl Daemon {
         self.world = World::new();
         argus_ecs::hierarchy::register(&mut self.world)?;
         self.sched = Scheduler::new(sched_cfg);
+        let history = Rc::new(RefCell::new(crate::history::History::default()));
+        let h = history.clone();
+        self.sched
+            .observe(Box::new(move |w, frame| h.borrow_mut().record(w, frame)));
         // The action map's components exist before scripts load, so a
         // system may declare reads = {"Actions"}.
         let input = match ActionMap::load(&root)? {
@@ -704,6 +725,7 @@ impl Daemon {
             tiles,
             anims,
             particles,
+            history,
         });
         self.asset_events(&asset_report, true);
         self.pump_events();
@@ -2608,9 +2630,11 @@ impl Daemon {
                 };
                 let frame = rec.frame;
                 records.push(rec);
+                // The mixer's answers are the daemon's, not a system's.
                 records.extend(answer.into_iter().map(|(name, fields)| EventRecord {
                     frame,
                     event: Event::Game { name, fields },
+                    by: None,
                 }));
             }
             if let Some(a) = self.audio.as_mut() {
@@ -2619,6 +2643,7 @@ impl Daemon {
                     EventRecord {
                         frame,
                         event: Event::Game { name, fields },
+                        by: None,
                     }
                 }));
                 a.advance_to(self.sched.driving().time());
@@ -2675,6 +2700,440 @@ impl Daemon {
         let (limit, offset) = query::page(params)?;
         let mut out = query::paged(rows, limit, offset);
         out["last_seq"] = json!(self.events.next_seq - 1);
+        Ok(out)
+    }
+
+    // ----- obs.diff, obs.trace, obs.why (phase 1, item 13) -------------------
+
+    /// What changed since a frame (section 8 L3): which entities appeared,
+    /// vanished, or changed which fields, with counts, about 1 KB.
+    fn obs_diff(&mut self, params: &Json) -> Result<Json> {
+        let ses = self.require_session()?;
+        let now = self.world.frame();
+        let hist = ses.history.borrow();
+        let asked = params.get("since").and_then(Json::as_u64);
+        let since = match asked {
+            Some(f) => f,
+            None => match hist.baseline(now) {
+                Some((f, _)) => f,
+                None => {
+                    // Nothing looked before: this look is the baseline.
+                    return Ok(json!({
+                        "since": now, "from": now, "to": now,
+                        "note": "The first look at this world: nothing to compare with yet. This frame is kept; ask again after the world moves.",
+                    }));
+                }
+            },
+        };
+        if since > now {
+            return Err(ArgusError::new(
+                codes::BAD_PARAMS,
+                format!("frame {since} has not happened; the world is at frame {now}"),
+            ));
+        }
+        let limit = json::u64_param(params, "limit", 12)?.min(500) as usize;
+        let Some((from, then)) = hist.baseline(since) else {
+            let frames = hist.baseline_frames();
+            return Err(ArgusError::new(
+                codes::BAD_PARAMS,
+                format!("no baseline at or before frame {since}; the baselines are at frames {frames:?}"),
+            )
+            .hint("The world is kept at each frame the agent looked at it (any world.* or obs.* call), the last few; obs.diff with no since compares with the last look."));
+        };
+        let d = crate::history::diff(then, &self.world);
+        let label = |w: &World, e: Entity| -> String {
+            let comps = w.components_of(e).unwrap_or(&[]);
+            let game: Vec<&str> = comps
+                .iter()
+                .map(|&c| w.registry().schema(c))
+                .filter(|s| s.rust_type.is_none())
+                .map(|s| s.name.as_str())
+                .collect();
+            if game.is_empty() {
+                comps
+                    .iter()
+                    .map(|&c| w.registry().schema(c).name.as_str())
+                    .collect::<Vec<_>>()
+                    .join("+")
+            } else {
+                game.join("+")
+            }
+        };
+        let kinds = |w: &World, es: &[Entity]| -> Json {
+            let mut by: BTreeMap<String, (usize, Vec<String>)> = BTreeMap::new();
+            for &e in es {
+                let k = by.entry(label(w, e)).or_default();
+                k.0 += 1;
+                if k.1.len() < 3 {
+                    k.1.push(crate::history::id_of(w, e));
+                }
+            }
+            let mut rows: Vec<(String, usize, Vec<String>)> =
+                by.into_iter().map(|(k, (n, ids))| (k, n, ids)).collect();
+            rows.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+            rows.truncate(8);
+            json!({ "count": es.len(), "kinds": rows.into_iter().map(|(k, n, ids)| json!([k, n, ids])).collect::<Vec<_>>() })
+        };
+        let mut per_field: BTreeMap<&str, usize> = BTreeMap::new();
+        let mut added: BTreeMap<&str, usize> = BTreeMap::new();
+        let mut removed: BTreeMap<&str, usize> = BTreeMap::new();
+        for c in &d.changed {
+            for (p, _, _) in &c.fields {
+                *per_field.entry(p.as_str()).or_default() += 1;
+            }
+            for n in &c.added {
+                *added.entry(n.as_str()).or_default() += 1;
+            }
+            for n in &c.removed {
+                *removed.entry(n.as_str()).or_default() += 1;
+            }
+        }
+        let mut fields: Vec<(&str, usize)> = per_field.into_iter().collect();
+        fields.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(b.0)));
+        let more_fields = fields.len().saturating_sub(16);
+        fields.truncate(16);
+        // Named entities first, each with what its fields went from and to.
+        let mut listed: Vec<&crate::history::Changed> = d.changed.iter().collect();
+        listed.sort_by_key(|c| (self.world.string_id(c.entity).is_none(), c.entity));
+        let entities: Vec<Json> = listed
+            .iter()
+            .take(limit)
+            .map(|c| {
+                let mut o = serde_json::Map::new();
+                for (p, x, y) in c.fields.iter().take(6) {
+                    o.insert(
+                        p.clone(),
+                        json!([json::to_json(then, x), json::to_json(&self.world, y)]),
+                    );
+                }
+                // [id, {field: [from, to]}] and, only when there is any,
+                // what else: fields past six, components gained and lost.
+                let mut row = vec![
+                    json!(crate::history::id_of(&self.world, c.entity)),
+                    Json::Object(o),
+                ];
+                let mut more = serde_json::Map::new();
+                if c.fields.len() > 6 {
+                    more.insert("more_fields".into(), json!(c.fields.len() - 6));
+                }
+                if !c.added.is_empty() {
+                    more.insert("added".into(), json!(c.added));
+                }
+                if !c.removed.is_empty() {
+                    more.insert("removed".into(), json!(c.removed));
+                }
+                if !more.is_empty() {
+                    row.push(Json::Object(more));
+                }
+                Json::Array(row)
+            })
+            .collect();
+        let mut out = json!({
+            "since": since,
+            "from": from,
+            "to": now,
+            "appeared": kinds(&self.world, &d.appeared),
+            "vanished": kinds(then, &d.vanished),
+            "changed": {
+                "count": d.changed.len(),
+                "fields": fields.iter().map(|(p, n)| json!([p, n])).collect::<Vec<_>>(),
+                "components": { "added": added, "removed": removed },
+                "entities": entities,
+                "omitted": d.changed.len().saturating_sub(limit),
+            },
+        });
+        if more_fields > 0 {
+            out["changed"]["more_fields"] = json!(more_fields);
+        }
+        drop(hist);
+        let bytes = serde_json::to_string(&out).map(|s| s.len()).unwrap_or(0);
+        out["bytes"] = json!(bytes + 16);
+        Ok(out)
+    }
+
+    /// One entity's component history over a window (section 8): every
+    /// field that changed, when, and to what; the components it gained and
+    /// lost; its events; and the systems that write what changed.
+    fn obs_trace(&mut self, params: &Json) -> Result<Json> {
+        let ses = self.require_session()?;
+        let r = json::str_param(params, "entity")?;
+        let live = self.world.entity(r).ok();
+        let mut hist = ses.history.borrow_mut();
+        // A gone entity is found by the id it was traced under.
+        let e = live.or_else(|| {
+            let id = if r.starts_with('@') || r.starts_with("e:") {
+                r.to_string()
+            } else {
+                format!("@{r}")
+            };
+            hist.find(&id)
+        });
+        let Some(e) = e else {
+            return Err(self
+                .world
+                .entity(r)
+                .err()
+                .unwrap_or_else(|| ArgusError::new(codes::BAD_PARAMS, format!("no entity {r}"))));
+        };
+        let last = self.world.frame().saturating_sub(1);
+        if !hist.traced(e) {
+            // Not traced so far: it is from now on.
+            hist.watch(e);
+            return Ok(json!({
+                "entity": crate::history::id_of(&self.world, e),
+                "traced": false,
+                "watching": true,
+                "note": "Only named entities are traced from the start; this one is watched from now on. Step, then ask again.",
+            }));
+        }
+        let t = hist.trace(e).expect("traced");
+        let (from, to) = match params.get("frames") {
+            None | Some(Json::Null) => (t.since, last),
+            Some(Json::Number(n)) => {
+                let n = n.as_u64().unwrap_or(1).max(1);
+                (last.saturating_sub(n - 1).max(t.since), last)
+            }
+            Some(Json::Array(a)) if a.len() == 2 => {
+                let f = a[0]
+                    .as_u64()
+                    .ok_or_else(|| bad_params("frames is a count or [from, to]"))?;
+                let l = a[1]
+                    .as_u64()
+                    .ok_or_else(|| bad_params("frames is a count or [from, to]"))?;
+                (f.max(t.since), l.min(last))
+            }
+            _ => {
+                return Err(bad_params(
+                    "frames is a count of recent frames or [from, to]",
+                ))
+            }
+        };
+        let want: Vec<String> = json::str_list(params, "fields").unwrap_or_default();
+        let keep =
+            |comp: &str, path: &str| want.is_empty() || want.iter().any(|w| w == comp || w == path);
+        let points = json::u64_param(params, "points", 12)?.clamp(2, 1000) as usize;
+        let story = t.story(&self.world, from, to, &keep);
+        let v = |x: &Option<Value>| {
+            x.as_ref()
+                .map(|v| json::to_json(&self.world, v))
+                .unwrap_or(Json::Null)
+        };
+        let fields: Vec<Json> = story
+            .fields
+            .iter()
+            .map(|f| {
+                let n = f.changes.len();
+                let pick: Vec<&(u64, Option<Value>)> = if n <= points {
+                    f.changes.iter().collect()
+                } else {
+                    f.changes
+                        .iter()
+                        .take(points / 2)
+                        .chain(f.changes.iter().skip(n - points / 2))
+                        .collect()
+                };
+                let mut o = json!({
+                    "path": f.path,
+                    "start": v(&f.start),
+                    "end": v(&f.end),
+                    "changes": n,
+                    "points": pick.iter().map(|(fr, x)| json!([fr, v(x)])).collect::<Vec<_>>(),
+                });
+                if n > points {
+                    o["skipped"] = json!(n - pick.len());
+                }
+                o
+            })
+            .collect();
+        let id = t.id.clone();
+        let gone = t.gone;
+        let changed = story.changed.clone();
+        drop(hist);
+        // Its events, the latest last: components coming and going are in
+        // `components` already, so those events are left out.
+        let mut events: Vec<Json> = self
+            .events
+            .records
+            .iter()
+            .rev()
+            .filter(|(_, rec)| rec.frame >= from && rec.frame <= to)
+            .filter(|(_, rec)| {
+                !matches!(
+                    rec.event,
+                    Event::ComponentAdded { .. } | Event::ComponentRemoved { .. }
+                )
+            })
+            .map(|(seq, rec)| event_json(&self.world, *seq, rec))
+            .filter(|row| {
+                row["fields"]
+                    .as_object()
+                    .is_some_and(|o| o.values().any(|x| x.as_str() == Some(id.as_str())))
+            })
+            .take(24)
+            .map(|row| {
+                json!([
+                    row["seq"],
+                    row["frame"],
+                    row["name"],
+                    row.get("by").cloned().unwrap_or(Json::Null),
+                    row["fields"]
+                ])
+            })
+            .collect();
+        events.reverse();
+        let mut writers = serde_json::Map::new();
+        for c in changed {
+            let name = self.world.registry().schema(c).name.clone();
+            writers.insert(name, json!(self.sched.who_writes(c).unwrap_or_default()));
+        }
+        let mut out = json!({
+            "entity": id,
+            "traced": true,
+            "from": from,
+            "to": to,
+            "fields": fields,
+            "steady": story.steady,
+            "components": story.components.iter().map(|(f, c, a)| json!([f, c, if *a { "added" } else { "removed" }])).collect::<Vec<_>>(),
+            "event_columns": ["seq", "frame", "name", "by", "fields"],
+            "events": events,
+            "writers": writers,
+        });
+        if let Some(g) = gone {
+            out["gone"] = json!(g);
+        }
+        let bytes = serde_json::to_string(&out).map(|s| s.len()).unwrap_or(0);
+        out["bytes"] = json!(bytes + 16);
+        Ok(out)
+    }
+
+    /// Walk the declared write sets backwards from an event (section 8):
+    /// the system that emitted it, the systems that write what it reads,
+    /// and so on, in stage order. A static answer; obs.trace says what
+    /// actually changed.
+    fn obs_why(&mut self, params: &Json) -> Result<Json> {
+        self.require_session()?;
+        let depth = json::u64_param(params, "depth", 3)?.min(10) as usize;
+        let rec = match params.get("event").and_then(Json::as_u64) {
+            Some(seq) => self.events.records.iter().find(|(s, _)| *s == seq).cloned(),
+            None => {
+                let name = json::opt_str(params, "name")?.ok_or_else(|| {
+                    bad_params("obs.why needs event (a seq from obs.events) or name (the latest such event)")
+                })?;
+                self.events
+                    .records
+                    .iter()
+                    .rev()
+                    .map(|(s, r)| (*s, r.clone()))
+                    .find(|(s, r)| event_json(&self.world, *s, r)["name"] == name)
+            }
+        };
+        let Some((seq, rec)) = rec else {
+            return Err(
+                ArgusError::new(codes::BAD_PARAMS, "no such event in the log").hint(
+                    "obs.events lists events with their seq; the log keeps the last 200,000.",
+                ),
+            );
+        };
+        let ev = event_json(&self.world, seq, &rec);
+        let infos = self.sched.systems(self.world.registry())?;
+        let index: std::collections::HashMap<&str, usize> = infos
+            .iter()
+            .enumerate()
+            .map(|(i, s)| (s.name.as_str(), i))
+            .collect();
+        // (system, depth, because)
+        let mut found: Vec<(usize, usize, String)> = Vec::new();
+        let mut frontier: Vec<usize> = Vec::new();
+        match rec.by.as_deref().and_then(|b| index.get(b).copied()) {
+            Some(i) => {
+                found.push((i, 0, "emitted it".to_string()));
+                frontier.push(i);
+            }
+            None => {
+                // Emitted outside a system: what writes the entities it names.
+                for v in ev["fields"]
+                    .as_object()
+                    .into_iter()
+                    .flatten()
+                    .map(|(_, v)| v)
+                {
+                    let Some(s) = v.as_str() else { continue };
+                    let Ok(e) = self.world.entity(s) else {
+                        continue;
+                    };
+                    for &c in self.world.components_of(e).unwrap_or(&[]) {
+                        let cname = &self.world.registry().schema(c).name;
+                        for (i, info) in infos.iter().enumerate() {
+                            if info.writes.contains(cname) && !found.iter().any(|f| f.0 == i) {
+                                found.push((i, 1, format!("writes {cname}, which {s} has")));
+                                frontier.push(i);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        for d in 1..=depth {
+            let mut next = Vec::new();
+            for &s in &frontier {
+                let reads: Vec<&String> = infos[s]
+                    .reads
+                    .iter()
+                    .chain(infos[s].writes.iter())
+                    .collect();
+                for r in reads {
+                    for (i, info) in infos.iter().enumerate() {
+                        if i == s || !info.writes.contains(r) || found.iter().any(|f| f.0 == i) {
+                            continue;
+                        }
+                        found.push((i, d, format!("writes {r}, which {} reads", infos[s].name)));
+                        next.push(i);
+                    }
+                }
+            }
+            frontier = next;
+            if frontier.is_empty() {
+                break;
+            }
+        }
+        found.sort_by_key(|f| f.0);
+        let rows: Vec<Json> = found
+            .iter()
+            .map(|(i, d, why)| {
+                let s = &infos[*i];
+                json!([s.name, s.stage.name(), d, why, s.source])
+            })
+            .collect();
+        // What writes the entities the event names, whoever emitted it.
+        let mut entities = Vec::new();
+        for v in ev["fields"]
+            .as_object()
+            .into_iter()
+            .flatten()
+            .map(|(_, v)| v)
+        {
+            let Some(s) = v.as_str() else { continue };
+            let Ok(e) = self.world.entity(s) else {
+                continue;
+            };
+            let mut w = serde_json::Map::new();
+            for &c in self.world.components_of(e).unwrap_or(&[]) {
+                let ws = self.sched.who_writes(c).unwrap_or_default();
+                if !ws.is_empty() {
+                    w.insert(self.world.registry().schema(c).name.clone(), json!(ws));
+                }
+            }
+            entities.push(json!({ "id": s, "writers": w }));
+        }
+        let mut out = json!({
+            "event": ev,
+            "columns": ["system", "stage", "depth", "because", "source"],
+            "rows": rows,
+            "entities": entities,
+        });
+        if rec.by.is_none() {
+            out["note"] = json!("No system emitted it (an edit, the daemon, or the mixer); the rows are the systems that write the entities it names.");
+        }
         Ok(out)
     }
 
@@ -3905,7 +4364,11 @@ pub fn event_json(world: &World, seq: u64, rec: &EventRecord) -> Json {
             ("component.registered".into(), json!({ "component": name }))
         }
     };
-    json!({ "seq": seq, "frame": rec.frame, "name": name, "fields": fields })
+    let mut row = json!({ "seq": seq, "frame": rec.frame, "name": name, "fields": fields });
+    if let Some(by) = &rec.by {
+        row["by"] = json!(by.as_ref());
+    }
+    row
 }
 
 /// Where a project's daemon writes its connection info.
