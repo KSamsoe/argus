@@ -20,6 +20,7 @@
 //! drag = 1.5                     # velocity lost per second, as a rate
 //! space = "world"                # or "local": particles follow the emitter
 //! z = 2
+//! material = "fx/glow"           # optional: a material to draw them with (item 11)
 //! velocity = [[0, 1], [1, 0.2]]  # curves over life: [t, value], t from 0 to 1
 //! size = [[0, 0.15], [0.2, 0.25], [1, 0]]
 //! rotation = [[0, 0], [1, 180]]  # degrees
@@ -136,6 +137,8 @@ pub struct EmitterSpec {
     pub space: Space,
     /// Draw order.
     pub z: f32,
+    /// A material to draw them with; none for the plain sprite.
+    pub material: Option<String>,
     /// Speed multiplier over life.
     pub velocity: Curve,
     /// Size over life, world units.
@@ -166,6 +169,7 @@ const KEYS: &[&str] = &[
     "drag",
     "space",
     "z",
+    "material",
     "velocity",
     "size",
     "rotation",
@@ -381,6 +385,7 @@ pub fn parse_emitter(file: &str, text: &str) -> Result<(EmitterSpec, Vec<(String
         drag: number("drag", 0.0, 0.0, 1e4)?,
         space,
         z: number("z", 0.0, -1e9, 1e9)?,
+        material: get("material").and_then(|s| s.as_str()).map(str::to_string),
         velocity: curve("velocity", 1.0)?,
         size: curve("size", 0.2)?,
         rotation: curve("rotation", 0.0)?,

@@ -43,6 +43,15 @@ Every statement in the design document (v0.3) that constrains the daemon and the
 | The local socket needs no auth; remote access via tokens is later. | Done (phase-0 half) | Nothing listens beyond the local socket. | |
 | Identical result shapes from the live world or the index. | Deferred | Piece 6 will serve `world.*` and `scene.*` from the index when no world is loaded, with these shapes. | |
 
+## Phase 1, item 11: materials
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| Compile errors come back through `script.errors` with line numbers (§13). | Done | A material whose import failed (a shader that does not compile, a sidecar that does not read) is a `script.errors` row with `phase: "material"`, the file and line, and the asset; what a renderer's GPU refused is listed too. Fixing the file clears it. | `materials::materials_draw_reload_and_report_their_errors_with_lines` |
+| Materials hot-reload like everything else (§13, §7). | Done | Every import reloads changed materials in the window's renderer and the offscreen one (sprites first, so a material naming one binds its new texture). Measured through the protocol in a debug build: edit, `asset.import`, and the GPU compile in 20.5 ms. | same |
+| The library and the project's materials are listed (§13). | Done | `asset.list kind=material` gives the project's and the library's (`builtin:<name>`) unless a project asset shadows one; `asset.get` answers a library name with `builtin: true`. Shaders get the sim time, interpolated into the next tick. `obs.frame` and `render.status` report the materials drawn with, missing ones, and parameters that could not be read. | same |
+| (Found while testing.) | Done | The daemon tests that took a frame skipped on any `obs.frame` error, not just a missing adapter; they share a `frame` helper now that skips only on `codes::NO_ADAPTER` (the renderer's 5001, exported here for clients built without it). The event pump's headless build warned of an unused value; it no longer does. | `render::the_no_adapter_code_matches_the_renderer` |
+
 ## Phase 1, item 10: particles in every scene
 
 | Spec | Status | Where | Test |

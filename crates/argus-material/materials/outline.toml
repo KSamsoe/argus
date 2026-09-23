@@ -1,0 +1,14 @@
+type = "material"
+doc = "A line of colour around the sprite's opaque pixels. It is drawn inside the frame, so the art needs a clear margin as wide as the line. Per sprite: Outline.color."
+
+[params.color]
+type = "color"
+default = "#FFFFFF"
+from = "Outline.color"
+doc = "The line's colour"
+
+[params.width]
+type = "f32"
+default = 1
+range = [0, 16]
+doc = "The line's width in texels of the atlas"

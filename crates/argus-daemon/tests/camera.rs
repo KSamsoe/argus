@@ -185,7 +185,7 @@ fn a_camera_follows_the_player_through_two_rooms_and_keeps_to_each() {
     assert_eq!(w["systems"], json!(["camera.update"]));
 
     // The picture: which camera drew, and the rect it showed.
-    if let Ok(fr) = d.call(0, "obs.frame", &json!({ "width": 640, "height": 360 })) {
+    if let Some(fr) = frame(&mut d, json!({ "width": 640, "height": 360 })) {
         assert_eq!(fr["camera"], "@a/camera", "{fr}");
         let rect = &fr["view"]["rect"];
         assert!(

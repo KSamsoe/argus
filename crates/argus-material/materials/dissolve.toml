@@ -1,0 +1,26 @@
+type = "material"
+doc = "Breaks the sprite up into noise as amount goes from 0 (whole) to 1 (gone), with a glowing edge. Per sprite: Dissolve.amount, which a tween can drive."
+
+[params.amount]
+type = "f32"
+default = 0
+range = [0, 1]
+from = "Dissolve.amount"
+doc = "0 is whole, 1 is gone"
+
+[params.edge]
+type = "f32"
+default = 0.08
+range = [0, 1]
+doc = "How wide the glowing edge is"
+
+[params.edge_color]
+type = "color"
+default = "#FFA040"
+doc = "The edge's colour"
+
+[params.scale]
+type = "f32"
+default = 6
+range = [0.1, 256]
+doc = "Noise cells across the sprite"

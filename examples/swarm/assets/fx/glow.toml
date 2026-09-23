@@ -1,0 +1,3 @@
+# Sparks glow: the plain sprite, added to what is under it.
+shader = "unlit"
+blend = "add"

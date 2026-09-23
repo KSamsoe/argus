@@ -121,7 +121,7 @@ fn a_torch_burns_sparks_fly_and_an_edit_to_the_effect_shows_next_import() {
     assert_eq!(w["systems"], json!(["particles.update"]));
 
     // A frame draws them.
-    if let Ok(f) = d.call(0, "obs.frame", &json!({ "width": 320, "height": 180 })) {
+    if let Some(f) = frame(&mut d, json!({ "width": 320, "height": 180 })) {
         assert_eq!(f["particles"], 15, "{f}");
     }
 

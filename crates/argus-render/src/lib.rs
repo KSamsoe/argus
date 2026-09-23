@@ -16,12 +16,16 @@
 pub mod gpu;
 pub mod window;
 
-use argus_ecs::{Component, Entity, GlobalTransform, StrId, Transform, Vec2, World};
-use std::collections::HashMap;
+use argus_ecs::{
+    ArgusError, Component, ComponentId, Entity, FieldSchema, FieldType, GlobalTransform, StrId,
+    Transform, Value, Vec2, World,
+};
+use argus_material::{Layout, MaterialSpec, ParamType};
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 use std::time::Instant;
 
-pub use gpu::{DrawStats, Gpu, Instance};
+pub use gpu::{DrawStats, Gpu, Instance, Run};
 
 /// Error codes this crate adds (50xx).
 pub mod codes {
@@ -77,6 +81,11 @@ pub struct Sprite {
     /// Weight of `blend_frame`, 0 to 1.
     #[argus(doc = "Weight of blend_frame, 0 (none) to 1", range(0, 1))]
     pub blend: f32,
+    /// The material to draw with; empty for the plain sprite.
+    #[argus(
+        doc = "Material to draw with: an asset (materials/glow) or a built-in (unlit, lit, palette, dissolve, outline); empty for the plain sprite"
+    )]
+    pub material: StrId,
 }
 
 impl Default for Sprite {
@@ -92,6 +101,7 @@ impl Default for Sprite {
             visible: true,
             blend_frame: 0,
             blend: 0.0,
+            material: StrId::EMPTY,
         }
     }
 }
@@ -104,6 +114,7 @@ use argus_particles::{lut_index, ParticleStore, LUT};
 /// Register the renderer's components (and the camera's, which it reads).
 pub fn register(world: &mut World) -> argus_ecs::Result<()> {
     world.register::<Sprite>()?;
+    argus_material::register(world)?;
     argus_camera::register(world)?;
     Ok(())
 }
@@ -180,6 +191,12 @@ pub struct FrameReport {
     pub camera: Option<Entity>,
     /// Particles drawn (those in view).
     pub particles: usize,
+    /// Sprites naming a material that is not loaded (drawn plain).
+    pub missing_materials: Vec<String>,
+    /// What stopped a material's parameter from being read this frame: a
+    /// `from` naming no field, a field of the wrong type, a texture that
+    /// is not a sprite.
+    pub material_problems: Vec<String>,
     /// Wall time to build and submit, ms.
     pub ms: f64,
 }
@@ -236,9 +253,68 @@ pub struct Renderer {
     cam_prev: CamPose,
     cam_seen: CamPose,
     colors: HashMap<StrId, [f32; 4]>,
+    /// Compiled materials by name.
+    materials: HashMap<String, MatState>,
+    /// Materials the GPU refused, with why (their last good version draws).
+    material_errors: BTreeMap<String, String>,
+    /// Milliseconds the last material compile took.
+    compile_ms: f64,
     /// Clear colour, linear RGBA.
     pub clear: [f32; 4],
     last: FrameReport,
+}
+
+/// A material the renderer has compiled: where it is on the GPU, and what
+/// it reads.
+struct MatState {
+    index: usize,
+    spec: MaterialSpec,
+    layout: Layout,
+}
+
+/// One per-sprite parameter read from a sprite's entity.
+struct Read {
+    slot: usize,
+    ty: ParamType,
+    comp: ComponentId,
+    field: FieldSchema,
+    axis: Option<u8>,
+}
+
+/// A value read from a field as a parameter's numbers; `None` keeps the
+/// default (an empty colour, a type the parameter cannot take).
+fn param_value(v: &Value, ty: ParamType, axis: Option<u8>) -> Option<[f32; 4]> {
+    let n = |x: f64| Some([x as f32, 0.0, 0.0, 0.0]);
+    match (v, ty, axis) {
+        (Value::Float(f), ParamType::F32, None) => n(*f),
+        (Value::Int(i), ParamType::F32, None) => n(*i as f64),
+        (Value::UInt(u), ParamType::F32, None) => n(*u as f64),
+        (Value::Bool(b), ParamType::F32, None) => n(if *b { 1.0 } else { 0.0 }),
+        (Value::Vec2(v), ParamType::F32, Some(0)) => n(v.x as f64),
+        (Value::Vec2(v), ParamType::F32, Some(_)) => n(v.y as f64),
+        (Value::Vec2(v), ParamType::Vec2, None) => Some([v.x, v.y, 0.0, 0.0]),
+        (Value::Str(s), ParamType::Color, None) if !s.is_empty() => parse_color(s),
+        _ => None,
+    }
+}
+
+/// Whether a field can supply a parameter, and if not, why.
+fn fits(field: &FieldSchema, ty: ParamType, axis: Option<u8>) -> std::result::Result<(), String> {
+    let ok = match (ty, axis) {
+        (ParamType::F32, None) => field.ty.is_numeric() || field.ty == FieldType::Bool,
+        (ParamType::F32, Some(_)) | (ParamType::Vec2, None) => field.ty == FieldType::Vec2,
+        (ParamType::Color, None) => field.ty == FieldType::Str,
+        _ => false,
+    };
+    if ok {
+        Ok(())
+    } else {
+        Err(format!(
+            "a {} field cannot give a {} parameter",
+            field.ty.name(),
+            ty.name()
+        ))
+    }
 }
 
 fn parse_color(s: &str) -> Option<[f32; 4]> {
@@ -280,9 +356,95 @@ impl Renderer {
             cam_prev: None,
             cam_seen: None,
             colors: HashMap::new(),
+            materials: HashMap::new(),
+            material_errors: BTreeMap::new(),
+            compile_ms: 0.0,
             clear: [0.06, 0.06, 0.08, 1.0],
             last: FrameReport::default(),
         }
+    }
+
+    /// Compile every material an importer has (the project's, and the
+    /// built-ins it does not shadow). Only new or changed ones compile, so
+    /// this is the hot reload. A material whose asset now fails to import
+    /// keeps its last good version drawing; one the GPU refuses does too,
+    /// and its error is returned.
+    pub fn load_materials(&mut self, imp: &argus_assets::Importer) -> Vec<(String, ArgusError)> {
+        let failed = imp.failures();
+        self.set_materials(imp.materials(), |n| failed.contains_key(n))
+    }
+
+    /// Compile these materials; drop any others, except those `keep` names.
+    pub fn set_materials<'a>(
+        &mut self,
+        specs: impl IntoIterator<Item = (&'a str, &'a MaterialSpec)>,
+        keep: impl Fn(&str) -> bool,
+    ) -> Vec<(String, ArgusError)> {
+        let mut seen = std::collections::HashSet::new();
+        let mut errors = Vec::new();
+        for (name, spec) in specs {
+            seen.insert(name.to_string());
+            if self.materials.get(name).is_some_and(|m| m.spec == *spec) {
+                continue;
+            }
+            let t = Instant::now();
+            match self.gpu.set_material(name, spec) {
+                Ok(index) => {
+                    self.compile_ms = t.elapsed().as_secs_f64() * 1e3;
+                    self.materials.insert(
+                        name.to_string(),
+                        MatState {
+                            index,
+                            spec: spec.clone(),
+                            layout: spec.layout(),
+                        },
+                    );
+                    self.material_errors.remove(name);
+                }
+                Err(e) => {
+                    self.material_errors
+                        .insert(name.to_string(), e.message.clone());
+                    errors.push((name.to_string(), e));
+                }
+            }
+        }
+        let gone: Vec<String> = self
+            .materials
+            .keys()
+            .filter(|n| !seen.contains(*n) && !keep(n))
+            .cloned()
+            .collect();
+        for n in gone {
+            self.materials.remove(&n);
+            self.gpu.remove_material(&n);
+        }
+        errors
+    }
+
+    /// Loaded materials by name, with their GPU index.
+    pub fn materials(&self) -> Vec<(String, usize)> {
+        let mut v: Vec<(String, usize)> = self
+            .materials
+            .iter()
+            .map(|(n, m)| (n.clone(), m.index))
+            .collect();
+        v.sort();
+        v
+    }
+
+    /// Materials the GPU refused, with why.
+    pub fn material_errors(&self) -> &BTreeMap<String, String> {
+        &self.material_errors
+    }
+
+    /// Milliseconds the last material compile took on the GPU side.
+    pub fn material_compile_ms(&self) -> f64 {
+        self.compile_ms
+    }
+
+    /// Sim seconds, which every material reads as `in.time`.
+    pub fn set_time(&mut self, seconds: f32) {
+        self.gpu.set_time(seconds);
     }
 
     /// The GPU side.
@@ -308,6 +470,7 @@ impl Renderer {
     pub fn load_catalog(&mut self, imp: &argus_assets::Importer) -> argus_ecs::Result<Vec<String>> {
         let names: Vec<String> = imp.sprites().map(|(n, _)| n.clone()).collect();
         self.reload_sprites(imp, &names)?;
+        self.load_materials(imp);
         Ok(names)
     }
 
@@ -425,6 +588,64 @@ impl Renderer {
 
         // Instances from every visible sprite, straight from the columns:
         // two passes, entities with a GlobalTransform and entities without.
+        // Materials: each one's per-sprite reads and defaults, by GPU index.
+        // Problems are kept by material and reported for those drawn.
+        let mut problems: Vec<String> = Vec::new();
+        let mut read_problems: Vec<(usize, String)> = Vec::new();
+        let mut missing_mats: Vec<String> = Vec::new();
+        let slots = self
+            .materials
+            .values()
+            .map(|m| m.index + 1)
+            .max()
+            .unwrap_or(1)
+            .max(1);
+        let mut sprite_defaults: Vec<[f32; 4]> = vec![[0.0; 4]; slots];
+        let mut sprite_reads: Vec<Vec<Read>> = (0..slots).map(|_| Vec::new()).collect();
+        for (name, m) in &self.materials {
+            for &(pi, slot) in &m.layout.sprite {
+                let p = &m.spec.params[pi];
+                let n = p.ty.floats();
+                sprite_defaults[m.index][slot..slot + n].copy_from_slice(&p.value[..n]);
+                let Some(src) = &p.from else { continue };
+                match world.registry().resolve_path(&src.path) {
+                    Ok((comp, field)) => match fits(field, p.ty, src.axis) {
+                        Ok(()) => sprite_reads[m.index].push(Read {
+                            slot,
+                            ty: p.ty,
+                            comp,
+                            field: field.clone(),
+                            axis: src.axis,
+                        }),
+                        Err(why) => read_problems.push((
+                            m.index,
+                            format!("{name}: params.{} from {}: {why}", p.name, src.text()),
+                        )),
+                    },
+                    // A component no scene has registered is simply absent.
+                    Err(_)
+                        if world
+                            .component_id(src.path.split('.').next().unwrap_or(""))
+                            .is_none() => {}
+                    Err(e) => read_problems.push((
+                        m.index,
+                        format!(
+                            "{name}: params.{} from {}: {}",
+                            p.name,
+                            src.text(),
+                            e.message
+                        ),
+                    )),
+                }
+            }
+        }
+        let mat_by_name: HashMap<&str, usize> = self
+            .materials
+            .iter()
+            .map(|(n, m)| (n.as_str(), m.index))
+            .collect();
+        let mut mat_of: HashMap<StrId, usize> = HashMap::new();
+
         let mut instances: Vec<(u64, Instance)> = Vec::new();
         let mut missing: Vec<String> = Vec::new();
         let mut interpolated = 0usize;
@@ -448,6 +669,10 @@ impl Renderer {
             let prev = &self.prev;
             let colors = &mut self.colors;
             let gpu = &self.gpu;
+            let mat_of = &mut mat_of;
+            let missing_mats = &mut missing_mats;
+            let (sprite_defaults, sprite_reads, mat_by_name) =
+                (&sprite_defaults, &sprite_reads, &mat_by_name);
             let mut push = |e: Entity, x: f32, y: f32, rot: f32, scale: Vec2, s: &Sprite| {
                 let (mut x, mut y, mut rot) = (x, y, rot);
                 let idx = e.index() as usize;
@@ -516,6 +741,35 @@ impl Renderer {
                     uv = [uv[0] + uv[2], uv[1], -uv[2], uv[3]];
                     pivot[0] = 1.0 - pivot[0];
                 }
+                // The material, and its numbers from this sprite's entity.
+                let mi = if s.material == StrId::EMPTY {
+                    0
+                } else {
+                    *mat_of.entry(s.material).or_insert_with(|| {
+                        let name = strings.resolve(s.material);
+                        match mat_by_name.get(name.as_str()) {
+                            Some(&i) => i,
+                            None => {
+                                if !missing_mats.contains(&name) {
+                                    missing_mats.push(name);
+                                }
+                                0
+                            }
+                        }
+                    })
+                };
+                let mut extra = sprite_defaults.get(mi).copied().unwrap_or_default();
+                if let Some(reads) = sprite_reads.get(mi) {
+                    for r in reads {
+                        if let Ok(v) = world.get_field_by(e, r.comp, &r.field) {
+                            if let Some(n) = param_value(&v, r.ty, r.axis) {
+                                let k = r.ty.floats();
+                                extra[r.slot..r.slot + k].copy_from_slice(&n[..k]);
+                            }
+                        }
+                    }
+                }
+                let mk = (mi as u64) << 16;
                 // Sort key: z as an order-preserving integer, then atlas.
                 let zb = s.z.to_bits();
                 let zo = if zb & 0x8000_0000 != 0 {
@@ -524,12 +778,13 @@ impl Renderer {
                     zb | 0x8000_0000
                 } as u64;
                 instances.push((
-                    (zo << 32) | ai as u64,
+                    (zo << 32) | mk | ai as u64,
                     Instance {
                         pos_size: [x, y, s.size.x * scale.x, s.size.y * scale.y],
                         rot_z: [rot, s.z, pivot[0], pivot[1]],
                         uv,
                         color,
+                        extra,
                     },
                 ));
                 // A crossfade: the outgoing frame over this one, fading.
@@ -544,12 +799,13 @@ impl Renderer {
                         }
                         let w = s.blend.min(1.0);
                         instances.push((
-                            ((zo + 1) << 32) | ai as u64,
+                            ((zo + 1) << 32) | mk | ai as u64,
                             Instance {
                                 pos_size: [x, y, s.size.x * scale.x, s.size.y * scale.y],
                                 rot_z: [rot, s.z, bp[0], bp[1]],
                                 uv: buv,
                                 color: [color[0], color[1], color[2], color[3] * w],
+                                extra,
                             },
                         ));
                     }
@@ -621,6 +877,7 @@ impl Renderer {
                         rot_z: [0.0, x.z, 0.5, 0.5],
                         uv,
                         color,
+                        extra: [0.0; 4],
                     },
                 ));
             }
@@ -682,6 +939,19 @@ impl Renderer {
                     [0.0, 0.0]
                 };
                 let z = fx.spec.z;
+                let mi = match &fx.spec.material {
+                    None => 0,
+                    Some(n) => match mat_by_name.get(n.as_str()) {
+                        Some(&i) => i,
+                        None => {
+                            if !missing_mats.contains(n) {
+                                missing_mats.push(n.clone());
+                            }
+                            0
+                        }
+                    },
+                };
+                let extra = sprite_defaults.get(mi).copied().unwrap_or_default();
                 let start = pflat.len();
                 let (xs, ys, vxs, vys, lifes) =
                     (pool.x(), pool.y(), pool.vx(), pool.vy(), pool.life());
@@ -712,6 +982,7 @@ impl Renderer {
                             c[2] * tint[2],
                             c[3] * tint[3],
                         ],
+                        extra,
                     });
                 }
                 if pflat.len() > start {
@@ -721,7 +992,11 @@ impl Renderer {
                     } else {
                         zb | 0x8000_0000
                     } as u64;
-                    groups.push(((zo << 32) | ai as u64, start, pflat.len()));
+                    groups.push((
+                        (zo << 32) | ((mi as u64) << 16) | ai as u64,
+                        start,
+                        pflat.len(),
+                    ));
                 }
             }
             groups.sort_by_key(|g| g.0);
@@ -731,23 +1006,24 @@ impl Renderer {
         // Back to front by z, atlas runs within equal z: one draw per run.
         // Particle groups go in after the sprites with the same key.
         instances.sort_unstable_by_key(|x| x.0);
-        let names = self.gpu.atlas_names().to_vec();
-        let mut runs: Vec<(String, usize, usize)> = Vec::new();
+        let mut runs: Vec<Run> = Vec::new();
         let mut flat: Vec<Instance> = Vec::with_capacity(instances.len() + pflat.len());
-        let mut run_ai = u64::MAX;
-        let mut open = |ai: u64, n: usize, at: usize, runs: &mut Vec<(String, usize, usize)>| {
-            if ai == run_ai {
+        let mut run_key = u64::MAX;
+        // The low 32 bits of a key are the material (high 16) and the atlas.
+        let mut open = |k: u64, n: usize, at: usize, runs: &mut Vec<Run>| {
+            if k == run_key {
                 if let Some(r) = runs.last_mut() {
-                    r.2 += n;
+                    r.count += n;
                     return;
                 }
             }
-            run_ai = ai;
-            let name = names
-                .get(ai as usize)
-                .cloned()
-                .unwrap_or_else(|| "rect".to_string());
-            runs.push((name, at, n));
+            run_key = k;
+            runs.push(Run {
+                atlas: (k & 0xffff) as usize,
+                material: ((k >> 16) & 0xffff) as usize,
+                start: at,
+                count: n,
+            });
         };
         let mut g = 0;
         for (key, inst) in &instances {
@@ -764,6 +1040,90 @@ impl Renderer {
             open(k & 0xffff_ffff, b - a, flat.len(), &mut runs);
             flat.extend_from_slice(&pflat[a..b]);
         }
+        // Each material drawn this frame: its uniform (its defaults, what
+        // named entities give it now, where its textures' frames are).
+        // The runs say which: a handful, however many sprites.
+        let used: std::collections::HashSet<usize> = runs.iter().map(|r| r.material).collect();
+        for (i, why) in read_problems {
+            if used.contains(&i) {
+                problems.push(why);
+            }
+        }
+        for (name, m) in &self.materials {
+            if !used.contains(&m.index) {
+                continue;
+            }
+            let mut bytes = m.spec.default_uniform(&m.layout);
+            for f in &m.layout.fields {
+                let put = |bytes: &mut Vec<u8>, xs: &[f32]| {
+                    for (k, x) in xs.iter().enumerate().take(f.floats) {
+                        bytes[f.offset + k * 4..f.offset + k * 4 + 4]
+                            .copy_from_slice(&x.to_le_bytes());
+                    }
+                };
+                match f.slot {
+                    argus_material::Slot::Param(i) => {
+                        let p = &m.spec.params[i];
+                        let Some(src) = p.from.as_ref().filter(|s| !s.per_sprite()) else {
+                            continue;
+                        };
+                        let who = src.entity.as_deref().unwrap_or_default();
+                        let read = world
+                            .entity(&format!("@{who}"))
+                            .map_err(|e| e.message)
+                            .and_then(|e| world.get_field(e, &src.path).map_err(|e| e.message));
+                        match read {
+                            Ok(v) => match param_value(&v, p.ty, src.axis) {
+                                Some(xs) => put(&mut bytes, &xs),
+                                None if matches!(v, Value::Str(ref s) if s.is_empty()) => {}
+                                None => problems.push(format!(
+                                    "{name}: params.{} from {}: a {} cannot give a {} parameter",
+                                    p.name,
+                                    src.text(),
+                                    v.type_name(),
+                                    p.ty.name()
+                                )),
+                            },
+                            Err(why) => problems.push(format!(
+                                "{name}: params.{} from {}: {why}",
+                                p.name,
+                                src.text()
+                            )),
+                        }
+                    }
+                    argus_material::Slot::TextureRect(i) | argus_material::Slot::TextureSize(i) => {
+                        let t = &m.spec.params[i].texture;
+                        let (rect, px) = match self.gpu.atlas(t) {
+                            Some(a) => {
+                                let r = a.frames.first().copied().unwrap_or([0.0, 0.0, 1.0, 1.0]);
+                                (r, [r[2] * a.width as f32, r[3] * a.height as f32])
+                            }
+                            None => {
+                                let why = if t.is_empty() {
+                                    format!("{name}: params.{} names no texture; set its default to a sprite asset", m.spec.params[i].name)
+                                } else {
+                                    format!(
+                                        "{name}: params.{}: {t:?} is not a sprite asset",
+                                        m.spec.params[i].name
+                                    )
+                                };
+                                if !problems.contains(&why) {
+                                    problems.push(why);
+                                }
+                                ([0.0, 0.0, 1.0, 1.0], [1.0, 1.0])
+                            }
+                        };
+                        if matches!(f.slot, argus_material::Slot::TextureRect(_)) {
+                            put(&mut bytes, &rect);
+                        } else {
+                            put(&mut bytes, &px);
+                        }
+                    }
+                }
+            }
+            self.gpu.set_material_uniform(m.index, &bytes);
+        }
+
         let stats = self
             .gpu
             .draw(center, half, angle, self.clear, &flat, &runs)?;
@@ -776,6 +1136,8 @@ impl Renderer {
             view_angle: angle,
             camera,
             particles: particle_count,
+            missing_materials: missing_mats,
+            material_problems: problems,
             ms: started.elapsed().as_secs_f64() * 1e3,
         };
         Ok(self.last.clone())

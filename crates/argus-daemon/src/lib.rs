@@ -53,4 +53,8 @@ pub mod codes {
     pub const BAD_LOCK: u32 = 4708;
     /// The scenario runner could not run (a broken harness or tests directory), as opposed to a failing test.
     pub const TEST_RUNNER: u32 = 4709;
+    /// The renderer's: this machine has no graphics adapter at all, not
+    /// even a software one (argus-render's 5001, here for clients that
+    /// build without the renderer).
+    pub const NO_ADAPTER: u32 = 5001;
 }

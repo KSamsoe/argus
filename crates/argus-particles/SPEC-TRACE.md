@@ -41,7 +41,7 @@ Every statement in the design document (v0.3) that constrains particles as phase
 - Particles collide with nothing.
 - A local effect follows its emitter's position, not its rotation or scale.
 - An emitter with a `Parent` is placed from its `GlobalTransform`, which the hierarchy pass writes after the late stage, so it trails its parent by a tick. A root emitter uses this tick's `Transform`.
-- Particles draw with ordinary alpha blending in the sprite pipeline; there is no additive blending yet (materials are item 11).
+- Particles draw in the sprite pipeline. An effect can name a material (`material = "fx/glow"`, a variant of `unlit` with `blend = "add"`) since item 11, and Swarm's sparks do; the per-sprite parameters of that material take their defaults, since a particle has no entity.
 - Size, rotation, and colour over life have 64 steps; velocity is exact.
 - Between ticks a particle is drawn a fraction of its last velocity step back, so on its first frame it can sit a hair behind where it was born.
 - Each `particles.burst` is a named event with fields; thousands a tick cost the event log. `Emitter.burst` costs nothing.

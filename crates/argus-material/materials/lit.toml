@@ -1,0 +1,29 @@
+type = "material"
+doc = "Lit by an ambient colour and one point light. Make a variant whose light follows an entity with from = \"@torch:Transform.pos\". 2D lighting with many lights is phase 5."
+
+[params.ambient]
+type = "color"
+default = "#50505E"
+doc = "The light everywhere"
+
+[params.light]
+type = "vec2"
+default = [0, 0]
+doc = "The light's world position"
+
+[params.light_color]
+type = "color"
+default = "#FFE8C0"
+doc = "The light's colour at its centre"
+
+[params.radius]
+type = "f32"
+default = 8
+range = [0, 10000]
+doc = "World units at which the light has faded to nothing"
+
+[params.intensity]
+type = "f32"
+default = 1
+range = [0, 16]
+doc = "The light's strength at its centre"

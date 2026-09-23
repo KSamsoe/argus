@@ -35,6 +35,7 @@ argus-camera = { path = "../argus-camera", version = "0.0.1" }
 argus-anim = { path = "../argus-anim", version = "0.0.1" }
 argus-tween = { path = "../argus-tween", version = "0.0.1" }
 argus-particles = { path = "../argus-particles", version = "0.0.1" }
+argus-material = { path = "../argus-material", version = "0.0.1" }
 argus-test = { path = "../argus-test", version = "0.0.1" }
 argus-render = { path = "../argus-render", version = "0.0.1", optional = true }
 gilrs = { version = "0.11", optional = true }

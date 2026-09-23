@@ -10,3 +10,4 @@ drag = 3
 size = [[0, 0.35], [1, 0]]
 color = [[0, "#FFF2A0FF"], [0.5, "#FF9040C0"], [1, "#FF402000"]]
 z = 4
+material = "fx/glow"

@@ -187,6 +187,8 @@ pub enum SidecarKind {
     Animator,
     /// A particle effect (item 10).
     Emitter,
+    /// A material: a shader and its parameters (item 11).
+    Material,
     /// It does not say, and nothing in it tells.
     Unknown,
 }
@@ -236,10 +238,13 @@ pub fn kind_of(file: &str, text: &str) -> Result<SidecarKind> {
             "sound" => Ok(SidecarKind::Sound),
             "animator" => Ok(SidecarKind::Animator),
             "emitter" => Ok(SidecarKind::Emitter),
+            "material" => Ok(SidecarKind::Material),
             other => Err(err(
                 file,
                 1,
-                format!("type = {other:?}; types are sprite, sound, animator, and emitter"),
+                format!(
+                    "type = {other:?}; types are sprite, sound, animator, emitter, and material"
+                ),
             )),
         };
     }
@@ -249,6 +254,9 @@ pub fn kind_of(file: &str, text: &str) -> Result<SidecarKind> {
     }
     if has("rate") || has("burst") || has("lifetime") {
         return Ok(SidecarKind::Emitter);
+    }
+    if has("shader") || has("params") || has("blend") {
+        return Ok(SidecarKind::Material);
     }
     if has("variations") || has("tone") || has("file") || has("bus") {
         return Ok(SidecarKind::Sound);

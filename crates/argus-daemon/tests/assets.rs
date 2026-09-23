@@ -84,7 +84,7 @@ fn assets_import_on_open_report_as_events_and_hot_swap() {
     assert_eq!(played["fields"]["gain"], 0.5);
 
     // The renderer draws the placeholder asset (if this machine has an adapter).
-    if let Ok(f) = d.call(0, "obs.frame", &json!({ "width": 64, "height": 64 })) {
+    if let Some(f) = frame(&mut d, json!({ "width": 64, "height": 64 })) {
         assert_eq!(f["missing_atlases"], json!([]), "{f}");
         assert_eq!(f["sprites"], 1);
     }

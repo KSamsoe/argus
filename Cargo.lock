@@ -118,6 +118,7 @@ version = "0.0.1"
 dependencies = [
  "argus-audio",
  "argus-ecs",
+ "argus-material",
  "hound",
  "png",
  "serde_json",
@@ -167,6 +168,7 @@ dependencies = [
  "argus-index",
  "argus-input",
  "argus-luau",
+ "argus-material",
  "argus-particles",
  "argus-physics",
  "argus-render",
@@ -230,6 +232,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "argus-material"
+version = "0.0.1"
+dependencies = [
+ "argus-ecs",
+ "naga",
+ "toml_edit 0.22.27",
+]
+
+[[package]]
 name = "argus-particles"
 version = "0.0.1"
 dependencies = [
@@ -255,6 +266,7 @@ dependencies = [
  "argus-assets",
  "argus-camera",
  "argus-ecs",
+ "argus-material",
  "argus-particles",
  "argus-sim",
  "bytemuck",

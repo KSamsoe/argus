@@ -46,14 +46,16 @@ fn shape(
 }
 
 /// Offscreen renderer or skip: a machine with no adapter at all (not even
-/// the software rasteriser) cannot run these, and says so.
+/// the software rasteriser) cannot run these, and says so. Any other
+/// failure to start is a bug and fails the test.
 fn renderer(w: u32, h: u32) -> Option<Renderer> {
     match Renderer::offscreen(w, h, false) {
         Ok(r) => Some(r),
-        Err(e) => {
+        Err(e) if e.code == argus_render::codes::NO_ADAPTER => {
             eprintln!("skipping: {e}");
             None
         }
+        Err(e) => panic!("the renderer did not start: {e}"),
     }
 }
 

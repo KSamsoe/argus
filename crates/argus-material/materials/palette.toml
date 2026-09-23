@@ -1,0 +1,14 @@
+type = "material"
+doc = "Recolours indexed or greyscale art from a palette texture: the texel's red byte picks the column, the row picks the palette. Make a variant naming the game's palette (shader = \"palette\", [params.palette] default = \"palettes/teams\"). Per sprite: Palette.row."
+
+[params.palette]
+type = "texture"
+default = ""
+doc = "A sprite asset whose frame 0 is the palettes, one per row"
+
+[params.row]
+type = "f32"
+default = 0
+range = [0, 4096]
+from = "Palette.row"
+doc = "Which palette (row), from 0"

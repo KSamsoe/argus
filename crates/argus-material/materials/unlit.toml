@@ -1,0 +1,2 @@
+type = "material"
+doc = "The sprite's frame times its tint: what a sprite without a material draws. With blend = \"add\" in a variant it is a glow."

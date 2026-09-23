@@ -220,6 +220,20 @@ pub fn ok(d: &mut Daemon, method: &str, params: Json) -> Json {
     }
 }
 
+/// `obs.frame`, or `None` on a machine with no graphics adapter at all.
+/// Any other error fails the test: a renderer that does not start is a bug,
+/// not a missing GPU.
+pub fn frame(d: &mut Daemon, params: Json) -> Option<Json> {
+    match d.call(0, "obs.frame", &params) {
+        Ok(f) => Some(f),
+        Err(e) if e.code == argus_daemon::codes::NO_ADAPTER => {
+            eprintln!("skipping the frame: {e}");
+            None
+        }
+        Err(e) => panic!("obs.frame: {e}"),
+    }
+}
+
 /// Call and expect an error.
 pub fn err(d: &mut Daemon, method: &str, params: Json) -> argus_ecs::ArgusError {
     match d.call(0, method, &params) {

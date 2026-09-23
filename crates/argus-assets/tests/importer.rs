@@ -217,7 +217,7 @@ fn bad_sidecars_fail_with_the_line_and_the_rest_still_import() {
     assert!(
         why["c"]
             .0
-            .contains("no sprite, sound, animator, or emitter"),
+            .contains("no sprite, sound, animator, emitter, or material"),
         "{why:?}"
     );
     assert!(why["d"].0.contains("both a .png and a .wav"));
@@ -481,5 +481,136 @@ fn an_emitter_imports_with_its_curves_and_its_mistakes_have_lines() {
             f.error.message
         );
     }
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// Item 11: a material is a .wgsl, with a sidecar for its parameters, or a
+/// sidecar naming a built-in's shader. The import composes and checks the
+/// shader, so a compile error fails it with the shader's own line; the
+/// built-ins are there beside the project's, and a project asset of the
+/// same name shadows one.
+#[test]
+fn a_material_imports_checked_and_its_shader_errors_have_lines() {
+    let dir = project("material");
+    let plain = "fn material(in: MaterialInput, p: Params) -> vec4<f32> {\n    return sample_atlas(in, in.uv) * p.tint;\n}\n";
+    write(&dir, "materials/tint.wgsl", plain);
+    write(
+        &dir,
+        "materials/tint.toml",
+        "type = \"material\"\ndoc = \"Paints the sprite\"\n\n[params.tint]\ntype = \"color\"\ndefault = \"#FF0000\"\nfrom = \"Paint.color\"\n",
+    );
+    write(
+        &dir,
+        "materials/thick.toml",
+        "shader = \"outline\"\n\n[params.width]\ndefault = 3\n",
+    );
+    write(
+        &dir,
+        "materials/bare.wgsl",
+        "fn material(in: MaterialInput, p: Params) -> vec4<f32> {\n    return in.color;\n}\n",
+    );
+    write(
+        &dir,
+        "fx/glow.toml",
+        "type = \"emitter\"\nburst = 3\nmaterial = \"materials/tint\"\n",
+    );
+    let mut imp = Importer::new(&dir);
+    let rep = imp.scan();
+    assert!(rep.failed.is_empty(), "{:?}", rep.failed);
+    let e = &imp.entries()["materials/tint"];
+    assert_eq!(e.kind(), "material");
+    let Asset::Material(m) = &e.asset else {
+        panic!()
+    };
+    assert_eq!(m.shader_file, "assets/materials/tint.wgsl");
+    assert_eq!(
+        m.param("tint").unwrap().from.as_ref().unwrap().path,
+        "Paint.color"
+    );
+    let j = e.to_json();
+    assert_eq!(j["params"][0]["from"], "Paint.color");
+    assert_eq!(j["blend"], "alpha");
+    assert_eq!(
+        imp.entries()["materials/thick"].kind(),
+        "material",
+        "found by shader, without a type"
+    );
+    assert_eq!(
+        imp.entries()["materials/bare"].kind(),
+        "material",
+        "a shader alone"
+    );
+    let Asset::Emitter(fx) = &imp.entries()["fx/glow"].asset else {
+        panic!()
+    };
+    assert_eq!(fx.material.as_deref(), Some("materials/tint"));
+    // Every material: the project's three and the library's five.
+    let names: Vec<&str> = imp.materials().iter().map(|(n, _)| *n).collect();
+    assert_eq!(
+        names,
+        [
+            "materials/bare",
+            "materials/thick",
+            "materials/tint",
+            "unlit",
+            "lit",
+            "palette",
+            "dissolve",
+            "outline"
+        ]
+    );
+
+    // A compile error fails the import with the line of the .wgsl.
+    write(&dir, "materials/tint.wgsl", "fn material(in: MaterialInput, p: Params) -> vec4<f32> {\n    return sample_atlas(in, in.uv) * p.tnit;\n}\n");
+    let rep = imp.poll().expect("the tree changed");
+    let f = rep
+        .failed
+        .iter()
+        .find(|f| f.name == "materials/tint")
+        .expect("it fails");
+    assert_eq!(f.error.code, argus_material::codes::SHADER);
+    assert_eq!(
+        f.error.r#ref.as_deref(),
+        Some("assets/materials/tint.wgsl:2"),
+        "{}",
+        f.error.message
+    );
+    assert!(f.error.message.contains("tnit"), "{}", f.error.message);
+    // Fixed, it imports again.
+    write(&dir, "materials/tint.wgsl", plain);
+    let rep = imp.poll().unwrap();
+    assert!(
+        rep.imported.contains(&"materials/tint".to_string()),
+        "{rep:?}"
+    );
+    assert!(imp.failures().is_empty());
+
+    // A project asset named like a built-in takes its place.
+    write(
+        &dir,
+        "outline.wgsl",
+        plain.replace("p.tint", "in.color").as_str(),
+    );
+    imp.poll().unwrap();
+    let outline: Vec<&str> = imp
+        .materials()
+        .iter()
+        .filter(|(n, _)| *n == "outline")
+        .map(|(_, m)| m.shader_file.as_str())
+        .collect();
+    assert_eq!(outline, ["assets/outline.wgsl"]);
+    // One name, two sources, is ambiguous.
+    sheet(&dir, "materials/bare.png", 4, 4, 1, 1, None);
+    let rep = imp.poll().unwrap();
+    let f = rep
+        .failed
+        .iter()
+        .find(|f| f.name == "materials/bare")
+        .unwrap();
+    assert!(
+        f.error.message.contains("one name is one asset"),
+        "{}",
+        f.error.message
+    );
     std::fs::remove_dir_all(&dir).ok();
 }

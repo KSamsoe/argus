@@ -82,3 +82,12 @@ fn obs_frame_writes_a_png_of_the_authored_sprites() {
     let bad = err(&mut d, "obs.frame", json!({ "format": "semantic" }));
     assert_eq!(bad.code, argus_daemon::codes::BAD_PARAMS);
 }
+
+/// The daemon's copy of the no-adapter code is the renderer's.
+#[test]
+fn the_no_adapter_code_matches_the_renderer() {
+    assert_eq!(
+        argus_daemon::codes::NO_ADAPTER,
+        argus_render::codes::NO_ADAPTER
+    );
+}

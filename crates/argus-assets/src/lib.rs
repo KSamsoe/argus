@@ -26,6 +26,7 @@ pub use animator::{
 };
 use argus_audio::{SoundDef, Source};
 use argus_ecs::{ArgusError, Result};
+pub use argus_material::MaterialSpec;
 pub use effect::{Area, ColorCurve, Curve, EmitterSpec, Space};
 use serde_json::{json, Value as Json};
 pub use sidecar::{AutoMode, AutoTileSpec};
@@ -165,6 +166,8 @@ pub enum Asset {
     Animator(AnimatorSpec),
     /// A particle effect.
     Emitter(EmitterSpec),
+    /// A material: a shader and its parameters.
+    Material(MaterialSpec),
 }
 
 /// A warning about an import: a sentence and where.
@@ -201,6 +204,7 @@ impl Entry {
             Asset::Sound(_) => "sound",
             Asset::Animator(_) => "animator",
             Asset::Emitter(_) => "emitter",
+            Asset::Material(_) => "material",
         }
     }
 
@@ -219,6 +223,7 @@ impl Entry {
             "warnings": warnings,
         });
         match &self.asset {
+            Asset::Material(m) => material_json(m, &mut o),
             Asset::Emitter(f) => {
                 o["sprite"] = json!(f.sprite);
                 o["particle"] = json!(f.particle);
@@ -388,6 +393,7 @@ fn fnv(h: &mut u64, bytes: &[u8]) {
 struct Group {
     png: Option<String>,
     wav: Option<String>,
+    wgsl: Option<String>,
     sidecar: Option<String>,
 }
 
@@ -491,6 +497,25 @@ impl Importer {
         })
     }
 
+    /// Every material: the project's, then the built-ins it does not
+    /// shadow with an asset of the same name.
+    pub fn materials(&self) -> Vec<(&str, &MaterialSpec)> {
+        let mut out: Vec<(&str, &MaterialSpec)> = self
+            .entries
+            .iter()
+            .filter_map(|(n, e)| match &e.asset {
+                Asset::Material(m) => Some((n.as_str(), m)),
+                _ => None,
+            })
+            .collect();
+        for b in argus_material::builtins() {
+            if !self.entries.contains_key(&b.name) {
+                out.push((b.name.as_str(), b));
+            }
+        }
+        out
+    }
+
     /// Particle effects.
     pub fn emitters(&self) -> impl Iterator<Item = (&String, &EmitterSpec)> {
         self.entries.iter().filter_map(|(n, e)| match &e.asset {
@@ -547,6 +572,8 @@ impl Importer {
                 (rel[..n.len()].to_string(), 0)
             } else if let Some(n) = lower.strip_suffix(".wav") {
                 (rel[..n.len()].to_string(), 1)
+            } else if let Some(n) = lower.strip_suffix(".wgsl") {
+                (rel[..n.len()].to_string(), 3)
             } else {
                 continue;
             };
@@ -554,6 +581,7 @@ impl Importer {
             match slot {
                 0 => g.png = Some(rel.clone()),
                 1 => g.wav = Some(rel.clone()),
+                3 => g.wgsl = Some(rel.clone()),
                 _ => g.sidecar = Some(rel.clone()),
             }
         }
@@ -578,8 +606,10 @@ impl Importer {
         for (name, g) in groups {
             // The files this asset reads: its own, plus a sound's variations
             // (added after the sidecar is parsed, below).
-            let mut files: Vec<&String> =
-                [&g.png, &g.wav, &g.sidecar].into_iter().flatten().collect();
+            let mut files: Vec<&String> = [&g.png, &g.wav, &g.wgsl, &g.sidecar]
+                .into_iter()
+                .flatten()
+                .collect();
             files.sort();
             let stamp: Stamp = files
                 .iter()
@@ -656,23 +686,39 @@ impl Importer {
             None => None,
         };
         let side_file = g.sidecar.as_ref().map(|s| format!("assets/{s}"));
-        if g.png.is_some() && g.wav.is_some() {
+        let sources: Vec<&String> = [&g.png, &g.wav, &g.wgsl].into_iter().flatten().collect();
+        if sources.len() > 1 {
             return Err(ArgusError::new(
                 codes::AMBIGUOUS,
-                format!("{name} has both a .png and a .wav; one name is one asset"),
+                format!(
+                    "{name} has both {}; one name is one asset",
+                    sources
+                        .iter()
+                        .map(|s| format!(
+                            "a .{}",
+                            s.rsplit('.')
+                                .next()
+                                .unwrap_or_default()
+                                .to_ascii_lowercase()
+                        ))
+                        .collect::<Vec<_>>()
+                        .join(" and ")
+                ),
             )
             .hint("Rename one of them (asset.move keeps references right).")
-            .at(g.png.as_ref().map(|p| format!("assets/{p}"))));
+            .at(Some(format!("assets/{}", sources[0]))));
         }
-        let kind = match (&g.png, &g.wav, &side_text) {
-            (Some(_), _, _) => SidecarKind::Sprite,
-            (_, Some(_), _) => SidecarKind::Sound,
-            (None, None, Some(t)) => sidecar::kind_of(side_file.as_deref().unwrap_or(""), t)?,
-            (None, None, None) => SidecarKind::Unknown,
+        let kind = match (&g.png, &g.wav, &g.wgsl, &side_text) {
+            (Some(_), _, _, _) => SidecarKind::Sprite,
+            (_, Some(_), _, _) => SidecarKind::Sound,
+            (_, _, Some(_), _) => SidecarKind::Material,
+            (None, None, None, Some(t)) => sidecar::kind_of(side_file.as_deref().unwrap_or(""), t)?,
+            (None, None, None, None) => SidecarKind::Unknown,
         };
         match kind {
             SidecarKind::Sprite => self.import_sprite(name, g, side_text.as_deref(), side_file.as_deref(), hash),
             SidecarKind::Sound => self.import_sound(name, g, side_text.as_deref(), side_file.as_deref(), hash),
+            SidecarKind::Material => self.import_material(name, g, side_text.as_deref(), side_file.as_deref(), hash),
             SidecarKind::Emitter => {
                 let file = side_file.clone().unwrap_or_default();
                 let (spec, notes) = effect::parse_emitter(&file, side_text.as_deref().unwrap_or(""))?;
@@ -713,11 +759,72 @@ impl Importer {
             }
             SidecarKind::Unknown => Err(ArgusError::new(
                 codes::AMBIGUOUS,
-                format!("{name}: the sidecar describes no sprite, sound, animator, or emitter"),
+                format!("{name}: the sidecar describes no sprite, sound, animator, emitter, or material"),
             )
-            .hint("Give it type = \"sprite\" (with grid, [[frames]], or kind/size/color), type = \"sound\" (with variations, tone, or file), type = \"animator\" (with [states.<name>]), or type = \"emitter\".")
+            .hint("Give it type = \"sprite\" (with grid, [[frames]], or kind/size/color), type = \"sound\" (with variations, tone, or file), type = \"animator\" (with [states.<name>]), type = \"emitter\", or type = \"material\" (beside a .wgsl, or with shader = a built-in).")
             .at(side_file.clone())),
         }
+    }
+
+    /// A material: its shader and sidecar read, then composed and checked
+    /// with naga, so a compile error fails the import with the shader's
+    /// own line.
+    fn import_material(
+        &self,
+        name: &str,
+        g: &Group,
+        side_text: Option<&str>,
+        side_file: Option<&str>,
+        mut hash: u64,
+    ) -> Result<(Entry, Vec<String>)> {
+        let shader = match &g.wgsl {
+            Some(w) => {
+                let b = self.read(w)?;
+                fnv(&mut hash, &b);
+                Some((
+                    format!("assets/{w}"),
+                    String::from_utf8_lossy(&b).into_owned(),
+                ))
+            }
+            None => None,
+        };
+        let mut extra: Vec<String> = Vec::new();
+        let mut load = |p: &str| -> Result<(String, String)> {
+            let rel = p.trim_start_matches("assets/").to_string();
+            let b = self.read(&rel)?;
+            extra.push(rel.clone());
+            Ok((
+                format!("assets/{rel}"),
+                String::from_utf8_lossy(&b).into_owned(),
+            ))
+        };
+        let (spec, notes) = argus_material::parse_material(
+            name,
+            side_file.zip(side_text),
+            shader.as_ref().map(|(f, t)| (f.as_str(), t.as_str())),
+            &mut load,
+        )?;
+        fnv(&mut hash, spec.source.as_bytes());
+        argus_material::check(&spec)?;
+        let file = spec.file.clone();
+        let warnings = notes
+            .into_iter()
+            .map(|(message, line)| Warning {
+                message,
+                at: format!("{file}:{line}"),
+            })
+            .collect();
+        Ok((
+            Entry {
+                name: name.to_string(),
+                sidecar: g.sidecar.clone(),
+                hash,
+                warnings,
+                asset: Asset::Material(spec),
+                ms: 0.0,
+            },
+            extra,
+        ))
     }
 
     fn import_sprite(
@@ -1214,4 +1321,31 @@ fn probe_wav(path: &Path, rel: &str) -> Result<WavInfo> {
         seconds: frames as f32 / spec.sample_rate.max(1) as f32,
         peak_db: argus_audio::lin_to_db(peak),
     })
+}
+
+/// A material as `asset.get` shows it: its shader, blend, and parameters,
+/// added to `o`.
+pub fn material_json(m: &MaterialSpec, o: &mut Json) {
+    o["shader"] = json!(m.shader_file);
+    o["blend"] = json!(m.blend.name());
+    o["doc"] = json!(m.doc);
+    o["params"] = Json::Array(
+        m.params
+            .iter()
+            .map(|p| {
+                let default = match p.ty {
+                    argus_material::ParamType::Texture => json!(p.texture),
+                    t => json!(p.value[..t.floats()]),
+                };
+                json!({
+                    "name": p.name,
+                    "type": p.ty.name(),
+                    "default": default,
+                    "range": p.range,
+                    "from": p.from.as_ref().map(|s| s.text()),
+                    "doc": p.doc,
+                })
+            })
+            .collect(),
+    );
 }

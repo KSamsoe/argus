@@ -139,19 +139,19 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "asset.list",
-        doc: "Every asset under assets/: sprites (a PNG, or a sidecar describing a shape), sounds (a WAV, or a sidecar naming variations), and animators (a sidecar with type = \"animator\": states, transitions, events by frame), with the warnings the importer found. A name is the path without the extension; sprites/hero is assets/sprites/hero.png with assets/sprites/hero.toml beside it. For an animator the frames and clips columns are its state count and names.",
-        params: "kind: \"sprite\" | \"sound\" | \"animator\" (optional); limit; cursor",
+        doc: "Every asset under assets/: sprites (a PNG, or a sidecar describing a shape), sounds (a WAV, or a sidecar naming variations), animators (a sidecar with type = \"animator\": states, transitions, events by frame), particle effects (type = \"emitter\"), and materials (a .wgsl shader, with a sidecar of typed parameters), with the warnings the importer found. A name is the path without the extension; sprites/hero is assets/sprites/hero.png with assets/sprites/hero.toml beside it. For an animator the frames and clips columns are its state count and names; for an emitter its pool size and sprite; for a material its parameter count and names. kind = \"material\" also lists the engine's material library (unlit, lit, palette, dissolve, outline), source builtin:<name>, unless a project asset of the same name shadows one.",
+        params: "kind: \"sprite\" | \"sound\" | \"animator\" | \"emitter\" | \"material\" (optional); limit; cursor",
         returns: "{total, columns: [name, kind, source, frames, clips, warnings], rows, failed: [{name, message, at}], next}",
     },
     MethodDoc {
         name: "asset.get",
-        doc: "One asset as imported: frames with rects, pivots, durations, and properties; clips; the cached texture; a sound's bus, gain, and files with rate, channels, length, and peak; every warning with file:line.",
+        doc: "One asset as imported: frames with rects, pivots, durations, and properties; clips; the cached texture; a sound's bus, gain, and files with rate, channels, length, and peak; an animator's states; an emitter's rate, burst, and pool; a material's shader, blend, and parameters (type, default, range, from, doc); every warning with file:line. A library material (unlit, lit, palette, dissolve, outline) answers too, with builtin: true.",
         params: "name: string",
         returns: "{name, kind, sidecar, hash, warnings, ...}",
     },
     MethodDoc {
         name: "asset.import",
-        doc: "Scan assets/ now instead of waiting for the watcher (it polls twice a second). Changed sprites reload in every renderer and changed sounds in the mixer; each import is an asset.imported event, each warning an asset.warning, each failure an asset.failed. force re-imports everything.",
+        doc: "Scan assets/ now instead of waiting for the watcher (it polls twice a second). Changed sprites and materials reload in every renderer (a material's shader is checked at import, so one that does not compile fails here with its line and the last good version keeps drawing) and changed sounds in the mixer; each import is an asset.imported event, each warning an asset.warning, each failure an asset.failed. force re-imports everything.",
         params: "force: boolean (default false)",
         returns: "{imported: [name], unchanged, removed: [name], failed: [{name, message, at}], ms}",
     },
@@ -391,9 +391,9 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "script.errors",
-        doc: "Outstanding script errors as file:line data, never a crash.",
+        doc: "Outstanding script errors as file:line data, never a crash. Materials are code too: a shader that does not compile, or a material sidecar that does not read, is a row with phase \"material\", the file and line of the mistake, and the asset.",
         params: "",
-        returns: "{total, rows: [{file, line, message, phase}]}",
+        returns: "{total, rows: [{file, line, message, phase, ref, asset?}]}",
     },
     MethodDoc {
         name: "obs.events",
@@ -405,7 +405,7 @@ pub const METHODS: &[MethodDoc] = &[
         name: "obs.frame",
         doc: "Render the current world offscreen and write it as a PNG (section 8 L5). Sprites come from the world and the view from the drawing camera (the active Camera with the highest priority, its shake included); described shapes need no asset. camera and view say which camera drew and the world rect it showed. Semantic frames and annotation arrive with phase-1 item 12.",
         params: "format: \"png\" (default); width: integer (default 640); height: integer (default 360); path: string (default .argus/frames/frame-<tick>.png); software: boolean (force the software rasteriser)",
-        returns: "{path, width, height, tick, alpha, sprites, draw_calls, atlases, missing_atlases, interpolated, camera, view: {center, half, angle, rect: [x0, y0, x1, y1]}, adapter, ms}",
+        returns: "{path, width, height, tick, alpha, sprites, draw_calls, atlases, missing_atlases, interpolated, particles, materials, missing_materials, material_problems, camera, view: {center, half, angle, rect: [x0, y0, x1, y1]}, adapter, ms}",
     },
     MethodDoc {
         name: "obs.subscribe",
@@ -435,7 +435,7 @@ pub const METHODS: &[MethodDoc] = &[
         name: "render.status",
         doc: "Whether a window is open, the adapter in use, and the last frame's statistics.",
         params: "",
-        returns: "{window, size: [w, h], adapter, software, last: {sprites, draw_calls, atlases, interpolated, missing_atlases, ms}, atlases: [name]}",
+        returns: "{window, size: [w, h], adapter, software, last: {sprites, draw_calls, atlases, interpolated, missing_atlases, materials, missing_materials, material_problems, ms}, atlases: [name], materials: [name]}",
     },
     MethodDoc {
         name: "audio.status",

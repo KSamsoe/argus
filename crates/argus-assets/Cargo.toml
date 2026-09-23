@@ -8,6 +8,7 @@ license.workspace = true
 [dependencies]
 argus-ecs = { path = "../argus-ecs", version = "0.0.1" }
 argus-audio = { path = "../argus-audio", version = "0.0.1", default-features = false }
+argus-material = { path = "../argus-material", version = "0.0.1" }
 toml_edit = "0.22"
 png = "0.17"
 hound = "3"

@@ -264,7 +264,18 @@ impl Daemon {
             "asset.list" => self.asset_list(params),
             "asset.get" => {
                 let name = json::str_param(params, "name")?;
-                Ok(self.require_session()?.assets.get(name)?.to_json())
+                match self.require_session()?.assets.get(name) {
+                    Ok(e) => Ok(e.to_json()),
+                    // The material library is there without a file.
+                    Err(e) => match argus_material::builtin(name) {
+                        Some(b) => {
+                            let mut o = json!({ "name": name, "kind": "material", "builtin": true, "warnings": [] });
+                            argus_assets::material_json(b, &mut o);
+                            Ok(o)
+                        }
+                        None => Err(e),
+                    },
+                }
             }
             "asset.import" => {
                 self.require_session()?;
@@ -911,11 +922,14 @@ impl Daemon {
             ses.particles.borrow_mut().set_assets(&ses.assets);
             #[cfg(feature = "render")]
             {
+                // Sprites first, so a material naming one binds the new texture.
                 if let Some((_, r)) = &mut self.render.window {
                     let _ = r.reload_sprites(&ses.assets, &changed);
+                    let _ = r.load_materials(&ses.assets);
                 }
                 if let Some((_, _, r)) = &mut self.render.offscreen {
                     let _ = r.reload_sprites(&ses.assets, &changed);
+                    let _ = r.load_materials(&ses.assets);
                 }
             }
             #[cfg(feature = "audio")]
@@ -1014,7 +1028,7 @@ impl Daemon {
     fn asset_list(&self, params: &Json) -> Result<Json> {
         let ses = self.require_session()?;
         let kind = json::opt_str(params, "kind")?;
-        let rows: Vec<Json> = ses
+        let mut rows: Vec<Json> = ses
             .assets
             .entries()
             .values()
@@ -1034,6 +1048,14 @@ impl Daemon {
                     e.sidecar.clone().unwrap_or_default(),
                     an.states.len(),
                     an.states.iter().map(|s| s.name.clone()).collect::<Vec<_>>(),
+                    e.warnings.len()
+                ]),
+                argus_assets::Asset::Material(m) => json!([
+                    e.name,
+                    "material",
+                    m.shader_file,
+                    m.params.len(),
+                    m.params.iter().map(|p| p.name.clone()).collect::<Vec<_>>(),
                     e.warnings.len()
                 ]),
                 argus_assets::Asset::Emitter(fx) => json!([
@@ -1058,6 +1080,22 @@ impl Daemon {
                 ]),
             })
             .collect();
+        // Asked for materials, the library too, beside the project's (a
+        // project asset of the same name shadows one).
+        if kind == Some("material") {
+            for b in argus_material::builtins() {
+                if !ses.assets.entries().contains_key(&b.name) {
+                    rows.push(json!([
+                        b.name,
+                        "material",
+                        b.shader_file,
+                        b.params.len(),
+                        b.params.iter().map(|p| p.name.clone()).collect::<Vec<_>>(),
+                        0
+                    ]));
+                }
+            }
+        }
         let failed: Vec<Json> = ses
             .assets
             .failures()
@@ -2489,7 +2527,7 @@ impl Daemon {
 
     fn script_errors(&self) -> Result<Json> {
         let ses = self.require_session()?;
-        let rows: Vec<Json> = ses
+        let mut rows: Vec<Json> = ses
             .host
             .errors()
             .iter()
@@ -2503,6 +2541,35 @@ impl Daemon {
                 })
             })
             .collect();
+        // Materials are code too (section 13): a shader that does not
+        // compile, or a sidecar that does not read, is listed here with its
+        // line, from the import that failed.
+        for f in ses.assets.failures().values() {
+            let code = f.error.code;
+            if code != argus_material::codes::SHADER && code != argus_material::codes::BAD_MATERIAL
+            {
+                continue;
+            }
+            let at = f.error.r#ref.clone().unwrap_or_default();
+            let (file, line) = match at.rsplit_once(':') {
+                Some((file, l)) if l.parse::<u32>().is_ok() => {
+                    (file.to_string(), l.parse::<u32>().ok())
+                }
+                _ => (at.clone(), None),
+            };
+            rows.push(json!({
+                "file": file,
+                "line": line,
+                "message": f.error.message,
+                "phase": "material",
+                "ref": at,
+                "asset": f.name,
+            }));
+        }
+        #[cfg(feature = "render")]
+        for (name, why) in self.render.material_errors() {
+            rows.push(json!({ "file": name, "line": null, "message": why, "phase": "material", "ref": name, "asset": name }));
+        }
         Ok(json!({ "total": rows.len(), "rows": rows }))
     }
 
@@ -2518,7 +2585,9 @@ impl Daemon {
         };
         // The mixer answers each sound request right after it in the log,
         // then reports what moving sources and the music did (section 8).
-        #[allow(unused_mut)]
+        #[cfg(not(feature = "audio"))]
+        let records = drained;
+        #[cfg(feature = "audio")]
         let mut records: Vec<EventRecord> = Vec::with_capacity(drained.len());
         #[cfg(feature = "audio")]
         {
@@ -2548,10 +2617,6 @@ impl Daemon {
                 }));
                 a.advance_to(self.sched.driving().time());
             }
-        }
-        #[cfg(not(feature = "audio"))]
-        {
-            records = drained;
         }
         for rec in records {
             let seq = self.events.next_seq;
@@ -2679,6 +2744,7 @@ impl Daemon {
             &self.session.as_ref().expect("session").assets,
         )?;
         let _ = self.sched.present(&mut self.world);
+        r.set_time(shader_time(&self.sched, alpha));
         let store = self.session.as_ref().expect("session").particles.borrow();
         let rep = r.render_frame(&self.world, tick, alpha, &extras, Some(&store))?;
         drop(store);
@@ -2696,6 +2762,9 @@ impl Daemon {
             "missing_atlases": rep.missing_atlases,
             "interpolated": rep.interpolated,
             "particles": rep.particles,
+            "materials": rep.stats.materials,
+            "missing_materials": rep.missing_materials,
+            "material_problems": rep.material_problems,
             "camera": rep.camera.map(|e| json::entity_str(&self.world, e)),
             "view": {
                 "center": rep.view_center,
@@ -2787,9 +2856,13 @@ impl Daemon {
                 "atlases": l.stats.atlases,
                 "interpolated": l.interpolated,
                 "missing_atlases": l.missing_atlases,
+                "materials": l.stats.materials,
+                "missing_materials": l.missing_materials,
+                "material_problems": l.material_problems,
                 "ms": l.ms,
             })),
             "atlases": atlases,
+            "materials": self.render.materials(),
             "gamepads": self.render.pads.is_some(),
         })
     }
@@ -2809,7 +2882,9 @@ impl Daemon {
             .map(|(h, _)| h.size())
             .unwrap_or((1, 1));
         let extras = self.tile_extras(argus_render::view_for(&self.world, size.0, size.1));
+        let t = shader_time(&self.sched, alpha);
         if let (Some((_, r)), Some(ses)) = (&mut self.render.window, &self.session) {
+            r.set_time(t);
             let store = ses.particles.borrow();
             let _ = r.render_frame(&self.world, tick, alpha, &extras, Some(&store));
         }
@@ -3541,6 +3616,34 @@ pub(crate) mod render {
             Ok(&mut self.offscreen.as_mut().expect("just set").2)
         }
 
+        /// Materials the GPU refused, from whichever renderers are open.
+        pub fn material_errors(&self) -> Vec<(String, String)> {
+            let mut out: Vec<(String, String)> = Vec::new();
+            let rs = [
+                self.window.as_ref().map(|w| &w.1),
+                self.offscreen.as_ref().map(|o| &o.2),
+            ];
+            for r in rs.into_iter().flatten() {
+                for (n, why) in r.material_errors() {
+                    if !out.iter().any(|(m, _)| m == n) {
+                        out.push((n.clone(), why.clone()));
+                    }
+                }
+            }
+            out
+        }
+
+        /// Loaded material names, from whichever renderer is open.
+        pub fn materials(&self) -> Vec<String> {
+            let r = self
+                .window
+                .as_ref()
+                .map(|w| &w.1)
+                .or(self.offscreen.as_ref().map(|o| &o.2));
+            r.map(|r| r.materials().into_iter().map(|(n, _)| n).collect())
+                .unwrap_or_default()
+        }
+
         pub fn open_window(
             &mut self,
             title: &str,
@@ -3636,4 +3739,13 @@ pub fn event_json(world: &World, seq: u64, rec: &EventRecord) -> Json {
 /// Where a project's daemon writes its connection info.
 pub fn daemon_info_path(root: &Path) -> PathBuf {
     root.join(".argus").join("daemon.json")
+}
+
+/// Sim seconds for shaders: the tick's time plus how far into the next the
+/// frame is, so an animated material moves smoothly between ticks.
+#[cfg(feature = "render")]
+fn shader_time(sched: &argus_sim::Scheduler, alpha: f32) -> f32 {
+    let hz = sched.driving().hz();
+    let ahead = if hz > 0.0 { alpha as f64 / hz } else { 0.0 };
+    (sched.time() + ahead) as f32
 }
