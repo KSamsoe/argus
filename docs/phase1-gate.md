@@ -96,17 +96,21 @@ This half is not closed. It needs a person to play, and nobody has yet. Checked 
 - The step from a key press to the game is tested without a window. The window sends a key under winit's name for it (`KeyW`, `ArrowLeft`). A new test sends every key the three games bind that way, through each game's own `input.toml`, and checks the action it drives. It also checks that a released key lets go and that losing focus lets go of everything. The step before that, a physical key reaching the window, is winit's job, and is what a person playing checks.
 - Opening the game from outside the agent's shell found a real fault, finding 5 below. It is fixed.
 
-To play:
+To play, build once with `cargo build -p argus-cli`. `argus` is not installed on PATH: it is the built binary in `target\debug`. From the repository folder, in PowerShell:
 
-```bash
-argus --project examples/swarm daemon start --window 1280x720 --play
+```powershell
+.\target\debug\argus.exe --project examples\swarm daemon start --window 1280x720 --play
 ```
 
-```bash
-argus --project examples/delve daemon start --window 1280x720 --play
+```powershell
+.\target\debug\argus.exe --project examples\delve daemon start --window 1280x720 --play
 ```
 
-Swarm moves with WASD or a gamepad's left stick. Delve moves one cell per turn with the arrow keys or the d-pad; period waits a turn and Enter takes the stairs. `argus --project examples/<game> daemon stop` closes it.
+Swarm moves with WASD or a gamepad's left stick. Delve moves one cell per turn with the arrow keys or the d-pad; period waits a turn and Enter takes the stairs. To finish, stop the game's daemon:
+
+```powershell
+.\target\debug\argus.exe --project examples\swarm daemon stop
+```
 
 ## Did it fight the protocol
 
