@@ -252,4 +252,12 @@ fn the_player_runs_jumps_and_lands_and_its_footsteps_fire_a_sound() {
     assert_eq!(speed["tune"], true);
     let w: Json = ok(&mut d, "world.who_writes", json!({ "component": "Sprite" }));
     assert_eq!(w["systems"], json!(["anim.update"]));
+    // What the machine's conditions read, the system declares it reads.
+    let kb = ok(
+        &mut d,
+        "world.describe",
+        json!({ "component": "KinematicBody" }),
+    );
+    let readers = kb["rows"][0]["read_by"].as_array().unwrap();
+    assert!(readers.iter().any(|r| r == "anim.update"), "{readers:?}");
 }

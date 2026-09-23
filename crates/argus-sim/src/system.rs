@@ -210,9 +210,27 @@ pub struct SystemCtx<'a> {
     pub time: f64,
     /// Timestep on that clock.
     pub dt: f64,
+    /// Components this run declared it touches (see [`SystemCtx::declare`]).
+    pub(crate) learned: Vec<(ComponentId, bool)>,
 }
 
 impl<'a> SystemCtx<'a> {
+    /// Declare that this system reads (or writes) a component its data
+    /// turned out to name: a tween's target field, an animator's condition.
+    /// The declaration joins the system's access after this run, so
+    /// `who_writes` and `who_reads` stay true for data-driven systems (§3).
+    /// Cheap to repeat; a system usually declares each component once.
+    pub fn declare(&mut self, c: ComponentId, write: bool) {
+        let known = if write {
+            self.access.allows_write(c)
+        } else {
+            self.access.allows_read(c)
+        };
+        if !known && !self.learned.contains(&(c, write)) {
+            self.learned.push((c, write));
+        }
+    }
+
     /// Read-only world access (no declared-access check; use `query` for iteration).
     pub fn world(&self) -> &World {
         self.world

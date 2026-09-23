@@ -91,6 +91,12 @@ Release build, one thread, development laptop. Gates in `tests/perf.rs`.
 |---|---|---|---|
 | The broadphase is rebuilt each tick. | Done | `run_tick` rebuilds it after `end_frame`, timed and allocation-counted as the `broadphase.rebuild` row at the end of the hierarchy stage, so the next tick's systems and any query between ticks see the tick's final positions. `SystemCtx::within`, `SystemCtx::nearest`, and `SystemCtx::spawn_with` (checked against the declared writes) are what the Luau binding wraps. | `prof_snapshot::every_system_is_timed_every_tick` (the row), `argus-luau/tests/systems.rs::vec2_fields_are_native_vectors_and_spawn_many_and_within_reach_the_broadphase` |
 
+## Phase 1, item 9: write sets for data-driven systems
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| Each system declares the components it reads and writes; the agent answers "what could have changed Health?" with one query (§3). | Done | `SystemCtx::declare(component, write)`: a system whose targets come from data (a tween's path, an animator's conditions) declares each as it meets it; after the run the declarations join its access, so `who_writes`, `who_reads`, and `world.describe` stay true, and checked queries allow them from the next run. Declaring the same component again is free. | `stages::a_system_declares_what_its_data_touches_and_who_writes_follows`, `argus-tween/tests/tween.rs`, `argus-daemon/tests/animation.rs` |
+
 ## Phase 1, item 6: the physics step's place in the tick
 
 | Spec | Status | Where | Test |

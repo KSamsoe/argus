@@ -595,6 +595,7 @@ impl Daemon {
         // scripts, so it runs first in the late stage.
         let anims = Rc::new(RefCell::new(argus_anim::AnimStore::default()));
         argus_anim::install(&mut self.world, &mut self.sched, anims.clone())?;
+        argus_tween::install(&mut self.world, &mut self.sched)?;
         let mut host = ScriptHost::new(ScriptConfig::default())?;
         host.load_project(&mut self.world, &mut self.sched, &root)?;
         let def_schemas: Vec<DefSchema> = host

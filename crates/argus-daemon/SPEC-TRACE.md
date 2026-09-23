@@ -43,6 +43,12 @@ Every statement in the design document (v0.3) that constrains the daemon and the
 | The local socket needs no auth; remote access via tokens is later. | Done (phase-0 half) | Nothing listens beyond the local socket. | |
 | Identical result shapes from the live world or the index. | Deferred | Piece 6 will serve `world.*` and `scene.*` from the index when no world is loaded, with these shapes. | |
 
+## Phase 1, item 9: tweens in every scene
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| A tween is a component, queryable, reproduced exactly by replay (§13). | Done | Opening a scene installs `argus-tween` after the animator, so `tween.update` runs in the late stage before scripts and the camera; what is animating is `world.query {where: {has: ["Tween"]}}`, and `world.who_writes` names `tween.update` for every component a tween has touched. With no tweens it returns at once and allocates nothing. | `tween::a_landing_squashes_the_player_and_nudges_the_camera`, `protocol::sim_and_events_answer_why_the_bat_died` |
+
 ## Phase 1, item 8: animators in every scene
 
 | Spec | Status | Where | Test |

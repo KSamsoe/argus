@@ -34,7 +34,7 @@ Every statement in the design document (v0.3) that constrains sprite animation a
 
 ## Known limitations, stated so they are decisions
 
-- `anim.update` declares its writes (`Animator`, `Sprite`) but not its reads: conditions read whatever components the project's animator files name, which are not known when the system is installed. `world.describe` lists it as a writer of `Sprite`, not as a reader of `KinematicBody`.
+- `anim.update` declares its writes (`Animator`, `Sprite`) when installed and the reads its conditions name once it has compiled them (item 9's `SystemCtx::declare`), so `world.describe KinematicBody` lists it as a reader only after its first tick with a machine that reads it.
 - Conditions cannot read `Animator` or `Sprite` fields (the state's own clock is `time`, `frame`, `loops`, and `end`), and a condition on a component the entity lacks reads 0.
 - One transition per tick, and none on the tick a state is entered; the entering tick shows the state's first frame for its full duration.
 - A crossfade draws the outgoing frame over the new one; both come from the same sprite. There is no blending of positions or of different atlases.

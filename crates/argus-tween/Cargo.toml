@@ -1,0 +1,10 @@
+[package]
+name = "argus-tween"
+description = "Argus Engine tweens: a Tween component that drives one field of another entity from a value to a value over a duration with an easing curve, and emits an event when it completes"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+argus-ecs = { path = "../argus-ecs", version = "0.0.1" }
+argus-sim = { path = "../argus-sim", version = "0.0.1" }

@@ -102,6 +102,12 @@ What remains in `sim.chase` is the binding's call path: each iteration is three 
 |---|---|---|---|
 | The game asks for sfx/step and the mixer chooses (§13). | Done | `q:play(name, {entity, gain, pitch, bus, pan, loop})` emits a `sound.play` event with those fields; the daemon's mixer answers with `sound.played`. Event fields now carry vectors as `vec2`. | `argus-daemon/tests/audio.rs::scripts_ask_for_sounds_and_the_log_says_what_played` |
 
+## Phase 1, item 9: tweens from a script
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| A tween is a component; squash-and-stretch and camera nudges are tweens (§13). | Done | `q:tween(e, "Component.field", {from, to, duration, delay, easing, repeats, yoyo, on_complete, keep})` spawns an entity with a `Tween` driving that field of `e` and returns it; a number for `from` or `to` drives a scalar, a vector a vec2. The calling system declares a write of `Tween`. An unknown option is an error naming the options. (The field is `repeats`, since `repeat` is a Lua keyword.) | `argus-daemon/tests/tween.rs` |
+
 ## Phase 1, item 6: reacting to contacts
 
 | Spec | Status | Where | Test |

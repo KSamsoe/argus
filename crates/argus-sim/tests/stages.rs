@@ -179,6 +179,44 @@ fn a_last_system_waits_for_the_rest_of_its_stage_and_events_are_seen_the_same_ti
     assert_eq!(listed[1], ("physics.move".to_string(), true));
 }
 
+/// A data-driven system (a tween, an animator) declares what its data
+/// names while it runs; from then on the write sets say so (§3).
+#[test]
+fn a_system_declares_what_its_data_touches_and_who_writes_follows() {
+    let mut w = World::new();
+    let pos = w.register::<Pos>().unwrap();
+    let vel = w.register::<Vel>().unwrap();
+    let mut s = Scheduler::new(SchedulerConfig::continuous(60.0));
+    s.add_system(
+        SystemDesc::new("tween.update", Stage::Late),
+        Box::new(move |ctx| {
+            ctx.declare(pos, true);
+            ctx.declare(vel, false);
+            ctx.declare(pos, true);
+            Ok(())
+        }),
+    )
+    .unwrap();
+    assert!(
+        s.who_writes(pos).unwrap().is_empty(),
+        "not before it has run"
+    );
+    s.step(&mut w, 1).unwrap();
+    assert_eq!(s.who_writes(pos).unwrap(), ["tween.update"]);
+    assert_eq!(s.who_reads(vel).unwrap(), ["tween.update"]);
+    assert!(
+        s.who_writes(vel).unwrap().is_empty(),
+        "a read is not a write"
+    );
+    s.step(&mut w, 3).unwrap();
+    let info = s.systems(w.registry()).unwrap();
+    assert_eq!(
+        info[0].writes,
+        ["Pos"],
+        "declared once however often it runs"
+    );
+}
+
 #[test]
 fn ordering_errors_are_structured() {
     let mut s = Scheduler::new(SchedulerConfig::default());

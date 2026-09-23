@@ -830,8 +830,23 @@ impl Scheduler {
                 tick,
                 time,
                 dt,
+                learned: Vec::new(),
             };
-            catch_unwind(AssertUnwindSafe(|| (slot.run)(&mut ctx)))
+            let r = catch_unwind(AssertUnwindSafe(|| (slot.run)(&mut ctx)));
+            let learned = std::mem::take(&mut ctx.learned);
+            drop(ctx);
+            // What the system's data named joins its declared access.
+            for (c, write) in learned {
+                let a = &mut slot.desc.access;
+                if write {
+                    if !a.writes.contains(&c) {
+                        a.writes.push(c);
+                    }
+                } else if !a.allows_read(c) {
+                    a.reads.push(c);
+                }
+            }
+            r
         };
         let (message, r#ref) = match outcome {
             Ok(Ok(())) => return,

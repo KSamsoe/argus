@@ -28,7 +28,7 @@ pub(crate) fn install(
     let mut desc = SystemDesc::new(SYSTEM, Stage::Late)
         .writes(anim)
         .source("argus-anim:update")
-        .doc("Runs every Animator's state machine: transitions as field comparisons, clip frames at their rates with anticipation and holds, events by frame, crossfades; writes Sprite.frame. Conditions read the components their animator files name.");
+        .doc("Runs every Animator's state machine: transitions as field comparisons, clip frames at their rates with anticipation and holds, events by frame, crossfades; writes Sprite.frame. It declares a read of each component its animator files' conditions name once it has compiled them.");
     if let Some(s) = sprite {
         desc = desc.writes(s);
     }
@@ -161,6 +161,11 @@ fn run(
     if !st.built || st.compiled.generation != store.generation {
         st.compiled = Compiled::build(&store, ctx.world(), &[Some(anim), sprite]);
         st.built = true;
+    }
+    // The components the machines' conditions read join the declared
+    // reads, so who_reads names this system (§3).
+    for i in 0..st.compiled.used.len() {
+        ctx.declare(st.compiled.used[i], false);
     }
     let mut events: Events = Vec::new();
     let world: &World = ctx.world();

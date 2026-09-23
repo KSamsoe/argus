@@ -674,6 +674,56 @@ impl UserData for QueryHandle {
             }
             Ok(out)
         });
+        // tween(e, "Transform.scale", {to = vector.create(1, 1, 0), from = ...,
+        // duration = 0.15, easing = "out_back", on_complete = "squash.done"}):
+        // spawn a Tween entity driving one field of e (section 13). Needs a
+        // declared write of Tween. Returns the tween's entity.
+        m.add_method(
+            "tween",
+            |lua, this, (target, path, opts): (AnyUserData, String, Option<mlua::Table>)| {
+                let target = target.borrow::<EntityRef>()?.entity;
+                let c = ctx(&this.link)?;
+                let tw = c.world().registry().require("Tween").map_err(argus_err)?;
+                let e = c.spawn_with(&[tw]).map_err(argus_err)?;
+                let set = |f: &str, v: Value| c.set_field(e, &format!("Tween.{f}"), v).map_err(argus_err);
+                set("target", Value::Entity(target))?;
+                set("path", Value::Str(path))?;
+                let vec = |v: LuaValue| -> LuaResult<Value> {
+                    match v {
+                        LuaValue::Integer(i) => Ok(Value::Vec2(Vec2::new(i as f32, 0.0))),
+                        LuaValue::Number(n) => Ok(Value::Vec2(Vec2::new(n as f32, 0.0))),
+                        other => lua_to_value(other, FieldType::Vec2, &this.link),
+                    }
+                };
+                if let Some(o) = opts {
+                    for pair in o.pairs::<String, LuaValue>() {
+                        let (k, v) = pair?;
+                        match k.as_str() {
+                            "from" => {
+                                set("from", vec(v)?)?;
+                                set("from_current", Value::Bool(false))?;
+                            }
+                            "to" => set("to", vec(v)?)?,
+                            "duration" | "delay" | "repeats" | "yoyo" | "keep" | "easing" | "on_complete" => {
+                                let ty = c.world().registry().resolve_path(&format!("Tween.{k}")).map_err(argus_err)?.1.ty;
+                                set(&k, lua_to_value(v, ty, &this.link)?)?;
+                            }
+                            other => {
+                                return Err(argus_err(ArgusError::new(
+                                    codes::TYPE_MISMATCH,
+                                    format!("unknown tween option {other:?}"),
+                                )
+                                .hint("Options are from, to, duration, delay, easing, repeats, yoyo, on_complete, keep.")))
+                            }
+                        }
+                    }
+                }
+                lua.create_userdata(EntityRef {
+                    entity: e,
+                    link: this.link.clone(),
+                })
+            },
+        );
         // play("sfx/step", {entity = e, gain = 0.8, pitch = 1.2}): ask the
         // mixer for a sound. It is a `sound.play` event; the daemon answers
         // with `sound.played` naming the variation it chose (section 13).

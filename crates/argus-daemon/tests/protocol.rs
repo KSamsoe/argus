@@ -48,6 +48,7 @@ fn session_open_gives_the_one_screen_summary() {
             "physics.move",
             "physics.overlap",
             "anim.update",
+            "tween.update",
             "camera.update",
             "present.hud"
         ]
@@ -565,10 +566,12 @@ fn sim_and_events_answer_why_the_bat_died() {
         .iter()
         .filter(|r| {
             let n = r[0].as_str().unwrap();
-            n.starts_with("physics.") || n.starts_with("camera.") || n.starts_with("anim.")
+            ["physics.", "camera.", "anim.", "tween."]
+                .iter()
+                .any(|p| n.starts_with(p))
         })
         .collect();
-    assert_eq!(physics.len(), 5);
+    assert_eq!(physics.len(), 6);
     assert!(
         physics.iter().all(|r| r[2].as_f64() == Some(0.0)),
         "physics and cameras with none in the scene allocate nothing: {physics:?}"
@@ -650,7 +653,7 @@ fn scripts_reload_in_place_and_errors_are_data() {
     project(t.path());
     let mut d = open(t.path());
     let sys = ok(&mut d, "script.systems", json!({}));
-    assert_eq!(sys["total"], 9);
+    assert_eq!(sys["total"], 10);
     let dmg = &sys["rows"][2];
     assert_eq!(dmg["name"], "sim.damage");
     assert_eq!(dmg["stage"], "sim");
