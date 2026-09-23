@@ -451,8 +451,8 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "render.window",
-        doc: "Open or close the window the daemon presents into every frame (playable by a human, section 18 phase 1). Device events from it feed the input layer.",
-        params: "open: boolean (default true); width: integer (default 1280); height: integer (default 720); title: string; software: boolean; audio: boolean (default true: open the audio output too)",
+        doc: "Open or close the window the daemon presents into every frame (playable by a human, section 18 phase 1). Device events from it feed the input layer. Its close button emits window.closed; a window opened with --window at start is the person's, and closing it also stops the daemon, while one opened here only closes and can be opened again.",
+        params: "open: boolean (default true); width: integer (default 1280); height: integer (default 720); title: string; software: boolean; visible: boolean (default true; false opens it hidden, taking no focus, for checking the windowed path while someone uses the machine); audio: boolean (default true: open the audio output too)",
         returns: "render.status",
     },
     MethodDoc {

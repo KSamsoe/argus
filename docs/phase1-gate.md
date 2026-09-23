@@ -4,7 +4,7 @@ The plan (design §18) ends phase 1 with a gate:
 
 > Swarm and Delve are playable by a human in a window. The agent builds a three-room slice of Hollow with tiles, a kinematic player, one-way platforms, and a following camera, screenshots it, describes what's on screen from the semantic frame, and fixes a visual bug it found that way. The player has a run, jump, and land animation with a footstep event that fires a sound.
 
-This file records that run, done on 2026-09-22 with the phase-1 engine at commit `51ed984` plus the fixes this commit adds. The gate has two halves. The Hollow half is done. The "playable by a human" half has one open step: a person has to play the games. That step is below, with what was checked without one.
+This file records that run, done on 2026-09-22 with the phase-1 engine at commit `51ed984` plus the fixes this commit adds. The gate has two halves. The Hollow half is done. For the other half, Kevin played on 2026-09-23 and found one fault, the close button, which is fixed. Both are below, with what was checked without a person.
 
 ## The brief
 
@@ -90,7 +90,9 @@ Taken again, the pit is a dark gap with the back wall in it, and the shaft's cor
 
 ## Swarm and Delve in a window
 
-This half is not closed. It needs a person to play, and nobody has yet. Checked so far:
+On 2026-09-23 Kevin ran the play command from his own PowerShell and played. The game ran well. One fault: the window's close button froze it, and it had to be killed from Task Manager. That is finding 9 below, and it is fixed.
+
+Checked before that, without a person:
 
 - Swarm opened in a real window on the development machine: 1280 by 720, NVIDIA RTX 3070 Ti through Vulkan, 297 sprites in 3 draw calls at 0.99 ms a frame. The swarm was on screen around the player. Delve was not opened in a window this time. A daemon test covers a key press taking a turn in a playing Delve-style scene.
 - The step from a key press to the game is tested without a window. The window sends a key under winit's name for it (`KeyW`, `ArrowLeft`). A new test sends every key the three games bind that way, through each game's own `input.toml`, and checks the action it drives. It also checks that a released key lets go and that losing focus lets go of everything. The step before that, a physical key reaching the window, is winit's job, and is what a person playing checks.
@@ -138,6 +140,16 @@ One process note, from the part the agent tried by hand. Driving the real deskto
 
 A small one: the hero sheet is 64 by 13 pixels, and the importer pads it to 64 by 16 with an `asset.warning` on every load. It draws correctly.
 
+### After the gate
+
+Kevin's play session found one more fault, and fixing it and re-timing the tests found two more.
+
+**9. The close button froze the game.** Closing the window dropped its event loop first and the window after. winit destroys a window by posting it a message, which the loop has to run to handle, so the window stayed on screen with nothing answering it, Windows marked it not responding, and the process lived on. And winit allows one event loop a process, so no window could have opened after the first closed. Now closing drops the renderer, then the window, pumps the loop until the window is gone, and keeps the loop for the next window. A window opened with `--window` at start is the person's, and closing it also stops the daemon; one an agent opens with `render.window` only closes. Tests press the close button on hidden windows by sending the message it sends, so they run while someone uses the machine.
+
+**10. Delve's tests had become five times slower.** They took 5.2 s, where the phase-0 build takes 1.5 s on the same machine. Building each phase-1 commit and timing the tests put most of it at item 3, the mixer. With no device open, the daemon mixes as far as the sim clock, and a discrete game's turn is one second, so every turn mixed a second of zeros through every bus. Silence now takes a short path that leaves the same state. Timing each step of a scene load found the rest: every reload rewrote the index's schemas, systems, prefabs, and defs, a third of the reload once phase 1 had added its components. Those are now written only when they change. Delve's tests take 2.4 s.
+
+**11. A command right after `daemon stop` failed.** `stop` returned when the daemon agreed to go, not when it had gone, and the next command reached the daemon on its way out and reported "connection lost". It dates from phase 0. `stop` now waits until the daemon's record is removed and its socket is silent.
+
 ## Numbers
 
 | Measure | Value |
@@ -150,3 +162,5 @@ A small one: the hero sheet is 64 by 13 pixels, and the importer pads it to 64 b
 | 600 ticks of holding right | 48 footsteps, each an `sfx/step` the mixer answered; 3 landings; 1 fall into the pit at frame 502 |
 | Camera zone changes on that run | frame 201 into the shaft, 373 into the hall, 502 back to the cave after the fall |
 | Swarm in a window, debug build | 1280 by 720, 297 sprites, 3 draw calls, 0.99 ms a frame |
+| Delve's tests, debug build | 5.2 s before finding 10, 2.4 s after; the phase-0 build takes 1.5 s |
+| A Delve scene reload, debug build | 18.5 ms before finding 10, 12.4 ms after; the index sync went from 6.6 ms to under 1 ms |

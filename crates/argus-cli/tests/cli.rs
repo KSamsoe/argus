@@ -432,19 +432,25 @@ fn the_binary_finds_starts_and_stops_a_project_daemon() {
         serde_json::from_str::<Json>(out.trim()).unwrap()["shutdown"],
         true
     );
-    let mut gone = false;
-    for _ in 0..100 {
-        if !root.join(".argus").join("daemon.json").exists() {
-            gone = true;
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(50));
-    }
-    assert!(gone, "daemon.json removed at exit");
+    // `stop` returns once the daemon has gone, not when it agreed to: a
+    // command right after it used to reach the one on its way out and fail
+    // with "connection lost" (found after the phase-1 gate).
+    assert!(
+        !root.join(".argus").join("daemon.json").exists(),
+        "daemon.json removed before stop returns"
+    );
     let (code, out, _) = bin(&root, &["daemon", "status"]);
     assert_eq!(code, EXIT_CONNECT);
     assert_eq!(out.trim(), "not running");
     assert!(root.join(".argus").join("daemon.log").exists());
+    let (code, _, err) = bin(&root, &["world", "summary"]);
+    assert_eq!(
+        code, EXIT_OK,
+        "a call right after stop starts a new daemon: {err}"
+    );
+    assert!(err.contains("starting a daemon"), "{err}");
+    let (code, _, _) = bin(&root, &["daemon", "stop"]);
+    assert_eq!(code, EXIT_OK);
 }
 
 /// A semantic frame reads as lines, in the frame's order: what a narrator

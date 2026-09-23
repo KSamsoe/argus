@@ -369,6 +369,10 @@ impl Mixer {
         for d in &self.ducks {
             self.buses[d.duck].duck *= d.factor;
         }
+        if self.voices.iter().all(|v| v.done) {
+            self.silent_block(out, n, secs);
+            return;
+        }
         let eff = self.effective();
         let nb = self.buses.len();
         let mut acc = std::mem::take(&mut self.acc);
@@ -498,6 +502,39 @@ impl Mixer {
         }
         self.master_n += (n * 2) as u64;
         self.acc = acc;
+        self.hist_filled = (self.hist_filled + n * 2).min(hl);
+        self.rendered += n as u64;
+    }
+
+    /// `block` with no voice playing, leaving exactly the state it would:
+    /// meters count the samples, the limiter recovers, the history gets
+    /// zeros. Mixing zeros through every bus cost a discrete game a second of
+    /// DSP per turn with no device open, which made Delve's tests five times
+    /// slower (found after the phase-1 gate).
+    fn silent_block(&mut self, out: &mut [f32], n: usize, secs: f32) {
+        self.voices.clear();
+        out.fill(0.0);
+        for b in &mut self.buses {
+            b.n += (n * 2) as u64;
+        }
+        let l0 = self.limiter;
+        let l1 = (l0 + secs / LIMIT_RELEASE).min(1.0);
+        self.limiter = l1;
+        self.limiter_min = self.limiter_min.min(l1).min(l0);
+        let hl = self.history.len();
+        let mut left = (n * 2).min(hl);
+        while left > 0 {
+            let run = left.min(hl - self.hist_pos);
+            self.history[self.hist_pos..self.hist_pos + run].fill(0.0);
+            self.hist_pos = (self.hist_pos + run) % hl;
+            left -= run;
+        }
+        if n * 2 > hl {
+            // More than the ring holds: the write position still moves on by
+            // every sample, as the slow path's would.
+            self.hist_pos = (self.hist_pos + (n * 2 - hl)) % hl;
+        }
+        self.master_n += (n * 2) as u64;
         self.hist_filled = (self.hist_filled + n * 2).min(hl);
         self.rendered += n as u64;
     }

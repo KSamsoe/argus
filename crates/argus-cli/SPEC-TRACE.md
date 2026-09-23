@@ -45,7 +45,7 @@ Phase 0 item 9, "CLI": this crate, plus `argus_daemon::launch` (shared with `arg
 
 ## Known limitations, stated so they are decisions
 
-- A daemon started by the CLI outlives the shell; `argus daemon stop` ends it, and `.argus/daemon.json` is removed on a clean exit. A daemon killed otherwise leaves a stale record, which `argus daemon status` reports and a method call replaces.
+- A daemon started by the CLI outlives the shell; `argus daemon stop` ends it, and `.argus/daemon.json` is removed on a clean exit. `stop` returns once the daemon is gone (its record removed and its socket silent), not when it agreed to go: a command right after it used to reach the daemon on its way out and fail with "connection lost" (found after the phase-1 gate; `cli::the_binary_finds_starts_and_stops_a_project_daemon`). A daemon killed otherwise leaves a stale record, which `argus daemon status` reports and a method call replaces.
 - The socket name is derived from the project path, so two checkouts of one project at different paths get different daemons, and one path gets one daemon.
 - Help is English prose from the method table; there is no per-parameter type schema yet. When the MCP tool descriptions land (phase 2) the `params` text becomes structured and both surfaces read the structure.
 - No shell completion; the overview is the list.

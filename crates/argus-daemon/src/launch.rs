@@ -53,7 +53,10 @@ pub fn launch(l: Launch) -> i32 {
                         "render.window",
                         &json!({ "open": true, "width": w, "height": h }),
                     ) {
-                        Ok(s) => eprintln!("argusd: window {}x{} on {}", w, h, s["adapter"]),
+                        Ok(s) => {
+                            eprintln!("argusd: window {}x{} on {}", w, h, s["adapter"]);
+                            daemon.exit_on_window_close = true;
+                        }
                         Err(e) => eprintln!("argusd: no window: {}", e),
                     }
                 }

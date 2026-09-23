@@ -47,6 +47,23 @@ pub fn daemon_info(root: &Path) -> Option<Json> {
     serde_json::from_str(&text).ok()
 }
 
+/// Wait, up to ten seconds, for a daemon that agreed to stop to be gone: its
+/// record removed (it does that last) and its socket silent. The reply comes
+/// before the process ends, and a command in between would reach the daemon
+/// on its way out and lose the connection.
+fn wait_gone(root: &Path, info: &Json) {
+    let pid = info["pid"].as_u64();
+    let socket = info["socket"].as_str().unwrap_or_default();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while Instant::now() < deadline {
+        let recorded = daemon_info(root).is_some_and(|i| i["pid"].as_u64() == pid);
+        if !recorded && Client::connect(socket).is_err() {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
 /// Try the recorded socket; `None` when there is no record or nothing
 /// answers on it.
 pub fn try_connect(root: &Path) -> Option<(Client, Json)> {
@@ -239,14 +256,27 @@ pub fn daemon_command(
                     return EXIT_CONNECT;
                 }
             };
-            call_and_print(
+            let record = match &inv.socket {
+                Some(_) => None,
+                None => find_project(inv.project.as_deref())
+                    .ok()
+                    .and_then(|root| daemon_info(&root).map(|info| (root, info))),
+            };
+            let code = call_and_print(
                 &mut client,
                 "session.shutdown",
                 json!({}),
                 inv.json,
                 out,
                 err,
-            )
+            );
+            drop(client);
+            if code == EXIT_OK {
+                if let Some((root, info)) = record {
+                    wait_gone(&root, &info);
+                }
+            }
+            code
         }
         "status" => {
             let root = match find_project(inv.project.as_deref()) {

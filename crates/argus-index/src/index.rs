@@ -9,7 +9,7 @@ use crate::{codes, sql_err};
 use argus_ecs::{ArgusError, FieldType, Registry, Result, Value};
 use argus_scene::{Defs, PrefabLibrary, Project, ResolvedEntity, Scene, SeedPolicy};
 use argus_sim::SystemInfo;
-use rusqlite::{params, Connection, Transaction};
+use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use serde_json::{json, Value as Json};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -128,6 +128,10 @@ impl Index {
 
     /// Component schemas and their doc strings.
     pub fn sync_schemas(&mut self, registry: &Registry) -> Result<()> {
+        let fp = ("schemas", fingerprint(&[&registry.schemas()]));
+        if self.written(&fp)? {
+            return Ok(());
+        }
         let tx = self.conn.transaction().map_err(sql_err)?;
         tx.execute_batch(
             "DELETE FROM schemas; DELETE FROM docs WHERE kind IN ('component', 'field');",
@@ -169,11 +173,20 @@ impl Index {
                 }
             }
         }
+        tx.execute(
+            "INSERT OR REPLACE INTO meta(key, value) VALUES (?1, ?2)",
+            params![format!("fp.{}", fp.0), fp.1],
+        )
+        .map_err(sql_err)?;
         tx.commit().map_err(sql_err)
     }
 
     /// Systems with stages and write sets.
     pub fn sync_systems(&mut self, systems: &[SystemInfo]) -> Result<()> {
+        let fp = ("systems", fingerprint(&[&systems]));
+        if self.written(&fp)? {
+            return Ok(());
+        }
         let tx = self.conn.transaction().map_err(sql_err)?;
         tx.execute_batch("DELETE FROM systems; DELETE FROM docs WHERE kind = 'system';")
             .map_err(sql_err)?;
@@ -199,11 +212,26 @@ impl Index {
                 .execute(params![s.name, s.doc])
                 .map_err(sql_err)?;
         }
+        tx.execute(
+            "INSERT OR REPLACE INTO meta(key, value) VALUES (?1, ?2)",
+            params![format!("fp.{}", fp.0), fp.1],
+        )
+        .map_err(sql_err)?;
         tx.commit().map_err(sql_err)
     }
 
     /// The prefab catalog.
     pub fn sync_prefabs(&mut self, prefabs: &PrefabLibrary) -> Result<()> {
+        let stamps: Vec<(&str, (i64, i64))> = prefabs
+            .paths()
+            .into_iter()
+            .filter_map(|p| prefabs.get(p))
+            .map(|p| (p.file.as_str(), file_stamp(&self.root.join(&p.file))))
+            .collect();
+        let fp = ("prefabs", fingerprint(&[prefabs, &stamps]));
+        if self.written(&fp)? {
+            return Ok(());
+        }
         let tx = self.conn.transaction().map_err(sql_err)?;
         tx.execute_batch("DELETE FROM prefabs; DELETE FROM refs WHERE from_kind = 'prefab'; DELETE FROM files WHERE kind = 'prefab';")
             .map_err(sql_err)?;
@@ -245,11 +273,25 @@ impl Index {
             }
             record_file(&tx, &self.root, &p.file, "prefab", None)?;
         }
+        tx.execute(
+            "INSERT OR REPLACE INTO meta(key, value) VALUES (?1, ?2)",
+            params![format!("fp.{}", fp.0), fp.1],
+        )
+        .map_err(sql_err)?;
         tx.commit().map_err(sql_err)
     }
 
     /// Def tables and rows.
     pub fn sync_defs(&mut self, defs: &Defs) -> Result<()> {
+        let stamps: Vec<(&str, (i64, i64))> = defs
+            .tables()
+            .filter_map(|t| t.file.as_deref())
+            .map(|f| (f, file_stamp(&self.root.join(f))))
+            .collect();
+        let fp = ("defs", fingerprint(&[defs, &stamps]));
+        if self.written(&fp)? {
+            return Ok(());
+        }
         let tx = self.conn.transaction().map_err(sql_err)?;
         tx.execute_batch("DELETE FROM def_tables; DELETE FROM defs; DELETE FROM refs WHERE from_kind = 'def'; DELETE FROM files WHERE kind = 'def';")
             .map_err(sql_err)?;
@@ -281,7 +323,26 @@ impl Index {
                 record_file(&tx, &self.root, f, "def", None)?;
             }
         }
+        tx.execute(
+            "INSERT OR REPLACE INTO meta(key, value) VALUES (?1, ?2)",
+            params![format!("fp.{}", fp.0), fp.1],
+        )
+        .map_err(sql_err)?;
         tx.commit().map_err(sql_err)
+    }
+
+    /// True when a sync step last wrote exactly what `fp` describes.
+    fn written(&self, fp: &(&str, String)) -> Result<bool> {
+        let got: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT value FROM meta WHERE key = ?1",
+                params![format!("fp.{}", fp.0)],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(sql_err)?;
+        Ok(got.as_deref() == Some(fp.1.as_str()))
     }
 
     /// Replace one scene's rows from a resolved scene in memory.
@@ -455,6 +516,11 @@ impl Index {
         force: bool,
     ) -> Result<SyncReport> {
         let start = Instant::now();
+        if force {
+            self.conn
+                .execute("DELETE FROM meta WHERE key LIKE 'fp.%'", [])
+                .map_err(sql_err)?;
+        }
         let shared_changed = force || self.files_changed("prefab")? || self.files_changed("def")?;
         self.sync_schemas(registry)?;
         self.sync_systems(systems)?;
@@ -1169,6 +1235,19 @@ fn record_file(
     .execute(params![rel, kind, scene, mtime, size])
     .map_err(sql_err)?;
     Ok(())
+}
+
+/// What a sync step would write, as a hash of its inputs' contents. Every
+/// scene load syncs the index, and rewriting the unchanged schemas, systems,
+/// prefabs, and defs was a third of a reload once phase 1 had added its
+/// components (found after the phase-1 gate, timing Delve's seed sweeps).
+fn fingerprint(parts: &[&dyn std::fmt::Debug]) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    for p in parts {
+        format!("{p:?}").hash(&mut h);
+    }
+    format!("{:016x}", h.finish())
 }
 
 fn file_stamp(p: &Path) -> (i64, i64) {

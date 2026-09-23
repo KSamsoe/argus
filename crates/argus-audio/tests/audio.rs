@@ -463,3 +463,66 @@ fn a_burst_is_limited_not_clipped_and_a_capped_sound_steals_its_oldest_voice() {
     );
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// Found after the phase-1 gate: with no device open the daemon mixes as far
+/// as the sim clock, and a discrete game's turn is a second, so every turn
+/// mixed a second of zeros through every bus. Silence now takes a short
+/// path, and it must leave exactly what the long one did.
+#[test]
+fn silence_mixes_to_the_same_state_by_the_short_path() {
+    let cfg = AudioConfig::parse("audio.toml", TOML).unwrap();
+    let tone = |gain: f32| {
+        argus_audio::sound::synth(
+            &Tone {
+                wave: Wave::Square,
+                freq: 220.0,
+                ms: 300.0,
+                attack_ms: 0.0,
+                release_ms: 0.0,
+                gain,
+                slide: 0.0,
+                notes: vec![],
+                note_ms: 1.0,
+            },
+            48_000,
+        )
+    };
+    let run = |hold_open: bool| {
+        let mut m = Mixer::new(48_000, &cfg);
+        let (sfx, ui) = (m.bus("sfx").unwrap(), m.bus("ui").unwrap());
+        if hold_open {
+            // Silent and inaudible (gain 0, so it ducks nothing), but playing:
+            // every block takes the long path.
+            m.play(tone(0.0), sfx, 0.0, 0.0, 1.0, true, 0.0);
+        }
+        // Loud enough for the limiter, and a ui sound that ducks the music.
+        for _ in 0..8 {
+            m.play(tone(0.5), sfx, 1.0, 0.0, 1.0, false, 0.0);
+        }
+        m.play(tone(0.5), ui, 1.0, 0.3, 1.0, false, 0.0);
+        m.advance(48_000 / 10);
+        let early = (m.take_meters(), m.take_limiter_db());
+        m.advance(48_000 * 3);
+        let late = (m.take_meters(), m.take_limiter_db());
+        (early, late, m.history(10.0), m.rendered_frames())
+    };
+    let (long, short) = (run(true), run(false));
+    assert!(
+        long.0 .1 < -0.1,
+        "the burst reached the limiter: {:?}",
+        long.0 .1
+    );
+    assert_eq!(
+        format!("{:?}", short.0),
+        format!("{:?}", long.0),
+        "during the sounds"
+    );
+    assert_eq!(
+        format!("{:?}", short.1),
+        format!("{:?}", long.1),
+        "after them"
+    );
+    assert_eq!(short.3, long.3);
+    assert_eq!(short.2.len(), long.2.len());
+    assert!(short.2 == long.2, "the history differs");
+}

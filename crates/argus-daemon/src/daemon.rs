@@ -80,6 +80,10 @@ pub struct Daemon {
     capture_path: Option<PathBuf>,
     /// `session.shutdown` was called: the server should stop after replying.
     pub shutdown: bool,
+    /// The window was opened from the command line (`--window`): it is the
+    /// person's, and closing it ends the daemon. A window an agent opens
+    /// with `render.window` only closes.
+    pub exit_on_window_close: bool,
     /// Bumped by every change to the world made outside a tick (commits,
     /// undo, scene load); `ensure_broadphase` rebuilds when it moved.
     mutations: u64,
@@ -122,6 +126,7 @@ impl Daemon {
             subs: BTreeMap::new(),
             capture_path: None,
             shutdown: false,
+            exit_on_window_close: false,
             mutations: 0,
             broadphase_epoch: 0,
             #[cfg(feature = "render")]
@@ -491,6 +496,9 @@ impl Daemon {
                     fields: Vec::new(),
                 });
                 self.pump_events();
+                if self.exit_on_window_close {
+                    self.shutdown = true;
+                }
             }
             if !evs.is_empty() {
                 self.device_input(&evs);
@@ -3454,7 +3462,8 @@ impl Daemon {
     fn render_window(&mut self, params: &Json) -> Result<Json> {
         let open = json::bool_param(params, "open", true)?;
         if !open {
-            self.render.window = None;
+            self.render.close_window();
+            self.exit_on_window_close = false;
             #[cfg(feature = "audio")]
             if let Some(a) = self.audio.as_mut() {
                 a.close_device();
@@ -3465,6 +3474,7 @@ impl Daemon {
         let width = json::u64_param(params, "width", 1280)?.clamp(64, 8192) as u32;
         let height = json::u64_param(params, "height", 720)?.clamp(64, 8192) as u32;
         let software = json::bool_param(params, "software", false)?;
+        let visible = json::bool_param(params, "visible", true)?;
         let title = json::opt_str(params, "title")?
             .map(str::to_string)
             .unwrap_or_else(|| {
@@ -3476,6 +3486,7 @@ impl Daemon {
             width,
             height,
             software,
+            visible,
             &self.session.as_ref().expect("session").assets,
         )?;
         #[cfg(feature = "audio")]
@@ -4153,7 +4164,23 @@ pub(crate) mod render {
         })
     }
 
+    impl Drop for RenderState {
+        fn drop(&mut self) {
+            self.close_window();
+        }
+    }
+
     impl RenderState {
+        /// Close the window: the renderer's surface first, then the host,
+        /// which destroys the window and keeps its event loop for the next
+        /// one (see `WindowHost`).
+        pub fn close_window(&mut self) {
+            if let Some((host, r)) = self.window.take() {
+                drop(r);
+                drop(host);
+            }
+        }
+
         fn index_of(&mut self, id: usize) -> u32 {
             let next = self.pad_index.len() as u32;
             *self.pad_index.entry(id).or_insert(next)
@@ -4187,7 +4214,7 @@ pub(crate) mod render {
                 }
             }
             if close {
-                self.window = None;
+                self.close_window();
                 self.closed_now = true;
                 out.push(DeviceInput::ReleaseAll);
             }
@@ -4317,12 +4344,13 @@ pub(crate) mod render {
             width: u32,
             height: u32,
             software: bool,
+            visible: bool,
             assets: &argus_assets::Importer,
         ) -> Result<()> {
             if self.window.is_some() {
                 return Ok(());
             }
-            let host = WindowHost::open(title, width, height)?;
+            let host = WindowHost::open_with(title, width, height, visible)?;
             let window = host.window().expect("open");
             let mut r = Renderer::windowed(window, software)?;
             r.load_catalog(assets)?;
