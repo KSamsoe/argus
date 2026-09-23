@@ -25,6 +25,9 @@ pub struct World {
     names: HashMap<String, Entity>,
     /// Entity index -> authored string id.
     ids: HashMap<u32, String>,
+    /// A room-scoped id's last part (`player` of `a/player`) -> the entities
+    /// it could mean, so `@player` finds `@a/player` when there is only one.
+    short: HashMap<String, Vec<Entity>>,
     strings: Interner,
     events: Vec<EventRecord>,
     frame: u64,
@@ -55,6 +58,7 @@ impl World {
             archetype_map,
             names: HashMap::new(),
             ids: HashMap::new(),
+            short: HashMap::new(),
             strings: Interner::new(),
             events: Vec::new(),
             frame: 0,
@@ -200,6 +204,9 @@ impl World {
         self.place_in_empty(e);
         self.names.insert(id.to_string(), e);
         self.ids.insert(e.index(), id.to_string());
+        if let Some((_, last)) = id.rsplit_once('/') {
+            self.short.entry(last.to_string()).or_default().push(e);
+        }
         self.emit(Event::Spawned {
             entity: e,
             id: Some(id.to_string()),
@@ -216,7 +223,9 @@ impl World {
     }
 
     /// Resolve an entity reference in any protocol form: `@player`, `player`,
-    /// or `e:4011`.
+    /// or `e:4011`. In a room scene an id is `room/id`; a bare `@player`
+    /// means the one `…/player` there is, as it does in the room's own files,
+    /// and is an error naming them all when there are several.
     pub fn entity(&self, r: &str) -> Result<Entity> {
         if r.starts_with("e:") {
             let e: Entity = r
@@ -232,13 +241,30 @@ impl World {
             };
         }
         let id = r.strip_prefix('@').unwrap_or(r);
-        self.names.get(id).copied().ok_or_else(|| {
-            ArgusError::new(
+        if let Some(&e) = self.names.get(id) {
+            return Ok(e);
+        }
+        match self.short.get(id).map(Vec::as_slice) {
+            Some([e]) => Ok(*e),
+            Some(many) if !id.contains('/') => {
+                let mut ids: Vec<String> = many
+                    .iter()
+                    .filter_map(|e| self.string_id(*e))
+                    .map(|s| format!("@{s}"))
+                    .collect();
+                ids.sort();
+                Err(ArgusError::new(
+                    codes::UNKNOWN_ID,
+                    format!("@{id} could be any of {}", ids.join(", ")),
+                )
+                .hint("In a room scene an id is room/id; name the room."))
+            }
+            _ => Err(ArgusError::new(
                 codes::UNKNOWN_ID,
                 format!("no entity with string id {id:?}"),
             )
-            .hint("world.summary lists named entities; runtime entities have no string id.")
-        })
+            .hint("world.summary lists named entities; runtime entities have no string id.")),
+        }
     }
 
     /// The authored string id of an entity, if it has one.
@@ -274,6 +300,14 @@ impl World {
         let id = self.ids.remove(&e.index());
         if let Some(id) = &id {
             self.names.remove(id);
+            if let Some((_, last)) = id.rsplit_once('/') {
+                if let Some(v) = self.short.get_mut(last) {
+                    v.retain(|x| *x != e);
+                    if v.is_empty() {
+                        self.short.remove(last);
+                    }
+                }
+            }
         }
         self.emit(Event::Despawned { entity: e, id });
         Ok(())

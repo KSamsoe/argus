@@ -1,0 +1,12 @@
+# Link the C and C++ runtimes into the binary. Luau is C++, so without this
+# argus.exe loads libstdc++-6.dll and libwinpthread-1.dll from PATH at start,
+# and any older copy found first (PostgreSQL ships one) stops it with an
+# "entry point not found" dialog. See docs/phase1-gate.md.
+[target.x86_64-pc-windows-gnu]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+# crt-static covers libgcc and winpthread but not libstdc++, which luau0-src
+# asks for by name. It reads CXXSTDLIB_<target>; -bundle keeps the archive out
+# of the rlib so it is linked once, at the end.
+[env]
+"CXXSTDLIB_x86_64-pc-windows-gnu" = "static:-bundle=stdc++"

@@ -1,0 +1,11 @@
+[Transform]
+pos = [52.0, 1.5]
+
+[Sprite]
+kind = "rect"
+size = [0.8, 1.0]
+color = "#8A6A40"
+
+[Describe]
+name = "sign"
+text = "Mind the pit."

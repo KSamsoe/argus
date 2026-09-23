@@ -266,6 +266,7 @@ dependencies = [
  "argus-assets",
  "argus-camera",
  "argus-ecs",
+ "argus-input",
  "argus-material",
  "argus-particles",
  "argus-sim",

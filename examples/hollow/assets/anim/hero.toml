@@ -1,0 +1,56 @@
+# The hero's animation: idle, run, jump, fall, land, driven by the
+# kinematic body's own fields. The run's feet touch down on clip positions
+# 0 and 2, and each one is a footstep the mixer plays.
+type = "animator"
+initial = "idle"
+
+[states.idle]
+clip = "idle"
+
+[[states.idle.transitions]]
+to = "run"
+when = "KinematicBody.grounded and abs(KinematicBody.velocity.x) > 0.5"
+
+[states.run]
+clip = "run"
+events = [{ frame = 0, name = "footstep", sound = "sfx/step" }, { frame = 2, name = "footstep", sound = "sfx/step" }]
+
+[[states.run.transitions]]
+to = "idle"
+when = "KinematicBody.grounded and abs(KinematicBody.velocity.x) <= 0.5"
+blend = 0.08
+
+[states.jump]
+clip = "jump"
+
+[[states.jump.transitions]]
+to = "fall"
+when = "KinematicBody.velocity.y <= 0"
+
+[states.fall]
+clip = "fall"
+
+[[states.fall.transitions]]
+to = "land"
+when = "KinematicBody.grounded"
+
+[states.land]
+clip = "land"
+loop = false
+events = [{ frame = 0, name = "landed", sound = "sfx/land" }]
+
+[[states.land.transitions]]
+to = "run"
+when = "abs(KinematicBody.velocity.x) > 0.5"
+
+[[states.land.transitions]]
+to = "idle"
+when = "end"
+
+[[any]]
+to = "jump"
+when = "not KinematicBody.grounded and KinematicBody.velocity.y > 0"
+
+[[any]]
+to = "fall"
+when = "not KinematicBody.grounded and KinematicBody.velocity.y < -1"

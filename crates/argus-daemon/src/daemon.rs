@@ -743,11 +743,7 @@ impl Daemon {
                 "ms": r.ms,
             });
         }
-        out["script_errors"] = json!(self
-            .session
-            .as_ref()
-            .map(|s| s.host.errors().len())
-            .unwrap_or(0));
+        out["script_errors"] = json!(self.script_error_count());
         if let Some(e) = &self.audio_error {
             out["audio_error"] = e.clone();
         }
@@ -767,7 +763,7 @@ impl Daemon {
                 st["project"] = json!(s.project.config.name);
                 st["root"] = json!(s.root.to_string_lossy().trim_start_matches(r"\\?\"));
                 st["scene"] = json!(s.scene_name);
-                st["script_errors"] = json!(s.host.errors().len());
+                st["script_errors"] = json!(self.script_error_count());
                 st["loaded"] = json!(s.loaded);
                 st["index"] = json!(s
                     .index
@@ -2553,6 +2549,13 @@ impl Daemon {
         Ok(query::paged(rows, limit, offset))
     }
 
+    /// The length of `script.errors`, for the status calls.
+    fn script_error_count(&self) -> u64 {
+        self.script_errors()
+            .map(|j| j["total"].as_u64().unwrap_or(0))
+            .unwrap_or(0)
+    }
+
     fn script_errors(&self) -> Result<Json> {
         let ses = self.require_session()?;
         let mut rows: Vec<Json> = ses
@@ -2569,6 +2572,39 @@ impl Daemon {
                 })
             })
             .collect();
+        // A system a fault disabled, while it stays disabled: its last fault,
+        // with the file and line (found building Hollow: a script that
+        // failed on its first tick was off, and this list said nothing).
+        let mut faulted: Vec<String> = Vec::new();
+        let walk = self.sched.any_disabled();
+        for (_, rec) in self.events.records.iter().rev().filter(|_| walk) {
+            let Event::SystemFault {
+                system,
+                message,
+                r#ref,
+            } = &rec.event
+            else {
+                continue;
+            };
+            if faulted.contains(system) || self.sched.is_enabled(system).unwrap_or(true) {
+                continue;
+            }
+            faulted.push(system.clone());
+            let at = r#ref.clone().unwrap_or_default();
+            let (file, line) = match at.rsplit_once(':') {
+                Some((f, l)) if l.parse::<u32>().is_ok() => (f.to_string(), l.parse::<u32>().ok()),
+                _ => (at.clone(), None),
+            };
+            rows.push(json!({
+                "file": file,
+                "line": line,
+                "message": message,
+                "phase": "run",
+                "ref": at,
+                "system": system,
+                "frame": rec.frame,
+            }));
+        }
         // Materials are code too (section 13): a shader that does not
         // compile, or a sidecar that does not read, is listed here with its
         // line, from the import that failed.

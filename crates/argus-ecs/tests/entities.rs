@@ -129,3 +129,27 @@ fn named_entities_are_sorted_for_summary() {
     assert_eq!(s.authored, 2);
     assert_eq!(s.named.len(), 2);
 }
+
+/// Found building Hollow for the phase-1 gate: in a room scene an id is
+/// room/id, and a script or a HUD line that says @player means the one
+/// player there is, as the room's own files do. Two of them is an error
+/// that names both.
+#[test]
+fn a_bare_id_finds_the_one_room_scoped_entity_it_means() {
+    let mut w = World::new();
+    let p = w.spawn_authored("a/player").unwrap();
+    let d1 = w.spawn_authored("a/door").unwrap();
+    let d2 = w.spawn_authored("b/door").unwrap();
+    assert_eq!(w.entity("@player").unwrap(), p);
+    assert_eq!(w.entity("player").unwrap(), p);
+    assert_eq!(w.entity("@a/door").unwrap(), d1);
+    let e = w.entity("@door").unwrap_err();
+    assert!(e.message.contains("@a/door, @b/door"), "{}", e.message);
+    w.despawn(d1).unwrap();
+    assert_eq!(w.entity("@door").unwrap(), d2, "one left");
+    w.despawn(p).unwrap();
+    assert!(w.entity("@player").is_err());
+    // An exact id wins over a short one.
+    let top = w.spawn_authored("door").unwrap();
+    assert_eq!(w.entity("@door").unwrap(), top);
+}

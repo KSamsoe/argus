@@ -19,4 +19,5 @@ bytemuck = { version = "1", features = ["derive"] }
 png = "0.17"
 
 [dev-dependencies]
+argus-input = { path = "../argus-input", version = "0.0.1" }
 argus-sim = { path = "../argus-sim", version = "0.0.1" }

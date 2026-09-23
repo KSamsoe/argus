@@ -1,0 +1,4 @@
+name = "hollow"
+clock = "continuous@60"
+default_scene = "hollow"
+plugins = []

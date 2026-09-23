@@ -1,0 +1,14 @@
+# Hollow: three rooms in a row. A cave to start, a tall shaft of planks,
+# and a hall with a pit. All three stay loaded (radius 2); the camera keeps
+# to whichever room the hero is in.
+clock = "continuous@60"
+seed = 1
+
+[rooms]
+start = "a"
+radius = 2
+
+[rooms.graph]
+"a" = ["b"]
+"b" = ["a", "c"]
+"c" = ["b"]

@@ -391,9 +391,9 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "script.errors",
-        doc: "Outstanding script errors as file:line data, never a crash. Materials are code too: a shader that does not compile, or a material sidecar that does not read, is a row with phase \"material\", the file and line of the mistake, and the asset.",
+        doc: "Outstanding script errors as file:line data, never a crash. A system a fault disabled is a row with phase \"run\", the system, and the frame, while it stays disabled. Materials are code too: a shader that does not compile, or a material sidecar that does not read, is a row with phase \"material\", the file and line of the mistake, and the asset.",
         params: "",
-        returns: "{total, rows: [{file, line, message, phase, ref, asset?}]}",
+        returns: "{total, rows: [{file, line, message, phase, ref, system?, frame?, asset?}]}",
     },
     MethodDoc {
         name: "obs.events",

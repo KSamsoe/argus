@@ -320,6 +320,37 @@ fn a_series_declared_after_the_run_is_sampled_by_rerunning() {
     assert_eq!(s["expectations"].as_array().unwrap().len(), 3);
 }
 
+/// Found building Hollow: `release` sent an inject with no value, which is the
+/// action's active value, so it pressed instead of letting go.
+#[test]
+fn a_release_lets_go_and_a_field_path_reads_one_axis() {
+    let (t, mut d) = fixture("release");
+    common::write(
+        t.path(),
+        "tests/release.luau",
+        r#"return scenario "a released hold lets go" {
+  scene = "arena", seed = 7,
+  run = function(t)
+    t.input:hold("move", {1, 0})
+    t:step(2)
+    t.expect:field("@player", "Transform.pos.x"):eq(4)
+    t.input:release("move")
+    t:step(3)
+    t.expect:field("@player", "Actions.move"):eq({ 0, 0 })
+    t.expect:field("@player", "Transform.pos.x"):eq(4)
+    t.expect:field("@player", "Transform.pos.y"):eq(0)
+  end,
+}"#,
+    );
+    let r = run(&mut d, &Options::default()).unwrap();
+    assert_eq!(
+        r["ok"],
+        true,
+        "{}",
+        serde_json::to_string_pretty(&r).unwrap()
+    );
+}
+
 #[test]
 fn seed_specs_parse() {
     assert_eq!(parse_seeds("7").unwrap(), vec![7]);

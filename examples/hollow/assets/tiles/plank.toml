@@ -1,0 +1,6 @@
+# A wooden plank: stood on from above, jumped through from below.
+grid = [1, 1]
+
+[[frames]]
+index = 0
+properties = { one_way = true }

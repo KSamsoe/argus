@@ -188,6 +188,11 @@ local function field_of(ctx, entity, path)
   if not comp then error("field path must be Component.field, got " .. tostring(path), 0) end
   local c = g.components and g.components[comp]
   if c == nil then return nil, g end
+  -- One axis of a vec2: Transform.pos.x.
+  local f, axis = string.match(field, "^(.+)%.([xy])$")
+  if f ~= nil and type(c[f]) == "table" then
+    return c[f][axis == "x" and 1 or 2], g
+  end
   return c[field], g
 end
 
@@ -385,8 +390,14 @@ local function make_t(ctx, spec, seed)
     if value ~= nil then p.value = value end
     return callm("input.inject", p)
   end
+  -- Back to rest. An inject without a value is the action's active value,
+  -- so the rest value is sent: false, 0, or {0, 0}, by what it holds now
+  -- (found building Hollow: this used to press, not release).
   function t.input:release(action)
-    return callm("input.inject", { action = action, hold = false })
+    local now = callm("input.state", {}).actions[action]
+    local rest = false
+    if type(now) == "number" then rest = 0 elseif type(now) == "table" then rest = { 0, 0 } end
+    return callm("input.inject", { action = action, value = rest })
   end
   function t:run_until(opts) return run_until(ctx, opts) end
   function t:advance(opts) return advance(ctx, opts) end

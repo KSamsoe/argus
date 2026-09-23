@@ -109,7 +109,7 @@ Its trace is [crates/argus-test/SPEC-TRACE.md](crates/argus-test/SPEC-TRACE.md).
 
 ## Building
 
-Rust stable (1.77 or newer for `offset_of!`) plus a C++ compiler, because the Luau VM is built from source by the `mlua` crate. On this machine the Rust toolchain is the GNU target and the compiler is WinLibs MinGW-w64 GCC (installed with `winget install BrechtSanders.WinLibs.POSIX.UCRT`); its `mingw64/bin` must be on `PATH` when building.
+Rust stable (1.77 or newer for `offset_of!`) plus a C++ compiler, because the Luau VM is built from source by the `mlua` crate. On this machine the Rust toolchain is the GNU target and the compiler is WinLibs MinGW-w64 GCC (installed with `winget install BrechtSanders.WinLibs.POSIX.UCRT`); its `mingw64/bin` must be on `PATH` when building. The built binary does not need it: `.cargo/config.toml` links the C and C++ runtimes in, so `argus.exe` starts from any shell.
 
 ```bash
 cargo test -p argus-ecs
@@ -185,9 +185,16 @@ crates/
   argus-tween/        tweens: one field of an entity eased from a value to a value, with delay, repeats, yoyo, and a completion event (phase 1, item 9)
   argus-particles/    emitter pools: particle effects from TOML with curves over life, pooled outside the ECS, drawn instanced (phase 1, item 10)
   argus-material/     materials: a WGSL shader plus typed parameters, checked with line numbers, and the library (unlit, lit, palette, dissolve, outline) (phase 1, item 11)
+examples/
+  swarm/                          bullet heaven, continuous clock (phase-0 gate)
+  delve/                          grid roguelike, discrete clock (phase-0 gate)
+  hollow/                         three-room platformer slice (phase-1 gate)
 docs/
   argus-engine-design-v0.3.html   the design document
   phase0-checklist.md             every phase-0 item and its status
+  phase0-gate.md                  the phase-0 gate run
+  phase1-checklist.md             every phase-1 item and its status
+  phase1-gate.md                  the phase-1 gate run
 ```
 
 ## Phase 1
@@ -208,6 +215,10 @@ Phase 1's items and their constraints are in [docs/phase1-checklist.md](docs/pha
 - **Item 11, materials with hot reload**, in [crates/argus-material](crates/argus-material). A material is a WGSL shader, `fn material(in: MaterialInput, p: Params) -> vec4<f32>`, with a TOML sidecar that declares its parameters and their types. A sprite names one with `Sprite.material`. A parameter can come from a field of each sprite's entity, so `q:tween(e, "Dissolve.amount", {to = 1, duration = 0.5})` dissolves one enemy and not the rest. The engine ships `unlit`, `lit`, `palette`, `dissolve`, and `outline` in the same format, and a sidecar can change one's defaults. A shader that does not compile is reported with the line and column in its own file, through `script.errors`, while the last good version keeps drawing. An edit reloads in about 20 ms. Trace: [crates/argus-material/SPEC-TRACE.md](crates/argus-material/SPEC-TRACE.md).
 - **Item 12, semantic frames and annotated screenshots**, in [crates/argus-render](crates/argus-render). `obs.frame {format: "semantic"}` says what the player sees without a picture, in about a kilobyte: the camera's view, the HUD, each notable thing on screen with its bounds in pixels and what it says about itself, the rest counted by kind, the effects, and a character map of the ground. A game adds a `Describe` to say what matters, like `text = "HP {Health.cur}/{Health.max}"`. The same frame is a screen-reader feed, and `argus obs frame format=semantic` prints it as sentences. With `annotate: true`, the PNG has every box and id drawn on it, so what the agent sees can be matched to what it can query. Trace: [crates/argus-render/SPEC-TRACE.md](crates/argus-render/SPEC-TRACE.md).
 - **Item 13, obs.diff, obs.trace, obs.why**, in [crates/argus-daemon](crates/argus-daemon). Three questions the agent asks after something happens. `obs.diff` answers "what changed since I last looked": which things appeared, vanished, or changed which fields, in under a kilobyte. `obs.trace` answers "what happened to this one": an entity's fields over the last minute of frames, when each changed and to what, next to its events. `obs.why` answers "what could have caused this": from an event back through the systems that emitted it and fed it, with the file and line of each. Every event now says which system emitted it. Trace: [crates/argus-daemon/SPEC-TRACE.md](crates/argus-daemon/SPEC-TRACE.md).
+
+## Where phase 1 stands
+
+Items 0 to 13 are all built, each with its trace. The gate is half done, recorded in [docs/phase1-gate.md](docs/phase1-gate.md). The agent built a three-room slice of Hollow in [examples/hollow](examples/hollow) through the CLI: tiles, a kinematic hero, one-way planks, a following camera, and a run, jump, and land animation whose footsteps make a sound. Comparing its pictures with its semantic frames showed the hall's pit drawn as more floor, because nothing was painted behind it, and one tile transaction fixed it. Building it found five faults, all fixed. The other half is a person playing Swarm and Delve in a window, which has not happened yet.
 
 ## Where phase 0 stands
 

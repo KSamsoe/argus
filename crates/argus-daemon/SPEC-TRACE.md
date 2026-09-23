@@ -10,7 +10,7 @@ Every statement in the design document (v0.3) that constrains the daemon and the
 | One daemon per project; the daemon holds exactly one world. | Done | `Daemon { world, sched, session }`; `session.open` replaces the world. `.argus/daemon.json` records the socket name and pid so clients find the one daemon. | `protocol::session_open_gives_the_one_screen_summary` |
 | No separate edit mode and play mode: "editing" is the world with sim stages disabled, "playing" with them enabled; entering play takes a snapshot, stopping restores it. | Done | `sim.play` / `sim.stop` over `Scheduler::play` / `stop` (piece 2). | `protocol::sim_and_events_answer_why_the_bat_died` |
 | `argusd --headless`. | Done | The flag is accepted; headless is the only mode in phase 0. | `argusd --help` |
-| A script fault must not take the daemon down; the world stays inspectable. | Done | Faults are events from piece 2 and 3; the daemon reports them through `obs.events` and `script.errors`. | `protocol::scripts_reload_in_place_and_errors_are_data` |
+| A script fault must not take the daemon down; the world stays inspectable. | Done | Faults are events from piece 2 and 3; the daemon reports them through `obs.events` and `script.errors`. A system a fault turned off is a `script.errors` row with `phase: "run"`, its file, line, message, and frame, for as long as it stays off; `session.status` and the scene-load summary count the same list. Found by the phase-1 gate: Hollow's pit script failed on its first tick and the list said nothing. | `protocol::scripts_reload_in_place_and_errors_are_data`, `protocol::a_system_a_fault_turned_off_is_listed_with_its_line` |
 | Forked worlds for A/B inside the same daemon. | Deferred | Phase 2 (`sim.fork`). | |
 
 ## §5 Protocol

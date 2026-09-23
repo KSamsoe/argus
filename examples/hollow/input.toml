@@ -1,0 +1,16 @@
+[actions.move]
+type = "axis2"
+doc = "Run left and right; down with jump drops through a plank"
+[actions.move.bindings]
+keyboard = ["wasd", "arrows"]
+gamepad = ["left_stick", "dpad"]
+
+[actions.jump]
+type = "button"
+doc = "Jump; hold for a higher one"
+[actions.jump.bindings]
+keyboard = ["space", "z"]
+gamepad = ["south"]
+
+[slots.1]
+devices = ["keyboard", "gamepad:0"]

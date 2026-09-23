@@ -9,6 +9,7 @@ use std::time::Duration;
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
+use winit::keyboard::PhysicalKey;
 use winit::platform::pump_events::EventLoopExtPumpEvents;
 use winit::window::{Window, WindowId};
 
@@ -50,6 +51,16 @@ pub enum DeviceEvent {
         /// Focused now.
         focused: bool,
     },
+}
+
+/// The name a key is sent under: winit's key code spelling (`KeyW`,
+/// `ArrowLeft`, `Space`). `argus_input::key_name` turns it into a binding's
+/// token.
+pub fn physical_key_name(key: &PhysicalKey) -> String {
+    format!("{key:?}")
+        .trim_start_matches("Code(")
+        .trim_end_matches(')')
+        .to_string()
 }
 
 struct App {
@@ -96,10 +107,7 @@ impl ApplicationHandler for App {
             WindowEvent::KeyboardInput { event, .. } => {
                 if !event.repeat {
                     self.events.push(DeviceEvent::Key {
-                        code: format!("{:?}", event.physical_key)
-                            .trim_start_matches("Code(")
-                            .trim_end_matches(')')
-                            .to_string(),
+                        code: physical_key_name(&event.physical_key),
                         pressed: event.state == ElementState::Pressed,
                     });
                 }

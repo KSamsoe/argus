@@ -1,0 +1,4 @@
+# The line a player reads at the top of the screen.
+[Describe]
+role = "hud"
+text = "Hollow. The hero is {@player:Animator.state}."

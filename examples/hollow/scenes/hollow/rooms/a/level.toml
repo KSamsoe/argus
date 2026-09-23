@@ -1,0 +1,6 @@
+# All three rooms' tiles: one map, its tile (0, 0) at the top-left.
+[Transform]
+pos = [0.0, 24.0]
+
+[Tilemap]
+map = "scenes/hollow/level.tilemap.toml"

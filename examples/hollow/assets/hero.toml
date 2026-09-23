@@ -1,0 +1,22 @@
+# The hero: 8 frames of 8 x 13 px, drawn by tools/art.py.
+grid = [8, 1]
+
+[clips.idle]
+frames = [0]
+
+[clips.run]
+from = 1
+to = 4
+fps = 12
+loop = true
+
+[clips.jump]
+frames = [5]
+
+[clips.fall]
+frames = [6]
+
+[clips.land]
+frames = [7, 0]
+fps = 12
+loop = false

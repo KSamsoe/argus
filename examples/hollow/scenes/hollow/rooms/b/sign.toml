@@ -1,0 +1,11 @@
+[Transform]
+pos = [34.0, 19.5]
+
+[Sprite]
+kind = "rect"
+size = [0.8, 1.0]
+color = "#8A6A40"
+
+[Describe]
+name = "sign"
+text = "The top of the shaft. Nothing up here but the view."

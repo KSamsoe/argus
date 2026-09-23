@@ -190,6 +190,9 @@ pub struct InputState {
     /// is scheduled, so a device and an inject never fight over a value
     /// neither is changing.
     device_last: BTreeMap<(u8, String), ActionValue>,
+    /// The releases injects scheduled for themselves, per slot and action:
+    /// (tick the inject took hold, tick it lets go).
+    releases: BTreeMap<(u8, String), Vec<(u64, u64)>>,
 }
 
 impl InputState {
@@ -199,6 +202,7 @@ impl InputState {
             map,
             discrete,
             scheduled: BTreeMap::new(),
+            releases: BTreeMap::new(),
             current: BTreeMap::new(),
             pressed: Vec::new(),
             released: Vec::new(),
@@ -289,6 +293,34 @@ impl InputState {
                 format!("{action} is a {}", a.kind.name()),
             ));
         }
+        // A newer inject replaces an older one of the same action: the
+        // older one's own release, still to come, would cut this one short.
+        // Only releases of injects already holding by now go; a script's
+        // later steps keep theirs.
+        let key = (slot, action.to_string());
+        if let Some(rs) = self.releases.get_mut(&key) {
+            let mut i = 0;
+            while i < rs.len() {
+                let (start, end) = rs[i];
+                if start <= now && end > now {
+                    rs.remove(i);
+                    if let Some(at) = self.scheduled.get_mut(&end) {
+                        if let Some(j) = at
+                            .iter()
+                            .position(|(s, n, val)| *s == slot && n == action && !val.is_active())
+                        {
+                            at.remove(j);
+                        }
+                        if at.is_empty() {
+                            self.scheduled.remove(&end);
+                        }
+                    }
+                } else {
+                    i += 1;
+                }
+            }
+            rs.retain(|r| r.1 > now);
+        }
         self.schedule(now, slot, action, v);
         let until = if a.toggle || hold || !v.is_active() {
             None
@@ -300,6 +332,7 @@ impl InputState {
             };
             let t = now + n;
             self.schedule(t, slot, action, ActionValue::default_for(a.kind));
+            self.releases.entry(key).or_default().push((now, t));
             Some(t)
         };
         Ok(InjectReport { tick: now, until })

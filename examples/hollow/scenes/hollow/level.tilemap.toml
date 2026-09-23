@@ -1,0 +1,27 @@
+# A tilemap: this index is text, the tiles are in level.chunks/ (see argus-tiles).
+kind = "tilemap"
+width = 72
+height = 24
+tile_size = 1.0
+chunk = 32
+cell = 2
+chunks = "level.chunks"
+hash = "fnv1a64:3a416ac2eececf41"
+
+[[layers]]
+name = "back"
+tileset = "tiles/back"
+z = -2.0
+collision = false
+
+[[layers]]
+name = "ground"
+tileset = "tiles/rock"
+z = -1.0
+collision = true
+
+[[layers]]
+name = "planks"
+tileset = "tiles/plank"
+z = -1.0
+collision = true

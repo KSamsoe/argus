@@ -327,6 +327,11 @@ impl Scheduler {
         Ok(self.systems[self.slot_index(name)?].enabled)
     }
 
+    /// Is any system off, by a fault or by request?
+    pub fn any_disabled(&self) -> bool {
+        self.systems.iter().any(|s| !s.enabled)
+    }
+
     /// Every system in stage and run order.
     pub fn systems(&mut self, registry: &Registry) -> Result<Vec<SystemInfo>> {
         self.ensure_order()?;

@@ -1,0 +1,18 @@
+# Placeholder sounds as described tones: gameplay never waits on audio files.
+[buses]
+master = { gain_db = 0 }
+sfx    = { parent = "master", gain_db = -4 }
+
+[sounds."sfx/step"]
+gain = 0.3
+pitch_jitter = 0.12
+variations = [ { wave = "noise", ms = 35, release_ms = 25 }, { wave = "noise", ms = 30, release_ms = 30 } ]
+
+[sounds."sfx/land"]
+gain = 0.45
+variations = [ { wave = "triangle", freq = 140, slide = -300, ms = 90, release_ms = 60 } ]
+
+[sounds."sfx/fell"]
+spatial = false
+gain = 0.4
+variations = [ { wave = "square", freq = 520, slide = -900, ms = 220, release_ms = 80 } ]

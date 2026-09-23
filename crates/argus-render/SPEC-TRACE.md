@@ -7,7 +7,7 @@ Every statement in the design document (v0.3) that constrains the renderer as ph
 | Spec | Status | Where | Test |
 |---|---|---|---|
 | The core process hosts the renderer; clients reach it only through the protocol. | Done | The daemon owns the renderer (`argus-daemon`, `render` feature, on by default): `obs.frame` renders offscreen to a PNG, `render.window {open, width, height}` opens or closes the window the daemon presents into, `render.status` reports. `argusd --window [WxH]` and `argus daemon run --window` open it at start. | `argus-daemon/tests/render.rs::obs_frame_writes_a_png_of_the_authored_sprites` |
-| Windowed mode. | Done | `window.rs`: a winit window pumped from the daemon thread without blocking it (`with_any_thread` on Windows); the server loop presents every frame while a window is open, playing or not; closing it emits `window.closed`. Device events are queued for item 2. | (manual: `argus daemon run --window`) |
+| Windowed mode. | Done | `window.rs`: a winit window pumped from the daemon thread without blocking it (`with_any_thread` on Windows); the server loop presents every frame while a window is open, playing or not; closing it emits `window.closed`. A key is sent under winit's name for it (`physical_key_name`: `KeyW`, `ArrowLeft`), which `argus_input::key_name` maps to a binding's token; every key the three example games bind is checked through each game's own `input.toml`. | `keys::every_key_the_example_games_bind_reaches_its_action`, `keys::a_released_key_lets_go_and_losing_focus_lets_go_of_everything`; the window itself by hand (`argus daemon start --window --play`) |
 | Offscreen mode; tests and CI render identically with the software adapter (§9). | Done | `Gpu::offscreen` renders to a texture and reads back tightly packed RGBA; `software: true` forces wgpu's fallback adapter (DirectX 12 WARP on Windows, lavapipe or llvmpipe on Linux), and a machine with no hardware adapter takes the fallback on its own. A machine with no adapter at all reports error 5001 and the crate's tests skip with a message rather than fail. | `render::described_shapes_render_where_the_camera_puts_them` |
 
 ## §6 Interpolation
@@ -57,7 +57,7 @@ Every statement in the design document (v0.3) that constrains the renderer as ph
 - The frame build is single-threaded and costs about 0.1 µs per sprite; at 200k that is 19.6 ms, over a 16.6 ms frame. Building instances in parallel across archetypes, or keeping a persistent instance buffer updated by the sim, are the two ways down, and both are later work; the target sentence is about instancing and draw calls, which are met.
 - z is a sort key, not a depth buffer: overlapping sprites with equal z draw in atlas order, then entity order.
 - One sampler (nearest magnification, linear minification) for every atlas; per-material samplers come with item 11.
-- The window's device events are collected but nothing reads them until item 2.
+- A physical key press reaching a live window is checked by hand, not by a test; the tests start at the name the window sends.
 - The render ring for marks and clips (§10) is phase 2; `obs.frame` renders on demand.
 - The semantic frame's bounds are each sprite's quad, not its opaque pixels, and it does not work out what covers what; `z` is given so the reader can.
 - A kind is named by the components a game declared (from Luau or a schema file); an entity with none is named by how it looks. Two different things with the same components are one kind unless a `Describe.name` tells them apart.

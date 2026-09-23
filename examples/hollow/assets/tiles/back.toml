@@ -1,0 +1,2 @@
+# The cave wall behind everything; nothing collides with it.
+grid = [1, 1]

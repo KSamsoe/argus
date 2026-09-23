@@ -561,3 +561,56 @@ fn unknown_gamepad_and_mouse_names_are_refused_at_load() {
     )
     .is_ok());
 }
+
+/// Found building Hollow for the phase-1 gate: a newer inject of the same
+/// action replaces an older one, so the older one's release, still to
+/// come, no longer cuts the newer one short. A script's later steps, and
+/// holds that have not started, keep their own.
+#[test]
+fn a_newer_inject_is_not_cut_short_by_an_older_ones_release() {
+    let (mut w, mut s, st) = rig(false);
+    let move_of = |w: &World| match w
+        .get_field(w.entity("@p1").unwrap(), "Actions.move")
+        .unwrap()
+    {
+        Value::Vec2(v) => v,
+        other => panic!("{other:?}"),
+    };
+    st.borrow_mut()
+        .inject(0, 1, "move", Some(&json!([1, 0])), Some(10), false)
+        .unwrap();
+    s.step(&mut w, 5).unwrap();
+    // Before the first lets go at 10, a longer one takes over.
+    st.borrow_mut()
+        .inject(5, 1, "move", Some(&json!([1, 0])), Some(100), false)
+        .unwrap();
+    s.step(&mut w, 20).unwrap();
+    assert_eq!(
+        move_of(&w),
+        Vec2::new(1.0, 0.0),
+        "still held at 25, past the first's release"
+    );
+    s.step(&mut w, 90).unwrap();
+    assert_eq!(
+        move_of(&w),
+        Vec2::new(0.0, 0.0),
+        "the second lets go at 105"
+    );
+    // Out of order in a script: a later press keeps its release.
+    let r = st
+        .borrow_mut()
+        .script(
+            115,
+            &[
+                json!({ "at": 30, "action": "fire", "frames": 5 }),
+                json!({ "at": 0, "action": "fire", "frames": 5 }),
+            ],
+        )
+        .unwrap();
+    assert_eq!((r[0].until, r[1].until), (Some(150), Some(120)));
+    s.step(&mut w, 60).unwrap();
+    let fire = w
+        .get_field(w.entity("@p1").unwrap(), "Actions.fire")
+        .unwrap();
+    assert_eq!(fire, Value::Bool(false), "the press at 145 let go at 150");
+}

@@ -702,6 +702,43 @@ fn scripts_reload_in_place_and_errors_are_data() {
     assert_eq!(ok(&mut d, "session.status", json!({}))["script_errors"], 1);
 }
 
+/// Found building Hollow: a script that failed on its first tick was turned
+/// off, and `script.errors` said nothing.
+#[test]
+fn a_system_a_fault_turned_off_is_listed_with_its_line() {
+    let t = temp("fault");
+    project(t.path());
+    let mut d = open(t.path());
+    write(
+        t.path(),
+        "systems/broken.luau",
+        "system \"sim.broken\" {\n  stage = \"sim\",\n  run = function(q)\n    error(\"no such thing\")\n  end,\n}\n",
+    );
+    ok(&mut d, "script.reload", json!({}));
+    assert_eq!(ok(&mut d, "script.errors", json!({}))["total"], 0);
+    ok(&mut d, "sim.step", json!({ "n": 2 }));
+    let errs = ok(&mut d, "script.errors", json!({}));
+    let rows = errs["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 1, "{errs}");
+    let row = &rows[0];
+    assert_eq!(row["phase"], "run");
+    assert_eq!(row["system"], "sim.broken");
+    assert_eq!(row["file"], "systems/broken.luau");
+    assert_eq!(row["line"], 4);
+    assert!(row["message"].as_str().unwrap().contains("no such thing"));
+    assert_eq!(ok(&mut d, "session.status", json!({}))["script_errors"], 1);
+
+    // Fixed and reloaded, it runs again and the row is gone.
+    write(
+        t.path(),
+        "systems/broken.luau",
+        "system \"sim.broken\" { stage = \"sim\", run = function(q) end }\n",
+    );
+    ok(&mut d, "script.reload", json!({}));
+    ok(&mut d, "sim.step", json!({ "n": 1 }));
+    assert_eq!(ok(&mut d, "script.errors", json!({}))["total"], 0);
+}
+
 #[test]
 fn rooms_stream_through_the_protocol() {
     let t = temp("rooms");
