@@ -139,8 +139,8 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "asset.list",
-        doc: "Every asset under assets/: sprites (a PNG, or a sidecar describing a shape) and sounds (a WAV, or a sidecar naming variations), with the warnings the importer found. A name is the path without the extension; sprites/hero is assets/sprites/hero.png with assets/sprites/hero.toml beside it.",
-        params: "kind: \"sprite\" | \"sound\" (optional); limit; cursor",
+        doc: "Every asset under assets/: sprites (a PNG, or a sidecar describing a shape), sounds (a WAV, or a sidecar naming variations), and animators (a sidecar with type = \"animator\": states, transitions, events by frame), with the warnings the importer found. A name is the path without the extension; sprites/hero is assets/sprites/hero.png with assets/sprites/hero.toml beside it. For an animator the frames and clips columns are its state count and names.",
+        params: "kind: \"sprite\" | \"sound\" | \"animator\" (optional); limit; cursor",
         returns: "{total, columns: [name, kind, source, frames, clips, warnings], rows, failed: [{name, message, at}], next}",
     },
     MethodDoc {

@@ -17,8 +17,12 @@
 
 #![warn(missing_docs)]
 
+pub mod animator;
 pub mod sidecar;
 
+pub use animator::{
+    AnimatorSpec, Condition, FrameEventSpec, Num, Op, Operand, StateSpec, Term, TransitionSpec,
+};
 use argus_audio::{SoundDef, Source};
 use argus_ecs::{ArgusError, Result};
 use serde_json::{json, Value as Json};
@@ -155,6 +159,8 @@ pub enum Asset {
     Sprite(SpriteAsset),
     /// A sound.
     Sound(SoundAsset),
+    /// An animator state machine.
+    Animator(AnimatorSpec),
 }
 
 /// A warning about an import: a sentence and where.
@@ -184,11 +190,12 @@ pub struct Entry {
 }
 
 impl Entry {
-    /// `sprite` or `sound`.
+    /// `sprite`, `sound`, or `animator`.
     pub fn kind(&self) -> &'static str {
         match self.asset {
             Asset::Sprite(_) => "sprite",
             Asset::Sound(_) => "sound",
+            Asset::Animator(_) => "animator",
         }
     }
 
@@ -207,6 +214,23 @@ impl Entry {
             "warnings": warnings,
         });
         match &self.asset {
+            Asset::Animator(a) => {
+                o["initial"] = json!(a.initial);
+                o["states"] = Json::Array(
+                    a.states
+                        .iter()
+                        .map(|s| {
+                            json!({
+                                "name": s.name,
+                                "clip": s.clip,
+                                "events": s.events.iter().map(|e| json!([e.frame, e.name, e.sound])).collect::<Vec<_>>(),
+                                "transitions": s.transitions.iter().map(|t| json!([t.to, t.when.text])).collect::<Vec<_>>(),
+                            })
+                        })
+                        .collect(),
+                );
+                o["any"] = Json::Array(a.any.iter().map(|t| json!([t.to, t.when.text])).collect());
+            }
             Asset::Sprite(s) => {
                 o["source"] = json!(s.source);
                 o["size"] = json!([s.width, s.height]);
@@ -445,6 +469,14 @@ impl Importer {
         })
     }
 
+    /// Animator state machines.
+    pub fn animators(&self) -> impl Iterator<Item = (&String, &AnimatorSpec)> {
+        self.entries.iter().filter_map(|(n, e)| match &e.asset {
+            Asset::Animator(a) => Some((n, a)),
+            _ => None,
+        })
+    }
+
     /// Sounds defined by sidecars, for the mixer.
     pub fn sidecar_sounds(&self) -> Vec<SoundDef> {
         self.entries
@@ -619,11 +651,30 @@ impl Importer {
         match kind {
             SidecarKind::Sprite => self.import_sprite(name, g, side_text.as_deref(), side_file.as_deref(), hash),
             SidecarKind::Sound => self.import_sound(name, g, side_text.as_deref(), side_file.as_deref(), hash),
+            SidecarKind::Animator => {
+                let file = side_file.clone().unwrap_or_default();
+                let (spec, notes) = animator::parse_animator(&file, side_text.as_deref().unwrap_or(""))?;
+                let warnings = notes
+                    .into_iter()
+                    .map(|(message, line)| Warning { message, at: format!("{file}:{line}") })
+                    .collect();
+                Ok((
+                    Entry {
+                        name: name.to_string(),
+                        sidecar: g.sidecar.clone(),
+                        hash,
+                        warnings,
+                        asset: Asset::Animator(spec),
+                        ms: 0.0,
+                    },
+                    Vec::new(),
+                ))
+            }
             SidecarKind::Unknown => Err(ArgusError::new(
                 codes::AMBIGUOUS,
-                format!("{name}: the sidecar describes neither a sprite nor a sound"),
+                format!("{name}: the sidecar describes no sprite, sound, or animator"),
             )
-            .hint("Give it type = \"sprite\" (with grid, [[frames]], or kind/size/color) or type = \"sound\" (with variations, tone, or file).")
+            .hint("Give it type = \"sprite\" (with grid, [[frames]], or kind/size/color), type = \"sound\" (with variations, tone, or file), or type = \"animator\" (with [states.<name>]).")
             .at(side_file.clone())),
         }
     }

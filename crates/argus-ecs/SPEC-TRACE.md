@@ -105,6 +105,12 @@ Release build, one thread, development laptop. Gates are `tests/perf.rs`; number
 | `world.query` over 100k entities under 2 ms: spatial predicates hit the broadphase hash, not a scan (§17). | Done | `within` at r=30 over 100k uniformly spread entities: 8 µs. The evaluator narrows its candidates through `Source::near` before reading a field. | `perf::perf_broadphase_rebuild_and_within_100k` |
 | Spawning many entities is one placement, not one move per component (§19 batch spawn). | Done | `World::spawn_with(&[ComponentId])` builds the default rows and pushes the entity into the target archetype once; `ComponentAdded` events still fire per component. | `spatial::spawn_with_places_the_entity_in_its_archetype_at_defaults` |
 
+## Phase 1, item 8: reading fields every tick
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| Transitions are field comparisons, 2,000 animators under 0.3 ms (§17). | Done | `DynColumn::num_by(row, field, axis)` reads a numeric, bool, or vec2-axis field as a number, and `DynColumn::str_id_by` a string field's id, without building a `Value` (which resolves strings and allocates). The animator reads every condition this way. | `argus-anim/tests/anim.rs::perf_two_thousand_animators` |
+
 ## Phase 1, item 6: what the physics step needed from the core
 
 | Spec | Status | Where | Test |

@@ -43,6 +43,12 @@ Every statement in the design document (v0.3) that constrains the daemon and the
 | The local socket needs no auth; remote access via tokens is later. | Done (phase-0 half) | Nothing listens beyond the local socket. | |
 | Identical result shapes from the live world or the index. | Deferred | Piece 6 will serve `world.*` and `scene.*` from the index when no world is loaded, with these shapes. | |
 
+## Phase 1, item 8: animators in every scene
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| An Animator runs a TOML state machine with events by frame (§13). | Done | Opening a scene installs `argus-anim` after the renderer registers `Sprite` and before scripts, so `anim.update` runs first in the late stage; its machines and sprite clips come from the importer and are refreshed after every import. `asset.list kind=animator` lists the machines (state count and names in the frames and clips columns). With no animators the system returns at once and allocates nothing. | `animation::the_player_runs_jumps_and_lands_and_its_footsteps_fire_a_sound`, `protocol::sim_and_events_answer_why_the_bat_died` |
+
 ## Phase 1, item 7: cameras in every scene
 
 | Spec | Status | Where | Test |

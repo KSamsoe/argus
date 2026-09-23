@@ -214,7 +214,10 @@ fn bad_sidecars_fail_with_the_line_and_the_rest_still_import() {
     assert_eq!(why["a"].1.as_deref(), Some("assets/a.toml:3"));
     assert!(why["b"].0.contains("shapes are rect and circle"));
     assert_eq!(why["b"].1.as_deref(), Some("assets/b.toml:2"));
-    assert!(why["c"].0.contains("neither a sprite nor a sound"));
+    assert!(
+        why["c"].0.contains("no sprite, sound, or animator"),
+        "{why:?}"
+    );
     assert!(why["d"].0.contains("both a .png and a .wav"));
     assert!(
         imp.get("fine").is_ok(),
@@ -310,4 +313,81 @@ fn a_sound_sidecar_names_its_variations_and_the_files_are_checked() {
     assert_eq!(r.failed[0].name, "sfx/step");
     assert!(r.failed[0].error.message.contains("step9.wav"));
     std::fs::remove_dir_all(&dir).ok();
+}
+
+/// Item 8: an animator is an asset (a sidecar with type = "animator" or
+/// [states]): parsed at import, its conditions checked for syntax, its
+/// problems errors with the line, unknown keys warnings.
+#[test]
+fn an_animator_imports_with_its_states_and_its_mistakes_have_lines() {
+    use argus_assets::{Num, Op, Operand};
+    let dir = project("animator");
+    write(
+        &dir,
+        "anim/hero.toml",
+        "type = \"animator\"\ninitial = \"idle\"\ncolour = \"red\"\n\n[states.idle]\nclip = \"idle\"\n\n[[states.idle.transitions]]\nto = \"run\"\nwhen = \"Body.grounded and abs(Body.vel.x) > 0.5\"\nblend = 0.1\n\n[states.run]\nclip = \"run\"\nfps = \"Feel.run_fps\"\nwindup = 2\nanticipation = 3\nevents = [{ frame = 1, name = \"footstep\", sound = \"sfx/step\" }, { frame = 3, sound = \"sfx/step\" }]\n\n[[states.run.transitions]]\nto = \"idle\"\nwhen = \"not Body.grounded\"\nwindow = [2, 3]\n\n[[any]]\nto = \"idle\"\nwhen = \"end\"\n",
+    );
+    // Found by its keys, without a type.
+    write(&dir, "anim/blink.toml", "[states.on]\nclip = \"blink\"\n");
+    let mut imp = Importer::new(&dir);
+    let rep = imp.scan();
+    assert!(rep.failed.is_empty(), "{:?}", rep.failed);
+    let e = &imp.entries()["anim/hero"];
+    assert_eq!(e.kind(), "animator");
+    assert_eq!(messages(e), ["unknown key \"colour\", ignored"]);
+    assert_eq!(e.warnings[0].at, "assets/anim/hero.toml:3");
+    let Asset::Animator(a) = &e.asset else {
+        panic!()
+    };
+    assert_eq!(a.initial, "idle");
+    let run = a.state("run").unwrap();
+    assert_eq!(run.fps, Some(Num::Field("Feel.run_fps".into())));
+    assert_eq!(
+        (run.windup, run.anticipation.clone()),
+        (2, Some(Num::Value(3.0)))
+    );
+    assert_eq!(run.events.len(), 2);
+    assert_eq!(
+        run.events[1].name, "sound",
+        "an event with only a sound is named sound"
+    );
+    assert_eq!(run.transitions[0].window, Some([2, 3]));
+    let idle = a.state("idle").unwrap();
+    let w = &idle.transitions[0].when;
+    assert_eq!(w.terms.len(), 2);
+    assert_eq!(
+        w.terms[1].what,
+        Operand::Field {
+            path: "Body.vel.x".into(),
+            abs: true
+        }
+    );
+    assert_eq!(w.terms[1].cmp, Some((Op::Gt, 0.5)));
+    assert!(
+        idle.transitions[0].at.ends_with(":9"),
+        "{}",
+        idle.transitions[0].at
+    );
+    assert_eq!(a.any[0].when.terms[0].what, Operand::End);
+    assert_eq!(imp.entries()["anim/blink"].kind(), "animator");
+    assert_eq!(imp.animators().count(), 2);
+    let j = e.to_json();
+    assert_eq!(j["states"][0]["name"], "idle");
+
+    // Mistakes are errors naming the line.
+    for (text, line, words) in [
+        ("[states.a]\nclip = \"a\"\n\n[[states.a.transitions]]\nto = \"b\"\nwhen = \"end\"\n", 5, "not a state; the states are a"),
+        ("[states.a]\nclip = \"a\"\n\n[[states.a.transitions]]\nto = \"a\"\nwhen = \"end or time > 1\"\n", 6, "join with and"),
+        ("[states.a]\nclip = \"a\"\n\n[[states.a.transitions]]\nto = \"a\"\nwhen = \"Body = 1\"\n", 6, "use == or !="),
+        ("[states.a]\nclip = \"a\"\n\n[[states.a.transitions]]\nto = \"a\"\nwhen = \"grounded\"\n", 6, "not a field path"),
+        ("[states.a]\nclip = \"a\"\nfps = true\n", 3, "a number or a field path"),
+        ("initial = \"b\"\n[states.a]\nclip = \"a\"\n", 1, "initial = \"b\" is not a state"),
+        ("[states.a]\nloop = true\n", 2, "needs clip"),
+    ] {
+        write(&dir, "anim/bad.toml", &format!("type = \"animator\"\n{text}"));
+        let rep = imp.scan();
+        let f = rep.failed.iter().find(|f| f.name == "anim/bad").unwrap_or_else(|| panic!("{text} did not fail"));
+        assert!(f.error.message.contains(words), "{text}: {}", f.error.message);
+        assert_eq!(f.error.r#ref.as_deref(), Some(format!("assets/anim/bad.toml:{}", line + 1).as_str()), "{text}: {}", f.error.message);
+    }
 }

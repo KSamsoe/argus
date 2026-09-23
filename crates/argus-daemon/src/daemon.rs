@@ -50,6 +50,8 @@ struct Session {
     /// Open tilemaps (phase 1, item 5), shared with the physics step so a
     /// tile edit is ground on the next tick (item 6).
     tiles: Rc<RefCell<argus_tiles::MapStore>>,
+    /// Animator machines and sprite clips (item 8), refreshed on import.
+    anims: Rc<RefCell<argus_anim::AnimStore>>,
 }
 
 struct EventLog {
@@ -589,6 +591,10 @@ impl Daemon {
         argus_physics::install(&mut self.world, &mut self.sched, tiles.clone())?;
         let zones = Rc::new(RefCell::new(argus_camera::Zones::default()));
         argus_camera::install(&mut self.world, &mut self.sched, zones.clone())?;
+        // After the renderer registered Sprite (which it writes), before
+        // scripts, so it runs first in the late stage.
+        let anims = Rc::new(RefCell::new(argus_anim::AnimStore::default()));
+        argus_anim::install(&mut self.world, &mut self.sched, anims.clone())?;
         let mut host = ScriptHost::new(ScriptConfig::default())?;
         host.load_project(&mut self.world, &mut self.sched, &root)?;
         let def_schemas: Vec<DefSchema> = host
@@ -632,6 +638,7 @@ impl Daemon {
         let mut assets = argus_assets::Importer::new(&root);
         let asset_report = assets.scan();
         tiles.borrow_mut().set_tilesets(&assets);
+        anims.borrow_mut().set_assets(&assets);
         #[cfg(feature = "render")]
         {
             self.render.offscreen = None;
@@ -671,6 +678,7 @@ impl Daemon {
             run_dir: None,
             assets,
             tiles,
+            anims,
         });
         self.asset_events(&asset_report, true);
         self.pump_events();
@@ -891,6 +899,7 @@ impl Daemon {
         if !changed.is_empty() {
             let ses = self.session.as_ref().expect("session");
             ses.tiles.borrow_mut().set_tilesets(&ses.assets);
+            ses.anims.borrow_mut().set_assets(&ses.assets);
             #[cfg(feature = "render")]
             {
                 if let Some((_, r)) = &mut self.render.window {
@@ -1008,6 +1017,14 @@ impl Daemon {
                     sp.source.clone().unwrap_or_else(|| "shape".to_string()),
                     sp.frames.len(),
                     sp.clips.keys().collect::<Vec<_>>(),
+                    e.warnings.len()
+                ]),
+                argus_assets::Asset::Animator(an) => json!([
+                    e.name,
+                    "animator",
+                    e.sidecar.clone().unwrap_or_default(),
+                    an.states.len(),
+                    an.states.iter().map(|s| s.name.clone()).collect::<Vec<_>>(),
                     e.warnings.len()
                 ]),
                 argus_assets::Asset::Sound(so) => json!([

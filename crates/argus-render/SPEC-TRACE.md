@@ -41,6 +41,7 @@ Every statement in the design document (v0.3) that constrains the renderer as ph
 | Spec | Status | Where | Test |
 |---|---|---|---|
 | Cameras are entities. | Done | Since item 7 `Camera` and `CameraShake` live in `argus-camera` (re-exported here). The view is the drawing camera's (`argus_camera::current`: active, highest priority), its position interpolated plus its shake offset, rolled by the shake's angle in the shader (the view uniform carries the roll; culling uses the rolled view's box). `FrameReport` says which camera drew and the view's centre, half size, and angle; `to_pixel` accounts for the roll. `view_for` gives a rolled view's bounding box for tile queries. | `render::described_shapes_render_where_the_camera_puts_them`, `render::the_priority_camera_draws_and_its_shake_moves_and_rolls_the_view` |
+| An animator's crossfade (§13, item 8). | Done | `Sprite.blend_frame` and `Sprite.blend` (0 to 1): the renderer draws that frame of the same atlas over the sprite's frame at that weight, as a second instance just above it in draw order, flipped and pivoted like the first. The animator writes both. | `argus-anim/tests/anim.rs::a_blend_crossfades_the_outgoing_frame_out` |
 
 ## Known limitations, stated so they are decisions
 

@@ -11,8 +11,9 @@ use crate::column::{ColMut, ColRef, Column};
 use crate::entity::Entity;
 use crate::error::{codes, ArgusError, Result};
 use crate::intern::Interner;
+use crate::intern::StrId;
 use crate::schema::{Component, ComponentId, ComponentSchema, FieldSchema, Registry};
-use crate::value::Value;
+use crate::value::{FieldType, Value, Vec2};
 use crate::world::World;
 
 /// Declared read and write sets. Writing implies reading.
@@ -357,6 +358,50 @@ impl<'a> DynColumn<'a> {
         // SAFETY: offset + size within the row.
         unsafe { f.ty.read(self.col.row_ptr(row).add(f.offset), self.strings) }
     }
+    /// A numeric or bool field as f64 (a vec2 as `axis` 0 or 1), without
+    /// building a `Value`: the per-row read of systems that compare fields
+    /// every tick (the animator's transitions). `None` for other types.
+    pub fn num_by(&self, row: usize, f: &FieldSchema, axis: Option<u8>) -> Option<f64> {
+        assert!(row < self.col.len(), "row out of range");
+        // SAFETY: offset + size within the row; the type decides the width.
+        unsafe {
+            let p = self.col.row_ptr(row).add(f.offset);
+            macro_rules! rd {
+                ($t:ty) => {
+                    core::ptr::read_unaligned(p as *const $t)
+                };
+            }
+            Some(match (f.ty, axis) {
+                (FieldType::Bool, _) => (rd!(u8) != 0) as u8 as f64,
+                (FieldType::U8, _) => rd!(u8) as f64,
+                (FieldType::U16, _) => rd!(u16) as f64,
+                (FieldType::U32, _) => rd!(u32) as f64,
+                (FieldType::U64, _) => rd!(u64) as f64,
+                (FieldType::I8, _) => rd!(i8) as f64,
+                (FieldType::I16, _) => rd!(i16) as f64,
+                (FieldType::I32, _) => rd!(i32) as f64,
+                (FieldType::I64, _) => rd!(i64) as f64,
+                (FieldType::F32, _) => rd!(f32) as f64,
+                (FieldType::F64, _) => rd!(f64),
+                (FieldType::Vec2, Some(0)) => rd!(Vec2).x as f64,
+                (FieldType::Vec2, Some(1)) => rd!(Vec2).y as f64,
+                _ => return None,
+            })
+        }
+    }
+
+    /// A string or reference field's interned id, without resolving it.
+    pub fn str_id_by(&self, row: usize, f: &FieldSchema) -> Option<StrId> {
+        assert!(row < self.col.len(), "row out of range");
+        match f.ty {
+            // SAFETY: a Str or Ref field is a StrId at its offset.
+            FieldType::Str | FieldType::Ref => Some(unsafe {
+                core::ptr::read_unaligned(self.col.row_ptr(row).add(f.offset) as *const StrId)
+            }),
+            _ => None,
+        }
+    }
+
     /// Write a field with coercion and range check.
     pub fn set(&self, row: usize, field: &str, value: impl Into<Value>) -> Result<()> {
         let f = self.field(field)?;

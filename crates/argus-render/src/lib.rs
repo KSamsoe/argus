@@ -69,6 +69,14 @@ pub struct Sprite {
     /// Draw at all.
     #[argus(doc = "Draw at all")]
     pub visible: bool,
+    /// A frame fading out over this one (an animator's crossfade).
+    #[argus(
+        doc = "A frame of the same atlas drawn over this one at weight blend, fading out (written by an Animator's crossfade)"
+    )]
+    pub blend_frame: u32,
+    /// Weight of `blend_frame`, 0 to 1.
+    #[argus(doc = "Weight of blend_frame, 0 (none) to 1", range(0, 1))]
+    pub blend: f32,
 }
 
 impl Default for Sprite {
@@ -82,6 +90,8 @@ impl Default for Sprite {
             z: 0.0,
             flip_x: false,
             visible: true,
+            blend_frame: 0,
+            blend: 0.0,
         }
     }
 }
@@ -505,6 +515,28 @@ impl Renderer {
                         color,
                     },
                 ));
+                // A crossfade: the outgoing frame over this one, fading.
+                if s.blend > 0.0 && s.atlas != StrId::EMPTY && ai != rect && ai != circle {
+                    if let Some(a) = gpu.atlas(&names[ai as usize]) {
+                        let f = (s.blend_frame as usize).min(a.frames.len().saturating_sub(1));
+                        let mut buv = a.frames[f];
+                        let mut bp = a.pivots.get(f).copied().unwrap_or([0.5, 0.5]);
+                        if s.flip_x {
+                            buv = [buv[0] + buv[2], buv[1], -buv[2], buv[3]];
+                            bp[0] = 1.0 - bp[0];
+                        }
+                        let w = s.blend.min(1.0);
+                        instances.push((
+                            ((zo + 1) << 32) | ai as u64,
+                            Instance {
+                                pos_size: [x, y, s.size.x * scale.x, s.size.y * scale.y],
+                                rot_z: [rot, s.z, bp[0], bp[1]],
+                                uv: buv,
+                                color: [color[0], color[1], color[2], color[3] * w],
+                            },
+                        ));
+                    }
+                }
             };
             let mut q = world.query().has(sp).has(tr);
             if let Some(gt) = gt {

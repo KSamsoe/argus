@@ -103,6 +103,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "argus-anim"
+version = "0.0.1"
+dependencies = [
+ "argus-assets",
+ "argus-ecs",
+ "argus-sim",
+ "serde_json",
+]
+
+[[package]]
 name = "argus-assets"
 version = "0.0.1"
 dependencies = [
@@ -149,6 +159,7 @@ dependencies = [
 name = "argus-daemon"
 version = "0.0.1"
 dependencies = [
+ "argus-anim",
  "argus-assets",
  "argus-audio",
  "argus-camera",
