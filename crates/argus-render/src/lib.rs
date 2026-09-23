@@ -13,7 +13,9 @@
 
 #![warn(missing_docs)]
 
+pub mod annotate;
 pub mod gpu;
+pub mod semantic;
 pub mod window;
 
 use argus_ecs::{
@@ -25,7 +27,9 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 use std::time::Instant;
 
+pub use annotate::{annotate, Mark};
 pub use gpu::{DrawStats, Gpu, Instance, Run};
+pub use semantic::{semantic, Describe, FrameSpec, SemanticFrame, View};
 
 /// Error codes this crate adds (50xx).
 pub mod codes {
@@ -114,6 +118,7 @@ use argus_particles::{lut_index, ParticleStore, LUT};
 /// Register the renderer's components (and the camera's, which it reads).
 pub fn register(world: &mut World) -> argus_ecs::Result<()> {
     world.register::<Sprite>()?;
+    world.register::<Describe>()?;
     argus_material::register(world)?;
     argus_camera::register(world)?;
     Ok(())

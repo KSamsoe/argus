@@ -9,6 +9,9 @@ pub fn result(v: &Json) -> String {
     let Some(obj) = v.as_object() else {
         return pretty(v);
     };
+    if obj.get("format").and_then(Json::as_str) == Some("semantic") {
+        return semantic(v);
+    }
     let Some(rows) = obj.get("rows").and_then(Json::as_array) else {
         return pretty(v);
     };
@@ -212,4 +215,102 @@ pub fn notification(n: &Json, as_json: bool) -> String {
         ),
         _ => format!("{method} {p}"),
     }
+}
+
+/// A semantic frame as lines to read, in the frame's own order: the view,
+/// the HUD, the entities one by one, the groups, the effects, the tiles.
+/// What a narrator would say, and what a person reads at a terminal.
+pub fn semantic(v: &Json) -> String {
+    let mut out = String::new();
+    let b = |x: &Json| match x.as_array() {
+        Some(a) if a.len() == 4 => format!(
+            "({},{})-({},{})",
+            cell(&a[0]),
+            cell(&a[1]),
+            cell(&a[2]),
+            cell(&a[3])
+        ),
+        _ => String::new(),
+    };
+    let rect = &v["camera"]["rect"];
+    let _ = writeln!(
+        out,
+        "Tick {}, {}x{} px. Camera {} shows x {} to {}, y {} to {}.",
+        cell(&v["tick"]),
+        cell(&v["size"][0]),
+        cell(&v["size"][1]),
+        cell(&v["camera"]["id"]),
+        cell(&rect[0]),
+        cell(&rect[2]),
+        cell(&rect[1]),
+        cell(&rect[3]),
+    );
+    for h in v["hud"].as_array().into_iter().flatten() {
+        let _ = writeln!(out, "HUD {}: {}", cell(&h["id"]), cell(&h["text"]));
+    }
+    for e in v["entities"].as_array().into_iter().flatten() {
+        let (id, name, text) = (cell(&e[0]), cell(&e[1]), cell(&e[2]));
+        let what = match (name.is_empty(), text.is_empty()) {
+            (true, true) => String::new(),
+            (false, true) => format!(" {name}"),
+            (true, false) => format!(": {text}"),
+            (false, false) => format!(" {name}: {text}"),
+        };
+        let _ = writeln!(out, "{id}{what}  at {}  {}", b(&e[3]), cell(&e[5]));
+    }
+    for g in v["groups"].as_array().into_iter().flatten() {
+        let _ = writeln!(
+            out,
+            "{} x{}  in {}  {}",
+            cell(&g["what"]),
+            cell(&g["count"]),
+            b(&g["bounds"]),
+            cell(&g["look"])
+        );
+    }
+    if v["omitted"].as_u64().unwrap_or(0) > 0 {
+        let _ = writeln!(out, "and {} more kinds not listed", cell(&v["omitted"]));
+    }
+    for fx in v["effects"].as_array().into_iter().flatten() {
+        let line = match fx["kind"].as_str().unwrap_or_default() {
+            "particles" => format!(
+                "Particles {} x{} from {} in {}",
+                cell(&fx["effect"]),
+                cell(&fx["count"]),
+                cell(&fx["emitter"]),
+                b(&fx["bounds"])
+            ),
+            "shake" => format!(
+                "Camera {} shakes, trauma {}",
+                cell(&fx["camera"]),
+                cell(&fx["trauma"])
+            ),
+            "material" => format!(
+                "Material {} on {} sprites",
+                cell(&fx["material"]),
+                cell(&fx["sprites"])
+            ),
+            _ => fx.to_string(),
+        };
+        let _ = writeln!(out, "{line}");
+    }
+    for m in v["tiles"]["maps"].as_array().into_iter().flatten() {
+        let _ = writeln!(
+            out,
+            "Tiles of {} ({}) from cell ({},{}), one character a cell ({}):",
+            cell(&m["entity"]),
+            cell(&m["map"]),
+            cell(&m["cell"][0]),
+            cell(&m["cell"][1]),
+            cell(&v["tiles"]["key"]),
+        );
+        for r in m["rows"].as_array().into_iter().flatten() {
+            let _ = writeln!(out, "  {}", cell(r));
+        }
+    }
+    for p in v["problems"].as_array().into_iter().flatten() {
+        let _ = writeln!(out, "Problem: {}", cell(p));
+    }
+    let _ = writeln!(out, "({} bytes)", cell(&v["bytes"]));
+    out
 }

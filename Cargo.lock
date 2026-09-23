@@ -272,6 +272,7 @@ dependencies = [
  "bytemuck",
  "png",
  "pollster",
+ "serde_json",
  "wgpu",
  "winit",
 ]

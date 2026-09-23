@@ -22,3 +22,7 @@ z = 5.0
 
 [Camera]
 height = 24.0
+
+[Describe]
+name = "hero"
+text = "HP {Health.cur}/{Health.max}, {Player.kills} kills"

@@ -1,1 +1,6 @@
 [Turn]
+
+# The line along the top of the screen, as the semantic frame reads it.
+[Describe]
+role = "hud"
+text = "Floor {@player:Player.floor}, turn {Turn.n}. HP {@player:Health.cur}/{@player:Health.max}."

@@ -5,3 +5,8 @@ track = "swarm"
 first = 50000
 growth = 1.0
 log_kills = false
+
+# The line along the top of the screen, as the semantic frame reads it.
+[Describe]
+role = "hud"
+text = "Wave {Director.wave}: {Director.alive} alive. {@player:Player.kills} kills, HP {@player:Health.cur}/{@player:Health.max}."

@@ -375,6 +375,12 @@ impl Daemon {
             "prof.alloc" => self.prof_alloc(params),
             "prof.capture" => self.prof_capture(params),
             "obs.frame" => self.obs_frame(params),
+            "obs.annotate" => {
+                let mut p = if params.is_object() { params.clone() } else { json!({}) };
+                p["format"] = json!("png");
+                p["annotate"] = json!(true);
+                self.obs_frame(&p)
+            }
             "audio.status" => self.audio_status(),
             "audio.play" => self.audio_play(params),
             "audio.stop" => self.audio_stop(params),
@@ -2710,13 +2716,22 @@ impl Daemon {
     fn obs_frame(&mut self, params: &Json) -> Result<Json> {
         self.require_session()?;
         let format = json::opt_str(params, "format")?.unwrap_or("png");
-        if format != "png" {
+        if format != "png" && format != "semantic" {
             return Err(bad_params(format!(
-                "format must be \"png\" in phase-1 item 1; got {format:?} (semantic frames are item 12)"
+                "format is \"png\" (the picture) or \"semantic\" (what the player sees, as data); got {format:?}"
             )));
         }
         let width = json::u64_param(params, "width", 640)?.clamp(1, 8192) as u32;
         let height = json::u64_param(params, "height", 360)?.clamp(1, 8192) as u32;
+        let limit = json::u64_param(params, "limit", 24)?.min(1000) as usize;
+        let groups = json::u64_param(params, "groups", 12)?.min(1000) as usize;
+        let annotate = json::bool_param(params, "annotate", false)?;
+        if format == "semantic" {
+            // No picture, so no GPU: this works on a machine with no adapter.
+            self.refresh_assets();
+            let _ = self.sched.present(&mut self.world);
+            return Ok(self.semantic_json(width, height, limit, groups, None));
+        }
         let software = json::bool_param(params, "software", false)?;
         let root = self.session.as_ref().expect("session").root.clone();
         let path = match json::opt_str(params, "path")? {
@@ -2734,7 +2749,9 @@ impl Daemon {
                 .join(format!("frame-{}.png", self.sched.tick())),
         };
         let tick = self.sched.tick();
-        let alpha = self.sched.alpha();
+        // A picture of the world as it is now, the state world.query sees:
+        // not part way from the tick before, as a window between ticks is.
+        let alpha = 1.0;
         self.refresh_assets();
         let extras = self.tile_extras(argus_render::view_for(&self.world, width, height));
         let r = self.render.offscreen(
@@ -2748,9 +2765,41 @@ impl Daemon {
         let store = self.session.as_ref().expect("session").particles.borrow();
         let rep = r.render_frame(&self.world, tick, alpha, &extras, Some(&store))?;
         drop(store);
-        let img = r.capture()?;
+        let mut img = r.capture()?;
+        // Annotated: the ids and bounds of what was drawn, over the picture,
+        // from the semantic frame of the same view.
+        let marks = if annotate {
+            let view = argus_render::View {
+                center: rep.view_center,
+                half: rep.view_half,
+                angle: rep.view_angle,
+            };
+            let ses = self.session.as_ref().expect("session");
+            let store = ses.particles.borrow();
+            let sf = argus_render::semantic(
+                &self.world,
+                &argus_render::FrameSpec {
+                    width,
+                    height,
+                    limit,
+                    groups,
+                    assets: Some(&ses.assets),
+                    particles: Some(&store),
+                    view: Some(view),
+                },
+            );
+            let marks = argus_render::annotate(&mut img, &sf);
+            Some(
+                marks
+                    .iter()
+                    .map(|m| json!([m.label, m.bounds, m.labelled]))
+                    .collect::<Vec<_>>(),
+            )
+        } else {
+            None
+        };
         img.save_png(&path)?;
-        Ok(json!({
+        let mut out = json!({
             "path": path.to_string_lossy(),
             "width": width,
             "height": height,
@@ -2777,10 +2826,133 @@ impl Daemon {
                     rep.view_center[1] + rep.view_half[1],
                 ],
             },
-            "adapter": r.gpu().adapter,
-            "software": r.gpu().software,
+            "adapter": self.render.offscreen.as_ref().map(|o| o.2.gpu().adapter.clone()),
+            "software": self.render.offscreen.as_ref().is_some_and(|o| o.2.gpu().software),
             "ms": rep.ms,
-        }))
+        });
+        if let Some(marks) = marks {
+            out["annotated"] = json!(true);
+            out["mark_columns"] = json!(["label", "bounds", "labelled"]);
+            out["marks"] = Json::Array(marks);
+        }
+        Ok(out)
+    }
+
+    /// The semantic frame (section 8 L4) as the protocol returns it: the
+    /// renderer's part, the tick, the collision of the tilemaps in view,
+    /// and its own size.
+    #[cfg(feature = "render")]
+    fn semantic_json(
+        &mut self,
+        width: u32,
+        height: u32,
+        limit: usize,
+        groups: usize,
+        view: Option<argus_render::View>,
+    ) -> Json {
+        let started = std::time::Instant::now();
+        let ses = self.session.as_ref().expect("session");
+        let store = ses.particles.borrow();
+        let sf = argus_render::semantic(
+            &self.world,
+            &argus_render::FrameSpec {
+                width,
+                height,
+                limit,
+                groups,
+                assets: Some(&ses.assets),
+                particles: Some(&store),
+                view,
+            },
+        );
+        drop(store);
+        let mut out = sf.to_json();
+        out["tick"] = json!(self.sched.tick());
+        out["time"] = json!((self.sched.time() * 1000.0).round() / 1000.0);
+        let maps = self.semantic_tiles(&sf, width, height);
+        if !maps.is_empty() {
+            out["tiles"] = json!({
+                "key": "# solid, - one-way, / and \\ slopes, _ partial, . empty",
+                "maps": maps,
+            });
+        }
+        out["ms"] = json!((started.elapsed().as_secs_f64() * 1e4).round() / 10.0);
+        let bytes = serde_json::to_string(&out).map(|s| s.len()).unwrap_or(0);
+        out["bytes"] = json!(bytes + 16);
+        out
+    }
+
+    /// What the tilemaps in view collide with, one character a cell, top
+    /// row first, with where the first cell is in the frame's pixels.
+    #[cfg(feature = "render")]
+    fn semantic_tiles(
+        &mut self,
+        sf: &argus_render::SemanticFrame,
+        width: u32,
+        height: u32,
+    ) -> Vec<Json> {
+        let Some(tm) = self.world.component_id_of::<argus_tiles::Tilemap>() else {
+            return Vec::new();
+        };
+        let mut maps = Vec::new();
+        for e in self.world.query().has(tm).entities() {
+            let Ok(t) = self.world.get::<argus_tiles::Tilemap>(e) else {
+                continue;
+            };
+            if !t.visible {
+                continue;
+            }
+            let origin = self
+                .world
+                .get::<argus_ecs::GlobalTransform>(e)
+                .map(|g| [g.pos.x, g.pos.y])
+                .or_else(|_| {
+                    self.world
+                        .get::<argus_ecs::Transform>(e)
+                        .map(|t| [t.pos.x, t.pos.y])
+                })
+                .unwrap_or([0.0, 0.0]);
+            maps.push((
+                json::entity_str(&self.world, e),
+                self.world.strings().resolve(t.map),
+                origin,
+            ));
+        }
+        let Some(ses) = self.session.as_ref() else {
+            return Vec::new();
+        };
+        let mut st = ses.tiles.borrow_mut();
+        let v = sf.view;
+        let (w, h) = (width as f32, height as f32);
+        let mut out = Vec::new();
+        for (id, file, origin) in maps {
+            let Some(g) = st.grid(&file, origin) else {
+                continue;
+            };
+            let Some((rows, cell, step)) = st.collision_rows(&g, sf.rect, [64, 36]) else {
+                continue;
+            };
+            if rows.iter().all(|r| r.chars().all(|c| c == '.')) {
+                continue;
+            }
+            // The first cell's top-left corner in pixels, and pixels a character.
+            let (x, y) = (g.left(cell[0]), g.top(cell[1]));
+            let (dx, dy) = (x - v.center[0], y - v.center[1]);
+            let (sn, cs) = v.angle.sin_cos();
+            let (vx, vy) = (dx * cs + dy * sn, -dx * sn + dy * cs);
+            let px = vx / (2.0 * v.half[0]) * w + w / 2.0;
+            let py = h / 2.0 - vy / (2.0 * v.half[1]) * h;
+            let per = step as f32 * g.tile / (2.0 * v.half[0]) * w;
+            out.push(json!({
+                "entity": id,
+                "map": file,
+                "cell": cell,
+                "step": step,
+                "at": [px.round(), py.round(), (per * 10.0).round() / 10.0],
+                "rows": rows,
+            }));
+        }
+        out
     }
 
     #[cfg(feature = "render")]
@@ -3741,11 +3913,17 @@ pub fn daemon_info_path(root: &Path) -> PathBuf {
     root.join(".argus").join("daemon.json")
 }
 
-/// Sim seconds for shaders: the tick's time plus how far into the next the
-/// frame is, so an animated material moves smoothly between ticks.
+/// Sim seconds for shaders, at the moment the picture shows: a frame drawn
+/// at `alpha` shows the tick before blended towards this one, so it is this
+/// tick's time less the part of a tick not yet blended in. At alpha 1 (a
+/// picture of now) it is the tick's time.
 #[cfg(feature = "render")]
 fn shader_time(sched: &argus_sim::Scheduler, alpha: f32) -> f32 {
     let hz = sched.driving().hz();
-    let ahead = if hz > 0.0 { alpha as f64 / hz } else { 0.0 };
-    (sched.time() + ahead) as f32
+    let behind = if hz > 0.0 {
+        (1.0 - alpha as f64) / hz
+    } else {
+        0.0
+    };
+    (sched.time() - behind).max(0.0) as f32
 }

@@ -403,9 +403,15 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "obs.frame",
-        doc: "Render the current world offscreen and write it as a PNG (section 8 L5). Sprites come from the world and the view from the drawing camera (the active Camera with the highest priority, its shake included); described shapes need no asset. camera and view say which camera drew and the world rect it showed. Semantic frames and annotation arrive with phase-1 item 12.",
-        params: "format: \"png\" (default); width: integer (default 640); height: integer (default 360); path: string (default .argus/frames/frame-<tick>.png); software: boolean (force the software rasteriser)",
-        returns: "{path, width, height, tick, alpha, sprites, draw_calls, atlases, missing_atlases, interpolated, particles, materials, missing_materials, material_problems, camera, view: {center, half, angle, rect: [x0, y0, x1, y1]}, adapter, ms}",
+        doc: "What the player sees. format \"semantic\" (section 8 L4) is data, about 3 KB, and needs no GPU: the camera and the world rect it shows; hud, the lines of entities on the screen rather than in the world; entities, the described and named ones in view with their Describe text filled in, bounds in pixels (x0, y0, x1, y1, y down) of a width x height frame, z, and how they are drawn, in reading order; groups, everything else by kind (their game components, else their name or look) with a count, bounds, and the first ids; effects on screen (camera shake, particles, materials); tiles, what the tilemaps in view collide with, a character a cell; and bytes. The same frame is a screen-reader feed. format \"png\" (section 8 L5) renders the world as it is now and writes a PNG; with annotate: true the ids and bounds of the semantic frame are drawn over it (yellow for entities, cyan for groups) and returned as marks. Sprites come from the world and the view from the drawing camera (the active Camera with the highest priority, its shake included); described shapes need no asset.",
+        params: "format: \"png\" (default) | \"semantic\"; width: integer (default 640); height: integer (default 360); limit: entities listed one by one (default 24); groups: groups listed (default 12); annotate: boolean (png only); path: string (default .argus/frames/frame-<tick>.png); software: boolean (force the software rasteriser)",
+        returns: "png: {path, width, height, tick, alpha, sprites, draw_calls, atlases, missing_atlases, interpolated, particles, materials, missing_materials, material_problems, camera, view: {center, half, angle, rect: [x0, y0, x1, y1]}, adapter, ms, marks?}; semantic: {format, size, camera: {id, rect, angle}, hud: [{id, name?, role?, text, bounds?}], columns: [id, name, text, bounds, z, look], entities, groups: [{what, count, bounds, look, ids}], effects, omitted, problems, tick, time, tiles?: {key, maps: [{entity, map, cell, step, at: [x, y, px a cell], rows}]}, bytes}",
+    },
+    MethodDoc {
+        name: "obs.annotate",
+        doc: "obs.frame with format \"png\" and annotate: true: the picture with the ids and bounds of what is on it drawn over it, and those marks returned, so what is seen can be matched to what can be queried (section 8 L5).",
+        params: "width, height, limit, groups, path, software: as obs.frame",
+        returns: "as obs.frame's png, with marks: [[label, bounds, labelled]]",
     },
     MethodDoc {
         name: "obs.subscribe",

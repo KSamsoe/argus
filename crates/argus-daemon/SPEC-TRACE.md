@@ -43,6 +43,15 @@ Every statement in the design document (v0.3) that constrains the daemon and the
 | The local socket needs no auth; remote access via tokens is later. | Done (phase-0 half) | Nothing listens beyond the local socket. | |
 | Identical result shapes from the live world or the index. | Deferred | Piece 6 will serve `world.*` and `scene.*` from the index when no world is loaded, with these shapes. | |
 
+## Phase 1, item 12: semantic frames and annotated screenshots
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| L4 `obs.frame {format: "semantic"}` (§8). | Done | The renderer's semantic frame plus the tick, the time, what the tilemaps in view collide with (`tiles.maps[].rows`, one character a cell, top row first, with the first cell and where it falls in the frame's pixels; every second or third cell past 64 by 36), its own `bytes`, and `ms`. It builds no renderer, so it answers on a machine with no adapter; it runs the present stage first, like the picture. | `semantic::the_semantic_frame_says_what_the_player_sees_and_the_picture_is_marked` |
+| L5 `obs.frame {format: "png", annotate: true}` (§8). | Done | The picture with the same frame's ids and bounds drawn over it, from the view it was drawn with, and the marks returned. `obs.annotate` (the method table's name) is the same call. `obs.frame` now draws the current tick at alpha 1: a stepped world used to be pictured part way from the tick before, a tick behind what `world.query` said, once the offscreen renderer had drawn a frame. | same |
+| Delve lives at L4: the semantic frame carries the map, the log, and the menus (§8). | Partial | Delve's hero, monsters (name and HP), and stairs describe themselves and its turn counter is a HUD line, so a turn reads in under 1 KB. Its map is drawn as tile entities, so the frame gives it as one group with its bounds; a map on the engine's tilemaps would come as collision rows. The log is `obs.events`; menus wait for the UI tree. | `examples/delve` (`argus obs frame format=semantic`) |
+| (Found while building it.) | Done | The shader time the renderer was given ran a tick ahead of what the picture showed; it is now the drawn moment. | |
+
 ## Phase 1, item 11: materials
 
 | Spec | Status | Where | Test |
@@ -74,7 +83,7 @@ Every statement in the design document (v0.3) that constrains the daemon and the
 
 | Spec | Status | Where | Test |
 |---|---|---|---|
-| Cameras follow within room bounds (§12); the semantic frame reports the camera rect (§8). | Done (the rect; the semantic frame is item 12) | Opening a scene installs `argus-camera` whether or not the renderer is built, and fills its zones from every room's `bounds` (or the flat scene's). `obs.frame` returns `camera` (which one drew) and `view {center, half, angle, rect}`. With no cameras, `camera.update` returns at once and allocates nothing. | `camera::a_camera_follows_the_player_through_two_rooms_and_keeps_to_each`, `protocol::sim_and_events_answer_why_the_bat_died` |
+| Cameras follow within room bounds (§12); the semantic frame reports the camera rect (§8). | Done | Opening a scene installs `argus-camera` whether or not the renderer is built, and fills its zones from every room's `bounds` (or the flat scene's). `obs.frame` returns `camera` (which one drew) and `view {center, half, angle, rect}`. With no cameras, `camera.update` returns at once and allocates nothing. | `camera::a_camera_follows_the_player_through_two_rooms_and_keeps_to_each`, `protocol::sim_and_events_answer_why_the_bat_died` |
 
 ## Phase 1, item 6: physics in every scene
 
@@ -87,7 +96,7 @@ Every statement in the design document (v0.3) that constrains the daemon and the
 | Spec | Status | Where | Test |
 |---|---|---|---|
 | L0 summary, L1 query, L2 events. | Done | `world.summary`, `world.query`, `obs.events` / `obs.subscribe`. | `protocol::*` |
-| L3 diff, L4 semantic frame, L5 pixels, `obs.trace`, `obs.why`. | Deferred | Phase 1. See the decision below. | |
+| L3 diff, L4 semantic frame, L5 pixels, `obs.trace`, `obs.why`. | Partial | L4 and L5 are phase 1's items 1 and 12; L3, `obs.trace`, and `obs.why` are item 13. See the decision below. | |
 
 ## §10 Human–agent collaboration
 

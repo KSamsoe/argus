@@ -1,7 +1,7 @@
 return system "sim.floor" {
   stage = "sim",
   reads = { "Floor", "Player", "Monster", "Stairs", "Transform", "Tile" },
-  writes = { "Floor", "Player", "Monster", "Stairs", "Transform", "Health", "Sprite", "Tile" },
+  writes = { "Floor", "Player", "Monster", "Stairs", "Transform", "Health", "Sprite", "Tile", "Describe" },
   rng = "floor",
   doc = "Generates a floor when there is none or the hero asked to descend: rooms, L-shaped corridors, the hero in the first room, stairs in the last, monsters never within four steps of the hero.",
   run = function(q)
@@ -61,7 +61,8 @@ return system "sim.floor" {
 
     local first, last = rooms[1], rooms[#rooms]
     pe:get("Transform").pos = { x = first.cx, y = first.cy }
-    local st = q:spawn({ "Stairs", "Transform", "Sprite" })
+    local st = q:spawn({ "Stairs", "Transform", "Sprite", "Describe" })
+    st:get("Describe").name = "stairs"
     st:get("Transform").pos = vector.create(last.cx, last.cy, 0)
     local ss = st:get("Sprite")
     ss.kind = "rect"
@@ -93,7 +94,11 @@ return system "sim.floor" {
       local y = rng:range(r.y, r.y + r.h - 1)
       if math.abs(x - first.cx) + math.abs(y - first.cy) > 4 then
         local k = kinds[rng:range(1, 3)]
-        local m = q:spawn({ "Monster", "Health", "Transform", "Sprite" })
+        local m = q:spawn({ "Monster", "Health", "Transform", "Sprite", "Describe" })
+        -- What the semantic frame (and a screen reader) says about it.
+        local d = m:get("Describe")
+        d.name = k
+        d.text = "HP {Health.cur}/{Health.max}"
         local mo = m:get("Monster")
         mo.kind = k
         mo.atk = (k == "goblin") and 3 or 1

@@ -446,3 +446,41 @@ fn the_binary_finds_starts_and_stops_a_project_daemon() {
     assert_eq!(out.trim(), "not running");
     assert!(root.join(".argus").join("daemon.log").exists());
 }
+
+/// A semantic frame reads as lines, in the frame's order: what a narrator
+/// would say.
+#[test]
+fn a_semantic_frame_reads_as_lines() {
+    let text = render::result(&json!({
+        "format": "semantic", "tick": 7, "size": [640, 360],
+        "camera": { "id": "@camera", "rect": [0, 0, 16, 9], "angle": 0 },
+        "hud": [{ "id": "@hud", "text": "Coins 3" }],
+        "columns": ["id", "name", "text", "bounds", "z", "look"],
+        "entities": [["@player", "player", "HP 3", [1, 2, 3, 4], 5, "rect #FFFFFF"], ["e:9", "", "", [5, 6, 7, 8], 0, "circle"]],
+        "groups": [{ "what": "Coin", "count": 5, "bounds": [0, 0, 9, 9], "look": "circle #FFD866", "ids": [] }],
+        "effects": [{ "kind": "shake", "camera": "@camera", "trauma": 0.5 }],
+        "omitted": 0, "problems": [],
+        "tiles": { "key": "# solid", "maps": [{ "entity": "@floor", "map": "m", "cell": [0, 0], "rows": ["..##"] }] },
+        "bytes": 800
+    }));
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(
+        lines[0],
+        "Tick 7, 640x360 px. Camera @camera shows x 0 to 16, y 0 to 9."
+    );
+    assert_eq!(lines[1], "HUD @hud: Coins 3");
+    assert_eq!(
+        lines[2],
+        "@player player: HP 3  at (1,2)-(3,4)  rect #FFFFFF"
+    );
+    assert_eq!(lines[3], "e:9  at (5,6)-(7,8)  circle");
+    assert_eq!(lines[4], "Coin x5  in (0,0)-(9,9)  circle #FFD866");
+    assert_eq!(lines[5], "Camera @camera shakes, trauma 0.5");
+    assert!(
+        lines[6].starts_with("Tiles of @floor (m) from cell (0,0)"),
+        "{}",
+        lines[6]
+    );
+    assert_eq!(lines[7], "  ..##");
+    assert_eq!(lines[8], "(800 bytes)");
+}

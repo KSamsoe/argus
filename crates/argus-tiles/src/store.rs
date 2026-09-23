@@ -206,6 +206,44 @@ impl MapStore {
         })
     }
 
+    /// The collision of a map's cells inside a world rect (`x0, y0, x1,
+    /// y1`, y up), one character a cell ([`Collide::ch`]), top row first.
+    /// Past `max` columns or rows it takes every `step`th cell. Returns the
+    /// rows, the first cell (column, row), and the step; `None` when the
+    /// rect misses the map.
+    pub fn collision_rows(
+        &mut self,
+        g: &TileGrid,
+        rect: [f32; 4],
+        max: [usize; 2],
+    ) -> Option<(Vec<String>, [i64; 2], usize)> {
+        let c0 = g.col(rect[0]).max(0);
+        let c1 = g.col(rect[2]).min(g.width as i64 - 1);
+        let r0 = g.row(rect[3]).max(0);
+        let r1 = g.row(rect[1]).min(g.height as i64 - 1);
+        if c1 < c0 || r1 < r0 {
+            return None;
+        }
+        let (cols, rows) = ((c1 - c0 + 1) as usize, (r1 - r0 + 1) as usize);
+        let step = cols
+            .div_ceil(max[0].max(1))
+            .max(rows.div_ceil(max[1].max(1)))
+            .max(1);
+        let mut out = Vec::new();
+        let mut r = r0;
+        while r <= r1 {
+            let mut line = String::new();
+            let mut c = c0;
+            while c <= c1 {
+                line.push(self.collide(g, c, r).ch());
+                c += step as i64;
+            }
+            out.push(line);
+            r += step as i64;
+        }
+        Some((out, [c0, r0], step))
+    }
+
     /// The collision of cell `(c, r)` of a grid: every collision layer
     /// combined by [`Collide::rank`]. Outside the map is empty.
     pub fn collide(&mut self, g: &TileGrid, c: i64, r: i64) -> Collide {

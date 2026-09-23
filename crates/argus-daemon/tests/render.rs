@@ -79,7 +79,7 @@ fn obs_frame_writes_a_png_of_the_authored_sprites() {
         .map(|f| f["name"].as_str().unwrap())
         .collect();
     assert!(fields.contains(&"atlas") && fields.contains(&"kind") && fields.contains(&"color"));
-    let bad = err(&mut d, "obs.frame", json!({ "format": "semantic" }));
+    let bad = err(&mut d, "obs.frame", json!({ "format": "svg" }));
     assert_eq!(bad.code, argus_daemon::codes::BAD_PARAMS);
 }
 

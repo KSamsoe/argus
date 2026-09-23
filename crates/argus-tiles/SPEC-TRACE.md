@@ -57,6 +57,12 @@ Every statement in the design document (v0.3) that constrains tilemaps as phase 
 |---|---|---|---|
 | A tilemap is drawn with the sprites. | Done | A `Tilemap` component places a map; its entity's `Transform` is the top-left corner of tile (0, 0), and tile (c, r) is centred at (x + (c + 0.5)·size, y − (r + 0.5)·size). Each frame the daemon asks `visible` for the tiles the camera sees and passes them to the renderer as extra sprites (`Renderer::render_with`), drawn from the tileset's atlas with the layer's `z`. A missing tileset draws magenta and is listed in `missing_atlases`. `visible = false` hides a map. | `visible_tiles_are_the_ones_the_view_covers`, `argus-daemon/tests/tiles.rs` |
 
+## Phase 1, item 12: tiles in the semantic frame
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| The semantic frame says what the player sees (§8 L4), and for a platformer that is mostly the ground. | Done | `MapStore::collision_rows` gives a map's collision inside a world rect, one character a cell (`Collide::ch`), top row first, taking every `step`th cell past a size. The daemon puts it in the frame for every tilemap in view. | `argus-daemon/tests/semantic.rs` |
+
 ## Known limitations, stated so they are decisions
 
 - A big fill is a big edit. A 1,024 × 1,024 fill touches 256 chunks and takes 85 ms including the save; brush-sized edits stay well under a frame.
