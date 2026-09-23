@@ -44,6 +44,8 @@ pub struct SystemDecl {
     pub rng: Option<String>,
     /// Doc string.
     pub doc: String,
+    /// `on_load = true`: also run once when the scene loads.
+    pub on_load: bool,
     /// The `run` function.
     pub run: RegistryKey,
     /// `file:line`.
@@ -400,6 +402,7 @@ pub(crate) fn install_globals(lua: &Lua) -> LuaResult<()> {
                     clock: spec.get("clock")?,
                     rng: spec.get("rng")?,
                     doc: spec.get::<Option<String>>("doc")?.unwrap_or_default(),
+                    on_load: spec.get::<Option<bool>>("on_load")?.unwrap_or(false),
                     run: lua.create_registry_value(run)?,
                     source: source.clone(),
                     file: lua

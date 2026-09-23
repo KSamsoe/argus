@@ -125,6 +125,10 @@ pub struct SystemDesc {
     /// after this one (the physics step: gameplay sets velocities, then
     /// bodies move). `after` constraints still hold.
     pub last: bool,
+    /// Also run once when a scene loads, before the first tick
+    /// (`Scheduler::run_load`): a game that builds its world from the seed
+    /// shows it before the first command.
+    pub on_load: bool,
 }
 
 impl SystemDesc {
@@ -140,7 +144,14 @@ impl SystemDesc {
             source: None,
             doc: String::new(),
             last: false,
+            on_load: false,
         }
+    }
+
+    /// Also run once when a scene loads, before the first tick.
+    pub fn on_load(mut self) -> Self {
+        self.on_load = true;
+        self
     }
     /// Run at the end of the stage: after every system that is not itself
     /// last and does not order itself after this one.

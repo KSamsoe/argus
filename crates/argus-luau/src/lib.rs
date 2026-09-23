@@ -477,6 +477,9 @@ impl ScriptHost {
         if let Some(r) = &s.rng {
             desc = desc.rng(r);
         }
+        if s.on_load {
+            desc = desc.on_load();
+        }
         let run: Function = self.lua.registry_value(&s.run).map_err(to_argus)?;
         let lua = self.lua.clone();
         let budget = self.budget.clone();

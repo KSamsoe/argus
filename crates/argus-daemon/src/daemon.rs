@@ -737,8 +737,16 @@ impl Daemon {
         });
         self.asset_events(&asset_report, true);
         self.pump_events();
+        // Systems declared `on_load` run now, with everything they could
+        // read in place, so the first frame shows what they build. What they
+        // emit is the run's, not the load's: `run_from` is where a test's
+        // events begin.
+        let run_from = self.events.next_seq;
+        self.sched.run_load(&mut self.world)?;
+        self.pump_events();
         self.sync_index(false);
         let mut out = self.world_summary()?;
+        out["run_from"] = json!(run_from);
         if !issues.is_empty() {
             out["issues"] = Json::Array(issues.iter().map(json::error_json).collect());
         }

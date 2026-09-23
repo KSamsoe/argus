@@ -146,6 +146,8 @@ pub struct SystemInfo {
     pub doc: String,
     /// Runs at the end of its stage.
     pub last: bool,
+    /// Also runs once when a scene loads (`run_load`).
+    pub on_load: bool,
 }
 
 /// Runs systems over a world on two clocks.
@@ -357,6 +359,7 @@ impl Scheduler {
                     source: s.desc.source.clone(),
                     doc: s.desc.doc.clone(),
                     last: s.desc.last,
+                    on_load: s.desc.on_load,
                 });
             }
         }
@@ -819,6 +822,39 @@ impl Scheduler {
             let name = self.systems[i].name.clone();
             self.sample(samples, name, t, a1 - a0, b1 - b0);
         }
+    }
+
+    /// Run, once, every enabled system declared `on_load`, in stage order,
+    /// on the world as a scene load left it: before the first tick, at its
+    /// tick and frame, from the same RNG streams. The design's stages run on
+    /// ticks only, so a discrete game that generates its floor in `sim`
+    /// showed an empty screen until the first key (found when Kevin played
+    /// Delve). Returns how many ran.
+    pub fn run_load(&mut self, world: &mut World) -> Result<usize> {
+        self.ensure_order()?;
+        let kind = self.config.driving;
+        let (tick, time, dt) = (
+            self.driving().tick,
+            self.driving().time(),
+            self.driving().timestep,
+        );
+        let mut ran = 0;
+        for stage in [Stage::Input, Stage::Sim, Stage::Late, Stage::Hierarchy] {
+            let order = self.order[stage.index()].clone();
+            for i in order {
+                let s = &self.systems[i];
+                if !s.enabled || !s.desc.on_load || !self.binds(i, kind) {
+                    continue;
+                }
+                self.run_system(i, world, stage, kind, tick, time, dt);
+                ran += 1;
+            }
+        }
+        if ran > 0 {
+            argus_ecs::propagate(world)?;
+            world.rebuild_broadphase();
+        }
+        Ok(ran)
     }
 
     /// Run the `present` stage once. Returns true if any system ran.

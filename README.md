@@ -218,7 +218,7 @@ Phase 1's items and their constraints are in [docs/phase1-checklist.md](docs/pha
 
 ## Where phase 1 stands
 
-Items 0 to 13 are all built, each with its trace. The gate is half done, recorded in [docs/phase1-gate.md](docs/phase1-gate.md). The agent built a three-room slice of Hollow in [examples/hollow](examples/hollow) through the CLI: tiles, a kinematic hero, one-way planks, a following camera, and a run, jump, and land animation whose footsteps make a sound. Comparing its pictures with its semantic frames showed the hall's pit drawn as more floor, because nothing was painted behind it, and one tile transaction fixed it. Building it found five faults, all fixed. For the other half, Kevin played on 2026-09-23. The game ran well, and the one fault he found, a close button that froze the game, is fixed.
+Items 0 to 13 are all built, each with its trace. The gate is passed, recorded in [docs/phase1-gate.md](docs/phase1-gate.md). The agent built a three-room slice of Hollow in [examples/hollow](examples/hollow) through the CLI: tiles, a kinematic hero, one-way planks, a following camera, and a run, jump, and land animation whose footsteps make a sound. Comparing its pictures with its semantic frames showed the hall's pit drawn as more floor, because nothing was painted behind it, and one tile transaction fixed it. Building it found five faults, all fixed. For the other half, Kevin played Swarm and Delve on 2026-09-23. Both ran well, and the two faults he found are fixed: a close button that froze the game, and Delve opening on an empty screen until the first move.
 
 ## Where phase 0 stands
 

@@ -1,5 +1,6 @@
 return system "sim.floor" {
   stage = "sim",
+  on_load = true, -- the first floor is there before the first key
   reads = { "Floor", "Player", "Monster", "Stairs", "Transform", "Tile" },
   writes = { "Floor", "Player", "Monster", "Stairs", "Transform", "Health", "Sprite", "Tile", "Describe" },
   rng = "floor",

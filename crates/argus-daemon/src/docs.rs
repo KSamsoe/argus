@@ -21,7 +21,7 @@ pub const METHODS: &[MethodDoc] = &[
         name: "session.open",
         doc: "Open a project and load a scene into the one world this daemon holds. Scripts in components/, defs/, systems/ load first, then prefabs and defs, then the scene.",
         params: "project: string (directory with argus.toml); scene: string (default from argus.toml); seed: integer (default: the scene's seed policy)",
-        returns: "the world.summary, plus issues: [] when the scene could not be instantiated",
+        returns: "the world.summary, plus issues: [] when the scene could not be instantiated, and run_from: the seq of the run's first event (after the load's own; what on_load systems emit is the run's)",
     },
     MethodDoc {
         name: "session.status",
@@ -117,7 +117,7 @@ pub const METHODS: &[MethodDoc] = &[
         name: "scene.load",
         doc: "Reload the current scene, or switch to another one. Re-reads scripts, prefabs, defs, and files, and rebuilds the world.",
         params: "scene: string (default: current); seed: integer",
-        returns: "the world.summary, plus issues when the scene is not clean",
+        returns: "the world.summary, plus issues when the scene is not clean, and run_from: the seq of the run's first event (after the load's own; what on_load systems emit is the run's)",
     },
     MethodDoc {
         name: "scene.issues",

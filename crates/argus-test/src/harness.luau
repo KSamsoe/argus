@@ -596,8 +596,14 @@ local function run_seed(spec, seed, opts, series)
       ctx.result.seed = st.seed
       seed = st.seed
     end
-    local ev = callm("obs.events", { limit = 1 })
-    ctx.start_seq = ev.last_seq or 0
+    -- The run's events start where the load's end; what `on_load` systems
+    -- emit (a generated floor) belongs to the run.
+    if loaded.run_from ~= nil then
+      ctx.start_seq = loaded.run_from - 1
+    else
+      local ev = callm("obs.events", { limit = 1 })
+      ctx.start_seq = ev.last_seq or 0
+    end
     local t = make_t(ctx, spec, seed)
     sample_series(ctx)
     ctx.t = t

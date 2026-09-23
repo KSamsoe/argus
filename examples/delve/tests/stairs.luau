@@ -1,7 +1,8 @@
 return scenario "stairs are always reachable on floor 1" {
   scene = "delve", seeds = range(1, 50),
   run = function(t)
-    t:advance { by = "turn", n = 1 }                  -- generate floor
+    -- No turn yet: the floor is generated when the scene loads.
+    t.expect:field("@turn", "Turn.n"):eq(0)
     t.expect:events("floor.generated", { floor = 1 }):count():eq(1)
     t.expect:count({ has = {"Stairs"} }):eq(1)
     t.expect:path("@player", { has = {"Stairs"} }):exists()
