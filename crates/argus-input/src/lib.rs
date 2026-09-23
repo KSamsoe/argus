@@ -25,7 +25,9 @@ pub mod system;
 
 pub use devices::{key_name, DeviceInput, Devices};
 pub use map::{Action, ActionKind, ActionMap, Slot};
-pub use state::{ActionValue, InjectReport, InputState, LogEntry};
+pub use state::{
+    ActionValue, Command, InjectReport, InputSnapshot, InputState, JournalEntry, LogEntry,
+};
 pub use system::{install, register, PlayerSlot, ACTIONS, SYSTEM};
 
 /// Error codes this crate adds to the 4xxx block.

@@ -90,6 +90,8 @@ pub struct SimState {
     pub playing: bool,
     /// Pause state.
     pub paused: bool,
+    /// Systems switched off (by a fault or by request), with the reason.
+    pub disabled: Vec<(String, String)>,
 }
 
 /// World snapshot plus sim state.
@@ -165,12 +167,18 @@ pub struct Scheduler {
     prof: Profiler,
     capture: Option<Capture>,
     observers: Vec<Observer>,
+    tick_end: Option<TickEnd>,
+    quiet: bool,
 }
 
 /// Something that reads the world at the end of every tick and cannot
 /// change it: the daemon's history for `obs.trace`. Called with the frame
 /// the tick ran as, the frame its events carry.
 pub type Observer = Box<dyn FnMut(&World, u64)>;
+
+/// Called when a tick has fully ended (the clock already counts it), with
+/// the scheduler, so it can take the sim state: the daemon's keyframes.
+pub type TickEnd = Box<dyn FnMut(&World, &Scheduler)>;
 
 /// What one tick collects while it runs.
 struct TickSamples {
@@ -195,7 +203,21 @@ impl Scheduler {
             prof,
             capture: None,
             observers: Vec::new(),
+            tick_end: None,
+            quiet: false,
         }
+    }
+
+    /// Call `f` at the end of every tick, after the clock counts it.
+    pub fn on_tick_end(&mut self, f: TickEnd) {
+        self.tick_end = Some(f);
+    }
+
+    /// Quiet ticks run the systems but not the observers, the tick-end
+    /// hook, or the profiler: a seek replaying ticks that already happened
+    /// (their history, keyframes, and timings are the first run's).
+    pub fn set_quiet(&mut self, quiet: bool) {
+        self.quiet = quiet;
     }
 
     /// Read the world at the end of every tick, after the hierarchy stage
@@ -713,7 +735,7 @@ impl Scheduler {
             );
         }
         self.run_stage(world, Stage::Hierarchy, kind, tick, time, dt, &mut samples);
-        if !self.observers.is_empty() {
+        if !self.observers.is_empty() && !self.quiet {
             let t = Instant::now();
             let (pa, pb) = alloc::counters();
             let frame = world.frame();
@@ -763,16 +785,24 @@ impl Scheduler {
                 });
             }
         }
-        self.prof.record(TickRecord {
-            tick,
-            clock: kind,
-            total,
-            systems: samples.timings,
-            allocs: a1 - a0,
-            bytes: b1 - b0,
-            archetypes,
-        });
+        if !self.quiet {
+            self.prof.record(TickRecord {
+                tick,
+                clock: kind,
+                total,
+                systems: samples.timings,
+                allocs: a1 - a0,
+                bytes: b1 - b0,
+                archetypes,
+            });
+        }
         self.clock_mut(kind).tick += 1;
+        if !self.quiet {
+            if let Some(mut f) = self.tick_end.take() {
+                f(world, self);
+                self.tick_end = Some(f);
+            }
+        }
         Ok(())
     }
 
@@ -966,6 +996,17 @@ impl Scheduler {
                 .collect(),
             playing: self.playing,
             paused: self.paused,
+            disabled: self
+                .systems
+                .iter()
+                .filter(|s| !s.enabled)
+                .map(|s| {
+                    (
+                        s.desc.name.clone(),
+                        s.disabled_reason.clone().unwrap_or_default(),
+                    )
+                })
+                .collect(),
         }
     }
 
@@ -982,6 +1023,19 @@ impl Scheduler {
         }
         self.playing = state.playing;
         self.paused = state.paused;
+        // A system a fault switched off at frame 300 was on at frame 200.
+        for s in &mut self.systems {
+            match state.disabled.iter().find(|(n, _)| *n == s.desc.name) {
+                Some((_, why)) => {
+                    s.enabled = false;
+                    s.disabled_reason = Some(why.clone());
+                }
+                None => {
+                    s.enabled = true;
+                    s.disabled_reason = None;
+                }
+            }
+        }
     }
 
     /// Full snapshot: world plus sim state.

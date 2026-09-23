@@ -40,7 +40,7 @@ Every statement in the design document (v0.3) that constrains the Luau binding, 
 | Spec | Status | Where | Test |
 |---|---|---|---|
 | Randomness from named streams. | Done | `rng = "name"` in the declaration; `q:rng()` exposes `next`, `below`, `range`, `chance`; undeclared use is a structured error. | `systems::script_systems_are_deterministic_under_the_same_seed` |
-| Snapshot includes the Luau heap (open question §19). | Deferred | The heap is not snapshotted. Sequencing state moves to timelines (§13) and module state is discouraged: globals are read-only, so state can only live in file-level locals. Decide with the phase-2 snapshot ring. | |
+| Snapshot includes the Luau heap (open question §19). | Decided | The strict way, as the design leans: the heap is not in keyframes, and a Luau system keeps no state of its own (globals are read-only; a file-level local is the one place left, and it is unsupported). Sequencing state moves to timelines (§13). A system that keeps state anyway replays differently, and `sim.seek` reports it as `diverged`, naming the first event that differs, instead of handing back a wrong world quietly (phase 2 item 0). | `argus-daemon/tests/seek.rs::a_system_that_keeps_state_outside_the_world_shows_as_a_divergence` |
 
 ## §7 Scripting and hot reload
 
@@ -121,7 +121,7 @@ Phase 0 item 3, "Luau binding with component and def schemas": this crate.
 
 ## §19 Open questions and risks touching this crate
 
-- Luau heap in the snapshot: not snapshotted; see §6 row.
+- Luau heap in the snapshot: not snapshotted, and per-system state is unsupported; see the §19 row. A seek reports a system that keeps it.
 - Luau performance ceiling: per-entity proxies allocate once per `each` call, not per entity, and `vec2` values cross as native vectors, but every field access is still a Rust round trip with mlua's per-call allocations (about a microsecond per entity per system at 50k). Promoting a system to Rust changes nothing around it because the declaration contract is identical.
 
 ## Known limitations, stated so they are decisions

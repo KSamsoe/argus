@@ -31,6 +31,12 @@ pub struct ProjectConfig {
     pub default_scene: Option<String>,
     /// Plugin crate names (phase 5; parsed now so the file shape is fixed).
     pub plugins: Vec<String>,
+    /// `[ring] every`: ticks between keyframes for seek (phase 2). `None`:
+    /// one second of the continuous clock, ten turns of the discrete one.
+    pub ring_every: Option<u64>,
+    /// `[ring] budget_mb`: memory the keyframes may use before the ring
+    /// thins further than its age schedule. `None`: 1024.
+    pub ring_budget_mb: Option<u64>,
 }
 
 impl ProjectConfig {
@@ -76,11 +82,29 @@ impl ProjectConfig {
             Some(i) => tomlv::string_list(i, "plugins", &at("plugins"))?,
             None => Vec::new(),
         };
+        let ring = t.get("ring").and_then(|i| i.as_table_like());
+        let positive = |key: &str| -> Result<Option<u64>> {
+            match ring.and_then(|r| r.get(key)) {
+                None => Ok(None),
+                Some(i) => match i.as_integer() {
+                    Some(n) if n >= 1 => Ok(Some(n as u64)),
+                    _ => Err(ArgusError::new(
+                        codes::BAD_SCENE,
+                        format!("argus.toml [ring] {key} must be a whole number of at least 1"),
+                    )
+                    .at(Some(at("ring")))),
+                },
+            }
+        };
+        let ring_every = positive("every")?;
+        let ring_budget_mb = positive("budget_mb")?;
         Ok(ProjectConfig {
             name,
             clock,
             default_scene,
             plugins,
+            ring_every,
+            ring_budget_mb,
         })
     }
 
@@ -169,6 +193,8 @@ impl Project {
                 clock: "continuous@60".to_string(),
                 default_scene: None,
                 plugins: Vec::new(),
+                ring_every: None,
+                ring_budget_mb: None,
             };
             std::fs::write(&cfg, c.to_toml()).map_err(|e| {
                 ArgusError::new(codes::MISSING_FILE, format!("cannot write argus.toml: {e}"))

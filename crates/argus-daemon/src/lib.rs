@@ -26,6 +26,7 @@ pub mod history;
 pub mod json;
 pub mod launch;
 pub mod query;
+pub mod ring;
 pub mod rpc;
 pub mod server;
 

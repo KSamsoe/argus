@@ -58,12 +58,50 @@ struct Session {
     /// Baselines for obs.diff and traces for obs.trace (item 13), fed by
     /// a scheduler observer at the end of every tick.
     history: Rc<RefCell<crate::history::History>>,
+    /// Keyframes for `sim.seek` (phase 2 item 0), fed at the end of ticks.
+    ring: Rc<RefCell<crate::ring::Ring>>,
+    /// What a keyframe captures besides the world and the scheduler.
+    sources: crate::ring::Sources,
+    /// The tick `sim.play` started from, which `sim.stop` goes back to.
+    play_from: Option<u64>,
 }
 
+#[derive(Default)]
 struct EventLog {
     next_seq: u64,
     records: VecDeque<(u64, EventRecord)>,
+    /// Beside each record: whether a tick emitted it (a seek to frame T
+    /// drops what ticks from T on emitted, and keeps a change made at T
+    /// between ticks).
+    ticked: VecDeque<bool>,
+    /// Ticks before this frame are in the log on this branch of the run (a
+    /// seek back cuts it; ticks run from there extend it again).
+    through: u64,
     cap: usize,
+}
+
+/// One world and everything that runs it: the main one, or a fork
+/// (`sim.fork`, phase 2 item 0), parked until a call names it.
+struct Slot {
+    world: World,
+    sched: Scheduler,
+    session: Option<Session>,
+    events: EventLog,
+}
+
+impl Slot {
+    fn empty() -> Slot {
+        Slot {
+            world: World::new(),
+            sched: Scheduler::new(SchedulerConfig::default()),
+            session: None,
+            events: EventLog {
+                next_seq: 1,
+                cap: 200_000,
+                ..Default::default()
+            },
+        }
+    }
 }
 
 /// The daemon.
@@ -80,6 +118,15 @@ pub struct Daemon {
     capture_path: Option<PathBuf>,
     /// `session.shutdown` was called: the server should stop after replying.
     pub shutdown: bool,
+    /// The events being pumped came from ticks.
+    from_ticks: bool,
+    /// Worlds parked beside this one, by name (`sim.fork`).
+    forks: BTreeMap<String, Slot>,
+    /// The name of the world in `world`: "main" until a switch.
+    active: String,
+    /// `open_scene` is building a fork: no audio engine of its own, no index
+    /// sync, no window catalog.
+    building_fork: bool,
     /// The window was opened from the command line (`--window`): it is the
     /// person's, and closing it ends the daemon. A window an agent opens
     /// with `render.window` only closes.
@@ -121,8 +168,14 @@ impl Daemon {
             events: EventLog {
                 next_seq: 1,
                 records: VecDeque::new(),
+                ticked: VecDeque::new(),
+                through: 0,
                 cap: 200_000,
             },
+            from_ticks: false,
+            forks: BTreeMap::new(),
+            active: "main".to_string(),
+            building_fork: false,
             subs: BTreeMap::new(),
             capture_path: None,
             shutdown: false,
@@ -165,6 +218,25 @@ impl Daemon {
 
     /// Dispatch a method. This is the whole protocol.
     pub fn call(&mut self, conn: ConnId, method: &str, params: &Json) -> Result<Json> {
+        // `fork: "name"` on any method runs it against that world, which is
+        // swapped in for the call (phase 2 item 0).
+        if method != "sim.fork" {
+            if let Some(name) = params.get("fork").and_then(Json::as_str) {
+                if name != self.active {
+                    let mut slot = self
+                        .forks
+                        .remove(name)
+                        .ok_or_else(|| self.unknown_fork(name))?;
+                    self.swap_slot(&mut slot);
+                    let was = std::mem::replace(&mut self.active, name.to_string());
+                    let r = self.call(conn, method, params);
+                    self.active = was;
+                    self.swap_slot(&mut slot);
+                    self.forks.insert(name.to_string(), slot);
+                    return r;
+                }
+            }
+        }
         let r = match method {
             "session.open" => self.session_open(params),
             "session.status" => Ok(self.session_status()),
@@ -254,10 +326,22 @@ impl Daemon {
                 Ok(out)
             }
             "scene.index" => self.scene_index(params),
-            "input.inject" => self.input_inject(params),
-            "input.script" => self.input_script(params),
+            "input.inject" => {
+                let r = self.input_inject(params);
+                self.input_branched();
+                r
+            }
+            "input.script" => {
+                let r = self.input_script(params);
+                self.input_branched();
+                r
+            }
             "input.record" => self.input_record(params),
-            "input.replay" => self.input_replay(params),
+            "input.replay" => {
+                let r = self.input_replay(params);
+                self.input_branched();
+                r
+            }
             "input.log.get" => self.input_log_get(params),
             "input.bindings" => Ok(self.input()?.borrow().map().to_json()),
             "input.devices" => Ok(self.input_devices()),
@@ -299,7 +383,10 @@ impl Daemon {
                 Some(s) => self.index()?.rooms(&s),
                 None => self.scene_rooms(),
             },
-            "scene.transition" => self.scene_transition(params),
+            "scene.transition" => {
+                self.mutations += 1;
+                self.scene_transition(params)
+            }
             "scene.tiles.get" => self.scene_tiles_get(params),
             "edit.begin" => self.edit_begin(params),
             "edit.tiles" => self.edit_tiles(params),
@@ -331,6 +418,15 @@ impl Daemon {
             "edit.locks" => Ok(json!({ "rows": self.edits.locks.iter().map(|l| l.to_json()).collect::<Vec<_>>() })),
             "sim.play" => {
                 self.require_session()?;
+                if !self.sched.is_playing() {
+                    // A keyframe where play starts: `sim.stop` comes back to it.
+                    self.before_ticks();
+                    if let Some(ses) = &mut self.session {
+                        let k = ses.sources.capture(&self.world, &self.sched, true);
+                        ses.ring.borrow_mut().push(k);
+                        ses.play_from = Some(self.sched.tick());
+                    }
+                }
                 self.sched.play(&self.world);
                 Ok(self.sim_status())
             }
@@ -339,22 +435,45 @@ impl Daemon {
                 Ok(self.sim_status())
             }
             "sim.stop" => {
+                let from = self.session.as_mut().and_then(|s| s.play_from.take());
                 self.sched.stop(&mut self.world);
                 // The world went back to before play: its history is of a
-                // run that no longer happened.
-                if let Some(s) = &self.session {
+                // run that no longer happened, and so are its keyframes. The
+                // input state, the pools, and the rooms go back with it.
+                if let (Some(s), Some(t)) = (&mut self.session, from) {
+                    s.history.borrow_mut().clear();
+                    let ring = s.ring.clone();
+                    let r = ring.borrow();
+                    if let Some(k) = r.at_or_before(t) {
+                        s.sources.restore(k, &mut self.world, &mut self.sched);
+                        if let Some(rooms) = &k.rooms {
+                            s.scene.set_stream_state(rooms);
+                        }
+                    }
+                    drop(r);
+                    let _ = self.world.drain_events();
+                    if let Some(i) = &s.input {
+                        i.borrow_mut().branch(t);
+                    }
+                    ring.borrow_mut().prune_after(t);
+                    self.cut_log(t);
+                } else if let Some(s) = &self.session {
                     s.history.borrow_mut().clear();
                 }
                 self.pump_events();
                 Ok(self.sim_status())
             }
+            "sim.seek" => self.sim_seek(params),
+            "sim.fork" => self.sim_fork(params),
+            "sim.snapshot" => self.sim_snapshot(params),
             "obs.diff" => self.obs_diff(params),
             "obs.trace" => self.obs_trace(params),
             "obs.why" => self.obs_why(params),
             "sim.step" => {
                 let n = json::u64_param(params, "n", 1)?;
+                self.before_ticks();
                 self.sched.step(&mut self.world, n)?;
-                self.pump_events();
+                self.pump_ticks();
                 Ok(self.sim_status())
             }
             "sim.advance" => {
@@ -364,8 +483,9 @@ impl Daemon {
                         return Err(bad_params(format!("by must be \"turn\"; got {by:?}")));
                     }
                 }
+                self.before_ticks();
                 self.sched.advance(&mut self.world, n)?;
-                self.pump_events();
+                self.pump_ticks();
                 Ok(self.sim_status())
             }
             "sim.speed" => {
@@ -375,7 +495,10 @@ impl Daemon {
             }
             "sim.run_until" => self.sim_run_until(params),
             "sim.status" => Ok(self.sim_status()),
-            "script.reload" => self.script_reload(),
+            "script.reload" => {
+                self.mutations += 1;
+                self.script_reload()
+            }
             "script.systems" => self.script_systems(params),
             "script.errors" => self.script_errors(),
             "obs.events" => self.obs_events(params),
@@ -430,8 +553,9 @@ impl Daemon {
     /// server calls this at the clock rate; `present` runs every frame.
     pub fn frame(&mut self) -> Result<()> {
         if self.session.is_some() {
+            self.before_ticks();
             self.sched.frame(&mut self.world)?;
-            self.pump_events();
+            self.pump_ticks();
         }
         Ok(())
     }
@@ -463,6 +587,7 @@ impl Daemon {
         };
         let now = self.sched.tick();
         let commands = st.borrow_mut().apply_devices(now, &self.devices);
+        self.input_branched();
         let mut turns = 0;
         if commands > 0
             && self.sched.config().driving == ClockKind::Discrete
@@ -470,11 +595,12 @@ impl Daemon {
             && !self.sched.is_paused()
         {
             // One command, one turn: several keys in one poll are one turn.
+            self.before_ticks();
             if self.sched.advance(&mut self.world, 1).is_ok() {
                 turns = 1;
                 self.device_turns += 1;
             }
-            self.pump_events();
+            self.pump_ticks();
         }
         turns
     }
@@ -581,6 +707,8 @@ impl Daemon {
             Some(Json::Number(n)) => Some(n.as_u64().unwrap_or(0)),
             _ => None,
         };
+        self.forks.clear();
+        self.active = "main".to_string();
         self.open_scene(root, &cfg, &scene_name, seed)
     }
 
@@ -594,6 +722,8 @@ impl Daemon {
         // A new world: the log's records refer to the old one's component ids.
         // Sequence numbers keep counting so a client's `since` cursor stays valid.
         self.events.records.clear();
+        self.events.ticked.clear();
+        self.events.through = 0;
         self.mutations += 1;
         let scene_doc = SceneDoc::load(&root, scene_name)?;
         let clock = Clock::parse(scene_doc.clock.as_deref().unwrap_or(&cfg.clock))?;
@@ -696,11 +826,13 @@ impl Daemon {
         {
             self.render.offscreen = None;
             if let Some((_, r)) = &mut self.render.window {
-                let _ = r.load_catalog(&assets);
+                if !self.building_fork {
+                    let _ = r.load_catalog(&assets);
+                }
             }
         }
         #[cfg(feature = "audio")]
-        {
+        if !self.building_fork {
             // Variations come from the run seed, so sound.played replays.
             match argus_audio::AudioEngine::load(&root, seed) {
                 Ok(mut a) => {
@@ -717,7 +849,23 @@ impl Daemon {
                 }
             }
         }
+        let ring_every = cfg.ring_every.unwrap_or(match clock.kind {
+            ClockKind::Continuous => ((1.0 / clock.timestep).round() as u64).max(1),
+            ClockKind::Discrete => 10,
+        });
+        let ring_budget = (cfg.ring_budget_mb.unwrap_or(1024) as usize) << 20;
+        let sources = crate::ring::Sources {
+            input: input.clone(),
+            particles: particles.clone(),
+            rooms: Rc::new(RefCell::new(Some(scene.stream_state()))),
+        };
         self.session = Some(Session {
+            ring: Rc::new(RefCell::new(crate::ring::Ring::new(
+                ring_every,
+                ring_budget,
+            ))),
+            sources,
+            play_from: None,
             root,
             project,
             scene,
@@ -744,7 +892,10 @@ impl Daemon {
         let run_from = self.events.next_seq;
         self.sched.run_load(&mut self.world)?;
         self.pump_events();
-        self.sync_index(false);
+        self.start_ring();
+        if !self.building_fork {
+            self.sync_index(false);
+        }
         let mut out = self.world_summary()?;
         out["run_from"] = json!(run_from);
         if !issues.is_empty() {
@@ -956,6 +1107,9 @@ impl Daemon {
             .cloned()
             .collect();
         if !changed.is_empty() {
+            // Machines, effects, and tilesets steer ticks: a change between
+            // ticks, like an edit.
+            self.mutations += 1;
             let ses = self.session.as_ref().expect("session");
             ses.tiles.borrow_mut().set_tilesets(&ses.assets);
             ses.anims.borrow_mut().set_assets(&ses.assets);
@@ -1380,6 +1534,8 @@ impl Daemon {
     }
 
     fn scene_load(&mut self, params: &Json) -> Result<Json> {
+        self.forks.clear();
+        self.active = "main".to_string();
         let (root, current) = {
             let ses = self.require_session()?;
             (ses.root.clone(), ses.scene_name.clone())
@@ -2407,9 +2563,10 @@ impl Daemon {
         st.borrow_mut().start_recording(&log_path)?;
         // The run identity (§6): what reproduces this run.
         let run_toml = format!(
-            "scene = {:?}\nseed = {}\nclock = {:?}\ninputs = \"input.log\"\nstarted = {stamp}\ntick = {}\n",
+            "scene = {:?}\nseed = {}\ncode = {:?}\nclock = {:?}\ninputs = \"input.log\"\nstarted = {stamp}\ntick = {}\n",
             ses.scene_name,
             ses.seed,
+            code_version(&ses.root),
             self.sched.driving().to_string(),
             self.sched.tick()
         );
@@ -2437,7 +2594,8 @@ impl Daemon {
             root.join(path)
         };
         let entries = InputState::read_log(&p, st.borrow().map())?;
-        let n = st.borrow_mut().replay(&entries)?;
+        let now = self.sched.tick();
+        let n = st.borrow_mut().replay(now, &entries)?;
         Ok(json!({
             "path": p.to_string_lossy(),
             "entries": n,
@@ -2482,12 +2640,409 @@ impl Daemon {
             "time": self.sched.time(),
             "frame": self.world.frame(),
             "seed": self.session.as_ref().map(|s| s.seed).unwrap_or(self.sched.seed()),
+            "end": self.session.as_ref().map(|s| s.ring.borrow().end),
+            "fork": self.active,
         })
+    }
+
+    // ----- forks (phase 2 item 0) -------------------------------------------
+
+    fn swap_slot(&mut self, s: &mut Slot) {
+        std::mem::swap(&mut self.world, &mut s.world);
+        std::mem::swap(&mut self.sched, &mut s.sched);
+        std::mem::swap(&mut self.session, &mut s.session);
+        std::mem::swap(&mut self.events, &mut s.events);
+    }
+
+    fn unknown_fork(&self, name: &str) -> ArgusError {
+        let mut names: Vec<&str> = self.forks.keys().map(String::as_str).collect();
+        names.push(&self.active);
+        names.sort();
+        ArgusError::new(codes::BAD_PARAMS, format!("no fork named {name:?}")).hint(format!(
+            "Worlds: {}; sim.fork {{name}} makes one.",
+            names.join(", ")
+        ))
+    }
+
+    fn forks_json(&self) -> Json {
+        let row = |name: &str, w: &World, s: &Scheduler| json!({ "name": name, "tick": s.tick(), "frame": w.frame(), "entities": w.entity_count() });
+        let mut rows = vec![row(&self.active, &self.world, &self.sched)];
+        for (n, s) in &self.forks {
+            rows.push(row(n, &s.world, &s.sched));
+        }
+        json!({ "active": self.active, "worlds": rows })
+    }
+
+    /// `sim.fork`: a second world from this one's state inside the same
+    /// daemon, with its own clock (§6). It is built from the files as they
+    /// are now, so a fork after a script edit runs the new code beside the
+    /// old; it copies the input journal, so from a past frame it replays the
+    /// same inputs until a command of its own branches it.
+    fn sim_fork(&mut self, params: &Json) -> Result<Json> {
+        self.require_session()?;
+        let Some(name) = json::opt_str(params, "name")?.map(str::to_string) else {
+            return Ok(self.forks_json());
+        };
+        if json::bool_param(params, "drop", false)? {
+            if name == self.active {
+                return Err(ArgusError::new(
+                    codes::BAD_PARAMS,
+                    format!("{name} is the world in use"),
+                )
+                .hint("Switch to another world first: sim.fork {name, switch: true}."));
+            }
+            self.forks
+                .remove(&name)
+                .ok_or_else(|| self.unknown_fork(&name))?;
+            return Ok(self.forks_json());
+        }
+        if json::bool_param(params, "switch", false)? {
+            if name != self.active {
+                let mut slot = self
+                    .forks
+                    .remove(&name)
+                    .ok_or_else(|| self.unknown_fork(&name))?;
+                self.swap_slot(&mut slot);
+                let was = std::mem::replace(&mut self.active, name.clone());
+                self.forks.insert(was, slot);
+                #[cfg(feature = "render")]
+                if let Some((_, r)) = &mut self.render.window {
+                    r.forget_motion();
+                }
+                #[cfg(feature = "audio")]
+                if let Some(a) = self.audio.as_mut() {
+                    a.silence();
+                }
+            }
+            return Ok(self.forks_json());
+        }
+        if name.is_empty() || name == self.active || self.forks.contains_key(&name) {
+            return Err(ArgusError::new(
+                codes::BAD_PARAMS,
+                format!("{name:?} is already a world here"),
+            )
+            .hint("Give the fork a new name, or drop the old one: sim.fork {name, drop: true}."));
+        }
+        self.before_ticks();
+        let now = self.sched.tick();
+        let frame = match params.get("frame").or(params.get("turn")) {
+            Some(v) => v
+                .as_u64()
+                .ok_or_else(|| bad_params("frame must be a whole number"))?,
+            None => now,
+        };
+        let (root, scene_name, seed, input, key, every, budget) = {
+            let s = self.session.as_ref().expect("session");
+            let r = s.ring.borrow();
+            if frame > r.end.max(now) || frame < r.floor {
+                return Err(ArgusError::new(
+                    codes::BAD_PARAMS,
+                    format!(
+                        "frame {frame} is outside this run ({} to {})",
+                        r.floor,
+                        r.end.max(now)
+                    ),
+                ));
+            }
+            // At the current frame the keyframe is taken now, so nothing
+            // replays; before it, the ring's.
+            let key = if frame == now {
+                s.sources.capture(&self.world, &self.sched, true)
+            } else {
+                r.at_or_before(frame).cloned().ok_or_else(|| {
+                    ArgusError::new(
+                        codes::BAD_PARAMS,
+                        format!("no keyframe at or before frame {frame}"),
+                    )
+                })?
+            };
+            (
+                s.root.clone(),
+                s.scene_name.clone(),
+                s.seed,
+                s.input.as_ref().map(|i| i.borrow().fork_copy()),
+                key,
+                r.every,
+                r.budget,
+            )
+        };
+        let cfg = ProjectConfig::load(&root)?;
+        let mutations = self.mutations;
+        let mut main = Slot::empty();
+        self.swap_slot(&mut main);
+        self.building_fork = true;
+        let built = self.open_scene(root, &cfg, &scene_name, Some(seed));
+        self.building_fork = false;
+        self.mutations = mutations;
+        if let Err(e) = built {
+            self.swap_slot(&mut main);
+            return Err(e);
+        }
+        let result = (|| -> Result<()> {
+            let s = self.session.as_mut().expect("the fork's session");
+            if let (Some(fi), Some(copy)) = (&s.input, input) {
+                *fi.borrow_mut() = copy;
+            }
+            s.sources.restore(&key, &mut self.world, &mut self.sched);
+            if let Some(rooms) = &key.rooms {
+                s.scene.set_stream_state(rooms);
+            }
+            let _ = self.world.drain_events();
+            let n = frame - key.tick;
+            self.sched.set_quiet(true);
+            let run = match self.sched.driving().kind {
+                ClockKind::Continuous => self.sched.step(&mut self.world, n),
+                ClockKind::Discrete => self.sched.advance(&mut self.world, n),
+            };
+            self.sched.set_quiet(false);
+            run?;
+            let _ = self.world.drain_events();
+            let s = self.session.as_ref().expect("the fork's session");
+            s.history.borrow_mut().clear();
+            let mut ring = crate::ring::Ring::new(every, budget);
+            ring.push(s.sources.capture(&self.world, &self.sched, true));
+            ring.floor = frame;
+            ring.mutations = self.mutations;
+            *s.ring.borrow_mut() = ring;
+            self.events.records.clear();
+            self.events.ticked.clear();
+            self.events.through = frame;
+            Ok(())
+        })();
+        let mut fork = Slot::empty();
+        self.swap_slot(&mut fork);
+        self.swap_slot(&mut main);
+        result?;
+        self.forks.insert(name.clone(), fork);
+        let mut out = self.forks_json();
+        out["made"] = json!({ "name": name, "frame": frame, "from": key.tick });
+        Ok(out)
+    }
+
+    /// `sim.seek {frame}`: the nearest earlier keyframe, restored, and the
+    /// run replayed forward to `frame` (§6). The replay is quiet: its events
+    /// are compared with the log instead of logged again, its history and
+    /// keyframes are the first run's, and no sound plays. After it, stepping
+    /// replays the recorded future until a live command branches the run.
+    fn sim_seek(&mut self, params: &Json) -> Result<Json> {
+        self.require_session()?;
+        let target = match (params.get("frame"), params.get("turn")) {
+            (Some(v), _) | (None, Some(v)) => v
+                .as_u64()
+                .ok_or_else(|| bad_params("frame must be a whole number"))?,
+            (None, None) => return Err(bad_params("give frame (or turn, on a discrete clock)")),
+        };
+        let verify = json::bool_param(params, "verify", false)?;
+        self.before_ticks();
+        let started = std::time::Instant::now();
+        let (ring, sources) = {
+            let s = self.session.as_ref().expect("session");
+            (s.ring.clone(), s.sources.clone())
+        };
+        let (end, floor) = {
+            let r = ring.borrow();
+            (r.end.max(self.sched.tick()), r.floor)
+        };
+        if target > end {
+            return Err(ArgusError::new(
+                codes::BAD_PARAMS,
+                format!("frame {target} is past the end of this run ({end})"),
+            )
+            .hint("Seek goes back, or forward along a run already played; step or run_until to go further."));
+        }
+        if target < floor {
+            return Err(ArgusError::new(
+                codes::BAD_PARAMS,
+                format!("frame {target} is before the oldest keyframe kept ({floor})"),
+            )
+            .hint("The ring dropped older keyframes to stay under its budget; raise [ring] budget_mb in argus.toml."));
+        }
+        // Verify first: replay the keyframe before into the one a seek starts
+        // from, and compare the two worlds field by field.
+        let verified = if verify {
+            Some(self.verify_keyframe(&ring, &sources, target)?)
+        } else {
+            None
+        };
+        let from = {
+            let r = ring.borrow();
+            let k = r.at_or_before(target).ok_or_else(|| {
+                ArgusError::new(
+                    codes::BAD_PARAMS,
+                    format!("no keyframe at or before frame {target}"),
+                )
+            })?;
+            sources.restore(k, &mut self.world, &mut self.sched);
+            if let Some(rooms) = &k.rooms {
+                if let Some(s) = self.session.as_mut() {
+                    s.scene.set_stream_state(rooms);
+                }
+            }
+            k.tick
+        };
+        // The keyframe's queue held events the log already has.
+        let _ = self.world.drain_events();
+        let n = target - from;
+        self.sched.set_quiet(true);
+        let run = match self.sched.driving().kind {
+            ClockKind::Continuous => self.sched.step(&mut self.world, n),
+            ClockKind::Discrete => self.sched.advance(&mut self.world, n),
+        };
+        self.sched.set_quiet(false);
+        run?;
+        let replayed = self.world.drain_events();
+        let (checked, diverged) = self.check_replay(from, target, &replayed);
+        self.cut_log(target);
+        if let Some(s) = &self.session {
+            s.history.borrow_mut().rewind(target);
+        }
+        #[cfg(feature = "audio")]
+        if let Some(a) = self.audio.as_mut() {
+            a.silence();
+        }
+        #[cfg(feature = "render")]
+        if let Some((_, r)) = &mut self.render.window {
+            r.forget_motion();
+        }
+        let mut out = self.sim_status();
+        out["from"] = json!(from);
+        out["replayed"] = json!(n);
+        out["ms"] = json!((started.elapsed().as_secs_f64() * 1e4).round() / 10.0);
+        out["checked"] = json!(checked);
+        out["diverged"] = diverged.unwrap_or(Json::Null);
+        if let Some(v) = verified {
+            out["verified"] = v;
+        }
+        Ok(out)
+    }
+
+    /// Compare a replay's events with the log's for the same frames: what
+    /// systems emitted and what the engine did in ticks, not the mixer's
+    /// answers (a replay plays no sound). The first difference is the report.
+    fn check_replay(
+        &self,
+        from: u64,
+        to: u64,
+        replayed: &[EventRecord],
+    ) -> (Option<usize>, Option<Json>) {
+        let answer = |r: &EventRecord| r.by.is_none() && matches!(r.event, Event::Game { .. });
+        let oldest = self.events.records.front().map(|(_, r)| r.frame);
+        if oldest.is_none_or(|f| f > from) && from > 0 {
+            return (None, None);
+        }
+        // Only the frames this branch's log still covers: after a seek back,
+        // a seek forward replays frames whose events were cut.
+        let to = to.min(self.events.through);
+        if to <= from {
+            return (None, None);
+        }
+        let logged: Vec<&EventRecord> = self
+            .events
+            .records
+            .iter()
+            .zip(self.events.ticked.iter())
+            .filter(|((_, r), t)| **t && r.frame >= from && r.frame < to && !answer(r))
+            .map(|((_, r), _)| r)
+            .collect();
+        let again: Vec<&EventRecord> = replayed
+            .iter()
+            .filter(|r| r.frame < to && !answer(r))
+            .collect();
+        let n = logged.len().max(again.len());
+        for i in 0..n {
+            let (a, b) = (logged.get(i), again.get(i));
+            if a != b {
+                let show = |r: Option<&&EventRecord>| match r {
+                    Some(r) => event_json(&self.world, 0, r),
+                    None => Json::Null,
+                };
+                return (
+                    Some(i),
+                    Some(json!({
+                        "at": i,
+                        "frame": a.or(b).map(|r| r.frame),
+                        "logged": show(a),
+                        "replayed": show(b),
+                    })),
+                );
+            }
+        }
+        (Some(n), None)
+    }
+
+    /// Replay from the keyframe before the one a seek to `target` starts
+    /// from into that one, and compare the two worlds: a replay that does
+    /// not reproduce the run shows here as fields that differ.
+    fn verify_keyframe(
+        &mut self,
+        ring: &Rc<RefCell<crate::ring::Ring>>,
+        sources: &crate::ring::Sources,
+        target: u64,
+    ) -> Result<Json> {
+        let (earlier, later_world, later_tick) = {
+            let r = ring.borrow();
+            let Some(later) = r.at_or_before(target) else {
+                return Ok(json!({ "ok": null, "why": "no keyframe" }));
+            };
+            let Some(earlier) = later.tick.checked_sub(1).and_then(|t| r.at_or_before(t)) else {
+                return Ok(json!({ "ok": null, "why": "the first keyframe has none before it" }));
+            };
+            if later.barrier {
+                return Ok(
+                    json!({ "ok": null, "why": "a change between ticks made that keyframe; a replay does not cross one" }),
+                );
+            }
+            (earlier.tick, later.sim.world.clone(), later.tick)
+        };
+        {
+            let r = ring.borrow();
+            let k = r.at_or_before(earlier).expect("just found");
+            sources.restore(k, &mut self.world, &mut self.sched);
+        }
+        let _ = self.world.drain_events();
+        self.sched.set_quiet(true);
+        let n = later_tick - earlier;
+        let run = match self.sched.driving().kind {
+            ClockKind::Continuous => self.sched.step(&mut self.world, n),
+            ClockKind::Discrete => self.sched.advance(&mut self.world, n),
+        };
+        self.sched.set_quiet(false);
+        run?;
+        let _ = self.world.drain_events();
+        let then = later_world.into_world();
+        let d = crate::history::diff(&then, &self.world);
+        let ok = d.appeared.is_empty() && d.vanished.is_empty() && d.changed.is_empty();
+        Ok(json!({
+            "ok": ok,
+            "from": earlier,
+            "to": later_tick,
+            "appeared": d.appeared.len(),
+            "vanished": d.vanished.len(),
+            "changed": d.changed.iter().take(5).map(|c| json!({
+                "entity": crate::history::id_of(&then, c.entity),
+                "fields": c.fields.iter().take(4).map(|(p, a, b)| json!([p, argus_index::shapes::value_json(a), argus_index::shapes::value_json(b)])).collect::<Vec<_>>(),
+            })).collect::<Vec<_>>(),
+        }))
+    }
+
+    /// `sim.snapshot`: a keyframe now, kept like a barrier, and the ring's
+    /// report.
+    fn sim_snapshot(&mut self, _params: &Json) -> Result<Json> {
+        self.require_session()?;
+        self.before_ticks();
+        let s = self.session.as_ref().expect("session");
+        *s.sources.rooms.borrow_mut() = Some(s.scene.stream_state());
+        let k = s.sources.capture(&self.world, &self.sched, true);
+        s.ring.borrow_mut().push(k);
+        let mut out = s.ring.borrow().status();
+        out["tick"] = json!(self.sched.tick());
+        Ok(out)
     }
 
     fn sim_run_until(&mut self, params: &Json) -> Result<Json> {
         self.require_session()?;
         let max = json::u64_param(params, "max_ticks", 100_000)?;
+        self.before_ticks();
         let r = if let Some(ev) = json::opt_str(params, "event")? {
             self.sched.run_until_event(&mut self.world, ev, max)?
         } else if let Some(Json::Number(t)) = params.get("time") {
@@ -2503,7 +3058,7 @@ impl Daemon {
         } else {
             return Err(bad_params("give event, time, or ticks"));
         };
-        self.pump_events();
+        self.pump_ticks();
         let mut st = self.sim_status();
         st["ticks"] = json!(r.ticks);
         st["hit"] = json!(r.hit);
@@ -2655,6 +3210,113 @@ impl Daemon {
 
     // ----- obs --------------------------------------------------------------
 
+    // ----- the keyframe ring (phase 2 item 0) --------------------------------
+
+    /// The first keyframe, at the load, and the hook that takes one every
+    /// `every` ticks.
+    fn start_ring(&mut self) {
+        let Some(ses) = &self.session else {
+            return;
+        };
+        let (ring, sources) = (ses.ring.clone(), ses.sources.clone());
+        let k = sources.capture(&self.world, &self.sched, true);
+        {
+            let mut r = ring.borrow_mut();
+            r.push(k);
+            r.mutations = self.mutations;
+        }
+        self.sched.on_tick_end(Box::new(move |world, sched| {
+            let tick = sched.tick();
+            let mut r = ring.borrow_mut();
+            r.end = r.end.max(tick);
+            if tick % r.every == 0 {
+                let k = sources.capture(world, sched, false);
+                r.push(k);
+            }
+        }));
+    }
+
+    /// Before ticks run: a change made between ticks since the last keyframe
+    /// (an edit, a room transition, a reload) gets a barrier keyframe, and
+    /// ends any recorded future a seek left, since what comes next differs.
+    fn before_ticks(&mut self) {
+        let Some(ses) = &self.session else {
+            return;
+        };
+        if ses.ring.borrow().mutations == self.mutations {
+            return;
+        }
+        let now = self.sched.tick();
+        if let Some(i) = &ses.input {
+            i.borrow_mut().branch(now);
+        }
+        *ses.sources.rooms.borrow_mut() = Some(ses.scene.stream_state());
+        let k = ses.sources.capture(&self.world, &self.sched, true);
+        let mut r = ses.ring.borrow_mut();
+        r.prune_after(now);
+        r.push(k);
+        r.mutations = self.mutations;
+    }
+
+    /// A live input command where the run already went further (after a
+    /// seek back) branches it: the recorded commands, values, and keyframes
+    /// after it go.
+    fn input_branched(&mut self) {
+        let Some(ses) = &self.session else {
+            return;
+        };
+        let Some(input) = &ses.input else {
+            return;
+        };
+        let now = self.sched.tick();
+        let (live, dropped) = {
+            let mut i = input.borrow_mut();
+            (i.take_live(), i.take_branch())
+        };
+        if live && (dropped.is_some() || ses.ring.borrow().end > now) {
+            input.borrow_mut().branch(now);
+            ses.ring.borrow_mut().prune_after(now);
+        }
+    }
+
+    /// The run is back at `frame`: what ticks from it on emitted is the
+    /// future (or a run that no longer happened), and a change made at it
+    /// between ticks stays.
+    fn cut_log(&mut self, frame: u64) {
+        let keep: Vec<bool> = self
+            .events
+            .records
+            .iter()
+            .zip(self.events.ticked.iter())
+            .map(|((_, r), t)| {
+                if *t {
+                    r.frame < frame
+                } else {
+                    r.frame <= frame
+                }
+            })
+            .collect();
+        let mut i = 0;
+        self.events.records.retain(|_| {
+            i += 1;
+            keep[i - 1]
+        });
+        let mut i = 0;
+        self.events.ticked.retain(|_| {
+            i += 1;
+            keep[i - 1]
+        });
+        self.events.through = self.events.through.min(frame);
+    }
+
+    /// Pump what ticks emitted.
+    fn pump_ticks(&mut self) {
+        self.from_ticks = true;
+        self.pump_events();
+        self.from_ticks = false;
+        self.events.through = self.events.through.max(self.world.frame());
+    }
+
     /// Move the world's pending events into the log and notify subscribers.
     fn pump_events(&mut self) {
         self.finish_capture();
@@ -2676,6 +3338,7 @@ impl Daemon {
                     (Event::Game { name, fields }, Some(a))
                         if name == "sound.play" || name == "sound.stop" =>
                     {
+                        a.at_frame(rec.frame);
                         a.request(&self.world, name, fields)
                     }
                     _ => Vec::new(),
@@ -2706,8 +3369,10 @@ impl Daemon {
             self.events.next_seq += 1;
             let row = event_json(&self.world, seq, &rec);
             self.events.records.push_back((seq, rec));
+            self.events.ticked.push_back(self.from_ticks);
             if self.events.records.len() > self.events.cap {
                 self.events.records.pop_front();
+                self.events.ticked.pop_front();
             }
             self.notify("events", "event", row);
         }
@@ -4441,6 +5106,32 @@ pub fn event_json(world: &World, seq: u64, rec: &EventRecord) -> Json {
         row["by"] = json!(by.as_ref());
     }
     row
+}
+
+/// The code a run was made with (§6 run identity): `git:<revision>`, with
+/// `+dirty` when files under the project differ from it, or `none` outside
+/// a repository. No console window opens for git on Windows.
+pub fn code_version(root: &Path) -> String {
+    let git = |args: &[&str]| -> Option<String> {
+        let mut c = std::process::Command::new("git");
+        c.arg("-C").arg(root).args(args);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            c.creation_flags(0x0800_0000);
+        }
+        let out = c.output().ok()?;
+        out.status
+            .success()
+            .then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
+    };
+    match git(&["rev-parse", "--short", "HEAD"]) {
+        Some(rev) if !rev.is_empty() => {
+            let dirty = git(&["status", "--porcelain", "--", "."]).is_some_and(|s| !s.is_empty());
+            format!("git:{rev}{}", if dirty { "+dirty" } else { "" })
+        }
+        _ => "none".to_string(),
+    }
 }
 
 /// Where a project's daemon writes its connection info.

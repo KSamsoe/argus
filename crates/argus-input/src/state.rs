@@ -5,6 +5,12 @@
 //! `input` stage runs, and appended to the log as `tick, slot, action,
 //! value`. Replaying a log schedules the same changes at the same ticks,
 //! so the same scene, seed, and code give the same run.
+//!
+//! The commands themselves are journaled too, each stamped with the tick it
+//! came before (phase 2, seek). A snapshot of this state plus the journal
+//! after it rebuilds the state at any later tick exactly, which the value log
+//! cannot: a toggle's recorded release would flip it again, and an inject's
+//! own release is scheduled by the inject, not logged until it happens.
 
 use crate::codes;
 use crate::map::{ActionKind, ActionMap};
@@ -175,6 +181,62 @@ pub struct InjectReport {
     pub until: Option<u64>,
 }
 
+/// A command the input state was given.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Command {
+    /// `input.inject`.
+    Inject {
+        /// Player slot.
+        slot: u8,
+        /// Action name.
+        action: String,
+        /// The value as given (`None`: the action's active value).
+        value: Option<Json>,
+        /// Hold for this many ticks.
+        frames: Option<u64>,
+        /// Hold until another inject.
+        hold: bool,
+    },
+    /// `input.script`: steps relative to the tick it came before.
+    Script {
+        /// The steps as given.
+        steps: Vec<Json>,
+    },
+    /// Device values that changed, resolved through the bindings.
+    Devices {
+        /// Slot, action, and the value the devices now give it.
+        changes: Vec<(u8, String, ActionValue)>,
+    },
+    /// `input.replay`: a value log scheduled at its ticks.
+    Replay {
+        /// The log.
+        entries: Vec<LogEntry>,
+    },
+}
+
+/// A command and the tick it came before (the next tick to run).
+#[derive(Clone, Debug, PartialEq)]
+pub struct JournalEntry {
+    /// The next tick to run when the command came.
+    pub now: u64,
+    /// The command.
+    pub command: Command,
+}
+
+/// The input state at a tick, for a keyframe. The journal and the log are
+/// not copied: the snapshot holds how far into the journal it was.
+#[derive(Clone, Debug)]
+pub struct InputSnapshot {
+    scheduled: BTreeMap<u64, Vec<(u8, String, ActionValue)>>,
+    current: BTreeMap<(u8, String), ActionValue>,
+    pressed: Vec<(u8, String)>,
+    released: Vec<(u8, String)>,
+    last_tick: Option<u64>,
+    device_last: BTreeMap<(u8, String), ActionValue>,
+    releases: BTreeMap<(u8, String), Vec<(u64, u64)>>,
+    cursor: usize,
+}
+
 /// All input state of a session.
 pub struct InputState {
     map: ActionMap,
@@ -193,6 +255,19 @@ pub struct InputState {
     /// The releases injects scheduled for themselves, per slot and action:
     /// (tick the inject took hold, tick it lets go).
     releases: BTreeMap<(u8, String), Vec<(u64, u64)>>,
+    /// Every command, in order, on this branch of the run. Entries from
+    /// `cursor` on are the recorded future after a seek back: re-issued as
+    /// their ticks come, dropped when a live command branches the run.
+    journal: Vec<JournalEntry>,
+    cursor: usize,
+    /// The last tick whose changes are in the log (a replayed tick's are
+    /// already there).
+    log_through: Option<u64>,
+    /// Set when a live command dropped a recorded future: the tick it came
+    /// before.
+    branched: Option<u64>,
+    /// A live command came since the last `take_live`.
+    live: bool,
 }
 
 impl InputState {
@@ -203,6 +278,11 @@ impl InputState {
             discrete,
             scheduled: BTreeMap::new(),
             releases: BTreeMap::new(),
+            journal: Vec::new(),
+            cursor: 0,
+            log_through: None,
+            branched: None,
+            live: false,
             current: BTreeMap::new(),
             pressed: Vec::new(),
             released: Vec::new(),
@@ -222,13 +302,41 @@ impl InputState {
     /// many turns the caller should advance.
     pub fn apply_devices(&mut self, now: u64, devices: &crate::devices::Devices) -> usize {
         let slots: Vec<u8> = self.map.slots.iter().map(|s| s.index).collect();
-        let mut commands = 0;
+        let mut changes = Vec::new();
         for slot in slots {
             for (action, v) in devices.resolve(&self.map, slot) {
                 let Ok(a) = self.map.action(&action) else {
                     continue;
                 };
-                let (kind, toggle) = (a.kind, a.toggle);
+                let before = self
+                    .device_last
+                    .get(&(slot, action.clone()))
+                    .copied()
+                    .unwrap_or(ActionValue::default_for(a.kind));
+                if v != before {
+                    changes.push((slot, action, v));
+                }
+            }
+        }
+        if changes.is_empty() {
+            return 0;
+        }
+        let commands = self.apply_device_changes(now, &changes);
+        self.journal_live(now, Command::Devices { changes });
+        commands
+    }
+
+    /// Device values that changed, scheduled from `now`.
+    fn apply_device_changes(&mut self, now: u64, changes: &[(u8, String, ActionValue)]) -> usize {
+        let mut commands = 0;
+        for (slot, action, v) in changes {
+            let (slot, v) = (*slot, *v);
+            let Ok(a) = self.map.action(action) else {
+                continue;
+            };
+            let (kind, toggle) = (a.kind, a.toggle);
+            let action = action.clone();
+            {
                 let key = (slot, action.clone());
                 let before = self
                     .device_last
@@ -273,6 +381,29 @@ impl InputState {
     /// then returns to rest; `hold: true` keeps it until another inject.
     /// Discrete: a command for the next turn. Toggles flip on the press.
     pub fn inject(
+        &mut self,
+        now: u64,
+        slot: u8,
+        action: &str,
+        value: Option<&Json>,
+        frames: Option<u64>,
+        hold: bool,
+    ) -> Result<InjectReport> {
+        let report = self.inject_raw(now, slot, action, value, frames, hold)?;
+        self.journal_live(
+            now,
+            Command::Inject {
+                slot,
+                action: action.to_string(),
+                value: value.cloned(),
+                frames,
+                hold,
+            },
+        );
+        Ok(report)
+    }
+
+    fn inject_raw(
         &mut self,
         now: u64,
         slot: u8,
@@ -340,6 +471,17 @@ impl InputState {
 
     /// `input.script`: injects at ticks relative to `now`.
     pub fn script(&mut self, now: u64, steps: &[Json]) -> Result<Vec<InjectReport>> {
+        let out = self.script_raw(now, steps)?;
+        self.journal_live(
+            now,
+            Command::Script {
+                steps: steps.to_vec(),
+            },
+        );
+        Ok(out)
+    }
+
+    fn script_raw(&mut self, now: u64, steps: &[Json]) -> Result<Vec<InjectReport>> {
         let mut out = Vec::new();
         for (i, s) in steps.iter().enumerate() {
             let at = s.get("at").and_then(Json::as_u64).unwrap_or(0);
@@ -351,13 +493,25 @@ impl InputState {
             let slot = s.get("slot").and_then(Json::as_u64).unwrap_or(1) as u8;
             let frames = s.get("frames").and_then(Json::as_u64);
             let hold = s.get("hold").and_then(Json::as_bool).unwrap_or(false);
-            out.push(self.inject(now + at, slot, action, s.get("value"), frames, hold)?);
+            out.push(self.inject_raw(now + at, slot, action, s.get("value"), frames, hold)?);
         }
         Ok(out)
     }
 
     /// Replay a log: every entry becomes a scheduled change at its tick.
-    pub fn replay(&mut self, entries: &[LogEntry]) -> Result<usize> {
+    /// Journaled as coming before `now`.
+    pub fn replay(&mut self, now: u64, entries: &[LogEntry]) -> Result<usize> {
+        let n = self.replay_raw(entries)?;
+        self.journal_live(
+            now,
+            Command::Replay {
+                entries: entries.to_vec(),
+            },
+        );
+        Ok(n)
+    }
+
+    fn replay_raw(&mut self, entries: &[LogEntry]) -> Result<usize> {
         for e in entries {
             let a = self.map.action(&e.action)?;
             self.map.slot(e.slot)?;
@@ -395,6 +549,14 @@ impl InputState {
     /// `input.actions` system at the start of each tick. Returns the
     /// entries applied this tick.
     pub fn begin_tick(&mut self, tick: u64) -> Vec<LogEntry> {
+        // The recorded future after a seek back: its commands come in again
+        // before the ticks they came before the first time.
+        while self.cursor < self.journal.len() && self.journal[self.cursor].now <= tick {
+            let e = self.journal[self.cursor].clone();
+            self.reissue(&e);
+            self.cursor += 1;
+        }
+        let fresh = self.log_through.is_none_or(|t| tick > t);
         self.pressed.clear();
         self.released.clear();
         self.last_tick = Some(tick);
@@ -437,14 +599,160 @@ impl InputState {
                     action,
                     value: after,
                 };
-                if let Some((_, f)) = self.recorder.as_mut() {
-                    let _ = writeln!(f, "{}", entry.line());
+                if fresh {
+                    if let Some((_, f)) = self.recorder.as_mut() {
+                        let _ = writeln!(f, "{}", entry.line());
+                    }
+                    self.log.push(entry.clone());
                 }
-                self.log.push(entry.clone());
                 applied.push(entry);
             }
         }
+        if fresh {
+            self.log_through = Some(tick);
+        }
         applied
+    }
+
+    // ----- the journal: seek and branch (phase 2) ----------------------------
+
+    /// A live command came: if a recorded future was waiting, the run
+    /// branches here and that future is dropped, with the log after it.
+    fn journal_live(&mut self, now: u64, command: Command) {
+        if self.cursor < self.journal.len() {
+            self.journal.truncate(self.cursor);
+            self.log.retain(|e| e.tick < now);
+            self.log_through = self.log.last().map(|e| e.tick).or(now.checked_sub(1));
+            self.rewrite_recording();
+            self.branched = Some(now);
+        }
+        self.journal.push(JournalEntry { now, command });
+        self.cursor = self.journal.len();
+        self.live = true;
+    }
+
+    /// Issue a journaled command again, without journaling it.
+    fn reissue(&mut self, e: &JournalEntry) {
+        let now = e.now;
+        match &e.command {
+            Command::Inject {
+                slot,
+                action,
+                value,
+                frames,
+                hold,
+            } => {
+                let _ = self.inject_raw(now, *slot, action, value.as_ref(), *frames, *hold);
+            }
+            Command::Script { steps } => {
+                let _ = self.script_raw(now, steps);
+            }
+            Command::Devices { changes } => {
+                self.apply_device_changes(now, changes);
+            }
+            Command::Replay { entries } => {
+                let _ = self.replay_raw(entries);
+            }
+        }
+    }
+
+    fn rewrite_recording(&mut self) {
+        let Some((path, _)) = self.recorder.take() else {
+            return;
+        };
+        if self.start_recording(&path).is_ok() {
+            if let Some((_, f)) = self.recorder.as_mut() {
+                for e in &self.log {
+                    let _ = writeln!(f, "{}", e.line());
+                }
+            }
+        }
+    }
+
+    /// A copy for a fork (phase 2): the same state, journal, and log, so a
+    /// fork replays the same inputs; no recorder, since the file is the
+    /// original's.
+    pub fn fork_copy(&self) -> InputState {
+        InputState {
+            map: self.map.clone(),
+            discrete: self.discrete,
+            scheduled: self.scheduled.clone(),
+            current: self.current.clone(),
+            pressed: self.pressed.clone(),
+            released: self.released.clone(),
+            log: self.log.clone(),
+            recorder: None,
+            last_tick: self.last_tick,
+            device_last: self.device_last.clone(),
+            releases: self.releases.clone(),
+            journal: self.journal.clone(),
+            cursor: self.cursor,
+            log_through: self.log_through,
+            branched: None,
+            live: false,
+        }
+    }
+
+    /// The state now, for a keyframe.
+    pub fn snapshot(&self) -> InputSnapshot {
+        InputSnapshot {
+            scheduled: self.scheduled.clone(),
+            current: self.current.clone(),
+            pressed: self.pressed.clone(),
+            released: self.released.clone(),
+            last_tick: self.last_tick,
+            device_last: self.device_last.clone(),
+            releases: self.releases.clone(),
+            cursor: self.cursor,
+        }
+    }
+
+    /// Back to a keyframe's state. The commands journaled after it, on this
+    /// branch, are issued again as their ticks come, so stepping on
+    /// replays the run; a live command branches it. The log keeps what it
+    /// has: a replayed tick's changes are already in it.
+    pub fn restore(&mut self, s: &InputSnapshot) {
+        self.scheduled = s.scheduled.clone();
+        self.current = s.current.clone();
+        self.pressed = s.pressed.clone();
+        self.released = s.released.clone();
+        self.last_tick = s.last_tick;
+        self.device_last = s.device_last.clone();
+        self.releases = s.releases.clone();
+        self.cursor = s.cursor.min(self.journal.len());
+    }
+
+    /// Commands recorded after the current point, waiting to be issued again.
+    pub fn future(&self) -> &[JournalEntry] {
+        &self.journal[self.cursor..]
+    }
+
+    /// Every command on this branch, issued or waiting.
+    pub fn journal(&self) -> &[JournalEntry] {
+        &self.journal
+    }
+
+    /// The tick a live command branched the run at, once; `None` after.
+    pub fn take_branch(&mut self) -> Option<u64> {
+        self.branched.take()
+    }
+
+    /// Whether a live command came since the last call. The caller knows
+    /// whether the run already went past it (a seek back), which branches
+    /// the run even with no recorded command to drop.
+    pub fn take_live(&mut self) -> bool {
+        std::mem::take(&mut self.live)
+    }
+
+    /// Drop the recorded future, as a live command would: an edit or a
+    /// room transition between ticks changes what happens next.
+    pub fn branch(&mut self, now: u64) {
+        if self.cursor < self.journal.len() {
+            self.journal.truncate(self.cursor);
+            self.log.retain(|e| e.tick < now);
+            self.log_through = self.log.last().map(|e| e.tick).or(now.checked_sub(1));
+            self.rewrite_recording();
+        }
     }
 
     /// The `Actions` fields for a slot this tick, as `(field, value)`.

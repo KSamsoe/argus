@@ -143,6 +143,39 @@ impl History {
             .map(|b| (b.0, b.1.world()))
     }
 
+    /// Back to frame `to` (a seek): what was recorded from `to` on is the
+    /// future, gone until its ticks run again. What led up to `to` stays,
+    /// which is what a trace after a seek to a mark is for.
+    pub fn rewind(&mut self, to: u64) {
+        self.baselines.retain(|b| b.0 <= to);
+        if self.last_diff.is_some_and(|f| f > to) {
+            self.last_diff = None;
+        }
+        self.traces.retain(|_, t| t.since < to);
+        for t in self.traces.values_mut() {
+            while t.changes.back().is_some_and(|c| c.frame() >= to) {
+                if let Some(Change::Row { row, .. }) = t.changes.pop_back() {
+                    t.bytes -= row.len();
+                }
+            }
+            if t.gone.is_some_and(|g| g >= to) {
+                t.gone = None;
+            }
+            let mut last = t.base.clone();
+            for c in &t.changes {
+                match c {
+                    Change::Row { comp, row, .. } => {
+                        last.insert(*comp, row.clone());
+                    }
+                    Change::Removed { comp, .. } => {
+                        last.remove(comp);
+                    }
+                }
+            }
+            t.last = last;
+        }
+    }
+
     /// Forget everything: a new scene is a new world.
     pub fn clear(&mut self) {
         *self = History {

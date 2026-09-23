@@ -265,6 +265,20 @@ impl Mixer {
         }
     }
 
+    /// Fade out every voice but `keep` (a seek: the sounds of a moment the
+    /// sim left behind stop).
+    pub fn stop_all_but(&mut self, keep: &[u64], fade_s: f32) {
+        let ids: Vec<u64> = self
+            .voices
+            .iter()
+            .filter(|v| !keep.contains(&v.id))
+            .map(|v| v.id)
+            .collect();
+        for id in ids {
+            self.stop(id, fade_s);
+        }
+    }
+
     /// Is the voice still playing?
     pub fn is_playing(&self, id: u64) -> bool {
         self.voices.iter().any(|v| v.id == id && !v.done)

@@ -31,7 +31,9 @@ pub use moves::{MoveKind, MoveRecord, MoveReport};
 pub use prefab::PrefabLibrary;
 pub use project::{Project, ProjectConfig};
 pub use resolve::{Provenance, ResolvedComponent, ResolvedEntity, ResolvedField};
-pub use scene::{EntityFile, LoadReport, Room, RoomDoc, RoomGraph, Scene, SceneDoc, SeedPolicy};
+pub use scene::{
+    EntityFile, LoadReport, Room, RoomDoc, RoomGraph, Scene, SceneDoc, SeedPolicy, StreamState,
+};
 
 /// Error codes this crate adds to the 4xxx block.
 pub mod codes {

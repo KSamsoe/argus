@@ -39,6 +39,7 @@ The first run of Swarm's first wave with sound read `sfx peak +18 dB` in `audio.
 
 - **A voice cap per sound.** `max_voices` (default 8): a new voice steals the oldest, and `sound.played` says `stole = <voice>`. A stolen voice that has not sounded yet is dropped outright rather than faded, so a burst in one tick never plays the voices it steals.
 - **A master limiter.** A ceiling of 0.95 with immediate attack and 150 ms release; `master.limiter_db` in `audio.status` says how far it turned the mix down. After both, the same wave peaks at -2.5 dB and the limiter never acts.
+- **Variations replay from any frame.** A seek replays a stretch of the run, and `sound.played` has to name the same variations: the daemon calls `at_frame` before each request, and the variation stream is seeded by the run seed and the frame (phase 2 item 0). After a seek, `silence` fades out the sound effects of the moment left behind; music follows the restored world's `Music`.
 - **Silence is cheap.** With no device open the daemon mixes as far as the sim clock, so the meters and `audio.clip` have something to read, and a discrete game's turn is one second of it. Mixing a second of zeros through every bus each turn made Delve's tests five times slower (found after the phase-1 gate). A block with no voice playing now takes a short path that leaves exactly the long path's state: meters count the samples, the limiter recovers, the history gets zeros. Delve's tests went from 5.2 s to 2.4 s; `audio::silence_mixes_to_the_same_state_by_the_short_path` compares the two paths.
 
 | Test |

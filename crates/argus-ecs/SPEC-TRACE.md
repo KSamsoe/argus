@@ -12,7 +12,8 @@ Status words:
 
 | Spec | Status | Where | Test |
 |---|---|---|---|
-| The daemon holds exactly one world and a stack of snapshots. | Partial | `World`, `Snapshot`. The keyframe ring is phase 2 and stacks these. | `maintain_snapshot::snapshot_restore_round_trips_everything` |
+| The daemon holds exactly one world and a stack of snapshots. | Done | `World`, `Snapshot`; the daemon's keyframe ring (phase 2 item 0) holds them with the sim state beside, and a fork is a second world parked beside the first. | `maintain_snapshot::snapshot_restore_round_trips_everything` |
+| (Phase 2 item 0.) A seek across a room transition restores the rooms with the world. | Done | In argus-scene: `Scene::stream_state` and `set_stream_state` hold which rooms are loaded, the current one, what was spawned for each, and the references still pending; a keyframe carries them. | `argus-daemon/tests/seek.rs` (a transition is a barrier keyframe) |
 | Entering play takes a snapshot; stopping restores it; the snapshot is a memcpy of SoA columns costing single-digit ms at Swarm's entity counts. | Done | `Column::clone` is one `memcpy`; `World::snapshot`, `World::restore`. Measured 1.1 ms at 102k entities. | `perf::perf_snapshot_100k_under_5ms` |
 | Multiple concurrent play sessions are forked worlds from a snapshot inside the same daemon. | Done | `World::fork`, `Snapshot::fork`. | `maintain_snapshot::forks_evolve_independently` |
 | A script or plugin fault must not take the daemon down; the world remains intact and inspectable. | Partial | No ECS operation panics on protocol-reachable input: every fallible call returns `ArgusError`; unknown string ids resolve to `""`; hierarchy cycles are reported, not looped. Remaining asserts (typed view size mismatch, row out of range) are programmer errors unreachable through the protocol. Script sandboxing is the Luau piece. | `hierarchy::cycles_are_reported_not_hung`, `components::bad_schemas_are_rejected_with_reasons` |

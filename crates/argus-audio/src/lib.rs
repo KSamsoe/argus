@@ -156,6 +156,8 @@ pub struct AudioEngine {
     last_time: Option<f64>,
     /// Sounds started since load.
     pub played: u64,
+    /// The frame `rng` was seeded for (`at_frame`).
+    rng_frame: Option<u64>,
 }
 
 fn round3(x: f32) -> f64 {
@@ -223,6 +225,7 @@ impl AudioEngine {
             warnings: Vec::new(),
             last_time: None,
             played: 0,
+            rng_frame: None,
         };
         e.load_sounds();
         Ok(e)
@@ -390,6 +393,17 @@ impl AudioEngine {
     }
 
     // ----- requests -----------------------------------------------------------
+
+    /// The requests that follow came from `frame`: variations are drawn
+    /// from a stream seeded by the run seed and the frame, so a seek that
+    /// replays the frame draws the same ones (phase 2). Without a call, one
+    /// stream serves the whole run.
+    pub fn at_frame(&mut self, frame: u64) {
+        if self.rng_frame != Some(frame) {
+            self.rng = argus_sim::rng::stream(self.seed, &format!("audio@{frame}"));
+            self.rng_frame = Some(frame);
+        }
+    }
 
     /// Handle one `sound.play` or `sound.stop` request; the events to log.
     pub fn request(
@@ -843,6 +857,19 @@ impl AudioEngine {
                 "this build has no audio device support",
             ))
         }
+    }
+
+    /// Stop the sound effects playing, after a seek: they belong to a moment
+    /// the sim left. Music keeps playing; it follows the world's `Music`,
+    /// which the seek restored.
+    pub fn silence(&mut self) {
+        let keep: Vec<u64> = self
+            .music
+            .as_ref()
+            .map(|p| p.layers.iter().map(|l| l.voice).collect())
+            .unwrap_or_default();
+        self.lock().stop_all_but(&keep, 0.03);
+        self.spatial.clear();
     }
 
     /// Close the output device.

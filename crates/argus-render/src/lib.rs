@@ -344,6 +344,17 @@ impl Renderer {
         Ok(Self::wrap(Gpu::offscreen(width, height, software)?))
     }
 
+    /// Forget the poses frames interpolate from: after a seek the last
+    /// drawn tick is another moment, and sliding from it would show a frame
+    /// that never happened.
+    pub fn forget_motion(&mut self) {
+        self.prev = Default::default();
+        self.seen = Default::default();
+        self.seen_tick = None;
+        self.cam_prev = None;
+        self.cam_seen = None;
+    }
+
     /// Into a window.
     pub fn windowed(
         window: std::sync::Arc<winit::window::Window>,

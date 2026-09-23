@@ -138,6 +138,15 @@ pub struct LoadReport {
     pub ms: f64,
 }
 
+/// A scene's streaming state at a moment: see `Scene::stream_state`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StreamState {
+    loaded: BTreeSet<String>,
+    current: Option<String>,
+    spawned: BTreeMap<String, Entity>,
+    pending: Vec<PendingRef>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct PendingRef {
     from: String,
@@ -540,6 +549,27 @@ impl Scene {
     /// initial `spawn_around`).
     pub fn current_room(&self) -> Option<&str> {
         self.current.as_deref()
+    }
+
+    /// Which rooms are loaded and what was spawned for them: what a keyframe
+    /// keeps, so a seek back across a room transition restores the rooms
+    /// with the world (phase 2).
+    pub fn stream_state(&self) -> StreamState {
+        StreamState {
+            loaded: self.loaded.clone(),
+            current: self.current.clone(),
+            spawned: self.spawned.clone(),
+            pending: self.pending.clone(),
+        }
+    }
+
+    /// Back to a keyframe's rooms. The world is restored separately, from
+    /// the same keyframe.
+    pub fn set_stream_state(&mut self, s: &StreamState) {
+        self.loaded = s.loaded.clone();
+        self.current = s.current.clone();
+        self.spawned = s.spawned.clone();
+        self.pending = s.pending.clone();
     }
 
     /// Graph distance between two rooms, if connected.

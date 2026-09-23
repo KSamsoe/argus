@@ -372,10 +372,28 @@ pub const METHODS: &[MethodDoc] = &[
         returns: "{ticks, hit} plus sim.status",
     },
     MethodDoc {
+        name: "sim.seek",
+        doc: "Go to a frame of this run: the nearest earlier keyframe is restored and the run replayed forward to it (section 6). Back, or forward along a run already played. The replay's events are checked against the log; stepping afterwards replays what happened next until a live command branches the run. Edits written to files are not rewound; undo does that.",
+        params: "frame: integer (or turn, on a discrete clock); verify: boolean (default false: also replay the keyframe before into the one used and compare the worlds field by field)",
+        returns: "sim.status plus {from: the keyframe's frame, replayed: ticks, ms, checked: events compared, diverged: the first difference or null, verified}",
+    },
+    MethodDoc {
+        name: "sim.fork",
+        doc: "A second world from this one's state, inside the same daemon, with its own clock (section 6). Built from the files as they are now, so a fork after a script edit runs the new code beside the old; it copies the input journal, so from a past frame it replays the same inputs until a command of its own branches it. Any method takes fork: \"name\" to act on that world; switch makes it the world in use, the one the window shows.",
+        params: "name: string (omit to list the worlds); frame: integer (default: now; a past frame of this run); switch: boolean; drop: boolean",
+        returns: "{active, worlds: [{name, tick, frame, entities}]}, plus made: {name, frame, from} when one was made",
+    },
+    MethodDoc {
+        name: "sim.snapshot",
+        doc: "Take a keyframe now, kept like a change's, and report the ring: keyframes every `every` ticks, all of them for the last five minutes of sim time, then one a minute to an hour, then one per ten minutes, under a byte budget ([ring] every and budget_mb in argus.toml).",
+        params: "",
+        returns: "{keyframes, bytes, budget, every, oldest, newest, barriers, end, floor, tick}",
+    },
+    MethodDoc {
         name: "sim.status",
         doc: "Clock state.",
         params: "",
-        returns: "{playing, paused, clock, hz, speed, tick, time, frame, seed}",
+        returns: "{playing, paused, clock, hz, speed, tick, time, frame, seed, end: the furthest frame this run has reached}",
     },
     MethodDoc {
         name: "script.reload",

@@ -340,13 +340,13 @@ fn a_recorded_log_replays_to_the_same_run() {
     let entries = InputState::read_log(&path, &map()).unwrap();
     assert_eq!(entries.len(), 5);
     let (mut w2, mut s2, state2) = rig(false);
-    assert_eq!(state2.borrow_mut().replay(&entries).unwrap(), 5);
+    assert_eq!(state2.borrow_mut().replay(0, &entries).unwrap(), 5);
     let p1a = w.entity("@p1").unwrap();
     let p1b = w2.entity("@p1").unwrap();
     let mut a_trace = Vec::new();
     let mut b_trace = Vec::new();
     let (mut wa, mut sa, sta) = rig(false);
-    sta.borrow_mut().replay(&entries).unwrap();
+    sta.borrow_mut().replay(0, &entries).unwrap();
     for _ in 0..8 {
         sa.step(&mut wa, 1).unwrap();
         s2.step(&mut w2, 1).unwrap();
@@ -506,7 +506,7 @@ fn device_changes_are_logged_as_actions_and_replay_without_devices() {
     // A fresh run replays the log with no devices at all and ends the same.
     let entries = st.borrow().log().to_vec();
     let (mut w2, mut s2, st2) = rig(false);
-    st2.borrow_mut().replay(&entries).unwrap();
+    st2.borrow_mut().replay(0, &entries).unwrap();
     s2.step(&mut w2, 4).unwrap();
     let q1 = w2.entity("@p1").unwrap();
     for f in ["Actions.fire", "Actions.move"] {
@@ -613,4 +613,109 @@ fn a_newer_inject_is_not_cut_short_by_an_older_ones_release() {
         .get_field(w.entity("@p1").unwrap(), "Actions.fire")
         .unwrap();
     assert_eq!(fire, Value::Bool(false), "the press at 145 let go at 150");
+}
+
+// ----- phase 2 item 0: the journal, for seek ---------------------------------
+
+/// Run ticks `from..to` and write down every slot-1 field each tick.
+fn run_ticks(st: &mut InputState, from: u64, to: u64) -> Vec<(u64, Vec<(String, Value)>)> {
+    (from..to)
+        .map(|t| {
+            st.begin_tick(t);
+            (t, st.fields_for(1))
+        })
+        .collect()
+}
+
+/// Found planning phase 2: the value log cannot rebuild the input state
+/// between keyframes (a toggle's recorded release flips it again; an
+/// inject's own release is scheduled, not logged, until it happens). The
+/// commands are journaled, and a restore re-issues them as their ticks come.
+#[test]
+fn a_restore_replays_the_journaled_commands_exactly() {
+    let mut st = InputState::new(map(), false);
+    st.inject(0, 1, "move", Some(&json!([1, 0])), Some(30), false)
+        .unwrap();
+    let mut first = run_ticks(&mut st, 0, 10);
+    let key = st.snapshot(); // next tick to run: 10
+                             // After the keyframe: a toggle pressed and pressed again, a script,
+                             // and an inject that replaces the held move, whose own release (at 30)
+                             // must not cut the new one short.
+    st.inject(10, 1, "crouch", None, None, false).unwrap();
+    first.extend(run_ticks(&mut st, 10, 14));
+    st.script(
+        14,
+        &[
+            json!({"at": 0, "action": "fire"}),
+            json!({"at": 3, "action": "throttle", "value": 0.5, "frames": 4}),
+        ],
+    )
+    .unwrap();
+    st.inject(14, 1, "crouch", None, None, false).unwrap();
+    first.extend(run_ticks(&mut st, 14, 25));
+    st.inject(25, 1, "move", Some(&json!([0, 1])), Some(20), false)
+        .unwrap();
+    first.extend(run_ticks(&mut st, 25, 50));
+    let log_len = st.log().len();
+
+    st.restore(&key);
+    assert_eq!(st.future().len(), 4, "the commands after the keyframe wait");
+    let again = run_ticks(&mut st, 10, 50);
+    assert_eq!(again, first[10..].to_vec(), "the same values, tick by tick");
+    assert!(st.future().is_empty());
+    assert_eq!(st.log().len(), log_len, "replayed ticks do not log twice");
+    assert_eq!(st.take_branch(), None, "replaying is not branching");
+}
+
+#[test]
+fn a_live_command_after_a_restore_branches_and_drops_the_recorded_future() {
+    let mut st = InputState::new(map(), false);
+    run_ticks(&mut st, 0, 5);
+    let key = st.snapshot();
+    st.inject(5, 1, "fire", None, Some(10), false).unwrap();
+    st.inject(20, 1, "throttle", Some(&json!(1.0)), Some(5), false)
+        .unwrap();
+    run_ticks(&mut st, 5, 30);
+    assert_eq!(st.journal().len(), 2);
+
+    st.restore(&key);
+    run_ticks(&mut st, 5, 12); // the fire inject came in again at 5
+    assert_eq!(st.future().len(), 1, "the throttle at 20 still waits");
+    st.inject(12, 1, "move", Some(&json!([-1, 0])), Some(3), false)
+        .unwrap();
+    assert_eq!(st.take_branch(), Some(12));
+    assert!(st.future().is_empty(), "the throttle never happens now");
+    assert_eq!(st.journal().len(), 2, "fire, then the new move");
+    assert!(
+        st.log().iter().all(|e| e.tick < 12),
+        "the log after the branch is gone: {:?}",
+        st.log()
+    );
+    let after = run_ticks(&mut st, 12, 30);
+    let throttle = |fields: &Vec<(String, Value)>| {
+        fields
+            .iter()
+            .find(|(k, _)| k == "throttle")
+            .map(|(_, v)| v.clone())
+    };
+    assert!(after
+        .iter()
+        .all(|(_, f)| throttle(f) == Some(Value::Float(0.0))));
+}
+
+#[test]
+fn a_restore_can_move_forward_along_the_recorded_run() {
+    let mut st = InputState::new(map(), false);
+    let k0 = st.snapshot();
+    st.inject(0, 1, "fire", None, Some(3), false).unwrap();
+    run_ticks(&mut st, 0, 10);
+    st.inject(10, 1, "crouch", None, None, false).unwrap();
+    run_ticks(&mut st, 10, 20);
+    let k20 = st.snapshot();
+    let at20 = st.fields_for(1);
+    st.restore(&k0);
+    assert_eq!(st.future().len(), 2);
+    st.restore(&k20);
+    assert!(st.future().is_empty(), "past both commands");
+    assert_eq!(st.fields_for(1), at20);
 }
