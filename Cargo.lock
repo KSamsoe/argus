@@ -167,6 +167,7 @@ dependencies = [
  "argus-index",
  "argus-input",
  "argus-luau",
+ "argus-particles",
  "argus-physics",
  "argus-render",
  "argus-scene",
@@ -229,6 +230,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "argus-particles"
+version = "0.0.1"
+dependencies = [
+ "argus-assets",
+ "argus-ecs",
+ "argus-sim",
+]
+
+[[package]]
 name = "argus-physics"
 version = "0.0.1"
 dependencies = [
@@ -245,6 +255,8 @@ dependencies = [
  "argus-assets",
  "argus-camera",
  "argus-ecs",
+ "argus-particles",
+ "argus-sim",
  "bytemuck",
  "png",
  "pollster",

@@ -407,3 +407,70 @@ fn the_priority_camera_draws_and_its_shake_moves_and_rolls_the_view() {
     assert_eq!(rep.view_center, [0.0, 0.0]);
     assert_eq!(r.capture().unwrap().pixel(50, 50)[..3], [0, 255, 0]);
 }
+
+/// §13: particles are drawn instanced, one run per pool from its effect's
+/// atlas at its z, culled to the view, and between their last two ticks'
+/// positions like any sprite.
+#[test]
+fn particle_pools_draw_as_one_run_each_between_ticks() {
+    use argus_particles::{Emitter, ParticleStore};
+    use std::cell::RefCell;
+    use std::rc::Rc;
+    let Some(mut r) = renderer(100, 100) else {
+        return;
+    };
+    let mut w = world_with_camera(10.0);
+    let mut sched = argus_sim::Scheduler::new(argus_sim::SchedulerConfig::continuous(60.0).seed(1));
+    let store = Rc::new(RefCell::new(ParticleStore::default()));
+    argus_particles::install(&mut w, &mut sched, store.clone()).unwrap();
+    for (name, text) in [
+        ("fx/red", "burst = 1\nspeed = 60\ndirection = 0\nspread = 0\nlifetime = 100\nsize = 1\ncolor = \"#FF0000\"\nz = 1\n"),
+        ("fx/green", "burst = 3\nspeed = 0\nlifetime = 100\nsize = 1\ncolor = \"#00FF00\"\nparticle = \"circle\"\nz = 2\n"),
+    ] {
+        let (spec, _) = argus_assets::effect::parse_emitter(name, text).unwrap();
+        store.borrow_mut().set_effect(name, &spec);
+    }
+    for (fx, x, y) in [
+        ("fx/red", -4.0, 0.0),
+        ("fx/green", 3.0, 3.0),
+        ("fx/green", 100.0, 0.0),
+    ] {
+        let e = w.spawn();
+        w.insert(e, Transform::at(x, y)).unwrap();
+        let effect = w.strings().intern(fx);
+        w.insert(
+            e,
+            Emitter {
+                effect,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    }
+    // Born at x = -4, then three ticks at one unit a tick.
+    sched.step(&mut w, 4).unwrap();
+    let tick = sched.tick();
+    let rep = r
+        .render_frame(&w, tick, 1.0, &[], Some(&store.borrow()))
+        .unwrap();
+    assert_eq!(rep.particles, 4, "the far pool is out of view");
+    assert_eq!(rep.stats.draw_calls, 2, "a rect run and a circle run");
+    let img = r.capture().unwrap();
+    let px = |x: f32, y: f32| {
+        let (a, b) = r.to_pixel(x, y);
+        img.pixel(a as u32, b as u32)
+    };
+    assert_eq!(px(-1.0, 0.0)[..3], [255, 0, 0]);
+    assert_eq!(px(3.0, 3.0)[..3], [0, 255, 0]);
+    assert_ne!(px(-1.8, 0.0)[..3], [255, 0, 0]);
+    // Half way through the next tick's real time: half a step back.
+    r.render_frame(&w, tick, 0.5, &[], Some(&store.borrow()))
+        .unwrap();
+    let img = r.capture().unwrap();
+    let px = |x: f32, y: f32| {
+        let (a, b) = r.to_pixel(x, y);
+        img.pixel(a as u32, b as u32)
+    };
+    assert_eq!(px(-1.8, 0.0)[..3], [255, 0, 0]);
+    assert_ne!(px(-0.7, 0.0)[..3], [255, 0, 0]);
+}

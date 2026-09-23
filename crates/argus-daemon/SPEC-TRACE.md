@@ -43,6 +43,12 @@ Every statement in the design document (v0.3) that constrains the daemon and the
 | The local socket needs no auth; remote access via tokens is later. | Done (phase-0 half) | Nothing listens beyond the local socket. | |
 | Identical result shapes from the live world or the index. | Deferred | Piece 6 will serve `world.*` and `scene.*` from the index when no world is loaded, with these shapes. | |
 
+## Phase 1, item 10: particles in every scene
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| An Emitter plays an effect asset from a pool outside the ECS, drawn instanced (§13). | Done | Opening a scene installs `argus-particles` after the tweens, so `particles.update` runs last in the late stage, after the camera. Its effects come from the importer and are refreshed after every import. `asset.list kind=emitter` lists the effects (their pool size in the frames column). `obs.frame` and the window draw every pool, and `obs.frame` reports how many particles it drew. With no emitters the system returns at once and allocates nothing. | `particles::a_torch_burns_sparks_fly_and_an_edit_to_the_effect_shows_next_import`, `protocol::sim_and_events_answer_why_the_bat_died` |
+
 ## Phase 1, item 9: tweens in every scene
 
 | Spec | Status | Where | Test |

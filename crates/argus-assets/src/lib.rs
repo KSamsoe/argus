@@ -18,6 +18,7 @@
 #![warn(missing_docs)]
 
 pub mod animator;
+pub mod effect;
 pub mod sidecar;
 
 pub use animator::{
@@ -25,6 +26,7 @@ pub use animator::{
 };
 use argus_audio::{SoundDef, Source};
 use argus_ecs::{ArgusError, Result};
+pub use effect::{Area, ColorCurve, Curve, EmitterSpec, Space};
 use serde_json::{json, Value as Json};
 pub use sidecar::{AutoMode, AutoTileSpec};
 use sidecar::{Direction, Shape, SidecarKind};
@@ -161,6 +163,8 @@ pub enum Asset {
     Sound(SoundAsset),
     /// An animator state machine.
     Animator(AnimatorSpec),
+    /// A particle effect.
+    Emitter(EmitterSpec),
 }
 
 /// A warning about an import: a sentence and where.
@@ -196,6 +200,7 @@ impl Entry {
             Asset::Sprite(_) => "sprite",
             Asset::Sound(_) => "sound",
             Asset::Animator(_) => "animator",
+            Asset::Emitter(_) => "emitter",
         }
     }
 
@@ -214,6 +219,15 @@ impl Entry {
             "warnings": warnings,
         });
         match &self.asset {
+            Asset::Emitter(f) => {
+                o["sprite"] = json!(f.sprite);
+                o["particle"] = json!(f.particle);
+                o["rate"] = json!(f.rate);
+                o["burst"] = json!(f.burst);
+                o["max"] = json!(f.max);
+                o["lifetime"] = json!(f.lifetime);
+                o["space"] = json!(format!("{:?}", f.space).to_lowercase());
+            }
             Asset::Animator(a) => {
                 o["initial"] = json!(a.initial);
                 o["states"] = Json::Array(
@@ -477,6 +491,14 @@ impl Importer {
         })
     }
 
+    /// Particle effects.
+    pub fn emitters(&self) -> impl Iterator<Item = (&String, &EmitterSpec)> {
+        self.entries.iter().filter_map(|(n, e)| match &e.asset {
+            Asset::Emitter(f) => Some((n, f)),
+            _ => None,
+        })
+    }
+
     /// Sounds defined by sidecars, for the mixer.
     pub fn sidecar_sounds(&self) -> Vec<SoundDef> {
         self.entries
@@ -651,6 +673,25 @@ impl Importer {
         match kind {
             SidecarKind::Sprite => self.import_sprite(name, g, side_text.as_deref(), side_file.as_deref(), hash),
             SidecarKind::Sound => self.import_sound(name, g, side_text.as_deref(), side_file.as_deref(), hash),
+            SidecarKind::Emitter => {
+                let file = side_file.clone().unwrap_or_default();
+                let (spec, notes) = effect::parse_emitter(&file, side_text.as_deref().unwrap_or(""))?;
+                let warnings = notes
+                    .into_iter()
+                    .map(|(message, line)| Warning { message, at: format!("{file}:{line}") })
+                    .collect();
+                Ok((
+                    Entry {
+                        name: name.to_string(),
+                        sidecar: g.sidecar.clone(),
+                        hash,
+                        warnings,
+                        asset: Asset::Emitter(spec),
+                        ms: 0.0,
+                    },
+                    Vec::new(),
+                ))
+            }
             SidecarKind::Animator => {
                 let file = side_file.clone().unwrap_or_default();
                 let (spec, notes) = animator::parse_animator(&file, side_text.as_deref().unwrap_or(""))?;
@@ -672,9 +713,9 @@ impl Importer {
             }
             SidecarKind::Unknown => Err(ArgusError::new(
                 codes::AMBIGUOUS,
-                format!("{name}: the sidecar describes no sprite, sound, or animator"),
+                format!("{name}: the sidecar describes no sprite, sound, animator, or emitter"),
             )
-            .hint("Give it type = \"sprite\" (with grid, [[frames]], or kind/size/color), type = \"sound\" (with variations, tone, or file), or type = \"animator\" (with [states.<name>]).")
+            .hint("Give it type = \"sprite\" (with grid, [[frames]], or kind/size/color), type = \"sound\" (with variations, tone, or file), type = \"animator\" (with [states.<name>]), or type = \"emitter\".")
             .at(side_file.clone())),
         }
     }

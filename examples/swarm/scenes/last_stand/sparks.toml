@@ -1,0 +1,8 @@
+# The spark emitter: it plays nothing itself; sim.hits bursts it where
+# each enemy dies.
+[Transform]
+pos = [0.0, 0.0]
+
+[Emitter]
+effect = "fx/pop"
+playing = false

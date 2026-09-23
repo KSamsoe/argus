@@ -185,6 +185,8 @@ pub enum SidecarKind {
     Sound,
     /// An animator state machine (item 8).
     Animator,
+    /// A particle effect (item 10).
+    Emitter,
     /// It does not say, and nothing in it tells.
     Unknown,
 }
@@ -233,16 +235,20 @@ pub fn kind_of(file: &str, text: &str) -> Result<SidecarKind> {
             "sprite" => Ok(SidecarKind::Sprite),
             "sound" => Ok(SidecarKind::Sound),
             "animator" => Ok(SidecarKind::Animator),
+            "emitter" => Ok(SidecarKind::Emitter),
             other => Err(err(
                 file,
                 1,
-                format!("type = {other:?}; types are sprite, sound, and animator"),
+                format!("type = {other:?}; types are sprite, sound, animator, and emitter"),
             )),
         };
     }
     let has = |k: &str| doc.get(k).is_some();
     if has("states") || has("initial") {
         return Ok(SidecarKind::Animator);
+    }
+    if has("rate") || has("burst") || has("lifetime") {
+        return Ok(SidecarKind::Emitter);
     }
     if has("variations") || has("tone") || has("file") || has("bus") {
         return Ok(SidecarKind::Sound);

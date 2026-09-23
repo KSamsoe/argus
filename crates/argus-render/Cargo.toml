@@ -9,8 +9,12 @@ license.workspace = true
 argus-ecs = { path = "../argus-ecs", version = "0.0.1" }
 argus-camera = { path = "../argus-camera", version = "0.0.1" }
 argus-assets = { path = "../argus-assets", version = "0.0.1" }
+argus-particles = { path = "../argus-particles", version = "0.0.1" }
 wgpu = "24"
 winit = "0.30"
 pollster = "0.4"
 bytemuck = { version = "1", features = ["derive"] }
 png = "0.17"
+
+[dev-dependencies]
+argus-sim = { path = "../argus-sim", version = "0.0.1" }

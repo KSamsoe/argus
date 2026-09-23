@@ -215,7 +215,9 @@ fn bad_sidecars_fail_with_the_line_and_the_rest_still_import() {
     assert!(why["b"].0.contains("shapes are rect and circle"));
     assert_eq!(why["b"].1.as_deref(), Some("assets/b.toml:2"));
     assert!(
-        why["c"].0.contains("no sprite, sound, or animator"),
+        why["c"]
+            .0
+            .contains("no sprite, sound, animator, or emitter"),
         "{why:?}"
     );
     assert!(why["d"].0.contains("both a .png and a .wav"));
@@ -390,4 +392,94 @@ fn an_animator_imports_with_its_states_and_its_mistakes_have_lines() {
         assert!(f.error.message.contains(words), "{text}: {}", f.error.message);
         assert_eq!(f.error.r#ref.as_deref(), Some(format!("assets/anim/bad.toml:{}", line + 1).as_str()), "{text}: {}", f.error.message);
     }
+}
+
+/// Item 10: a particle effect is an asset (type = "emitter", or found by
+/// rate, burst, or lifetime): its ranges and curves checked at import, its
+/// mistakes errors with the line, unknown keys warnings.
+#[test]
+fn an_emitter_imports_with_its_curves_and_its_mistakes_have_lines() {
+    use argus_assets::{Area, Space};
+    let dir = project("emitter");
+    write(
+        &dir,
+        "fx/sparks.toml",
+        "type = \"emitter\"\nsprite = \"fx/spark\"\nshape = \"circle\"\nradius = 0.25\nrate = 120\nburst = 30\nmax = 2000\nlifetime = [0.4, 0.9]\nspeed = 4\ndirection = 90\nspread = 60\ngravity = [0, -12]\ndrag = 1.5\nspace = \"local\"\nsize = [[0, 0.1], [0.5, 0.3], [1, 0]]\ncolor = [[0, \"#FFFFFFFF\"], [1, \"#FF000000\"]]\nglow = true\n",
+    );
+    // Found by its keys, without a type; everything else defaults.
+    write(&dir, "fx/puff.toml", "burst = 8\n");
+    let mut imp = Importer::new(&dir);
+    let rep = imp.scan();
+    assert!(rep.failed.is_empty(), "{:?}", rep.failed);
+    let e = &imp.entries()["fx/sparks"];
+    assert_eq!(e.kind(), "emitter");
+    assert_eq!(messages(e), ["unknown key \"glow\", ignored"]);
+    assert_eq!(e.warnings[0].at, "assets/fx/sparks.toml:17");
+    let Asset::Emitter(f) = &e.asset else {
+        panic!()
+    };
+    assert_eq!(f.sprite.as_deref(), Some("fx/spark"));
+    assert_eq!(f.area, Area::Circle { radius: 0.25 });
+    assert_eq!((f.rate, f.burst, f.max), (120.0, 30, 2000));
+    assert_eq!(f.lifetime, [0.4, 0.9]);
+    assert_eq!(f.speed, [4.0, 4.0], "a number is a range of one");
+    assert_eq!(f.gravity, [0.0, -12.0]);
+    assert_eq!(f.space, Space::Local);
+    assert!(
+        (f.size.at(0.25) - 0.2).abs() < 1e-6,
+        "curves are linear between points"
+    );
+    assert_eq!(f.size.at(1.0), 0.0);
+    assert_eq!(
+        f.velocity.at(0.7),
+        1.0,
+        "a missing curve is its default constant"
+    );
+    assert_eq!(f.color.points[1].1, [255, 0, 0, 0]);
+    let puff = &imp.entries()["fx/puff"];
+    assert_eq!(puff.kind(), "emitter");
+    let Asset::Emitter(p) = &puff.asset else {
+        panic!()
+    };
+    assert_eq!(
+        (p.burst, p.max, p.particle.as_str(), p.area),
+        (8, 1000, "rect", Area::Point)
+    );
+    assert_eq!(imp.emitters().count(), 2);
+    assert_eq!(e.to_json()["space"], "local");
+
+    // Mistakes are errors naming the line.
+    for (text, line, words) in [
+        ("lifetime = 0\n", 1, "lifetime must be above 0"),
+        ("lifetime = [2, 1]\n", 1, "min first"),
+        ("rate = -3\n", 1, "rate is a number from 0"),
+        ("burst = 1\nsize = [[0.5, 1], [0.2, 2]]\n", 2, "never back"),
+        ("burst = 1\nsize = [[0, 1], [2, 2]]\n", 2, "never back"),
+        ("burst = 1\nsize = [[0, 1, 2]]\n", 2, "is [t, value]"),
+        ("burst = 1\ncolor = [[0, \"red\"]]\n", 2, "not #RRGGBB"),
+        ("burst = 1\nshape = \"star\"\n", 2, "point, circle, box"),
+        ("burst = 1\nspace = \"screen\"\n", 2, "world and local"),
+        ("burst = 1\nparticle = \"star\"\n", 2, "rect and circle"),
+        ("burst = 1\ngravity = 3\n", 2, "gravity is [x, y]"),
+    ] {
+        write(&dir, "fx/bad.toml", &format!("type = \"emitter\"\n{text}"));
+        let rep = imp.scan();
+        let f = rep
+            .failed
+            .iter()
+            .find(|f| f.name == "fx/bad")
+            .unwrap_or_else(|| panic!("{text} did not fail"));
+        assert!(
+            f.error.message.contains(words),
+            "{text}: {}",
+            f.error.message
+        );
+        assert_eq!(
+            f.error.r#ref.as_deref(),
+            Some(format!("assets/fx/bad.toml:{}", line + 1).as_str()),
+            "{text}: {}",
+            f.error.message
+        );
+    }
+    std::fs::remove_dir_all(&dir).ok();
 }

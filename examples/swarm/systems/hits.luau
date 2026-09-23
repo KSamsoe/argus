@@ -3,7 +3,7 @@ return system "sim.hits" {
   after = { "sim.bullets" },
   reads = { "Bullet", "Enemy", "Transform", "Player", "Health", "Director" },
   writes = { "Health", "Player", "Bullet" },
-  doc = "Each bullet hits the nearest enemy within reach (the engine's broadphase, not a hash of our own) and dies; enemies touching the player hurt it.",
+  doc = "Each bullet hits the nearest enemy within reach (the engine's broadphase, not a hash of our own) and dies, in a burst of sparks where the scene logs kills; enemies touching the player hurt it.",
   run = function(q)
     local pe = q:entity("@player")
     local pl = pe:get("Player")
@@ -29,6 +29,7 @@ return system "sim.hits" {
             if d.log_kills then
               q:emit("death", { entity = target, cause = "bullet", wave = target:get("Enemy").wave, tick = q.tick })
               q:play("sfx/pop", { entity = target })
+              q:emit("particles.burst", { emitter = q:entity("@sparks"), count = 12, pos = target:get("Transform").pos })
             end
           end
         end

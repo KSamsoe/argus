@@ -99,6 +99,7 @@ impl Default for Sprite {
 /// The view comes from a camera entity (item 7, `argus-camera`): the active
 /// camera with the highest priority, its position plus its shake.
 pub use argus_camera::{Camera, CameraShake};
+use argus_particles::{lut_index, ParticleStore, LUT};
 
 /// Register the renderer's components (and the camera's, which it reads).
 pub fn register(world: &mut World) -> argus_ecs::Result<()> {
@@ -177,6 +178,8 @@ pub struct FrameReport {
     pub view_angle: f32,
     /// The camera that drew, if any.
     pub camera: Option<Entity>,
+    /// Particles drawn (those in view).
+    pub particles: usize,
     /// Wall time to build and submit, ms.
     pub ms: f64,
 }
@@ -370,6 +373,20 @@ impl Renderer {
         tick: u64,
         alpha: f32,
         extras: &[Extra],
+    ) -> argus_ecs::Result<FrameReport> {
+        self.render_frame(world, tick, alpha, extras, None)
+    }
+
+    /// `render_with` plus every particle pool: each pool is one run of
+    /// instances from its effect's atlas at its z, its particles drawn
+    /// oldest first, between their last two ticks' positions.
+    pub fn render_frame(
+        &mut self,
+        world: &World,
+        tick: u64,
+        alpha: f32,
+        extras: &[Extra],
+        particles: Option<&ParticleStore>,
     ) -> argus_ecs::Result<FrameReport> {
         let started = Instant::now();
         let (w, h) = self.gpu.size();
@@ -609,19 +626,144 @@ impl Renderer {
             }
         }
 
+        // Particles: one group of instances per pool, in view.
+        let mut pflat: Vec<Instance> = Vec::new();
+        let mut groups: Vec<(u64, usize, usize)> = Vec::new();
+        if let Some(store) = particles {
+            let box_half = rolled(half, angle);
+            pflat.reserve(store.live());
+            let names = self.gpu.atlas_names().to_vec();
+            let index: HashMap<&str, u32> = names
+                .iter()
+                .enumerate()
+                .map(|(i, n)| (n.as_str(), i as u32))
+                .collect();
+            for pool in store.pools.values() {
+                if pool.is_empty() {
+                    continue;
+                }
+                let fx = &*pool.effect;
+                let (ai, uv, pivot, tint) = match index.get(fx.atlas.as_str()) {
+                    Some(&ai) => {
+                        let a = self.gpu.atlas(&names[ai as usize]).expect("indexed");
+                        let f = if (fx.spec.frame as usize) < a.frames.len() {
+                            fx.spec.frame as usize
+                        } else {
+                            0
+                        };
+                        let pivot = a.pivots.get(f).copied().unwrap_or([0.5, 0.5]);
+                        (ai, a.frames[f], pivot, [1.0, 1.0, 1.0, 1.0])
+                    }
+                    None => {
+                        if !missing.contains(&fx.atlas) {
+                            missing.push(fx.atlas.clone());
+                        }
+                        (
+                            index["rect"],
+                            [0.0, 0.0, 1.0, 1.0],
+                            [0.5, 0.5],
+                            [1.0, 0.0, 1.0, 1.0],
+                        )
+                    }
+                };
+                // Between ticks: a particle was one step of its velocity back.
+                let back = if pool.tick + 1 == tick && alpha < 1.0 {
+                    pool.dt * (1.0 - alpha)
+                } else {
+                    0.0
+                };
+                let local = fx.spec.space == argus_assets::Space::Local;
+                let o = if local {
+                    [
+                        pool.origin_prev[0] + (pool.origin[0] - pool.origin_prev[0]) * alpha,
+                        pool.origin_prev[1] + (pool.origin[1] - pool.origin_prev[1]) * alpha,
+                    ]
+                } else {
+                    [0.0, 0.0]
+                };
+                let z = fx.spec.z;
+                let start = pflat.len();
+                let (xs, ys, vxs, vys, lifes) =
+                    (pool.x(), pool.y(), pool.vx(), pool.vy(), pool.life());
+                for i in 0..xs.len() {
+                    let t = lifes[i];
+                    let li = lut_index(t).min(LUT - 1);
+                    let s = fx.size[li];
+                    let k = if back > 0.0 {
+                        pool.speed_at(t) * back
+                    } else {
+                        0.0
+                    };
+                    let px = o[0] + xs[i] - vxs[i] * k;
+                    let py = o[1] + ys[i] - vys[i] * k;
+                    if (px - center[0]).abs() > box_half[0] + s
+                        || (py - center[1]).abs() > box_half[1] + s
+                    {
+                        continue;
+                    }
+                    let c = fx.color[li];
+                    pflat.push(Instance {
+                        pos_size: [px, py, s, s],
+                        rot_z: [fx.rotation[li], z, pivot[0], pivot[1]],
+                        uv,
+                        color: [
+                            c[0] * tint[0],
+                            c[1] * tint[1],
+                            c[2] * tint[2],
+                            c[3] * tint[3],
+                        ],
+                    });
+                }
+                if pflat.len() > start {
+                    let zb = z.to_bits();
+                    let zo = if zb & 0x8000_0000 != 0 {
+                        !zb
+                    } else {
+                        zb | 0x8000_0000
+                    } as u64;
+                    groups.push(((zo << 32) | ai as u64, start, pflat.len()));
+                }
+            }
+            groups.sort_by_key(|g| g.0);
+        }
+        let particle_count = pflat.len();
+
         // Back to front by z, atlas runs within equal z: one draw per run.
+        // Particle groups go in after the sprites with the same key.
         instances.sort_unstable_by_key(|x| x.0);
         let names = self.gpu.atlas_names().to_vec();
         let mut runs: Vec<(String, usize, usize)> = Vec::new();
-        for (i, (key, _)) in instances.iter().enumerate() {
-            let ai = (*key & 0xffff_ffff) as usize;
-            let name = names.get(ai).cloned().unwrap_or_else(|| "rect".to_string());
-            match runs.last_mut() {
-                Some((n, _, count)) if *n == name => *count += 1,
-                _ => runs.push((name, i, 1)),
+        let mut flat: Vec<Instance> = Vec::with_capacity(instances.len() + pflat.len());
+        let mut run_ai = u64::MAX;
+        let mut open = |ai: u64, n: usize, at: usize, runs: &mut Vec<(String, usize, usize)>| {
+            if ai == run_ai {
+                if let Some(r) = runs.last_mut() {
+                    r.2 += n;
+                    return;
+                }
             }
+            run_ai = ai;
+            let name = names
+                .get(ai as usize)
+                .cloned()
+                .unwrap_or_else(|| "rect".to_string());
+            runs.push((name, at, n));
+        };
+        let mut g = 0;
+        for (key, inst) in &instances {
+            while g < groups.len() && groups[g].0 < *key {
+                let (k, a, b) = groups[g];
+                open(k & 0xffff_ffff, b - a, flat.len(), &mut runs);
+                flat.extend_from_slice(&pflat[a..b]);
+                g += 1;
+            }
+            open(*key & 0xffff_ffff, 1, flat.len(), &mut runs);
+            flat.push(*inst);
         }
-        let flat: Vec<Instance> = instances.iter().map(|x| x.1).collect();
+        for &(k, a, b) in &groups[g..] {
+            open(k & 0xffff_ffff, b - a, flat.len(), &mut runs);
+            flat.extend_from_slice(&pflat[a..b]);
+        }
         let stats = self
             .gpu
             .draw(center, half, angle, self.clear, &flat, &runs)?;
@@ -633,6 +775,7 @@ impl Renderer {
             view_half: half,
             view_angle: angle,
             camera,
+            particles: particle_count,
             ms: started.elapsed().as_secs_f64() * 1e3,
         };
         Ok(self.last.clone())

@@ -52,6 +52,9 @@ struct Session {
     tiles: Rc<RefCell<argus_tiles::MapStore>>,
     /// Animator machines and sprite clips (item 8), refreshed on import.
     anims: Rc<RefCell<argus_anim::AnimStore>>,
+    /// Particle effects and every emitter's pool (item 10), refreshed on
+    /// import and drawn by the renderer.
+    particles: Rc<RefCell<argus_particles::ParticleStore>>,
 }
 
 struct EventLog {
@@ -596,6 +599,8 @@ impl Daemon {
         let anims = Rc::new(RefCell::new(argus_anim::AnimStore::default()));
         argus_anim::install(&mut self.world, &mut self.sched, anims.clone())?;
         argus_tween::install(&mut self.world, &mut self.sched)?;
+        let particles = Rc::new(RefCell::new(argus_particles::ParticleStore::default()));
+        argus_particles::install(&mut self.world, &mut self.sched, particles.clone())?;
         let mut host = ScriptHost::new(ScriptConfig::default())?;
         host.load_project(&mut self.world, &mut self.sched, &root)?;
         let def_schemas: Vec<DefSchema> = host
@@ -640,6 +645,7 @@ impl Daemon {
         let asset_report = assets.scan();
         tiles.borrow_mut().set_tilesets(&assets);
         anims.borrow_mut().set_assets(&assets);
+        particles.borrow_mut().set_assets(&assets);
         #[cfg(feature = "render")]
         {
             self.render.offscreen = None;
@@ -680,6 +686,7 @@ impl Daemon {
             assets,
             tiles,
             anims,
+            particles,
         });
         self.asset_events(&asset_report, true);
         self.pump_events();
@@ -901,6 +908,7 @@ impl Daemon {
             let ses = self.session.as_ref().expect("session");
             ses.tiles.borrow_mut().set_tilesets(&ses.assets);
             ses.anims.borrow_mut().set_assets(&ses.assets);
+            ses.particles.borrow_mut().set_assets(&ses.assets);
             #[cfg(feature = "render")]
             {
                 if let Some((_, r)) = &mut self.render.window {
@@ -1026,6 +1034,14 @@ impl Daemon {
                     e.sidecar.clone().unwrap_or_default(),
                     an.states.len(),
                     an.states.iter().map(|s| s.name.clone()).collect::<Vec<_>>(),
+                    e.warnings.len()
+                ]),
+                argus_assets::Asset::Emitter(fx) => json!([
+                    e.name,
+                    "emitter",
+                    e.sidecar.clone().unwrap_or_default(),
+                    fx.max,
+                    fx.sprite.iter().collect::<Vec<_>>(),
                     e.warnings.len()
                 ]),
                 argus_assets::Asset::Sound(so) => json!([
@@ -2663,7 +2679,9 @@ impl Daemon {
             &self.session.as_ref().expect("session").assets,
         )?;
         let _ = self.sched.present(&mut self.world);
-        let rep = r.render_with(&self.world, tick, alpha, &extras)?;
+        let store = self.session.as_ref().expect("session").particles.borrow();
+        let rep = r.render_frame(&self.world, tick, alpha, &extras, Some(&store))?;
+        drop(store);
         let img = r.capture()?;
         img.save_png(&path)?;
         Ok(json!({
@@ -2677,6 +2695,7 @@ impl Daemon {
             "atlases": rep.stats.atlases,
             "missing_atlases": rep.missing_atlases,
             "interpolated": rep.interpolated,
+            "particles": rep.particles,
             "camera": rep.camera.map(|e| json::entity_str(&self.world, e)),
             "view": {
                 "center": rep.view_center,
@@ -2790,8 +2809,9 @@ impl Daemon {
             .map(|(h, _)| h.size())
             .unwrap_or((1, 1));
         let extras = self.tile_extras(argus_render::view_for(&self.world, size.0, size.1));
-        if let Some((_, r)) = &mut self.render.window {
-            let _ = r.render_with(&self.world, tick, alpha, &extras);
+        if let (Some((_, r)), Some(ses)) = (&mut self.render.window, &self.session) {
+            let store = ses.particles.borrow();
+            let _ = r.render_frame(&self.world, tick, alpha, &extras, Some(&store));
         }
         self.pump_events();
     }

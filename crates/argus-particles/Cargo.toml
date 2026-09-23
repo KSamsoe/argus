@@ -1,0 +1,11 @@
+[package]
+name = "argus-particles"
+description = "Argus Engine particles: an Emitter component that plays a particle effect asset from a pooled structure-of-arrays, with rate, bursts, lifetimes, gravity, drag, and curves over life, deterministic from the run's seed"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+argus-ecs = { path = "../argus-ecs", version = "0.0.1" }
+argus-sim = { path = "../argus-sim", version = "0.0.1" }
+argus-assets = { path = "../argus-assets", version = "0.0.1" }

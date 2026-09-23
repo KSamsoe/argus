@@ -207,7 +207,8 @@ fn a_player_runs_jumps_and_lands_on_carved_tiles() {
             "anim.update",
             "tween.update",
             "late.listen",
-            "camera.update"
+            "camera.update",
+            "particles.update"
         ]
     );
     let w = ok(

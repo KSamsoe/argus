@@ -1,0 +1,12 @@
+# Sparks where an enemy pops: a burst per kill from the one emitter at
+# scenes/<scene>/sparks.toml, placed by the particles.burst event.
+type = "emitter"
+particle = "circle"
+max = 20000
+lifetime = [0.2, 0.45]
+speed = [3, 7]
+spread = 360
+drag = 3
+size = [[0, 0.35], [1, 0]]
+color = [[0, "#FFF2A0FF"], [0.5, "#FF9040C0"], [1, "#FF402000"]]
+z = 4
