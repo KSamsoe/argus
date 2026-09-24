@@ -146,6 +146,47 @@ pub fn status_bar(width: u32, text: &str, rgba: [u8; 4]) -> Image {
     img
 }
 
+/// The atlas the game's own text is drawn from (`Describe.shown`): every
+/// printable ASCII character in a 6 by 8 cell, white on clear, sixteen to
+/// a row. Returns width, height, RGBA, and each character's frame in
+/// texture space, space (32) first.
+pub(crate) fn font_atlas() -> (u32, u32, Vec<u8>, Vec<[f32; 4]>) {
+    let (cols, rows) = (16u32, 6u32);
+    let (w, h) = (cols * 6, rows * 8);
+    let mut rgba = vec![0u8; (w * h * 4) as usize];
+    let mut frames = Vec::with_capacity(95);
+    for i in 0..95u32 {
+        let (cx, cy) = ((i % cols) * 6, (i / cols) * 8);
+        for (row, bits) in GLYPHS[i as usize].iter().enumerate() {
+            for (col, b) in bits.bytes().enumerate() {
+                if b == b'#' {
+                    let p = (((cy + row as u32) * w + cx + col as u32) * 4) as usize;
+                    rgba[p..p + 4].copy_from_slice(&[255, 255, 255, 255]);
+                }
+            }
+        }
+        frames.push([
+            cx as f32 / w as f32,
+            cy as f32 / h as f32,
+            6.0 / w as f32,
+            8.0 / h as f32,
+        ]);
+    }
+    (w, h, rgba, frames)
+}
+
+/// A character's frame in [`font_atlas`]; anything outside printable
+/// ASCII is `?`.
+pub(crate) fn font_frame(c: char) -> usize {
+    let c = if c == '×' { 'x' } else { c };
+    let i = c as u32;
+    if (32..127).contains(&i) {
+        (i - 32) as usize
+    } else {
+        ('?' as u32 - 32) as usize
+    }
+}
+
 /// Pixels a line of text takes at `scale`: 6 across a character, 8 down.
 pub fn text_size(s: &str, scale: u32) -> (u32, u32) {
     (s.chars().count() as u32 * 6 * scale, 8 * scale)

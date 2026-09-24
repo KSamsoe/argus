@@ -51,6 +51,8 @@ Decisions taken while planning it, confirmed in the build:
 - The clip is rendered offscreen from replay (seek to two seconds before, step, capture), so marks need no GPU frame ring and work headless.
 - The note is typed in the window before the UI tree exists (phase 3): one line drawn with the annotation font from phase 1 item 12.
 
+The first playtest (Kevin, 2026-09-24) dropped three marks on Hollow. Two were a sign ("what is this thing?", "another one here"): opened, each was `@b/sign` or `@c/sign`, whose words ("Mind the pit.") reached the agent through the semantic frame and never the player; the HUD line was never drawn either. Fixed with `Describe.shown` (the renderer draws a game's own text in the pixel font until phase 3's UI tree), a signpost sprite with its board above the hero's head, and a Hollow system that shows a sign's words while the hero is near. Reopened after the fix, each mark's only difference at its frame was its sign's `Describe.shown`, false to true, and both were closed with that note. The third mark had no note and is open.
+
 Decisions taken while building it:
 
 - **A mark is files, and it outlives the daemon.** Closing the game's window ends the daemon, so a mark kept in memory would be gone by the time the agent looks. The replay file holds a keyframe (the world, the clocks and random streams, the input state, the particle pools, the rooms), the input commands after it, and the world at the mark. The same file serves item 3 (a failing test's replay) and item 7 (a release build's report key).

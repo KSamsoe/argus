@@ -430,6 +430,10 @@ impl Gpu {
             }
         }
         gpu.add_atlas_rgba("circle", n, n, &circle, vec![[0.0, 0.0, 1.0, 1.0]]);
+        // The pixel font the game's own text is drawn with (Describe.shown).
+        let (fw, fh, font, frames) = crate::annotate::font_atlas();
+        let pivots = vec![[0.5, 0.5]; frames.len()];
+        gpu.add_atlas_frames(crate::FONT_ATLAS, fw, fh, &font, frames, pivots);
         // The default material, index 0: the built-in unlit, what a sprite
         // with no material draws.
         let unlit = argus_material::builtin("unlit").expect("the library has unlit");

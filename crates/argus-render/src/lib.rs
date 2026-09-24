@@ -126,6 +126,11 @@ pub fn register(world: &mut World) -> argus_ecs::Result<()> {
     Ok(())
 }
 
+/// The built-in atlas of the pixel font the game's own text is drawn with.
+pub const FONT_ATLAS: &str = "argus/font";
+/// Where the game's text sorts: over everything in the world.
+const TEXT_Z: f32 = 1.0e6;
+
 /// Pictures as an animated PNG, looping, `fps` a second (phase 2 item 2:
 /// a mark's clip). Every browser and most viewers play it; one that does
 /// not shows the first picture. Returns the bytes written.
@@ -639,6 +644,121 @@ impl Renderer {
         self.render_with(world, tick, alpha, &[])
     }
 
+    /// The game's own text (phase 2, from a mark: Hollow's signs said their
+    /// words to the agent only): each shown `Describe`'s text in the pixel
+    /// font on a dark plate, centred over its entity's sprite, or at the
+    /// top left of the screen for the HUD (role `hud`, or no Transform),
+    /// one line each in reading order. Placed on whole screen pixels at 2
+    /// pixels a font pixel on a target 600 tall or more, else 1, so the
+    /// font stays sharp as the camera moves.
+    fn text_instances(
+        &self,
+        world: &World,
+        center: [f32; 2],
+        half: [f32; 2],
+        (_, h): (u32, u32),
+        problems: &mut Vec<String>,
+    ) -> Vec<(u64, Instance)> {
+        let Some(dc) = world.component_id_of::<Describe>() else {
+            return Vec::new();
+        };
+        let names = self.gpu.atlas_names();
+        let (Some(fi), Some(ri)) = (
+            names.iter().position(|n| n == FONT_ATLAS),
+            names.iter().position(|n| n == "rect"),
+        ) else {
+            return Vec::new();
+        };
+        let font = self.gpu.atlas(FONT_ATLAS).expect("indexed");
+        let ppu = h as f32 / (half[1] * 2.0).max(1e-6);
+        let s = if h >= 600 { 2.0 } else { 1.0 };
+        let (left, bottom) = (center[0] - half[0], center[1] - half[1]);
+        let hud_role = world.strings().intern("hud");
+        let mut world_text: Vec<(f32, f32, String)> = Vec::new();
+        let mut hud: Vec<(i32, String)> = Vec::new();
+        for e in world.query().has(dc).entities() {
+            let Ok(d) = world.get::<Describe>(e) else {
+                continue;
+            };
+            if !d.shown {
+                continue;
+            }
+            let text = semantic::fill(world, e, &world.strings().resolve(d.text), problems);
+            if text.is_empty() {
+                continue;
+            }
+            let pos = world
+                .get::<GlobalTransform>(e)
+                .map(|g| (g.pos, g.scale))
+                .or_else(|_| world.get::<Transform>(e).map(|t| (t.pos, t.scale)));
+            match pos {
+                Ok((p, scale)) if d.role != hud_role => {
+                    let top = world
+                        .get::<Sprite>(e)
+                        .map(|sp| sp.size.y * scale.y * 0.5)
+                        .unwrap_or(0.0);
+                    world_text.push((p.x, p.y + top, text));
+                }
+                _ => hud.push((d.order, text)),
+            }
+        }
+        hud.sort_by_key(|(o, _)| *o);
+        let mut out = Vec::new();
+        let key = |z: f32, atlas: usize| -> u64 {
+            let zb = z.to_bits();
+            let zo = if zb & 0x8000_0000 != 0 {
+                !zb
+            } else {
+                zb | 0x8000_0000
+            } as u64;
+            (zo << 32) | atlas as u64
+        };
+        // A block: its bottom left corner in screen pixels (y up).
+        let mut block = |bx: f32, by: f32, text: &str| {
+            let n = text.chars().count() as f32;
+            let (bw, bh) = ((n * 6.0 + 2.0) * s, 10.0 * s);
+            let at = |px: f32, py: f32| [left + px / ppu, bottom + py / ppu];
+            let c = at(bx + bw / 2.0, by + bh / 2.0);
+            out.push((
+                key(TEXT_Z, ri),
+                Instance {
+                    pos_size: [c[0], c[1], bw / ppu, bh / ppu],
+                    rot_z: [0.0, TEXT_Z, 0.5, 0.5],
+                    uv: [0.0, 0.0, 1.0, 1.0],
+                    color: [0.004, 0.004, 0.012, 0.8],
+                    extra: [0.0; 4],
+                },
+            ));
+            for (i, ch) in text.chars().enumerate() {
+                if ch == ' ' {
+                    continue;
+                }
+                let g = at(bx + (1.0 + 6.0 * i as f32 + 3.0) * s, by + 5.0 * s);
+                out.push((
+                    key(TEXT_Z + 1.0, fi),
+                    Instance {
+                        pos_size: [g[0], g[1], 6.0 * s / ppu, 8.0 * s / ppu],
+                        rot_z: [0.0, TEXT_Z + 1.0, 0.5, 0.5],
+                        uv: font.frames[annotate::font_frame(ch)],
+                        color: [0.87, 0.81, 0.58, 1.0],
+                        extra: [0.0; 4],
+                    },
+                ));
+            }
+        };
+        for (x, top, text) in &world_text {
+            let n = text.chars().count() as f32;
+            let bx = ((x - left) * ppu - (n * 6.0 + 2.0) * s / 2.0).round();
+            let by = ((top - bottom) * ppu + 4.0 * s).round();
+            block(bx, by, text);
+        }
+        for (i, (_, text)) in hud.iter().enumerate() {
+            let by = h as f32 - 4.0 * s - (i as f32 + 1.0) * 12.0 * s;
+            block(4.0 * s, by.round(), text);
+        }
+        out
+    }
+
     /// The area this target would show: centre and half extents in world
     /// units, from the drawing camera (or the origin), not interpolated.
     pub fn view(&self, world: &World) -> ([f32; 2], [f32; 2]) {
@@ -999,6 +1119,11 @@ impl Renderer {
                 ));
             }
         }
+
+        // Text the player reads (Describe.shown), over everything. A hole
+        // that names nothing is the semantic frame's to report.
+        let mut holes = Vec::new();
+        instances.extend(self.text_instances(world, center, half, (w, h), &mut holes));
 
         // Particles: one group of instances per pool, in view.
         let mut pflat: Vec<Instance> = Vec::new();

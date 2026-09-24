@@ -41,6 +41,11 @@ pub struct Describe {
     /// Leave it out.
     #[argus(doc = "Leave it out of the frame")]
     pub hidden: bool,
+    /// Draw the text for the player too.
+    #[argus(
+        doc = "Draw the text in the game too, in the pixel font: over the entity, or at the top of the screen for the HUD (until the UI tree, phase 3)"
+    )]
+    pub shown: bool,
 }
 
 /// What to build a frame for.

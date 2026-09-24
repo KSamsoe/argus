@@ -520,3 +520,58 @@ fn an_overlay_bar_draws_over_the_bottom_of_the_frame() {
     let p = img.pixel(470, 270 - 3);
     assert!(p[1] > 120, "gone: {p:?}");
 }
+
+/// The game's own text (found by a mark: Hollow's signs spoke to the agent
+/// only): a shown Describe's words over its sprite, a HUD line at the top
+/// left, nothing for one not shown.
+#[test]
+fn shown_text_is_drawn_over_its_entity_and_the_hud_at_the_top() {
+    let Some(mut r) = renderer(640, 360) else {
+        return;
+    };
+    let mut w = world_with_camera(12.0);
+    let sign = shape(&mut w, 0.0, -2.0, "rect", 1.0, "#8A6A40", 0.0);
+    let quiet = shape(&mut w, 5.0, -2.0, "rect", 1.0, "#8A6A40", 0.0);
+    let hud = w.spawn();
+    for (e, text, shown) in [
+        (sign, "Mind the pit.", true),
+        (quiet, "Not shown.", false),
+        (hud, "Hollow. HP {@camera:Camera.height}", true),
+    ] {
+        let d = argus_render::Describe {
+            text: w.strings().intern(text),
+            role: w.strings().intern(if e == hud { "hud" } else { "" }),
+            shown,
+            ..Default::default()
+        };
+        w.insert(e, d).unwrap();
+    }
+    r.render(&w, 0, 1.0).unwrap();
+    let img = r.capture().unwrap();
+    if let Ok(dir) = std::env::var("ARGUS_SHOTS") {
+        img.save_png(&std::path::Path::new(&dir).join("text.png"))
+            .unwrap();
+    }
+    let cream = |x0: u32, y0: u32, x1: u32, y1: u32| {
+        (y0..y1)
+            .flat_map(|y| (x0..x1).map(move |x| (x, y)))
+            .filter(|&(x, y)| {
+                let p = img.pixel(x, y);
+                p[0] > 200 && p[1] > 190 && p[2] > 150
+            })
+            .count()
+    };
+    // 30 px a unit: the sign's top is at y -1.5, row 225; its words sit above.
+    let (sx, _) = r.to_pixel(0.0, -1.5);
+    assert!(
+        cream(sx as u32 - 45, 195, sx as u32 + 45, 224) > 40,
+        "the sign's words"
+    );
+    let (qx, _) = r.to_pixel(5.0, -1.5);
+    assert_eq!(
+        cream(qx as u32 - 40, 195, qx as u32 + 40, 224),
+        0,
+        "not shown, not drawn"
+    );
+    assert!(cream(0, 0, 220, 16) > 40, "the HUD line at the top left");
+}

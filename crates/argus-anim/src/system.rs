@@ -25,7 +25,10 @@ pub(crate) fn install(
 ) -> Result<()> {
     let anim = world.component_id_of::<Animator>().expect("registered");
     let sprite = world.component_id("Sprite");
+    // On load too: every animator enters its first state before the first
+    // tick, so the first frame (and a HUD naming the state) shows it.
     let mut desc = SystemDesc::new(SYSTEM, Stage::Late)
+        .on_load()
         .writes(anim)
         .source("argus-anim:update")
         .doc("Runs every Animator's state machine: transitions as field comparisons, clip frames at their rates with anticipation and holds, events by frame, crossfades; writes Sprite.frame. It declares a read of each component its animator files' conditions name once it has compiled them.");

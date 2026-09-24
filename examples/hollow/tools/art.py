@@ -125,6 +125,29 @@ def frame(legs, crouch=False):
     return grid(top + LEGS[legs], PAL)
 
 
+# A signpost, 8 x 18: a board above the hero's head (13 tall) on a post,
+# so a sign reads as a sign and its words (Describe.shown) clear the hero.
+SIGN = grid(
+    [
+        "DDDDDDDD",
+        "DLLLLLLD",
+        "DLkkkLLD",
+        "DLLLkkLD",
+        "DLkkLkLD",
+        "DDDDDDDD",
+    ]
+    + ["...PQ..."] * 12,
+    {
+        ".": CLEAR,
+        "D": hexc("5a4028"),
+        "L": hexc("b08850"),
+        "k": hexc("3a2a18"),
+        "P": hexc("8a6a40"),
+        "Q": hexc("6a5030"),
+    },
+)
+
+
 def hero():
     frames = [
         frame("idle"),
@@ -150,4 +173,5 @@ if __name__ == "__main__":
     png("tiles/plank.png", 8, 8, PLANK)
     png("tiles/back.png", 8, 8, BACK)
     png("hero.png", 64, 13, hero())
-    print("wrote tiles/rock.png, tiles/plank.png, tiles/back.png, hero.png")
+    png("sign.png", 8, 18, SIGN)
+    print("wrote tiles/rock.png, tiles/plank.png, tiles/back.png, hero.png, sign.png")
