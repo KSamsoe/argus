@@ -27,6 +27,8 @@ use std::rc::Rc;
 mod marks;
 #[path = "proposals.rs"]
 mod proposals;
+#[path = "tuning.rs"]
+mod tuning;
 
 /// Identifies a client connection for subscriptions.
 pub type ConnId = u64;
@@ -167,6 +169,10 @@ pub struct Daemon {
     trial: Option<proposals::Trial>,
     /// A trial's parked world is catching up: no sound, no notifications.
     backstage: bool,
+    /// The tuning session open, if any (phase 2 item 5).
+    tuning: Option<tuning::TuneSession>,
+    /// A tuning session's own commit is running: its rows are the session's.
+    tune_committing: bool,
     /// Notifications waiting for the transport, per connection.
     pub outbox: Vec<(ConnId, Json)>,
 }
@@ -214,6 +220,8 @@ impl Daemon {
             toast: None,
             trial: None,
             backstage: false,
+            tuning: None,
+            tune_committing: false,
             outbox: Vec::new(),
         }
     }
@@ -507,6 +515,11 @@ impl Daemon {
             "proposal.pick" => self.proposal_pick(params),
             "proposal.reject" => self.proposal_reject(params),
             "proposal.stop" => self.proposal_stop(params),
+            "tune.fields" => self.tune_fields(params),
+            "tune.begin" => self.tune_begin(params),
+            "tune.set" => self.tune_set(params),
+            "tune.end" => self.tune_end(params),
+            "tune.log" => self.tune_log(params),
             "replay.open" => self.replay_open(params),
             "obs.diff" => self.obs_diff(params),
             "obs.trace" => self.obs_trace(params),
@@ -655,8 +668,12 @@ impl Daemon {
             let evs = self.render.poll();
             let typed = std::mem::take(&mut self.render.typed);
             if self.render.closed_now {
-                // A note half typed when the window closed is kept.
+                // A note half typed when the window closed is kept, and so
+                // is a tuning session: closing the game ends it.
                 self.finish_prompt(true);
+                if self.tuning.is_some() {
+                    let _ = self.end_tuning(true, None);
+                }
                 self.render.closed_now = false;
                 #[cfg(feature = "audio")]
                 if let Some(a) = self.audio.as_mut() {
@@ -1582,6 +1599,10 @@ impl Daemon {
     }
 
     fn scene_load(&mut self, params: &Json) -> Result<Json> {
+        // A tuning session's values are committed before the world goes.
+        if self.tuning.is_some() {
+            self.end_tuning(true, None)?;
+        }
         self.trial = None;
         self.forks.clear();
         self.active = "main".to_string();
@@ -2132,10 +2153,29 @@ impl Daemon {
         let mut summaries = Vec::new();
         let mut touched: BTreeSet<String> = BTreeSet::new();
         let mut files: BTreeSet<String> = BTreeSet::new();
+        // Tune fields this commit changes, for the tuning log (item 5): not
+        // a test's live edits, not a tuning session's own commit.
+        let log_tune = !self.live_edits && !self.tune_committing;
+        let mut tuned: Vec<(String, String, Json, Json)> = Vec::new();
         for op in ops {
             summaries.push(op.summary());
             match self.apply_op(author, &op, &mut touched, &mut files) {
-                Ok(Some(inv)) => inverse.push(inv),
+                Ok(Some(inv)) => {
+                    if let (true, Op::Set { path, .. }, Op::Set { entity, value, .. }) =
+                        (log_tune, &op, &inv)
+                    {
+                        if self.is_tune(path) {
+                            let now = self
+                                .world
+                                .entity(entity)
+                                .and_then(|e| self.world.get_field(e, path))
+                                .map(|v| json::to_json(&self.world, &v))
+                                .unwrap_or(Json::Null);
+                            tuned.push((entity.clone(), path.clone(), value.clone(), now));
+                        }
+                    }
+                    inverse.push(inv)
+                }
                 Ok(None) => {}
                 Err(e) => {
                     for inv in inverse.iter().rev() {
@@ -2184,8 +2224,14 @@ impl Daemon {
                 .push(id),
             CommitKind::Proposed(_) | CommitKind::Rejected(_) => {}
         }
+        let via = match &commit.kind {
+            CommitKind::Undo(_) => "undo",
+            CommitKind::Redo(_) => "redo",
+            _ => "edit",
+        };
         self.edits.feed.push(commit);
         self.notify("edits", "edit.committed", row.clone());
+        self.log_tuned(author, via, note, tuned);
         self.pump_events();
         Ok(row)
     }
@@ -3939,9 +3985,9 @@ impl Daemon {
     fn obs_subscribe(&mut self, conn: ConnId, params: &Json) -> Result<Json> {
         let topics = json::str_list(params, "topics")?;
         for t in &topics {
-            if t != "events" && t != "edits" {
+            if t != "events" && t != "edits" && t != "tune" {
                 return Err(bad_params(format!(
-                    "unknown topic {t:?}; topics are events and edits"
+                    "unknown topic {t:?}; topics are events, edits, and tune"
                 )));
             }
         }

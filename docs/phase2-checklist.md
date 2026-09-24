@@ -95,11 +95,18 @@ Decisions taken while building it:
 
 ## 5. Tuning log
 
-**Status: not started.** Constraints:
+**Status: done** (2026-09-24) in the daemon (`tuning.rs`: `tune.fields`, `tune.begin`, `tune.set`, `tune.end`, `tune.log`, the `tune` subscription topic, and every commit's tune fields logged). Every change to a tune field goes into `.argus/tuning.jsonl` with its frame, author, value before and after, and how it came: `tune.set` (the slider, until the editor has one), an `edit.set` commit, a picked proposal, undo, or redo. `tune.log` gives the rows and each field's search path in one line, as §10 writes it: "human set @a/player CharacterController.jump_height 3.2→3.6 at frame 60, →3.4 at frame 120, →3.5 at frame 180". `obs.subscribe {topics: ["tune"]}` streams each row as it is written. `tune.set` changes the live game only and belongs to a tuning session; `tune.end` commits the session's final values as one transaction by its author, whose undo goes back to where the session started. Closing the game's window, or loading a scene, ends a session and commits it. A proposal's check, a trial's previews, and a test's edits change no one's tuning and are not logged. Traces: rows in the daemon's and `argus-ecs`'s. Constraints:
 
 - §3, §10: a field with `tune = true` is logged by the recorder whenever it changes, with its frame: "human set HitStop.scale 0.0→0.15 at frame 3011, →0.08 at 3090, →0.1 at 3140". The agent subscribes to the stream and sees the search path, not only the final value.
 - §10: when the human ends a session, the final values are committed as one transaction with the human as author.
 - The slider panel is the editor's (phase 4). Until then tune fields change through `edit.set` and proposals, and the log records those.
+
+Decisions taken while building it:
+
+- **`tune.set` is the slider until there is one.** It changes the live world and not the files, so a human can move a value many times while playing (from a terminal beside the game, `argus tune set ...`), and only the end is committed. `edit.set` stays a commit, logged as one.
+- **A session's commit is one transaction whose undo goes to the start.** Before committing, the session's fields are put back to where it found them, so the transaction's inverse is the value before the session, not the last slider move.
+- **Closing the window commits.** Closing the game is how a human ends a session without the editor; losing the tuning would be worse than keeping a value they can undo. A scene load commits first too, since it would lose the live values.
+- **The log is a file,** as marks and proposals are: the human tunes, closes the game, and the agent reads the log in another daemon.
 
 ## 6. Post stack
 

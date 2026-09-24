@@ -128,6 +128,7 @@ fn the_window() {
     f8_drops_a_mark_and_the_note_typed_after_it_is_kept();
     a_project_can_mark_with_another_key();
     f9_tries_a_proposal_and_f10_keeps_the_world_showing();
+    closing_the_window_ends_a_tuning_session_and_keeps_it();
     the_close_button_closes_the_window_and_only_the_persons_window_stops_the_daemon();
 }
 
@@ -366,4 +367,33 @@ fn f9_tries_a_proposal_and_f10_keeps_the_world_showing() {
     assert_eq!(hp(&mut d), 1);
     assert!(ok(&mut d, "proposal.list", json!({}))["trial"].is_null());
     press_close(&mut d, h);
+}
+
+fn closing_the_window_ends_a_tuning_session_and_keeps_it() {
+    let t = temp("window-tuning");
+    project(t.path());
+    let player = read(t.path(), "scenes/arena/player.toml")
+        + "
+[Light]
+";
+    write(t.path(), "scenes/arena/player.toml", &player);
+    let mut d = open(t.path());
+    let title = format!("argus tuning test {}", std::process::id());
+    let Some(h) = open_hidden(&mut d, &title) else {
+        return;
+    };
+    ok(
+        &mut d,
+        "tune.set",
+        json!({ "entity": "@player", "path": "Light.intensity", "value": 2.5 }),
+    );
+    press_close(&mut d, h);
+    assert!(read(t.path(), "scenes/arena/player.toml").contains("intensity = 2.5"));
+    let log = ok(&mut d, "tune.log", json!({}));
+    let last = log["rows"].as_array().unwrap().last().unwrap().clone();
+    assert_eq!(
+        (last["kind"].clone(), last["committed"].clone()),
+        (json!("end"), json!(true)),
+        "{log}"
+    );
 }

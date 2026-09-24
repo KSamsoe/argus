@@ -741,6 +741,9 @@ impl Daemon {
     /// A fresh load of a scene with a seed, for a mark or a replay: the run
     /// before it is another run.
     fn load_for(&mut self, root: &Path, scene: &str, seed: Option<u64>) -> Result<()> {
+        if self.tuning.is_some() {
+            self.end_tuning(true, None)?;
+        }
         self.trial = None;
         self.forks.clear();
         self.active = "main".to_string();

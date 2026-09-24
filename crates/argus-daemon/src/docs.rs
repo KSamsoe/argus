@@ -480,6 +480,36 @@ pub const METHODS: &[MethodDoc] = &[
         returns: "{trial: null}",
     },
     MethodDoc {
+        name: "tune.fields",
+        doc: "The tune fields (tune = true) in the world with their values, defaults, ranges, and docs: what the editor's tuning panel will show (section 10). Every one of an entity, or of every entity with an id.",
+        params: "entity: string (optional)",
+        returns: "{total, rows: [{entity, path, value, default, range, doc}], session: the open tuning session or null}",
+    },
+    MethodDoc {
+        name: "tune.begin",
+        doc: "Open a tuning session (tune.set opens one too). Its changes are live only until tune.end commits the final values as one transaction by its author.",
+        params: "author: string (default \"human\"); note: string",
+        returns: "{session: {id, author, note, fields}}",
+    },
+    MethodDoc {
+        name: "tune.set",
+        doc: "The slider, until the editor has one: set a tune field in the live world now, with no file written, and log it with its frame (section 10). Opens a tuning session if none is open. A field that is not a tune field is refused; edit.set changes any field.",
+        params: "entity: string; path: string (Component.field); value; author: string (default \"human\", when it opens the session)",
+        returns: "{entity, path, from, to, session}",
+    },
+    MethodDoc {
+        name: "tune.end",
+        doc: "End the tuning session: its final values are committed as one ordinary transaction by the session's author (one feed row; one undo goes back to where the session started), or with commit: false put back as they were. Closing the game's window, or loading a scene, ends a session and commits it.",
+        params: "commit: boolean (default true); note: string (the transaction's)",
+        returns: "{session, fields, commit: the feed row or null}",
+    },
+    MethodDoc {
+        name: "tune.log",
+        doc: "The tuning log, .argus/tuning.jsonl: every change to a tune field with its frame, author, value before and after, and how it came (tune, edit, undo, redo), and sessions begun and ended. story is each field's search path in one line: \"human set @player CharacterController.jump_height 3.2→3.6 at frame 3011, →3.4 at frame 3090\". obs.subscribe {topics: [\"tune\"]} streams the rows.",
+        params: "since: integer (rows after this seq); session: integer; path: string (a field, or a component's prefix); limit: integer (default 200)",
+        returns: "{total, story: [string], rows: [{seq, kind, at, frame, author, entity, path, from, to, via, session, note}], session}",
+    },
+    MethodDoc {
         name: "replay.save",
         doc: "Save this moment as a replay, with no queue: a replay file (the keyframe five seconds back, the input since, the world now), the frame, a two-second clip and its contact sheet, the last two seconds of sound, and replay.json (the run's identity, the digest, the input and events of those seconds, a note, and what about says). test.run saves one for each failing run (section 9).",
         params: "dir: string (default .argus/replays/<time>-<frame>; relative to the project; replaces what was there); note: string; clip: boolean (default true); software: boolean (draw with the software rasteriser); about: any JSON kept with it",
@@ -553,8 +583,8 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "obs.subscribe",
-        doc: "Receive notifications on this connection: `event` for each new event, `edit.committed` for each commit. Topics: events, edits.",
-        params: "topics: [\"events\" | \"edits\"]; off: boolean (unsubscribe)",
+        doc: "Receive notifications on this connection: `event` for each new event, `edit.committed` for each commit (and proposal made or turned down), `tune.changed` for each tuning log row. Topics: events, edits, tune.",
+        params: "topics: [\"events\" | \"edits\" | \"tune\"]; off: boolean (unsubscribe)",
         returns: "{topics}",
     },
     MethodDoc {
