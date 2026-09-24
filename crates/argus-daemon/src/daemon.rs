@@ -25,6 +25,8 @@ use std::rc::Rc;
 
 #[path = "marks.rs"]
 mod marks;
+#[path = "proposals.rs"]
+mod proposals;
 
 /// Identifies a client connection for subscriptions.
 pub type ConnId = u64;
@@ -161,6 +163,10 @@ pub struct Daemon {
     mark_prompt: Option<marks::Prompt>,
     /// A line the window shows for a moment, and until when.
     toast: Option<(String, std::time::Instant)>,
+    /// The proposal being tried, A/B by feel (phase 2 item 4).
+    trial: Option<proposals::Trial>,
+    /// A trial's parked world is catching up: no sound, no notifications.
+    backstage: bool,
     /// Notifications waiting for the transport, per connection.
     pub outbox: Vec<(ConnId, Json)>,
 }
@@ -206,6 +212,8 @@ impl Daemon {
             device_turns: 0,
             mark_prompt: None,
             toast: None,
+            trial: None,
+            backstage: false,
             outbox: Vec::new(),
         }
     }
@@ -491,6 +499,14 @@ impl Daemon {
             "mark.open" => self.mark_open(params),
             "mark.import" => self.mark_import(params),
             "replay.save" => self.replay_save(params),
+            "edit.propose" => self.edit_propose(params),
+            "proposal.list" => self.proposal_list(params),
+            "proposal.get" => self.proposal_get(params),
+            "proposal.try" => self.proposal_try(params),
+            "proposal.show" => self.proposal_show(params),
+            "proposal.pick" => self.proposal_pick(params),
+            "proposal.reject" => self.proposal_reject(params),
+            "proposal.stop" => self.proposal_stop(params),
             "replay.open" => self.replay_open(params),
             "obs.diff" => self.obs_diff(params),
             "obs.trace" => self.obs_trace(params),
@@ -656,6 +672,7 @@ impl Daemon {
                 }
             }
             let evs = self.mark_keys(evs, typed);
+            let evs = self.trial_keys(evs);
             if !evs.is_empty() {
                 self.device_input(&evs);
             }
@@ -853,12 +870,10 @@ impl Daemon {
         anims.borrow_mut().set_assets(&assets);
         particles.borrow_mut().set_assets(&assets);
         #[cfg(feature = "render")]
-        {
+        if !self.building_fork {
             self.render.offscreen = None;
             if let Some((_, r)) = &mut self.render.window {
-                if !self.building_fork {
-                    let _ = r.load_catalog(&assets);
-                }
+                let _ = r.load_catalog(&assets);
             }
         }
         #[cfg(feature = "audio")]
@@ -1567,6 +1582,7 @@ impl Daemon {
     }
 
     fn scene_load(&mut self, params: &Json) -> Result<Json> {
+        self.trial = None;
         self.forks.clear();
         self.active = "main".to_string();
         let (root, current) = {
@@ -2166,6 +2182,7 @@ impl Daemon {
                 .entry(author.to_string())
                 .or_default()
                 .push(id),
+            CommitKind::Proposed(_) | CommitKind::Rejected(_) => {}
         }
         self.edits.feed.push(commit);
         self.notify("edits", "edit.committed", row.clone());
@@ -2322,9 +2339,9 @@ impl Daemon {
                         if self.live_edits {
                             return Err(ArgusError::new(
                                 codes::BAD_PARAMS,
-                                format!("a test cannot spawn @{local}: an id is a file in the scene"),
+                                format!("a test or a preview cannot spawn @{local}: an id is a file in the scene"),
                             )
-                            .hint("Tests edit the live world, not the project's files; spawn without an id."));
+                            .hint("Tests and proposals' previews edit the live world, not the project's files; spawn without an id, or commit it."));
                         }
                         let mut doc = EntityDoc {
                             prefab: prefab.clone(),
@@ -2818,9 +2835,15 @@ impl Daemon {
         let mutations = self.mutations;
         let mut main = Slot::empty();
         self.swap_slot(&mut main);
+        // The feed, undo, open transactions, and locks are the session's,
+        // not the world's: a fork's scene load must not clear them (found
+        // by item 4: every proposal is checked on a fork, and the feed lost
+        // its rows).
+        let edits = std::mem::take(&mut self.edits);
         self.building_fork = true;
         let built = self.open_scene(root, &cfg, &scene_name, Some(seed));
         self.building_fork = false;
+        self.edits = edits;
         self.mutations = mutations;
         if let Err(e) = built {
             self.swap_slot(&mut main);
@@ -2881,6 +2904,8 @@ impl Daemon {
             (None, None) => return Err(bad_params("give frame (or turn, on a discrete clock)")),
         };
         let verify = json::bool_param(params, "verify", false)?;
+        // A seek ends an A/B trial: its worlds keep step going forward only.
+        self.end_trial(true);
         self.before_ticks();
         let started = std::time::Instant::now();
         let (ring, sources) = {
@@ -3381,8 +3406,15 @@ impl Daemon {
         let mut records: Vec<EventRecord> = Vec::with_capacity(drained.len());
         #[cfg(feature = "audio")]
         {
+            // A trial's parked world catching up is not heard.
+            let audio = if self.backstage {
+                None
+            } else {
+                self.audio.as_mut()
+            };
+            let mut audio = audio;
             for rec in drained {
-                let answer = match (&rec.event, self.audio.as_mut()) {
+                let answer = match (&rec.event, audio.as_deref_mut()) {
                     (Event::Game { name, fields }, Some(a))
                         if name == "sound.play" || name == "sound.stop" =>
                     {
@@ -3400,7 +3432,7 @@ impl Daemon {
                     by: None,
                 }));
             }
-            if let Some(a) = self.audio.as_mut() {
+            if let Some(a) = self.audio.as_mut().filter(|_| !self.backstage) {
                 let frame = self.world.frame();
                 records.extend(a.update(&self.world).into_iter().map(|(name, fields)| {
                     EventRecord {
@@ -3422,7 +3454,9 @@ impl Daemon {
                 self.events.records.pop_front();
                 self.events.ticked.pop_front();
             }
-            self.notify("events", "event", row);
+            if !self.backstage {
+                self.notify("events", "event", row);
+            }
         }
     }
 
@@ -4211,7 +4245,10 @@ impl Daemon {
             &self.session.as_ref().expect("session").assets,
         )?;
         self.toast = Some((
-            "F8 MARKS THIS MOMENT FOR THE AGENT".to_string(),
+            match self.waiting_line() {
+                Some(w) => format!("F8 MARKS A MOMENT.  {w}"),
+                None => "F8 MARKS THIS MOMENT FOR THE AGENT".to_string(),
+            },
             std::time::Instant::now() + std::time::Duration::from_secs(4),
         ));
         // The renderer a mark draws its frame and clip with, made now so
@@ -4283,6 +4320,14 @@ impl Daemon {
     fn render_present(&mut self) {
         if self.render.window.is_none() {
             return;
+        }
+        // A proposal being tried: its other worlds keep step.
+        if let Err(e) = self.sync_trial() {
+            self.end_trial(true);
+            self.toast = Some((
+                format!("TRIAL ENDED: {}", e.message),
+                std::time::Instant::now() + std::time::Duration::from_secs(5),
+            ));
         }
         let _ = self.sched.present(&mut self.world);
         let tick = self.sched.tick();

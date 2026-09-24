@@ -58,6 +58,18 @@ fn type_text(h: isize, s: &str) {
 }
 
 const F8: (usize, isize) = (0x77, 0x42);
+const F9: (usize, isize) = (0x78, 0x43);
+
+/// F10 as Windows sends it: a system key, the one that opens a menu bar.
+fn tap_f10(h: isize) {
+    const WM_SYSKEYDOWN: u32 = 0x0104;
+    const WM_SYSKEYUP: u32 = 0x0105;
+    let down = 1 | (0x44 << 16);
+    unsafe {
+        assert_ne!(PostMessageW(h, WM_SYSKEYDOWN, 0x79, down), 0);
+        PostMessageW(h, WM_SYSKEYUP, 0x79, down | (1 << 30) | (1 << 31));
+    }
+}
 const ENTER: (usize, isize) = (0x0D, 0x1C);
 const ESCAPE: (usize, isize) = (0x1B, 0x01);
 
@@ -115,6 +127,7 @@ fn press_close(d: &mut Daemon, h: isize) {
 fn the_window() {
     f8_drops_a_mark_and_the_note_typed_after_it_is_kept();
     a_project_can_mark_with_another_key();
+    f9_tries_a_proposal_and_f10_keeps_the_world_showing();
     the_close_button_closes_the_window_and_only_the_persons_window_stops_the_daemon();
 }
 
@@ -272,5 +285,85 @@ key = \"Backquote\"
         "",
         "the key typed no note"
     );
+    press_close(&mut d, h);
+}
+
+fn f9_tries_a_proposal_and_f10_keeps_the_world_showing() {
+    let t = temp("window-proposals");
+    project(t.path());
+    let mut d = open(t.path());
+    // The agent's proposal, two variants of the player's health.
+    for (v, into) in [(1, None), (2, Some(1))] {
+        let tx = ok(
+            &mut d,
+            "edit.begin",
+            json!({ "author": "agent", "note": format!("health {v}") }),
+        )["tx"]
+            .clone();
+        ok(
+            &mut d,
+            "edit.set",
+            json!({ "tx": tx, "entity": "@player", "path": "Health.cur", "value": v }),
+        );
+        let mut p = json!({ "tx": tx, "note": "a frailer hero" });
+        if let Some(id) = into {
+            p["proposal"] = json!(id);
+        }
+        ok(&mut d, "edit.propose", p);
+    }
+    let title = format!("argus proposal test {}", std::process::id());
+    let Some(h) = open_hidden(&mut d, &title) else {
+        return;
+    };
+    let bar = |d: &mut Daemon| {
+        ok(d, "render.status", json!({}))["bar"]
+            .as_str()
+            .unwrap_or("")
+            .to_string()
+    };
+    let hp = |d: &mut Daemon| {
+        ok(d, "world.get", json!({ "entity": "@player" }))["components"]["Health"]["cur"].clone()
+    };
+    d.present();
+    assert!(
+        bar(&mut d).contains("1 PROPOSAL WAITING: F9 TO TRY"),
+        "{}",
+        bar(&mut d)
+    );
+    ok(&mut d, "sim.play", json!({}));
+    ok(&mut d, "sim.step", json!({ "n": 30 }));
+
+    // F9 tries it and shows B; F9 again goes on to C, then A, then B.
+    for (want, v) in [("B", 1), ("C", 2), ("A", 3), ("B", 1)] {
+        tap(h, F9.0, F9.1, None);
+        frames_until(&mut d, &format!("showing {want}"), |d| {
+            ok(d, "proposal.list", json!({}))["trial"]["showing"] == want
+        });
+        assert_eq!(hp(&mut d), v, "{want}");
+    }
+    // The bar says which world shows.
+    d.present();
+    assert!(
+        bar(&mut d).contains("PROPOSAL 1 (a frailer hero): B OF A-C: health 1"),
+        "{}",
+        bar(&mut d)
+    );
+
+    // F10 keeps it: B is committed, and the game goes on in B.
+    tap_f10(h);
+    frames_until(&mut d, "the pick", |d| {
+        ok(d, "proposal.get", json!({ "id": 1 }))["status"] == "picked"
+    });
+    let p = ok(&mut d, "proposal.get", json!({ "id": 1 }));
+    assert_eq!(p["picked"]["variant"], "B");
+    assert_eq!(p["picked"]["toggles"], 4);
+    assert!(
+        bar(&mut d).contains("KEPT B: PROPOSAL 1 COMMITTED"),
+        "{}",
+        bar(&mut d)
+    );
+    assert!(read(t.path(), "scenes/arena/player.toml").contains("cur = 1"));
+    assert_eq!(hp(&mut d), 1);
+    assert!(ok(&mut d, "proposal.list", json!({}))["trial"].is_null());
     press_close(&mut d, h);
 }

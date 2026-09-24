@@ -32,7 +32,7 @@ fn a_scenario_edits_the_world_and_leaves_the_files() {
     local tx2 = t:call("edit.begin", { author = "test:edits", note = "an id is a file" }).tx
     t:call("edit.spawn", { tx = tx2, id = "ghost", components = { Health = { cur = 1 } } })
     local ok, err = pcall(function() t:call("edit.commit", { tx = tx2 }) end)
-    assert(not ok and string.find(err, "a test cannot spawn @ghost", 1, true), tostring(err))
+    assert(not ok and string.find(err, "cannot spawn @ghost", 1, true), tostring(err))
   end,
 }
 "#,

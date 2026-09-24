@@ -106,6 +106,57 @@ pub enum Op {
 }
 
 impl Op {
+    /// The protocol call that queues this op (`edit.set` and its params),
+    /// for the ops a proposal can hold; `None` for tile edits and inverses.
+    pub fn as_call(&self) -> Option<(&'static str, Json)> {
+        Some(match self {
+            Op::Set {
+                entity,
+                path,
+                value,
+            } => (
+                "edit.set",
+                json!({ "entity": entity, "path": path, "value": value }),
+            ),
+            Op::Add { entity, component } => (
+                "edit.add",
+                json!({ "entity": entity, "component": component }),
+            ),
+            Op::Remove { entity, component } => (
+                "edit.remove",
+                json!({ "entity": entity, "component": component }),
+            ),
+            Op::Spawn {
+                id,
+                room,
+                prefab,
+                tags,
+                components,
+            } => {
+                let comps: serde_json::Map<String, Json> = components
+                    .iter()
+                    .map(|(c, fs)| {
+                        let f: serde_json::Map<String, Json> =
+                            fs.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+                        (c.clone(), Json::Object(f))
+                    })
+                    .collect();
+                (
+                    "edit.spawn",
+                    json!({ "id": id, "room": room, "prefab": prefab, "tags": tags, "components": comps }),
+                )
+            }
+            Op::Despawn { entity } => ("edit.despawn", json!({ "entity": entity })),
+            _ => return None,
+        })
+    }
+
+    /// A field write or a component added or removed: an op a world that
+    /// has it already can take again (an A/B trial's picked world).
+    pub fn is_field_edit(&self) -> bool {
+        matches!(self, Op::Set { .. } | Op::Add { .. } | Op::Remove { .. })
+    }
+
     /// Compact description for the feed.
     pub fn summary(&self) -> Json {
         match self {
@@ -158,6 +209,11 @@ pub enum CommitKind {
     Undo(u32),
     /// The redo of a commit.
     Redo(u32),
+    /// A proposal made, or a variant added to one (phase 2 item 4): nothing
+    /// changed yet; picking it is an ordinary commit.
+    Proposed(u64),
+    /// A proposal turned down.
+    Rejected(u64),
 }
 
 /// One entry of the change feed.
@@ -190,6 +246,8 @@ impl Commit {
             CommitKind::Normal => json!("commit"),
             CommitKind::Undo(of) => json!({ "undo": of }),
             CommitKind::Redo(of) => json!({ "redo": of }),
+            CommitKind::Proposed(p) => json!({ "proposed": p }),
+            CommitKind::Rejected(p) => json!({ "rejected": p }),
         };
         json!({
             "id": self.id,

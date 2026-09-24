@@ -53,6 +53,7 @@ const NOTE_MAX: usize = 120;
 /// The bar's colours: a prompt, and a message.
 const PROMPT: [u8; 4] = [255, 214, 90, 255];
 const TOAST: [u8; 4] = [150, 220, 255, 255];
+const TRIAL: [u8; 4] = [170, 240, 150, 255];
 
 /// A note being typed in the window after F8.
 #[cfg_attr(not(feature = "render"), allow(dead_code))]
@@ -740,6 +741,7 @@ impl Daemon {
     /// A fresh load of a scene with a seed, for a mark or a replay: the run
     /// before it is another run.
     fn load_for(&mut self, root: &Path, scene: &str, seed: Option<u64>) -> Result<()> {
+        self.trial = None;
         self.forks.clear();
         self.active = "main".to_string();
         let cfg = ProjectConfig::load(root)?;
@@ -959,13 +961,11 @@ impl Daemon {
             ));
         }
         match &self.toast {
-            Some((text, until)) if Instant::now() < *until => Some((text.clone(), TOAST)),
-            Some(_) => {
-                self.toast = None;
-                None
-            }
-            None => None,
+            Some((text, until)) if Instant::now() < *until => return Some((text.clone(), TOAST)),
+            Some(_) => self.toast = None,
+            None => {}
         }
+        self.trial_bar().map(|b| (b, TRIAL))
     }
 
     /// Put the bar on the window, when it changed.

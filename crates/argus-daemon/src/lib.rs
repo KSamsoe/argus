@@ -60,6 +60,10 @@ pub mod codes {
     pub const NO_MARK: u32 = 4710;
     /// A mark's files are missing or unreadable, or it cannot be reproduced here.
     pub const BAD_MARK: u32 = 4711;
+    /// No proposal with that id in `.argus/proposals/` (phase 2 item 4).
+    pub const NO_PROPOSAL: u32 = 4712;
+    /// A proposal that is not pending, does not apply, or cannot be tried here.
+    pub const BAD_PROPOSAL: u32 = 4713;
     /// The renderer's: this machine has no graphics adapter at all, not
     /// even a software one (argus-render's 5001, here for clients that
     /// build without the renderer).

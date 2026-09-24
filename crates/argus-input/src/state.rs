@@ -734,6 +734,24 @@ impl InputState {
         self.live = false;
     }
 
+    /// Take on commands another world was given (an A/B trial's worlds
+    /// share their input, phase 2 item 4): they join this journal's
+    /// recorded future and are issued as their ticks come.
+    pub fn extend_journal(&mut self, entries: &[JournalEntry]) {
+        self.journal.extend_from_slice(entries);
+    }
+
+    /// Issue now the recorded commands due by `tick`, the next tick to run,
+    /// as the tick would: a world switched to mid-frame then takes a live
+    /// command without branching away the one that came just before it.
+    pub fn issue_due(&mut self, tick: u64) {
+        while self.cursor < self.journal.len() && self.journal[self.cursor].now <= tick {
+            let e = self.journal[self.cursor].clone();
+            self.reissue(&e);
+            self.cursor += 1;
+        }
+    }
+
     /// Commands recorded after the current point, waiting to be issued again.
     pub fn future(&self) -> &[JournalEntry] {
         &self.journal[self.cursor..]

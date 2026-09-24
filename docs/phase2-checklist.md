@@ -77,12 +77,21 @@ Decisions taken while building it:
 
 ## 4. Proposals and A/B by feel
 
-**Status: not started.** Constraints:
+**Status: done** (2026-09-24) in the daemon (`proposals.rs`: `edit.propose`, `proposal.list`, `get`, `try`, `show`, `pick`, `reject`, `stop`, F9 and F10 in the window; the feed's `proposed` and `rejected` rows) and `argus-input` (a journal another world's commands join; due commands issued when a world is switched to). The agent proposes a transaction instead of committing it; more transactions into the same proposal are its variants B, C, and so on. Proposals are files in `.argus/proposals/`, so one made while the human is away waits for the game they come back to. In the window F9 tries the oldest waiting proposal: each variant becomes a fork of the world at that moment with its edits applied, and every world then takes the same input at the same tick, the ones not showing catching up behind the one that is, silently, every frame. F9 goes round A, B, C; the bottom line says which world shows and what it changes. F10 keeps the world showing: a variant is committed as an ordinary commit by the one who picked, which the feed shows and undo takes back, and the game goes on in that world; keeping A turns the proposal down. On a copy of Hollow, proposing jump heights 3.8 and 4.4 against 3.2 and jumping once in A put the hero at heights 3.71, 4.07, and 4.44 at the same tick 40 in A, B, and C. Found while building it: building a fork cleared the session's change feed, undo stacks, open transactions, and locks (an item 0 bug, fixed), and dropped the offscreen renderer. Traces: rows in the daemon's and `argus-input`'s. Constraints:
 
 - §10: the agent can submit a transaction as a proposal rather than a commit. The human plays with F9 toggling between the current world and a fork with the proposal applied, at the same replay point, with the same inputs. Several variants become several forks and one key cycles them. The pick is the commit; nothing requires the human to read a diff.
 - §10: the human can lock any entity, component, or path; the agent's write fails with the owner's name and note. Both parties see one author-tagged change feed. (Phase 0 built these; proposals join the feed.)
 - §16: `propose` is one of the MCP tools.
 - Before the editor (phase 4), pending proposals are listed through the protocol and toggled in the game window.
+
+Decisions taken while building it:
+
+- **"The same replay point, with the same inputs" is worlds kept in step.** The forks start from the world as it is when F9 is first pressed, and from then on every world gets the input the one showing gets, at the same tick: the others take its new input commands as their recorded future and catch up behind it every frame. Switching is instant and lands at the same moment. Rewinding to a point instead would make the human replay what they just did, and playing by feel means playing on.
+- **F10 keeps.** §10 names F9 for switching and says the pick is the commit; F10 is the key for it. winit gives F10 to the game, not to Windows' menu, since the window has no menu. F9 and F10 are fixed for now; F8 is `[marks] key`.
+- **The pick is committed by whoever picks.** Their own locks do not stand in the way, and a proposal may touch what the human locked: a lock stops the agent writing, and proposing is how the agent asks. Another author's lock still refuses the pick.
+- **The game goes on in the picked world** when its edits are field writes (set, add, remove); a variant that spawns or despawns is committed in A and the game goes on there, since entity handles differ between worlds.
+- **A seek or a scene load ends a trial**; the worlds keep step going forward only.
+- **Previews change memory only.** A variant is applied to its fork without writing files and without locks; a spawn with an id (which would be a file) cannot be previewed and is refused when proposed.
 
 ## 5. Tuning log
 
