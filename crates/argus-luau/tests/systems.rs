@@ -560,3 +560,52 @@ return system "late.hear" {
     );
     assert_eq!(w.get_field(e, "Heard.last").unwrap(), Value::Int(7));
 }
+
+#[test]
+fn an_unfrozen_script_system_runs_through_a_hit_stop() {
+    let (mut h, mut w, mut s) = host(1);
+    // A hit-stop on ticks 1 to 3 (phase 2 item 6).
+    s.add_system(
+        SystemDesc::new("input.stop", Stage::Input).first(),
+        Box::new(|ctx| {
+            if (1..4).contains(&ctx.tick) {
+                ctx.freeze();
+            }
+            Ok(())
+        }),
+    )
+    .unwrap();
+    let src = r#"
+component "Game" { n = field.u32 {} }
+component "Effect" { n = field.u32 {} }
+system "sim.game" {
+  stage = "sim", writes = { "Game" },
+  run = function(q) for e, g in q:each("Game") do g.n += 1 end end,
+}
+return system "sim.effect" {
+  stage = "sim", writes = { "Effect" }, unfrozen = true,
+  run = function(q) for e, f in q:each("Effect") do f.n += 1 end end,
+}"#;
+    assert!(
+        h.load_source(&mut w, &mut s, "systems/stop.luau", src),
+        "{:?}",
+        h.errors()
+    );
+    let e = w.spawn();
+    w.insert_by_name(e, "Game").unwrap();
+    w.insert_by_name(e, "Effect").unwrap();
+    s.step(&mut w, 5).unwrap();
+    assert!(fault_messages(&w).is_empty(), "{:?}", fault_messages(&w));
+    assert_eq!(
+        w.get_field(e, "Game.n").unwrap(),
+        Value::UInt(2),
+        "ticks 0 and 4"
+    );
+    assert_eq!(
+        w.get_field(e, "Effect.n").unwrap(),
+        Value::UInt(5),
+        "all five"
+    );
+    let info = s.systems(w.registry()).unwrap();
+    assert!(info.iter().any(|i| i.name == "sim.effect" && i.unfrozen));
+}

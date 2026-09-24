@@ -213,6 +213,56 @@ fn show(world: &World, v: &Value) -> String {
     }
 }
 
+/// The drawing camera's post effects doing something (phase 2 item 6).
+fn post_effects(world: &World, cam: Entity, height: u32, out: &mut Vec<Json>) {
+    use argus_post::*;
+    let c = entity_id(world, cam);
+    let color = |id: argus_ecs::StrId, default: &str| {
+        let s = world.strings().resolve(id);
+        if s.is_empty() {
+            default.to_string()
+        } else {
+            s
+        }
+    };
+    if let Ok(s) = world.get::<PostShake>(cam) {
+        if s.level > 0.0 {
+            let px = |v: f32| (v * height as f32).round() + 0.0;
+            out.push(json!({ "kind": "screen shake", "camera": c, "trauma": round(s.level), "offset_px": [px(s.offset.x), px(s.offset.y)] }));
+        }
+    }
+    if let Ok(h) = world.get::<PostHitStop>(cam) {
+        if h.left > 0 {
+            out.push(json!({ "kind": "hit-stop", "camera": c, "ticks_left": h.left, "scale": round(h.scale) }));
+        }
+    }
+    if let Ok(f) = world.get::<PostFlash>(cam) {
+        if f.amount > 0.0 {
+            out.push(json!({ "kind": "flash", "camera": c, "amount": round(f.amount), "color": color(f.color, "#FFFFFF") }));
+        }
+    }
+    if let Ok(f) = world.get::<PostFade>(cam) {
+        if f.amount > 0.0 {
+            out.push(json!({ "kind": "fade", "camera": c, "amount": round(f.amount), "color": color(f.color, "#000000") }));
+        }
+    }
+    if let Ok(v) = world.get::<PostVignette>(cam) {
+        if v.amount > 0.0 {
+            out.push(json!({ "kind": "vignette", "camera": c, "amount": round(v.amount) }));
+        }
+    }
+    if let Ok(a) = world.get::<PostAberration>(cam) {
+        if a.amount > 0.0 {
+            out.push(json!({ "kind": "aberration", "camera": c, "amount": round(a.amount) }));
+        }
+    }
+    if let Ok(p) = world.get::<PostPalette>(cam) {
+        if p.amount > 0.0 {
+            out.push(json!({ "kind": "palette", "camera": c, "amount": round(p.amount), "colors": color(p.colors, DEFAULT_PALETTE) }));
+        }
+    }
+}
+
 /// Fill a text's `{Component.field}` and `{@id:Component.field}` holes. A
 /// hole that names nothing reads `{?...}` and is reported.
 pub fn fill(world: &World, e: Entity, text: &str, problems: &mut Vec<String>) -> String {
@@ -611,6 +661,7 @@ pub fn semantic(world: &World, spec: &FrameSpec) -> SemanticFrame {
                 effects.push(json!({ "kind": "shake", "camera": entity_id(world, cam), "trauma": round(sh.trauma), "offset": [round(sh.offset.x), round(sh.offset.y)], "angle": round(sh.angle) }));
             }
         }
+        post_effects(world, cam, spec.height, &mut effects);
     }
     if let Some(store) = spec.particles {
         for (e, pool) in &store.pools {

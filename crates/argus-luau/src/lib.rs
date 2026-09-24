@@ -480,6 +480,9 @@ impl ScriptHost {
         if s.on_load {
             desc = desc.on_load();
         }
+        if s.unfrozen {
+            desc = desc.unfrozen();
+        }
         let run: Function = self.lua.registry_value(&s.run).map_err(to_argus)?;
         let lua = self.lua.clone();
         let budget = self.budget.clone();

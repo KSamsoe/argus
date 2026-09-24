@@ -16,6 +16,7 @@
 pub mod annotate;
 pub mod gpu;
 mod overlay;
+pub mod post;
 pub mod semantic;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod window;
@@ -1366,6 +1367,8 @@ impl Renderer {
             self.gpu.set_material_uniform(m.index, &bytes);
         }
 
+        let post = self.post_passes(world, camera);
+        self.gpu.set_post(post);
         let stats = self
             .gpu
             .draw(center, half, angle, self.clear, &flat, &runs)?;
@@ -1383,6 +1386,114 @@ impl Renderer {
             ms: started.elapsed().as_secs_f64() * 1e3,
         };
         Ok(self.last.clone())
+    }
+
+    /// The drawing camera's post passes this frame (phase 2 item 6), in
+    /// order: the ones doing something (a shake with trauma, a flash still
+    /// fading, any pass with an amount).
+    fn post_passes(&mut self, world: &World, camera: Option<Entity>) -> Vec<post::PostPass> {
+        use argus_post::*;
+        use post::{PostKind, PostPass};
+        let Some(cam) = camera else {
+            return Vec::new();
+        };
+        let strings = world.strings();
+        let colors = &mut self.colors;
+        let mut color = |id: StrId, default: [f32; 4]| {
+            if id == StrId::EMPTY {
+                return default;
+            }
+            *colors.entry(id).or_insert_with(|| {
+                parse_color(&strings.resolve(id)).unwrap_or([1.0, 0.0, 1.0, 1.0])
+            })
+        };
+        let pass = |kind, order, a: [f32; 4], b: [f32; 4]| PostPass {
+            kind,
+            order,
+            a,
+            b,
+            palette: [[0.0; 4]; 8],
+        };
+        let mut out = Vec::new();
+        if let Ok(s) = world.get::<PostShake>(cam) {
+            if s.offset != Vec2::ZERO {
+                out.push(pass(
+                    PostKind::Shake,
+                    s.order,
+                    [s.offset.x, s.offset.y, 0.0, 0.0],
+                    [0.0; 4],
+                ));
+            }
+        }
+        if let Ok(a) = world.get::<PostAberration>(cam) {
+            if a.amount > 0.0 {
+                out.push(pass(
+                    PostKind::Aberration,
+                    a.order,
+                    [a.amount, 0.0, 0.0, 0.0],
+                    [0.0; 4],
+                ));
+            }
+        }
+        if let Ok(p) = world.get::<PostPalette>(cam) {
+            if p.amount > 0.0 {
+                let text = if p.colors == StrId::EMPTY {
+                    DEFAULT_PALETTE.to_string()
+                } else {
+                    strings.resolve(p.colors)
+                };
+                let cs: Vec<[f32; 4]> = text
+                    .split_whitespace()
+                    .filter_map(parse_color)
+                    .take(post::MAX_PASSES)
+                    .collect();
+                if !cs.is_empty() {
+                    let mut pp = pass(
+                        PostKind::Palette,
+                        p.order,
+                        [p.amount, cs.len() as f32, 0.0, 0.0],
+                        [0.0; 4],
+                    );
+                    for (i, c) in cs.iter().enumerate() {
+                        pp.palette[i] = *c;
+                    }
+                    out.push(pp);
+                }
+            }
+        }
+        if let Ok(f) = world.get::<PostFlash>(cam) {
+            if f.amount > 0.0 {
+                out.push(pass(
+                    PostKind::Flash,
+                    f.order,
+                    color(f.color, [1.0; 4]),
+                    [f.amount, 0.0, 0.0, 0.0],
+                ));
+            }
+        }
+        if let Ok(v) = world.get::<PostVignette>(cam) {
+            if v.amount > 0.0 {
+                out.push(pass(
+                    PostKind::Vignette,
+                    v.order,
+                    [v.amount, v.radius, v.softness, 0.0],
+                    [0.0; 4],
+                ));
+            }
+        }
+        if let Ok(f) = world.get::<PostFade>(cam) {
+            if f.amount > 0.0 {
+                out.push(pass(
+                    PostKind::Fade,
+                    f.order,
+                    color(f.color, [0.0, 0.0, 0.0, 1.0]),
+                    [f.amount, 0.0, 0.0, 0.0],
+                ));
+            }
+        }
+        out.sort_by_key(|p| p.order);
+        out.truncate(post::MAX_PASSES);
+        out
     }
 
     /// The last offscreen frame's pixels.

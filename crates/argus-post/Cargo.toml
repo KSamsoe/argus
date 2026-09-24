@@ -1,0 +1,10 @@
+[package]
+name = "argus-post"
+description = "Argus Engine post stack: screen-space passes a game enables on its camera (hit-flash, screen shake, fade, vignette, chromatic aberration, palette), every setting a tune field, and hit-stop, which freezes the game for a few ticks while they play"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+argus-ecs = { path = "../argus-ecs", version = "0.0.1" }
+argus-sim = { path = "../argus-sim", version = "0.0.1" }

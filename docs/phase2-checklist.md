@@ -110,12 +110,22 @@ Decisions taken while building it:
 
 ## 6. Post stack
 
-**Status: not started.** Constraints:
+**Status: done** (2026-09-24) in `argus-post` (the components `PostShake`, `PostFlash`, `PostFade`, `PostVignette`, `PostAberration`, `PostPalette`, and `PostHitStop`, and the systems `post.hitstop` and `post.update`), `argus-render` (`post.rs`: the passes, drawn between two textures after the world; the effects in the semantic frame), `argus-sim` (`SystemCtx::freeze`, `unfrozen` and `first` systems), `argus-luau` (`unfrozen = true`), `argus-camera` (a stop holds the view and the shake plays on), `argus-physics` (a tap inside one tick still jumps), and `argus-index` (exact floats). A game turns passes on with components on its camera, each setting a tune field, and the renderer runs the ones doing something in `order`. The flash, the shake, and the hit-stop each start on a game event by name (`hit` by default; an `amount` on the event scales the flash and the shake), so one event starts all three and one tuning session adjusts them together. Hollow's fall into the pit is the example: a red flash, a screen shake, and a six-tick stop, with the view held on the pit while the flash and shake play. A script fades a room change with `PostFade`. Measured: five passes at 1080p cost 0.164 ms on the RTX 3070 Ti (the §17 row is 1.5 ms). Found while building it: the design's own example of a game component is called `HitStop`, and the engine's took that name and broke a test project that declared one, so the engine's is `PostHitStop`; letting the camera run through a stop also let it pan away from the hit, so it now holds; a tap made during a stop arrived as a press and a release on the same tick, which the controller missed; and the index read floats back one step off in the last bit, which the new shake default was the first to show. Traces: `crates/argus-post/SPEC-TRACE.md`, and rows in `argus-render`'s, `argus-sim`'s, `argus-luau`'s, `argus-camera`'s, `argus-physics`'s, `argus-index`'s, `argus-web`'s, and the daemon's. Constraints:
 
 - §13: screen-space effects live in a post stack, an ordered list of passes (flash, palette swap, chromatic aberration, vignette, CRT, colour-blind simulation) a game enables with parameters, every one a tune field. Phase 2 builds the stack and the hit-flash and shake passes.
 - §13: the hit-flash, hit-stop, and shake combination that makes an impact feel heavy is three tunable systems the human adjusts together in one session.
 - Carried from phase 1: the camera's shake is in world space; screen-space shake is this pass. Fades for room transitions are post passes too.
 - Semantic frames (§8) report active post effects, as they report the camera's shake.
+
+Decisions taken while building it:
+
+- **A hit-stop freezes the tick, not the clock.** The tick still counts, so input, replays, marks, and the clocks stay on their ticks; the systems not marked `unfrozen` skip it. The design's §3 example does it per entity through a time scale; the trio needs the whole game to stop while its effects play, so the engine's stop is global and a game that wants one entity frozen writes its own component, as §3 does.
+- **Input waits through a stop.** The input system is frozen with the game, so what was pressed during a stop is applied on the first tick after it. A press and its release can then land together, and the controller counts that as a jump (a short one).
+- **The camera holds its view during a stop and shakes on.** A camera that went on following would slide away from the moment the stop is there to show.
+- **Screen shake is a share of the screen's height**, so it looks the same at any window size; the camera's shake stays in world units and moves the view.
+- **The passes are components on the camera**, not a list in `argus.toml`: they are tuned, logged, proposed, and replayed like any field, and a room or a cutscene can change them.
+- **CRT and the colour-blind simulation are deferred.** The item scopes the stack plus the flash and shake passes, and §17's row names five passes, all built. Both are one more fragment function on this stack; the colour-blind pass belongs with the accessibility work.
+- **Room fades are a script's tween.** `camera.zone` is the hook; a script ordered after the camera sees it on its tick. Hollow keeps its camera slide.
 
 ## 7. argus build, desktop and web
 

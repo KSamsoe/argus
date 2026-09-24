@@ -35,12 +35,14 @@ fn session_open_gives_the_one_screen_summary() {
         .iter()
         .map(|v| v.as_str().unwrap())
         .collect();
-    // The physics and camera systems are in every scene and cost nothing
-    // without bodies or cameras; physics control runs first in sim, move and
-    // overlap last, and the camera then the particles last in late.
+    // The physics, camera, and post systems are in every scene and cost
+    // nothing without bodies or cameras; the hit-stop check runs first in
+    // input, physics control first in sim, move and overlap last, and the
+    // camera, the post effects, then the particles last in late.
     assert_eq!(
         systems,
         [
+            "post.hitstop",
             "input.actions",
             "physics.control",
             "sim.damage",
@@ -50,6 +52,7 @@ fn session_open_gives_the_one_screen_summary() {
             "anim.update",
             "tween.update",
             "camera.update",
+            "post.update",
             "particles.update",
             "present.hud"
         ]
@@ -531,9 +534,9 @@ fn sim_and_events_answer_why_the_bat_died() {
     assert_eq!(r["tick"], 65);
     let pf = ok(&mut d, "prof.frame", json!({}));
     assert_eq!(pf["tick"], 64, "the last tick that ran, numbered from 0");
-    assert_eq!(pf["systems"][0][0], "input.actions", "stage order");
+    assert_eq!(pf["systems"][0][0], "post.hitstop", "stage order");
     let ps = ok(&mut d, "prof.systems", json!({ "last": 10 }));
-    assert_eq!(ps["rows"][2][0], "sim.damage");
+    assert_eq!(ps["rows"][3][0], "sim.damage");
     assert!(
         ok(&mut d, "prof.worst", json!({ "n": 2 }))["rows"]
             .as_array()
@@ -558,7 +561,7 @@ fn sim_and_events_answer_why_the_bat_died() {
     let pa = ok(&mut d, "prof.alloc", json!({ "last": 10 }));
     assert_eq!(pa["counted"], true);
     assert_eq!(
-        pa["rows"][2][0], "sim.damage",
+        pa["rows"][3][0], "sim.damage",
         "stage order, like prof.systems"
     );
     let physics: Vec<&serde_json::Value> = pa["rows"]
@@ -654,8 +657,8 @@ fn scripts_reload_in_place_and_errors_are_data() {
     project(t.path());
     let mut d = open(t.path());
     let sys = ok(&mut d, "script.systems", json!({}));
-    assert_eq!(sys["total"], 11);
-    let dmg = &sys["rows"][2];
+    assert_eq!(sys["total"], 13);
+    let dmg = &sys["rows"][3];
     assert_eq!(dmg["name"], "sim.damage");
     assert_eq!(dmg["stage"], "sim");
     assert_eq!(dmg["writes"], json!(["Health"]));

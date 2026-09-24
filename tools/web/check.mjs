@@ -7,8 +7,10 @@
 // renderer got and what it drew (with a screenshot), the run of Hollow's
 // scenario stepped exactly in the page (its digests, to compare with the
 // native player's), real key presses moving the hero and opening the audio,
-// a mark of that moment replayed natively (the same world or not), and the
-// same picture with WebGL2 forced. Node 24 and cargo, no npm packages.
+// a mark of that moment replayed natively (the same world or not), the
+// hero falling into the hall's pit (the post stack's flash, shake, and
+// hit-stop, marked inside the stop and replayed natively), and the same
+// picture with WebGL2 forced. Node 24 and cargo, no npm packages.
 import { spawn, spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -155,7 +157,41 @@ try {
   report.mark.native = replay.stdout.trim() ? JSON.parse(replay.stdout) : { error: replay.stderr || String(replay.error) };
   report.keys_screenshot = await screenshot("keys.png");
 
-  // 4. WebGL2 forced.
+  // 4. The post stack (phase 2 item 6): the run goes on into the hall's pit,
+  // whose fall flashes red, shakes, and stops the game for six ticks. Marked
+  // inside the stop, where the flash, the shake, and the ticks left are all
+  // world state the desktop must reach too.
+  await open(base + "?paused");
+  await sleep(500);
+  await evaluate(`argus.player.inject("move", "[1,0]", 900)`);
+  await evaluate("argus.player.step(118)");
+  await evaluate(`argus.player.inject("jump", "true", 18)`);
+  let last = (await status()).player;
+  let fell = null;
+  for (let i = 0; i < 900 && fell === null; i++) {
+    await evaluate("argus.player.step(1)");
+    s = await status();
+    // Put back at the cave mouth: the tick of the fall.
+    if (s.player[0] < last[0] - 10) fell = { tick: s.tick, at: last, back: s.player };
+    last = s.player;
+  }
+  report.pit = { fell };
+  if (fell) {
+    const held = [];
+    for (let i = 0; i < 2; i++) {
+      await evaluate("argus.player.step(1)");
+      held.push((await status()).player);
+    }
+    report.pit.held = held.every((p) => p[0] === fell.back[0] && p[1] === fell.back[1]);
+    const pitMark = await evaluate(`argus.player.mark("in the pit's hit-stop")`);
+    writeFileSync(join(out, "pit-mark.json"), pitMark);
+    const r = spawnSync("cargo", ["run", "-q", "-p", "argus-web", "--example", "mark_replay", "--", project, join(out, "pit-mark.json")], { encoding: "utf8" });
+    report.pit.native = r.stdout.trim() ? JSON.parse(r.stdout) : { error: r.stderr || String(r.error) };
+    await sleep(300);
+    report.pit.screenshot = await screenshot("pit.png");
+  }
+
+  // 5. WebGL2 forced.
   await open(base + "?paused&webgl");
   await sleep(1500);
   s = await status();

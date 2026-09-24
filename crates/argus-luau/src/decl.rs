@@ -46,6 +46,8 @@ pub struct SystemDecl {
     pub doc: String,
     /// `on_load = true`: also run once when the scene loads.
     pub on_load: bool,
+    /// `unfrozen = true`: keep running during a hit-stop.
+    pub unfrozen: bool,
     /// The `run` function.
     pub run: RegistryKey,
     /// `file:line`.
@@ -403,6 +405,7 @@ pub(crate) fn install_globals(lua: &Lua) -> LuaResult<()> {
                     rng: spec.get("rng")?,
                     doc: spec.get::<Option<String>>("doc")?.unwrap_or_default(),
                     on_load: spec.get::<Option<bool>>("on_load")?.unwrap_or(false),
+                    unfrozen: spec.get::<Option<bool>>("unfrozen")?.unwrap_or(false),
                     run: lua.create_registry_value(run)?,
                     source: source.clone(),
                     file: lua

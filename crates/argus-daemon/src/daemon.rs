@@ -834,6 +834,7 @@ impl Daemon {
         argus_physics::install(&mut self.world, &mut self.sched, tiles.clone())?;
         let zones = Rc::new(RefCell::new(argus_camera::Zones::default()));
         argus_camera::install(&mut self.world, &mut self.sched, zones.clone())?;
+        argus_post::install(&mut self.world, &mut self.sched)?;
         // After the renderer registered Sprite (which it writes), before
         // scripts, so it runs first in the late stage.
         let anims = Rc::new(RefCell::new(argus_anim::AnimStore::default()));

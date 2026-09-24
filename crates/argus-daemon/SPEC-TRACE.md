@@ -48,6 +48,13 @@ Every statement in the design document (v0.3) that constrains the daemon and the
 | The local socket needs no auth; remote access via tokens is later. | Done (phase-0 half) | Nothing listens beyond the local socket. | |
 | Identical result shapes from the live world or the index. | Deferred | Piece 6 will serve `world.*` and `scene.*` from the index when no world is loaded, with these shapes. | |
 
+## Phase 2, item 6: the post stack in every scene
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| Screen-space effects live in a post stack a game enables with parameters, every one a tune field; the hit-flash, hit-stop, and shake are three tunable systems adjusted together (§13). | Done | Opening a scene installs `argus-post` after the camera: `post.hitstop` first in input and `post.update` last in late, both returning at once when no camera has a post component. A game turns passes on in its camera's entity file; `tune.fields` lists every setting, so the trio is tuned in one session; the semantic frame lists what is on; `obs.frame` draws it. Hollow's camera has a red flash, a screen shake, and a six-tick stop on `player.fell`. | `post::a_hit_flashes_shakes_and_stops_and_a_new_room_fades`, Hollow's scenarios |
+| (Carried from phase 1.) Fades for room transitions are post passes too. | Done | A script ordered `after = {"camera.update"}` sees `camera.zone` on the tick it happens and tweens `PostFade.amount`. | same |
+
 ## Phase 1, item 13: obs.diff, obs.trace, obs.why
 
 | Spec | Status | Where | Test |

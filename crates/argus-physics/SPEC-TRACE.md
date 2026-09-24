@@ -35,6 +35,7 @@ Every statement in the design document (v0.3) that constrains the physics tiers 
 | Collision is an event (§8 L2). | Done | `overlap.begin`, `overlap.end`, `body.landed {entity, on, speed}`, `body.jumped {entity, coyote, buffered}`, `body.dropped`, `body.wall {entity, side}`, `body.ceiling`, `body.corner_corrected {entity, dx, dy}`, `body.crushed {entity, by}`. Each fires on a change, not every tick, so the log stays readable. In a script, `q:events(name)` returns the ones emitted so far this tick. | `argus-daemon/tests/physics.rs`, `argus-luau/tests/systems.rs::a_script_reads_the_events_emitted_earlier_in_its_tick` |
 | `tune = true` marks feel parameters for the tuning panel and the recorder (§3, §10). | Done (the flag) | Every feel field of the controller is a tune field; the panel and the tuning log are phase 2. | `argus-daemon/tests/physics.rs` |
 | The agent's `input.inject` says `{action: "jump"}`, not a key (§12 input). | Done | The daemon test runs and jumps the player with injected actions. | `argus-daemon/tests/physics.rs` |
+| (Phase 2 item 6.) A jump pressed during a hit-stop is not lost. | Done | Input waits through a stop and lands on the first tick after, where a press and its release can arrive together. The controller counts `Actions.jump_pressed` as a press even when the button is already up again, so that tap jumps (a short jump, since it was released). The same holds for any tap shorter than a tick. | `argus-daemon/tests/post.rs` |
 
 ## §17 Performance
 

@@ -201,6 +201,10 @@ pub struct SystemInfo {
     pub last: bool,
     /// Also runs once when a scene loads (`run_load`).
     pub on_load: bool,
+    /// Runs first in its stage.
+    pub first: bool,
+    /// Runs while the sim is frozen.
+    pub unfrozen: bool,
 }
 
 /// Runs systems over a world on two clocks.
@@ -220,6 +224,8 @@ pub struct Scheduler {
     observers: Vec<Observer>,
     tick_end: Option<TickEnd>,
     quiet: bool,
+    /// A system froze the rest of the tick being run (`SystemCtx::freeze`).
+    frozen: bool,
 }
 
 /// Something that reads the world at the end of every tick and cannot
@@ -256,12 +262,18 @@ impl Scheduler {
             observers: Vec::new(),
             tick_end: None,
             quiet: false,
+            frozen: false,
         }
     }
 
     /// Call `f` at the end of every tick, after the clock counts it.
     pub fn on_tick_end(&mut self, f: TickEnd) {
         self.tick_end = Some(f);
+    }
+
+    /// Whether the last tick was frozen by a system (a hit-stop).
+    pub fn frozen(&self) -> bool {
+        self.frozen
     }
 
     /// Quiet ticks run the systems but not the observers, the tick-end
@@ -433,6 +445,8 @@ impl Scheduler {
                     doc: s.desc.doc.clone(),
                     last: s.desc.last,
                     on_load: s.desc.on_load,
+                    first: s.desc.first,
+                    unfrozen: s.desc.unfrozen,
                 });
             }
         }
@@ -522,7 +536,7 @@ impl Scheduler {
             let mut ready: Vec<usize> = members.iter().copied().filter(|i| indeg[i] == 0).collect();
             let mut out = Vec::with_capacity(members.len());
             let systems = &self.systems;
-            let key = |i: &usize| (systems[*i].desc.last, *i);
+            let key = |i: &usize| (systems[*i].desc.last, !systems[*i].desc.first, *i);
             while !ready.is_empty() {
                 ready.sort_unstable_by_key(|i| std::cmp::Reverse(key(i)));
                 let i = ready.pop().unwrap();
@@ -769,6 +783,7 @@ impl Scheduler {
             timings: Vec::new(),
             spans: Vec::new(),
         };
+        self.frozen = false;
         for stage in [Stage::Input, Stage::Sim, Stage::Late] {
             self.run_stage(world, stage, kind, tick, time, dt, &mut samples);
         }
@@ -896,6 +911,9 @@ impl Scheduler {
             if !self.systems[i].enabled || !self.binds(i, kind) {
                 continue;
             }
+            if self.frozen && !self.systems[i].desc.unfrozen {
+                continue;
+            }
             let t = Instant::now();
             let (a0, b0) = alloc::counters();
             self.run_system(i, world, stage, kind, tick, time, dt);
@@ -970,6 +988,8 @@ impl Scheduler {
         time: f64,
         dt: f64,
     ) {
+        let froze;
+        let frozen = self.frozen;
         let slot = &mut self.systems[i];
         let outcome = {
             let mut ctx = SystemCtx {
@@ -983,12 +1003,15 @@ impl Scheduler {
                 time,
                 dt,
                 learned: Vec::new(),
+                frozen,
+                freeze: false,
             };
             // What the system emits says it did (obs.why).
             ctx.world.set_emitter(Some(slot.name.clone()));
             let r = catch_unwind(AssertUnwindSafe(|| (slot.run)(&mut ctx)));
             ctx.world.set_emitter(None);
             let learned = std::mem::take(&mut ctx.learned);
+            froze = ctx.freeze;
             drop(ctx);
             // What the system's data named joins its declared access.
             for (c, write) in learned {
@@ -1003,6 +1026,9 @@ impl Scheduler {
             }
             r
         };
+        if froze {
+            self.frozen = true;
+        }
         let (message, r#ref) = match outcome {
             Ok(Ok(())) => return,
             Ok(Err(e)) => (

@@ -137,6 +137,7 @@ fn control(
     for e in entities {
         let mut c: CharacterController = ctx.get(e)?;
         let mut k: KinematicBody = ctx.get(e)?;
+        let mut tapped = false;
         if actions.is_some_and(|a| ctx.has(e, a)) {
             // Keyed by the default too: both names are empty by default,
             // and an empty move_action must not answer for jump_action.
@@ -167,12 +168,21 @@ fn control(
             if let Ok(Value::Bool(b)) = ctx.get_field(e, &jp) {
                 c.jump = b;
             }
+            // A press and its release in one tick leave the button up, and
+            // the edge still counts: a tap shorter than a tick, or one made
+            // during a hit-stop, whose input lands when it ends (phase 2
+            // item 6).
+            let jpp = paths
+                .entry((c.jump_action, "jump_pressed"))
+                .or_insert_with(|| format!("{jp}_pressed"))
+                .clone();
+            tapped = matches!(ctx.get_field(e, &jpp), Ok(Value::Bool(true)));
         }
         // A moving platform's sideways speed kept on a jump off it; added
         // after this tick's run acceleration so the ground's friction does
         // not take it back at once.
         let mut carry = 0.0f32;
-        let pressed = c.jump && !c.jump_was;
+        let pressed = (c.jump && !c.jump_was) || tapped;
         c.jump_was = c.jump;
         if k.grounded {
             c.coyote = c.coyote_time;

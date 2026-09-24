@@ -129,6 +129,10 @@ pub struct Gpu {
     height: u32,
     /// A picture over the frame's bottom edge (a mark's note prompt).
     overlay: Option<crate::overlay::Overlay>,
+    /// The post passes of the next frame (phase 2 item 6).
+    post: Vec<crate::post::PostPass>,
+    /// Their pipelines and textures, made when first used.
+    post_stack: Option<crate::post::PostStack>,
 }
 
 fn err(e: impl std::fmt::Display) -> ArgusError {
@@ -409,6 +413,8 @@ impl Gpu {
             width,
             height,
             overlay: None,
+            post: Vec::new(),
+            post_stack: None,
         };
         // Built-in atlases for described-shape placeholders (section 14).
         gpu.add_atlas_rgba(
@@ -879,6 +885,17 @@ impl Gpu {
         if let Some(o) = &self.overlay {
             o.place(&self.queue, self.width, self.height);
         }
+        // With post passes the world goes into the stack's texture first.
+        let post_on = !self.post.is_empty();
+        let scene = if post_on {
+            let (w, h) = (self.width, self.height);
+            let stack = self
+                .post_stack
+                .get_or_insert_with(|| crate::post::PostStack::new(&self.device, self.format));
+            stack.scene(&self.device, w, h)
+        } else {
+            view.clone()
+        };
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -892,7 +909,7 @@ impl Gpu {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("sprites"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
+                    view: &scene,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
@@ -948,7 +965,37 @@ impl Gpu {
             }
             stats.atlases = bound.len();
             stats.materials = drawn_with.len();
+            if let (false, Some(o)) = (post_on, &self.overlay) {
+                o.draw(&mut pass);
+            }
+        }
+        if post_on {
+            if let Some(stack) = &self.post_stack {
+                stack.run(
+                    &self.device,
+                    &self.queue,
+                    &mut encoder,
+                    &self.post,
+                    &view,
+                    (self.width, self.height),
+                );
+            }
+            // The bar over the passes: a shake does not move it.
             if let Some(o) = &self.overlay {
+                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("overlay"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Load,
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: None,
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                });
                 o.draw(&mut pass);
             }
         }
@@ -998,6 +1045,18 @@ impl Gpu {
             .overlay
             .get_or_insert_with(|| crate::overlay::Overlay::new(&self.device, self.format));
         o.set(&self.device, &self.queue, img);
+    }
+
+    /// The post passes the next frames run, in order (none: the world is
+    /// drawn straight into the target).
+    pub fn set_post(&mut self, passes: Vec<crate::post::PostPass>) {
+        self.post = passes;
+    }
+
+    /// Wait for the GPU to finish what it was given (a measurement's).
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn wait(&self) {
+        self.device.poll(wgpu::Maintain::Wait);
     }
 
     /// The last offscreen frame as tightly packed RGBA8 rows, top row first.

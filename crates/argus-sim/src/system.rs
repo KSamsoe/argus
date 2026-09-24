@@ -129,6 +129,14 @@ pub struct SystemDesc {
     /// (`Scheduler::run_load`): a game that builds its world from the seed
     /// shows it before the first command.
     pub on_load: bool,
+    /// Run before every other system of the stage that does not order
+    /// itself before this one (a hit-stop decides, first, whether the tick
+    /// runs at all).
+    pub first: bool,
+    /// Run while the sim is frozen (a hit-stop, phase 2 item 6): the post
+    /// effects that play during the stop. Every other system skips a
+    /// frozen tick.
+    pub unfrozen: bool,
 }
 
 impl SystemDesc {
@@ -145,7 +153,21 @@ impl SystemDesc {
             doc: String::new(),
             last: false,
             on_load: false,
+            first: false,
+            unfrozen: false,
         }
+    }
+
+    /// Run first in the stage.
+    pub fn first(mut self) -> Self {
+        self.first = true;
+        self
+    }
+
+    /// Keep running while the sim is frozen.
+    pub fn unfrozen(mut self) -> Self {
+        self.unfrozen = true;
+        self
     }
 
     /// Also run once when a scene loads, before the first tick.
@@ -223,6 +245,12 @@ pub struct SystemCtx<'a> {
     pub dt: f64,
     /// Components this run declared it touches (see [`SystemCtx::declare`]).
     pub(crate) learned: Vec<(ComponentId, bool)>,
+    /// The tick is frozen (a hit-stop, phase 2 item 6): only `unfrozen`
+    /// systems run, and they see this true. A camera holds its view and
+    /// still shakes.
+    pub frozen: bool,
+    /// Set by [`SystemCtx::freeze`].
+    pub(crate) freeze: bool,
 }
 
 impl<'a> SystemCtx<'a> {
@@ -240,6 +268,13 @@ impl<'a> SystemCtx<'a> {
         if !known && !self.learned.contains(&(c, write)) {
             self.learned.push((c, write));
         }
+    }
+
+    /// Freeze the rest of this tick: every system after this one that is
+    /// not `unfrozen` skips it (a hit-stop, phase 2 item 6). The tick still
+    /// counts, so input and replays stay on their ticks.
+    pub fn freeze(&mut self) {
+        self.freeze = true;
     }
 
     /// Read-only world access (no declared-access check; use `query` for iteration).

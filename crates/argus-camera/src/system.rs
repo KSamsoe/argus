@@ -36,9 +36,12 @@ pub(crate) fn install(
     let actions = world.component_id("Actions");
     // On load too: the first update snaps to the target inside its room, so
     // the first frame (before any tick, or any turn) is framed.
+    // Unfrozen too: during a hit-stop (phase 2 item 6) the view holds where
+    // it is and the shake plays on, so a stopped shake does not hang still.
     let mut desc = SystemDesc::new(SYSTEM, Stage::Late)
         .last()
         .on_load()
+        .unfrozen()
         .writes(cam)
         .writes(shake)
         .writes(tr)
@@ -169,7 +172,9 @@ fn run(
                 .or_insert_with(|| format!("Actions.{}", w.strings().resolve(id)))
                 .clone()
         };
-        if has_actions && c.zoom_action != StrId::EMPTY {
+        // A hit-stop holds the view: no follow, pan, or zoom; only the shake.
+        let moving = !ctx.frozen;
+        if moving && has_actions && c.zoom_action != StrId::EMPTY {
             let p = path(c.zoom_action, ctx.world());
             if let Some(z) = ctx.get_field(e, &p).ok().as_ref().and_then(num) {
                 c.height *= (-z * c.zoom_speed * dt).exp();
@@ -189,7 +194,7 @@ fn run(
         let pan = has_actions && c.pan_action != StrId::EMPTY;
         let has_t = ctx.has(e, tr);
         let mut pos = position(ctx.world(), e).unwrap_or([0.0, 0.0]);
-        if has_t && (follow || pan) {
+        if moving && has_t && (follow || pan) {
             pos = ctx.get::<Transform>(e).map(|t| [t.pos.x, t.pos.y])?;
             let (mut want, snap, focus) = if follow {
                 let mut snap = false;
@@ -278,7 +283,7 @@ fn run(
             };
             let p = Vec2::new(pos[0], pos[1]);
             ctx.update::<Transform, _>(e, |t| t.pos = p)?;
-        } else {
+        } else if moving {
             c.tracking = false;
         }
 

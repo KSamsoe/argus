@@ -10,6 +10,7 @@ Every statement in the design document (v0.3) that constrains the web spike (pha
 | Nothing in the player runtime listens on any socket. | Done | The web player has no daemon and no protocol at all. | |
 | Assets are packed. | Partial | A pack is every file of the project but dot-files and `tests/`, in path order: `ARGUSPK1`, a count, then each path and its bytes. Content addressing is item 7's. | `tests/player.rs::a_pack_round_trips_a_project` |
 | Luau runs in the release runtime. | Done | Luau (C++) compiles to wasm with wasi-sdk and wasm's exnref exception handling; the C library's system calls are answered inside the module (`wasi.rs`). `tools/web/env.sh` has the flags and why. | the check runs Hollow's scripts in Chrome |
+| (Phase 2 item 6.) The post stack in the browser. | Done | The web player installs `argus-post` as the daemon does, and `Renderer::web` runs the same passes through WebGPU or WebGL2. | `tools/web/check.mjs` step 4: the hero runs into the hall's pit in Chrome, stands still through the stop, and a mark taken two ticks into it replays on the desktop to the same world and events (flash, shake, and ticks left are world state); its screenshot shows the red flash |
 
 ## §6 Determinism across the desktop and the browser
 

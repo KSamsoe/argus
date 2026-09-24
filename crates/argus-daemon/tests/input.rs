@@ -43,8 +43,10 @@ fn injected_actions_reach_gameplay_and_never_name_keys() {
         "a writer reads too, and so do the character controller and the camera (pan and zoom)"
     );
     let sys = ok(&mut d, "script.systems", json!({}));
-    assert_eq!(sys["rows"][0]["name"], "input.actions");
-    assert_eq!(sys["rows"][0]["stage"], "input");
+    // After the hit-stop's check, which freezes the rest of a tick.
+    assert_eq!(sys["rows"][0]["name"], "post.hitstop");
+    assert_eq!(sys["rows"][1]["name"], "input.actions");
+    assert_eq!(sys["rows"][1]["stage"], "input");
 
     // Walk right for 10 ticks, tap fire at tick 3.
     let r = ok(

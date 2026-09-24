@@ -200,6 +200,7 @@ fn a_player_runs_jumps_and_lands_on_carved_tiles() {
     assert_eq!(
         names,
         [
+            "post.hitstop",
             "input.actions",
             "physics.control",
             "physics.move",
@@ -208,6 +209,7 @@ fn a_player_runs_jumps_and_lands_on_carved_tiles() {
             "tween.update",
             "late.listen",
             "camera.update",
+            "post.update",
             "particles.update"
         ]
     );

@@ -23,7 +23,7 @@ Every statement in the design document (v0.3) that constrains cameras as phase 1
 |---|---|---|---|
 | Present runs at render rate and is read-only (interpolation, camera, UI). | Done | `camera.update` runs last in the late stage (after gameplay and physics, and after any late script that asks for a shake), so camera motion is part of the deterministic tick and replays exactly. The present side only reads: the renderer interpolates the drawing camera between the last two ticks like any entity and applies its shake. | `argus-daemon/tests/camera.rs`, `argus-render/tests/render.rs` |
 | The semantic frame reports the camera rect (§8). | Done | Every camera's `view_min` and `view_max` (the rect it shows, shake included, at its `aspect`) are fields written each tick, so `world.get` answers headless; `obs.frame` reports `camera` and `view {center, half, angle, rect}` for the picture it drew; the semantic frame (item 12) gives the drawing camera's id, rect, and roll, and a shaking camera is one of its effects. | `argus-daemon/tests/camera.rs`, `argus-daemon/tests/semantic.rs` |
-| Transitions between rooms are an engine event with a hook for the game (fade, camera slide). | Partial | The slide is the smoothing toward the new room's clamp, and `camera.zone` says it happened. Fades are the post stack's (phase 2). | `room_bounds_keep_the_view_inside_and_a_new_room_slides_in` |
+| Transitions between rooms are an engine event with a hook for the game (fade, camera slide). | Done | The slide is the smoothing toward the new room's clamp, and `camera.zone` says it happened. The fade is `argus-post`'s `PostFade` (phase 2 item 6): a script ordered `after = {"camera.update"}` sees `camera.zone` on its tick and tweens the fade. | `room_bounds_keep_the_view_inside_and_a_new_room_slides_in`, `argus-daemon/tests/post.rs` |
 
 ## §18 Build plan
 
@@ -31,6 +31,7 @@ Every statement in the design document (v0.3) that constrains cameras as phase 1
 |---|---|---|---|
 | Phase 1: camera component. | Done | This crate. | |
 | (Phase 2 item 1.) The first frame is framed. | Done | `camera.update` also runs when a scene loads (`on_load`): its first update snaps to the target inside the target's room, so the frame drawn before the first tick (or the first turn of a discrete game) shows the room, not the authored camera position. Found by the web spike, whose paused page drew that frame. | `tools/web/check.mjs` start screenshot; the three games' tests |
+| (Phase 2 item 6.) A hit-stop holds the view, and the shake plays on. | Done | `camera.update` is `unfrozen`: on a frozen tick it does not follow, pan, or zoom, so the moment of the hit stays in view, and its `CameraShake` goes on moving and decaying rather than hanging still. | `a_hit_stop_holds_the_view_and_the_shake_plays_on` |
 | Gate: a three-room slice of Hollow with a following camera. | Partial | A camera follows a physics player across two rooms of a room scene through the protocol, keeping to each room's bounds; the slice itself is the gate's work. | `argus-daemon/tests/camera.rs` |
 
 ## Known limitations, stated so they are decisions

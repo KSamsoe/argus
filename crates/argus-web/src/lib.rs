@@ -189,6 +189,7 @@ impl Player {
         argus_physics::install(&mut world, &mut sched, tiles.clone())?;
         let zones = Rc::new(RefCell::new(argus_camera::Zones::default()));
         argus_camera::install(&mut world, &mut sched, zones.clone())?;
+        argus_post::install(&mut world, &mut sched)?;
         let anims = Rc::new(RefCell::new(argus_anim::AnimStore::default()));
         argus_anim::install(&mut world, &mut sched, anims.clone())?;
         argus_tween::install(&mut world, &mut sched)?;

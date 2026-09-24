@@ -575,3 +575,246 @@ fn shown_text_is_drawn_over_its_entity_and_the_hud_at_the_top() {
     );
     assert!(cream(0, 0, 220, 16) > 40, "the HUD line at the top left");
 }
+
+/// Phase 2 item 6: the post stack. Each pass changes the picture as it
+/// says, in the drawing camera's order, and the F8 bar stays still under a
+/// shake.
+#[test]
+fn post_passes_change_the_picture_in_order() {
+    use argus_post::*;
+    let Some(mut r) = renderer(320, 180) else {
+        return;
+    };
+    let mut w = world_with_camera(18.0);
+    argus_post::register(&mut w).unwrap();
+    let cam = w.entity("camera").unwrap();
+    shape(&mut w, 0.0, 0.0, "rect", 4.0, "#FF0000", 0.0);
+    let shot = |r: &mut argus_render::Renderer, w: &argus_ecs::World, name: &str| {
+        r.render(w, 0, 1.0).unwrap();
+        let img = r.capture().unwrap();
+        if let Ok(dir) = std::env::var("ARGUS_SHOTS") {
+            img.save_png(&std::path::Path::new(&dir).join(format!("post-{name}.png")))
+                .unwrap();
+        }
+        img
+    };
+    let plain = shot(&mut r, &w, "none");
+    assert_eq!(plain.pixel(160, 90)[..3], [255, 0, 0]);
+    let clear = plain.pixel(5, 90);
+
+    // Flash: half way to white.
+    w.insert(
+        cam,
+        PostFlash {
+            amount: 0.5,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let img = shot(&mut r, &w, "flash");
+    let p = img.pixel(160, 90);
+    assert!(p[0] == 255 && p[1] > 150 && p[1] < 230, "pink: {p:?}");
+    w.remove(cam, w.component_id("PostFlash").unwrap()).unwrap();
+
+    // Fade all the way: black.
+    w.insert(
+        cam,
+        PostFade {
+            amount: 1.0,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(shot(&mut r, &w, "fade").pixel(160, 90)[..3], [0, 0, 0]);
+    w.remove(cam, w.component_id("PostFade").unwrap()).unwrap();
+
+    // Shake: the picture moves right by a tenth of the height (18 px).
+    w.insert(
+        cam,
+        PostShake {
+            offset: argus_ecs::Vec2::new(0.1, 0.0),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let img = shot(&mut r, &w, "shake");
+    // The rect spans x 140..180 still; shaken, 158..198.
+    assert_eq!(
+        img.pixel(150, 90)[..3],
+        clear[..3],
+        "the left edge moved away"
+    );
+    assert_eq!(
+        img.pixel(190, 90)[..3],
+        [255, 0, 0],
+        "and the right edge came"
+    );
+    // The bar is not shaken.
+    let bar = argus_render::status_bar(320, "F8", [255, 214, 90, 255]);
+    r.gpu_mut().set_overlay(Some(&bar));
+    let img = shot(&mut r, &w, "shake-bar");
+    let top = img.pixel(0, 180 - bar.height);
+    assert!(
+        top[0] > 200 && top[1] > 170,
+        "the bar's top line at its place: {top:?}"
+    );
+    r.gpu_mut().set_overlay(None);
+    w.remove(cam, w.component_id("PostShake").unwrap()).unwrap();
+
+    // Vignette: the corners darken, the middle does not.
+    w.insert(
+        cam,
+        PostVignette {
+            amount: 1.0,
+            radius: 0.3,
+            softness: 0.3,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let img = shot(&mut r, &w, "vignette");
+    assert_eq!(img.pixel(160, 90)[..3], [255, 0, 0]);
+    assert!(
+        img.pixel(1, 1)[0] < clear[0] / 2,
+        "{:?} against {clear:?}",
+        img.pixel(1, 1)
+    );
+    w.remove(cam, w.component_id("PostVignette").unwrap())
+        .unwrap();
+
+    // Palette: red becomes one of the four greens.
+    w.insert(cam, PostPalette::default()).unwrap();
+    let img = shot(&mut r, &w, "palette");
+    let p = img.pixel(160, 90);
+    assert!(p[1] > p[0] && p[1] > p[2], "green: {p:?}");
+    w.remove(cam, w.component_id("PostPalette").unwrap())
+        .unwrap();
+
+    // Aberration: toward the edge, red and blue part at the rect's side.
+    shape(&mut w, 12.0, 0.0, "rect", 4.0, "#FFFFFF", 0.0);
+    w.insert(
+        cam,
+        PostAberration {
+            amount: 0.03,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let img = shot(&mut r, &w, "aberration");
+    let (x, _) = r.to_pixel(10.0, 0.0);
+    let edge = (x as u32 - 4..x as u32 + 4)
+        .map(|x| img.pixel(x, 90))
+        .find(|p| p[0] != p[2]);
+    assert!(edge.is_some(), "a fringe where white meets the ground");
+
+    // Five at once, the ones §17 times.
+    w.remove(cam, w.component_id("PostAberration").unwrap())
+        .unwrap();
+    w.insert(
+        cam,
+        PostShake {
+            offset: argus_ecs::Vec2::new(0.01, 0.0),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    w.insert(
+        cam,
+        PostFlash {
+            amount: 0.2,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    w.insert(cam, PostAberration::default()).unwrap();
+    w.insert(cam, PostVignette::default()).unwrap();
+    w.insert(
+        cam,
+        PostPalette {
+            amount: 0.3,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let rep = r.render(&w, 0, 1.0).unwrap();
+    assert!(rep.stats.sprites > 0);
+    let img = r.capture().unwrap();
+    if let Ok(dir) = std::env::var("ARGUS_SHOTS") {
+        img.save_png(&std::path::Path::new(&dir).join("post-five.png"))
+            .unwrap();
+    }
+}
+
+/// §17: Hollow's post stack, five passes (flash, shake, aberration,
+/// vignette, palette) at 1080p, under 1.5 ms of GPU time. Measured as the
+/// difference between frames with the five and frames without, each frame
+/// waited for, so it includes the passes' CPU side too.
+#[test]
+#[ignore]
+fn perf_post_stack_five_passes_at_1080p() {
+    use argus_post::*;
+    let Some(mut r) = renderer(1920, 1080) else {
+        return;
+    };
+    let mut w = world_with_camera(12.0);
+    argus_post::register(&mut w).unwrap();
+    for i in 0..300 {
+        shape(
+            &mut w,
+            (i % 30) as f32 - 15.0,
+            (i / 30) as f32 - 5.0,
+            "rect",
+            0.8,
+            "#8A6A40",
+            0.0,
+        );
+    }
+    let cam = w.entity("camera").unwrap();
+    let time = |r: &mut argus_render::Renderer, w: &argus_ecs::World| {
+        for _ in 0..20 {
+            r.render(w, 0, 1.0).unwrap();
+            r.gpu().wait();
+        }
+        let n = 200;
+        let t = std::time::Instant::now();
+        for _ in 0..n {
+            r.render(w, 0, 1.0).unwrap();
+            r.gpu().wait();
+        }
+        t.elapsed().as_secs_f64() * 1e3 / n as f64
+    };
+    let without = time(&mut r, &w);
+    w.insert(
+        cam,
+        PostShake {
+            offset: argus_ecs::Vec2::new(0.01, 0.005),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    w.insert(
+        cam,
+        PostFlash {
+            amount: 0.3,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    w.insert(cam, PostAberration::default()).unwrap();
+    w.insert(cam, PostVignette::default()).unwrap();
+    w.insert(
+        cam,
+        PostPalette {
+            amount: 0.5,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let with = time(&mut r, &w);
+    let cost = with - without;
+    println!(
+        "1920x1080 on {}: {without:.3} ms a frame without, {with:.3} ms with five passes: {cost:.3} ms",
+        r.gpu().adapter
+    );
+    assert!(cost < 1.5, "five passes took {cost:.3} ms");
+}

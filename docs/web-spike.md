@@ -21,7 +21,7 @@ tools/web/build.sh
 node tools/web/check.mjs
 ```
 
-The check opens the site in headless Chrome, with no window and the sound muted. It reports what was drawn, the run's digests, what the keys did, the audio, and the mark, and saves screenshots to `target-web/check`.
+The check opens the site in headless Chrome, with no window and the sound muted. It reports what was drawn, the run's digests, what the keys did, the audio, and the mark, and saves screenshots to `target-web/check`. Since phase 2 item 6 it also runs the hero into the hall's pit and takes a second mark during the hit-stop that follows, which the desktop must replay to the same world, flash and shake included.
 
 ## The answers
 

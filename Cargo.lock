@@ -173,6 +173,7 @@ dependencies = [
  "argus-material",
  "argus-particles",
  "argus-physics",
+ "argus-post",
  "argus-render",
  "argus-scene",
  "argus-sim",
@@ -272,6 +273,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "argus-post"
+version = "0.0.1"
+dependencies = [
+ "argus-ecs",
+ "argus-sim",
+]
+
+[[package]]
 name = "argus-render"
 version = "0.0.1"
 dependencies = [
@@ -282,6 +291,7 @@ dependencies = [
  "argus-material",
  "argus-os",
  "argus-particles",
+ "argus-post",
  "argus-sim",
  "bytemuck",
  "png",
@@ -354,6 +364,7 @@ dependencies = [
  "argus-os",
  "argus-particles",
  "argus-physics",
+ "argus-post",
  "argus-render",
  "argus-scene",
  "argus-sim",

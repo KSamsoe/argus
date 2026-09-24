@@ -394,6 +394,55 @@ fn shake_follows_trauma_through_its_curve_decays_and_replays_the_same() {
 }
 
 #[test]
+fn a_hit_stop_holds_the_view_and_the_shake_plays_on() {
+    let mut r = rig();
+    // Stops ticks 10 to 14 (phase 2 item 6) and shakes on the first of them.
+    r.sched
+        .add_system(
+            SystemDesc::new("sim.stop", Stage::Input).first(),
+            Box::new(|ctx| {
+                if (10..15).contains(&ctx.tick) {
+                    ctx.freeze();
+                }
+                if ctx.tick == 10 {
+                    ctx.emit("camera.shake", vec![("amount".into(), Value::Float(1.0))]);
+                }
+                Ok(())
+            }),
+        )
+        .unwrap();
+    let t = r.body(0.0, 0.0);
+    let cam = r.camera(
+        0.0,
+        0.0,
+        Camera {
+            smoothing: Vec2::new(0.2, 0.0),
+            ..exact(t)
+        },
+    );
+    r.world.insert(cam, CameraShake::default()).unwrap();
+    r.tick(5);
+    r.go(t, 10.0, 0.0);
+    r.tick(5);
+    let held = r.at(cam).x;
+    assert!(held > 0.5 && held < 9.0, "on its way: {held}");
+    let mut offsets = Vec::new();
+    for _ in 0..5 {
+        r.tick(1);
+        assert_eq!(r.at(cam).x, held, "the view holds through the stop");
+        let s = r.world.get::<CameraShake>(cam).unwrap();
+        assert!(close(r.cam(cam).view_min.x, held + s.offset.x - 10.0));
+        offsets.push(s.offset);
+    }
+    assert!(
+        offsets.windows(2).all(|w| w[0] != w[1]),
+        "and shakes on: {offsets:?}"
+    );
+    r.tick(1);
+    assert!(r.at(cam).x > held, "then moves on");
+}
+
+#[test]
 fn the_highest_priority_active_camera_draws_and_a_change_is_a_cut() {
     let mut r = rig();
     let a = r.camera(0.0, 0.0, Camera::default());
