@@ -50,6 +50,7 @@ The first run of Swarm's first wave with sound read `sfx peak +18 dB` in `audio.
 
 | Spec | Status | Where | Test |
 |---|---|---|---|
+| (Phase 2 item 1.) Audio in the browser. | Partial (the spike) | The same `device.rs` over cpal's Web Audio backend (`argus-web` turns on cpal's `wasm-bindgen` feature). A browser allows sound only after a key press or a click, so the page opens the device on the first one (`WebPlayer::open_audio`). `rendered_frames` reports what the device pulled. cpal mixes on the page's main thread two 2048-frame buffers ahead (about 85 ms); an AudioWorklet is item 7's. | `tools/web/check.mjs`: 2.4 s mixed at 48 kHz, peak -24.7 dBFS from the footsteps, with Chrome muted |
 | The core hosts audio (§2). | Done | `device.rs` (cpal 0.15, feature `device`): the output callback pulls blocks straight from the shared mixer, so sound runs in real time even on a discrete scene where nothing ticks between turns. The device prefers 48 kHz and the mixer rebuilds at the device's rate if it differs. `render.window` opens it with the window; `audio.device {open}` by hand; headless runs never open it. | (manual: `audio.device` opened the laptop's speakers and closed them) |
 
 ## Known limitations, stated so they are decisions

@@ -65,7 +65,7 @@ pub fn parse_mut(file: &str, text: &str) -> Result<DocumentMut> {
 
 /// Read a file into a string with a 4602 error naming the path.
 pub fn read(path: &Path) -> Result<String> {
-    std::fs::read_to_string(path).map_err(|e| {
+    argus_os::fs::read_to_string(path).map_err(|e| {
         ArgusError::new(
             codes::MISSING_FILE,
             format!("cannot read {}: {e}", path.display()),

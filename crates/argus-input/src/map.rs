@@ -105,7 +105,7 @@ impl ActionMap {
     /// Read `input.toml` under `root`; `None` when the project has none.
     pub fn load(root: &Path) -> Result<Option<ActionMap>> {
         let p = root.join("input.toml");
-        if !p.is_file() {
+        if !argus_os::fs::is_file(&p) {
             return Ok(None);
         }
         let text = tomlv::read(&p)?;

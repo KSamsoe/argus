@@ -42,7 +42,7 @@ pub struct ProjectConfig {
 impl ProjectConfig {
     /// Read `argus.toml` under `root` without opening the rest of the project.
     pub fn load(root: &Path) -> Result<ProjectConfig> {
-        let text = std::fs::read_to_string(root.join("argus.toml")).map_err(|e| {
+        let text = argus_os::fs::read_to_string(root.join("argus.toml")).map_err(|e| {
             ArgusError::new(
                 codes::MISSING_FILE,
                 format!("{} is not an Argus project: {e}", root.display()),
@@ -146,7 +146,7 @@ impl Project {
     pub fn open(root: &Path, def_schemas: Vec<DefSchema>) -> Result<Project> {
         let root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
         let cfg_path = root.join("argus.toml");
-        let text = std::fs::read_to_string(&cfg_path).map_err(|e| {
+        let text = argus_os::fs::read_to_string(&cfg_path).map_err(|e| {
             ArgusError::new(
                 codes::MISSING_FILE,
                 format!("{} is not an Argus project: {e}", root.display()),
@@ -182,12 +182,12 @@ impl Project {
             "plugins",
             ".argus",
         ] {
-            std::fs::create_dir_all(root.join(d)).map_err(|e| {
+            argus_os::fs::create_dir_all(root.join(d)).map_err(|e| {
                 ArgusError::new(codes::MISSING_FILE, format!("cannot create {d}: {e}"))
             })?;
         }
         let cfg = root.join("argus.toml");
-        if !cfg.exists() {
+        if !argus_os::fs::exists(&cfg) {
             let c = ProjectConfig {
                 name: name.to_string(),
                 clock: "continuous@60".to_string(),
@@ -196,19 +196,19 @@ impl Project {
                 ring_every: None,
                 ring_budget_mb: None,
             };
-            std::fs::write(&cfg, c.to_toml()).map_err(|e| {
+            argus_os::fs::write(&cfg, c.to_toml()).map_err(|e| {
                 ArgusError::new(codes::MISSING_FILE, format!("cannot write argus.toml: {e}"))
             })?;
         }
         let gi = root.join(".gitignore");
-        let existing = std::fs::read_to_string(&gi).unwrap_or_default();
+        let existing = argus_os::fs::read_to_string(&gi).unwrap_or_default();
         if !existing.lines().any(|l| l.trim() == ".argus/") {
             let mut s = existing;
             if !s.is_empty() && !s.ends_with('\n') {
                 s.push('\n');
             }
             s.push_str(".argus/\n");
-            std::fs::write(&gi, s).map_err(|e| {
+            argus_os::fs::write(&gi, s).map_err(|e| {
                 ArgusError::new(codes::MISSING_FILE, format!("cannot write .gitignore: {e}"))
             })?;
         }
@@ -224,11 +224,11 @@ impl Project {
 
     /// Scene names: every `scenes/<name>/scene.toml`, sorted.
     pub fn scenes(&self) -> Vec<String> {
-        let mut out: Vec<String> = std::fs::read_dir(self.root.join("scenes"))
+        let mut out: Vec<String> = argus_os::fs::read_dir(self.root.join("scenes"))
             .map(|rd| {
-                rd.flatten()
-                    .filter(|e| e.path().join("scene.toml").is_file())
-                    .filter_map(|e| e.file_name().to_str().map(str::to_string))
+                rd.into_iter()
+                    .filter(|e| argus_os::fs::is_file(e.path.join("scene.toml")))
+                    .filter_map(|e| e.path.file_name()?.to_str().map(str::to_string))
                     .collect()
             })
             .unwrap_or_default();

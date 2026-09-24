@@ -251,7 +251,7 @@ impl ScriptHost {
         self.root = Some(root.to_path_buf());
         let mut ok = true;
         for rel in scan(root) {
-            let src = std::fs::read_to_string(root.join(&rel))
+            let src = argus_os::fs::read_to_string(root.join(&rel))
                 .map_err(|e| ArgusError::new(codes::SYNTAX, format!("cannot read {rel}: {e}")))?;
             ok &= self.load_source(world, sched, &rel, &src);
         }
@@ -271,7 +271,7 @@ impl ScriptHost {
         let mut report = ReloadReport::default();
         let present = scan(&root);
         for rel in &present {
-            let src = std::fs::read_to_string(root.join(rel))
+            let src = argus_os::fs::read_to_string(root.join(rel))
                 .map_err(|e| ArgusError::new(codes::SYNTAX, format!("cannot read {rel}: {e}")))?;
             let changed = self
                 .files
@@ -595,12 +595,12 @@ fn scan(root: &Path) -> Vec<String> {
 }
 
 fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(rd) = std::fs::read_dir(dir) else {
+    let Ok(rd) = argus_os::fs::read_dir(dir) else {
         return;
     };
-    for entry in rd.flatten() {
-        let p = entry.path();
-        if p.is_dir() {
+    for entry in rd {
+        let p = entry.path;
+        if entry.is_dir {
             walk(&p, out);
         } else if p.extension().and_then(|e| e.to_str()) == Some("luau") {
             out.push(p);

@@ -177,7 +177,7 @@ impl Bulk {
             .parent()
             .unwrap_or(Path::new("."))
             .join(&index.chunk);
-        let data = std::fs::read(&chunk_path).map_err(|e| {
+        let data = argus_os::fs::read(&chunk_path).map_err(|e| {
             ArgusError::new(
                 codes::MISSING_FILE,
                 format!("{rel}: chunk {} cannot be read: {e}", index.chunk),
@@ -284,14 +284,14 @@ impl Bulk {
             doc["tileset"] = toml_edit::value(t.as_str());
         }
         if let Some(dir) = self.index_path.parent() {
-            std::fs::create_dir_all(dir).map_err(|e| {
+            argus_os::fs::create_dir_all(dir).map_err(|e| {
                 ArgusError::new(
                     codes::MISSING_FILE,
                     format!("cannot create {}: {e}", dir.display()),
                 )
             })?;
         }
-        std::fs::write(&self.index_path, doc.to_string()).map_err(|e| {
+        argus_os::fs::write(&self.index_path, doc.to_string()).map_err(|e| {
             ArgusError::new(
                 codes::MISSING_FILE,
                 format!("cannot write {}: {e}", self.rel),
@@ -416,7 +416,7 @@ impl Bulk {
     /// the index file as it was.
     pub fn save(&mut self) -> Result<()> {
         let chunk = self.chunk_path();
-        std::fs::write(&chunk, &self.data).map_err(|e| {
+        argus_os::fs::write(&chunk, &self.data).map_err(|e| {
             ArgusError::new(
                 codes::MISSING_FILE,
                 format!("cannot write {}: {e}", chunk.display()),
@@ -426,7 +426,7 @@ impl Bulk {
         let mut doc = tomlv::parse_mut(&self.rel, &text)?;
         let h = self.hash();
         doc["hash"] = toml_edit::value(h.as_str());
-        std::fs::write(&self.index_path, doc.to_string()).map_err(|e| {
+        argus_os::fs::write(&self.index_path, doc.to_string()).map_err(|e| {
             ArgusError::new(
                 codes::MISSING_FILE,
                 format!("cannot write {}: {e}", self.rel),

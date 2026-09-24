@@ -16,6 +16,7 @@
 pub mod annotate;
 pub mod gpu;
 pub mod semantic;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod window;
 
 use argus_ecs::{
@@ -23,9 +24,9 @@ use argus_ecs::{
     Transform, Value, Vec2, World,
 };
 use argus_material::{Layout, MaterialSpec, ParamType};
+use argus_os::time::Instant;
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
-use std::time::Instant;
 
 pub use annotate::{annotate, Mark};
 pub use gpu::{DrawStats, Gpu, Instance, Run};
@@ -153,7 +154,7 @@ impl Image {
             argus_ecs::ArgusError::new(codes::PNG, format!("{}: {e}", path.display()))
         };
         if let Some(d) = path.parent() {
-            std::fs::create_dir_all(d).map_err(|x| e(&x))?;
+            argus_os::fs::create_dir_all(d).map_err(|x| e(&x))?;
         }
         let file = std::fs::File::create(path).map_err(|x| e(&x))?;
         let mut enc = png::Encoder::new(std::io::BufWriter::new(file), self.width, self.height);
@@ -340,6 +341,7 @@ fn parse_color(s: &str) -> Option<[f32; 4]> {
 
 impl Renderer {
     /// Offscreen at a size. `software` forces the fallback adapter.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn offscreen(width: u32, height: u32, software: bool) -> argus_ecs::Result<Renderer> {
         Ok(Self::wrap(Gpu::offscreen(width, height, software)?))
     }
@@ -356,11 +358,22 @@ impl Renderer {
     }
 
     /// Into a window.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn windowed(
         window: std::sync::Arc<winit::window::Window>,
         software: bool,
     ) -> argus_ecs::Result<Renderer> {
         Ok(Self::wrap(Gpu::windowed(window, software)?))
+    }
+
+    /// Into a canvas in a web page (phase 2 item 1): WebGPU where the
+    /// browser has it, else WebGL2; `webgl` forces WebGL2.
+    #[cfg(target_arch = "wasm32")]
+    pub async fn web(
+        canvas: web_sys::HtmlCanvasElement,
+        webgl: bool,
+    ) -> argus_ecs::Result<Renderer> {
+        Ok(Self::wrap(Gpu::web(canvas, webgl).await?))
     }
 
     fn wrap(gpu: Gpu) -> Renderer {

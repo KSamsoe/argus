@@ -185,6 +185,10 @@ crates/
   argus-tween/        tweens: one field of an entity eased from a value to a value, with delay, repeats, yoyo, and a completion event (phase 1, item 9)
   argus-particles/    emitter pools: particle effects from TOML with curves over life, pooled outside the ECS, drawn instanced (phase 1, item 10)
   argus-material/     materials: a WGSL shader plus typed parameters, checked with line numbers, and the library (unlit, lit, palette, dissolve, outline) (phase 1, item 11)
+  argus-os/           the host under the runtime: files and clocks, std on the desktop, an in-memory file system from a pack in the browser (phase 2, item 1)
+  argus-web/          the web player: packs, a project's world without the daemon, the page's bindings, marks from the browser (phase 2, item 1)
+tools/
+  web/                build, serve, and check the web player in headless Chrome (phase 2, item 1)
 examples/
   swarm/                          bullet heaven, continuous clock (phase-0 gate)
   delve/                          grid roguelike, discrete clock (phase-0 gate)
@@ -195,6 +199,8 @@ docs/
   phase0-gate.md                  the phase-0 gate run
   phase1-checklist.md             every phase-1 item and its status
   phase1-gate.md                  the phase-1 gate run
+  phase2-checklist.md             every phase-2 item and its status
+  web-spike.md                    what the web spike found (phase 2, item 1)
 ```
 
 ## Phase 1
@@ -221,6 +227,7 @@ Phase 1's items and their constraints are in [docs/phase1-checklist.md](docs/pha
 Phase 2's items, in the order agreed, are in [docs/phase2-checklist.md](docs/phase2-checklist.md). Done so far:
 
 - **Item 0, seek and fork.** The daemon keeps a keyframe of the whole sim every second (every ten turns on a discrete clock): the world, the clocks and random streams, the input state, the particle pools, and the loaded rooms. `argus sim seek frame=740` restores the nearest earlier one and replays the run forward to frame 740, checking the replay against the event log as it goes; stepping on replays what happened next, until a new command branches the run. `argus sim fork name=b` makes a second world beside the first, with its own clock, from now or from a past frame; any command takes `fork=b`. A fork built after a script edit runs the new code beside the old, which is how "same inputs, two code versions" works. Keyframes thin with age and stay under a memory budget; in release, a seek anywhere in the last five minutes of Swarm took at most 45 ms. Traces: [crates/argus-daemon/SPEC-TRACE.md](crates/argus-daemon/SPEC-TRACE.md) and the crates it touched.
+- **Item 1, the web spike**, in [crates/argus-web](crates/argus-web) and [crates/argus-os](crates/argus-os). Hollow runs in a browser without the daemon. It draws with WebGPU, or WebGL2 where WebGPU is missing, plays its sounds through Web Audio, and takes keys from the page. A run in Chrome matches the same run on the desktop bit for bit, so a mark from the browser is just the run's identity, its input log, and two digests, 239 bytes, and the desktop replays it to the same world. `tools/web/build.sh` builds the site, `node tools/web/serve.mjs` serves it at http://127.0.0.1:8765/, and `node tools/web/check.mjs` checks it in headless Chrome. The module is 1.5 MB gzipped when tuned for size. Building it found a test writing Hollow's files, now impossible, and a first frame drawn before the camera settled, now framed. Findings and numbers: [docs/web-spike.md](docs/web-spike.md).
 
 ## Where phase 1 stands
 

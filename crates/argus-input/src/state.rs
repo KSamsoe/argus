@@ -533,7 +533,7 @@ impl InputState {
 
     /// Read a log file.
     pub fn read_log(path: &Path, map: &ActionMap) -> Result<Vec<LogEntry>> {
-        let text = std::fs::read_to_string(path).map_err(|e| {
+        let text = argus_os::fs::read_to_string(path).map_err(|e| {
             ArgusError::new(
                 codes::BAD_LOG,
                 format!("cannot read {}: {e}", path.display()),
@@ -808,7 +808,7 @@ impl InputState {
     /// Start appending applied changes to `path` (created, truncated).
     pub fn start_recording(&mut self, path: &Path) -> Result<()> {
         if let Some(d) = path.parent() {
-            std::fs::create_dir_all(d).map_err(|e| {
+            argus_os::fs::create_dir_all(d).map_err(|e| {
                 ArgusError::new(
                     codes::BAD_LOG,
                     format!("cannot create {}: {e}", d.display()),

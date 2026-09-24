@@ -2,3 +2,5 @@
 **/.argus/
 *.log
 **/shots/
+/target-web
+/target-web-small

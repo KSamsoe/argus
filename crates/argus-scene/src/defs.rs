@@ -165,10 +165,11 @@ impl Defs {
             );
         }
         let dir = root.join("defs");
-        let mut files: Vec<_> = std::fs::read_dir(&dir)
+        let mut files: Vec<_> = argus_os::fs::read_dir(&dir)
             .map(|rd| {
-                rd.flatten()
-                    .map(|e| e.path())
+                rd.into_iter()
+                    .filter(|e| !e.is_dir)
+                    .map(|e| e.path)
                     .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("toml"))
                     .collect()
             })

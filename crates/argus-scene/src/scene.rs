@@ -32,9 +32,9 @@ use crate::project::Project;
 use crate::resolve::{resolve, Provenance, ResolveCtx, ResolvedEntity};
 use crate::tomlv;
 use argus_ecs::{ArgusError, Entity, Event, FieldType, Result, SchemaBuilder, Value, World};
+use argus_os::time::Instant;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::path::{Path, PathBuf};
-use std::time::Instant;
 
 /// How a run picks its seed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -213,12 +213,12 @@ impl Scene {
 
         let mut all_todo = Vec::new();
         let rooms_dir = dir.join("rooms");
-        if rooms_dir.is_dir() {
-            let mut names: Vec<String> = std::fs::read_dir(&rooms_dir)
+        if argus_os::fs::is_dir(&rooms_dir) {
+            let mut names: Vec<String> = argus_os::fs::read_dir(&rooms_dir)
                 .map(|rd| {
-                    rd.flatten()
-                        .filter(|e| e.path().is_dir())
-                        .filter_map(|e| e.file_name().to_str().map(str::to_string))
+                    rd.into_iter()
+                        .filter(|e| e.is_dir)
+                        .filter_map(|e| e.path.file_name()?.to_str().map(str::to_string))
                         .collect()
                 })
                 .unwrap_or_default();
@@ -303,11 +303,11 @@ impl Scene {
         dir: &Path,
         room: Option<&str>,
     ) -> (Vec<Listed>, Vec<String>) {
-        let mut files: Vec<PathBuf> = std::fs::read_dir(dir)
+        let mut files: Vec<PathBuf> = argus_os::fs::read_dir(dir)
             .map(|rd| {
-                rd.flatten()
-                    .filter(|e| e.file_type().map(|t| t.is_file()).unwrap_or(false))
-                    .map(|e| e.path())
+                rd.into_iter()
+                    .filter(|e| !e.is_dir)
+                    .map(|e| e.path)
                     .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("toml"))
                     .collect()
             })
@@ -1279,7 +1279,7 @@ impl Scene {
             .hint("Pick another id, or edit the existing file."));
         }
         let path = dir.join(format!("{local}.toml"));
-        std::fs::write(&path, doc.to_toml_string()?).map_err(|e| {
+        argus_os::fs::write(&path, doc.to_toml_string()?).map_err(|e| {
             ArgusError::new(
                 codes::MISSING_FILE,
                 format!("cannot write {}: {e}", path.display()),
@@ -1336,7 +1336,7 @@ impl Scene {
                 }
             }
         }
-        std::fs::remove_file(&f.path).map_err(|e| {
+        argus_os::fs::remove_file(&f.path).map_err(|e| {
             ArgusError::new(codes::MISSING_FILE, format!("cannot delete {}: {e}", f.rel))
         })?;
         self.check_entity_refs();

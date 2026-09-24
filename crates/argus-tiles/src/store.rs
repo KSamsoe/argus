@@ -71,7 +71,7 @@ pub struct MapStore {
 }
 
 fn mtime(p: &Path) -> Option<SystemTime> {
-    std::fs::metadata(p).and_then(|m| m.modified()).ok()
+    argus_os::fs::metadata(p).map(|m| m.modified).ok()
 }
 
 impl MapStore {

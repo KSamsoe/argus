@@ -12,10 +12,10 @@ use crate::prof::{
 use crate::rng::{self, Pcg32};
 use crate::system::{ClockBinding, Stage, SystemCtx, SystemDesc, SystemFn};
 use argus_ecs::{Access, ArgusError, ComponentId, Event, Registry, Result, Snapshot, World};
+use argus_os::time::Instant;
 use std::collections::HashMap;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::Arc;
-use std::time::Instant;
 
 /// Scene-level scheduler configuration (`scene.toml` clock section, §4/§6).
 #[derive(Clone, Debug, PartialEq)]

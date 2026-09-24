@@ -34,8 +34,11 @@ pub(crate) fn install(
         .component_id_of::<GlobalTransform>()
         .expect("hierarchy registered");
     let actions = world.component_id("Actions");
+    // On load too: the first update snaps to the target inside its room, so
+    // the first frame (before any tick, or any turn) is framed.
     let mut desc = SystemDesc::new(SYSTEM, Stage::Late)
         .last()
+        .on_load()
         .writes(cam)
         .writes(shake)
         .writes(tr)

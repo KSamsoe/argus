@@ -165,13 +165,12 @@ fn round3(x: f32) -> f64 {
 }
 
 fn wav_files(dir: &Path, base: &Path, out: &mut Vec<String>) {
-    let Ok(rd) = std::fs::read_dir(dir) else {
+    let Ok(rd) = argus_os::fs::read_dir(dir) else {
         return;
     };
-    let mut entries: Vec<_> = rd.flatten().map(|e| e.path()).collect();
-    entries.sort();
-    for p in entries {
-        if p.is_dir() {
+    for e in rd {
+        let p = e.path;
+        if e.is_dir {
             wav_files(&p, base, out);
         } else if p.extension().is_some_and(|x| x.eq_ignore_ascii_case("wav")) {
             if let Ok(rel) = p.strip_prefix(base) {
@@ -739,6 +738,12 @@ impl AudioEngine {
         (b, p, r, m.take_limiter_db())
     }
 
+    /// Frames the mixer has rendered: pulled by the device when one is
+    /// open, else advanced in step with the sim.
+    pub fn rendered_frames(&self) -> u64 {
+        self.lock().rendered_frames()
+    }
+
     /// Voices playing.
     pub fn voices(&self) -> usize {
         self.lock().voice_count()
@@ -784,7 +789,7 @@ impl AudioEngine {
         let data = self.lock().history(seconds);
         let e = |m: String| ArgusError::new(codes::CLIP, format!("{}: {m}", path.display()));
         if let Some(d) = path.parent() {
-            std::fs::create_dir_all(d).map_err(|x| e(x.to_string()))?;
+            argus_os::fs::create_dir_all(d).map_err(|x| e(x.to_string()))?;
         }
         let spec = hound::WavSpec {
             channels: 2,

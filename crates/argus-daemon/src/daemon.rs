@@ -127,6 +127,11 @@ pub struct Daemon {
     /// `open_scene` is building a fork: no audio engine of its own, no index
     /// sync, no window catalog.
     building_fork: bool,
+    /// Edits change the live world and never the project's files: set
+    /// while `test.run` runs scenarios, since a test that places the hero
+    /// must not move the hero in the scene the game ships (found by the web
+    /// spike: Hollow's planks scenario had rewritten player.toml).
+    live_edits: bool,
     /// The window was opened from the command line (`--window`): it is the
     /// person's, and closing it ends the daemon. A window an agent opens
     /// with `render.window` only closes.
@@ -176,6 +181,7 @@ impl Daemon {
             forks: BTreeMap::new(),
             active: "main".to_string(),
             building_fork: false,
+            live_edits: false,
             subs: BTreeMap::new(),
             capture_path: None,
             shutdown: false,
@@ -2173,7 +2179,7 @@ impl Daemon {
                     };
                     let registry = self.world.registry().clone();
                     let ctx = ses.project.ctx(&registry);
-                    if ses.scene.is_authored(&id) {
+                    if ses.scene.is_authored(&id) && !self.live_edits {
                         ses.scene.set_override(&ctx, &id, path, &file_value)?;
                         if let Some(f) = ses.scene.entity_file(&id).or_else(|| {
                             let (fid, _) = split_child(&ses.scene, &id);
@@ -2286,6 +2292,13 @@ impl Daemon {
                     }
                     Some(local) => {
                         self.edits.check_lock(author, &format!("@{local}"), "")?;
+                        if self.live_edits {
+                            return Err(ArgusError::new(
+                                codes::BAD_PARAMS,
+                                format!("a test cannot spawn @{local}: an id is a file in the scene"),
+                            )
+                            .hint("Tests edit the live world, not the project's files; spawn without an id."));
+                        }
                         let mut doc = EntityDoc {
                             prefab: prefab.clone(),
                             tags: tags.clone(),
@@ -2332,7 +2345,12 @@ impl Daemon {
                 let eref = json::entity_str(&self.world, e);
                 self.edits.check_lock(author, &eref, "")?;
                 touched.insert(eref.clone());
-                if let Some(id) = self.world.string_id(e).map(str::to_string) {
+                let authored = if self.live_edits {
+                    None
+                } else {
+                    self.world.string_id(e).map(str::to_string)
+                };
+                if let Some(id) = authored {
                     let ses = self.session.as_mut().expect("session");
                     let f = ses.scene.entity_file(&id).ok_or_else(|| {
                         ArgusError::new(
@@ -2434,6 +2452,9 @@ impl Daemon {
         let Some(id) = self.world.string_id(e).map(str::to_string) else {
             return Ok(());
         };
+        if self.live_edits {
+            return Ok(());
+        }
         let ses = self.session.as_mut().expect("session");
         if !ses.scene.is_authored(&id) {
             return Ok(());
@@ -4495,7 +4516,9 @@ impl Daemon {
             },
             update_goldens: json::bool_param(params, "update", false)?,
         };
+        self.live_edits = true;
         let report = argus_test::run(self, &opts);
+        self.live_edits = false;
         let restore = self.call(
             0,
             "scene.load",

@@ -30,6 +30,7 @@ Every statement in the design document (v0.3) that constrains cameras as phase 1
 | Spec | Status | Where | Test |
 |---|---|---|---|
 | Phase 1: camera component. | Done | This crate. | |
+| (Phase 2 item 1.) The first frame is framed. | Done | `camera.update` also runs when a scene loads (`on_load`): its first update snaps to the target inside the target's room, so the frame drawn before the first tick (or the first turn of a discrete game) shows the room, not the authored camera position. Found by the web spike, whose paused page drew that frame. | `tools/web/check.mjs` start screenshot; the three games' tests |
 | Gate: a three-room slice of Hollow with a following camera. | Partial | A camera follows a physics player across two rooms of a room scene through the protocol, keeping to each room's bounds; the slice itself is the gate's work. | `argus-daemon/tests/camera.rs` |
 
 ## Known limitations, stated so they are decisions

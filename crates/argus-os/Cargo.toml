@@ -1,0 +1,9 @@
+[package]
+name = "argus-os"
+description = "Argus Engine host services: files and the clock, from the operating system natively, or in a browser from an in-memory tree the player mounts and the page's clock"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-time = "1"

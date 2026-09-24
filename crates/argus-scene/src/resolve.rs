@@ -362,7 +362,7 @@ pub fn check_ref(ctx: &ResolveCtx<'_>, s: &str, at: &str) -> Result<()> {
     if s.contains(':') {
         return ctx.defs.check_ref(s, at, ctx.moves);
     }
-    if ctx.prefabs.get(s).is_some() || ctx.root.join(s).exists() {
+    if ctx.prefabs.get(s).is_some() || argus_os::fs::exists(ctx.root.join(s)) {
         return Ok(());
     }
     Err(moves::missing_reference("path", s, at, ctx.moves))

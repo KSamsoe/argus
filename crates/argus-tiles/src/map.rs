@@ -202,7 +202,7 @@ impl MapFile {
 
     /// Whether `rel` is a tilemap index (`kind = "tilemap"`).
     pub fn is_tilemap(root: &Path, rel: &str) -> bool {
-        std::fs::read_to_string(root.join(rel))
+        argus_os::fs::read_to_string(root.join(rel))
             .ok()
             .and_then(|t| t.parse::<toml_edit::DocumentMut>().ok())
             .and_then(|d| {
@@ -277,7 +277,7 @@ impl MapFile {
     /// Open a tilemap. The manifest must hash to the index's `hash`.
     pub fn open(root: &Path, rel: &str) -> Result<MapFile> {
         let path = root.join(rel);
-        let text = std::fs::read_to_string(&path).map_err(|x| {
+        let text = argus_os::fs::read_to_string(&path).map_err(|x| {
             e(crate::codes::BAD_MAP, format!("cannot read {rel}: {x}")).at(Some(rel.to_string()))
         })?;
         let doc: toml_edit::ImDocument<String> = toml_edit::ImDocument::parse(text.clone())
@@ -366,7 +366,7 @@ impl MapFile {
         };
         m.check_names().map_err(bad)?;
         let mpath = m.chunk_dir().join("manifest.txt");
-        let mtext = std::fs::read_to_string(&mpath).unwrap_or_default();
+        let mtext = argus_os::fs::read_to_string(&mpath).unwrap_or_default();
         let actual = format!("fnv1a64:{:016x}", fnv1a64(mtext.as_bytes()));
         if actual != m.index.hash {
             return Err(e(
@@ -456,7 +456,7 @@ impl MapFile {
             None => vec![0u8; self.chunk_bytes()],
             Some(&h) => {
                 let rel = self.chunk_rel(k);
-                let bytes = std::fs::read(self.root.join(&rel)).map_err(|x| {
+                let bytes = argus_os::fs::read(self.root.join(&rel)).map_err(|x| {
                     e(crate::codes::MAP_MISMATCH, format!("{rel}: {x}")).at(Some(rel.clone()))
                 })?;
                 if bytes.len() != self.chunk_bytes() || fnv1a64(&bytes) != h {
@@ -647,7 +647,7 @@ impl MapFile {
                 format!("cannot write {}: {x}", what.display()),
             )
         };
-        std::fs::create_dir_all(&dir).map_err(|x| io(x, &dir))?;
+        argus_os::fs::create_dir_all(&dir).map_err(|x| io(x, &dir))?;
         let dirty: Vec<Key> = self
             .loaded
             .iter()
@@ -661,16 +661,16 @@ impl MapFile {
             ch.dirty = false;
             if ch.data.iter().all(|&b| b == 0) {
                 if self.manifest.remove(&k).is_some() {
-                    let _ = std::fs::remove_file(&path);
+                    let _ = argus_os::fs::remove_file(&path);
                     rep.removed += 1;
                     rep.files.push(rel);
                 }
                 continue;
             }
             if let Some(p) = path.parent() {
-                std::fs::create_dir_all(p).map_err(|x| io(x, p))?;
+                argus_os::fs::create_dir_all(p).map_err(|x| io(x, p))?;
             }
-            std::fs::write(&path, &ch.data).map_err(|x| io(x, &path))?;
+            argus_os::fs::write(&path, &ch.data).map_err(|x| io(x, &path))?;
             self.manifest.insert(k, fnv1a64(&ch.data));
             rep.written += 1;
             rep.bytes += ch.data.len();
@@ -684,12 +684,12 @@ impl MapFile {
             ));
         }
         let mpath = dir.join("manifest.txt");
-        std::fs::write(&mpath, &mtext).map_err(|x| io(x, &mpath))?;
+        argus_os::fs::write(&mpath, &mtext).map_err(|x| io(x, &mpath))?;
         self.index.hash = format!("fnv1a64:{:016x}", fnv1a64(mtext.as_bytes()));
         // Only the hash changes after create, so an existing index is kept
         // as the person left it (comments, order) and only its hash is set.
         let ipath = self.index_path();
-        let itext = std::fs::read_to_string(&ipath)
+        let itext = argus_os::fs::read_to_string(&ipath)
             .ok()
             .and_then(|t| t.parse::<toml_edit::DocumentMut>().ok())
             .filter(|d| d.get("kind").and_then(|k| k.as_str()) == Some("tilemap"))
@@ -698,7 +698,7 @@ impl MapFile {
                 d.to_string()
             })
             .unwrap_or_else(|| self.index_text());
-        std::fs::write(&ipath, &itext).map_err(|x| io(x, &ipath))?;
+        argus_os::fs::write(&ipath, &itext).map_err(|x| io(x, &ipath))?;
         rep.bytes += mtext.len() + itext.len();
         rep.files.push(self.rel.clone());
         Ok(rep)

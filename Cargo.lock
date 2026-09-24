@@ -119,6 +119,7 @@ dependencies = [
  "argus-audio",
  "argus-ecs",
  "argus-material",
+ "argus-os",
  "hound",
  "png",
  "serde_json",
@@ -131,6 +132,7 @@ version = "0.0.1"
 dependencies = [
  "argus-camera",
  "argus-ecs",
+ "argus-os",
  "argus-sim",
  "cpal",
  "hound",
@@ -217,6 +219,7 @@ name = "argus-input"
 version = "0.0.1"
 dependencies = [
  "argus-ecs",
+ "argus-os",
  "argus-scene",
  "argus-sim",
  "serde_json",
@@ -227,6 +230,7 @@ name = "argus-luau"
 version = "0.0.1"
 dependencies = [
  "argus-ecs",
+ "argus-os",
  "argus-sim",
  "mlua",
 ]
@@ -238,6 +242,13 @@ dependencies = [
  "argus-ecs",
  "naga",
  "toml_edit 0.22.27",
+]
+
+[[package]]
+name = "argus-os"
+version = "0.0.1"
+dependencies = [
+ "web-time",
 ]
 
 [[package]]
@@ -268,12 +279,14 @@ dependencies = [
  "argus-ecs",
  "argus-input",
  "argus-material",
+ "argus-os",
  "argus-particles",
  "argus-sim",
  "bytemuck",
  "png",
  "pollster",
  "serde_json",
+ "web-sys",
  "wgpu",
  "winit",
 ]
@@ -284,6 +297,7 @@ version = "0.0.1"
 dependencies = [
  "argus-ecs",
  "argus-luau",
+ "argus-os",
  "argus-sim",
  "toml_edit 0.22.27",
 ]
@@ -293,6 +307,7 @@ name = "argus-sim"
 version = "0.0.1"
 dependencies = [
  "argus-ecs",
+ "argus-os",
 ]
 
 [[package]]
@@ -311,6 +326,7 @@ version = "0.0.1"
 dependencies = [
  "argus-assets",
  "argus-ecs",
+ "argus-os",
  "serde_json",
  "toml_edit 0.22.27",
 ]
@@ -321,6 +337,33 @@ version = "0.0.1"
 dependencies = [
  "argus-ecs",
  "argus-sim",
+]
+
+[[package]]
+name = "argus-web"
+version = "0.0.1"
+dependencies = [
+ "argus-anim",
+ "argus-assets",
+ "argus-audio",
+ "argus-camera",
+ "argus-ecs",
+ "argus-input",
+ "argus-luau",
+ "argus-os",
+ "argus-particles",
+ "argus-physics",
+ "argus-render",
+ "argus-scene",
+ "argus-sim",
+ "argus-tiles",
+ "argus-tween",
+ "cpal",
+ "js-sys",
+ "serde_json",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
 ]
 
 [[package]]

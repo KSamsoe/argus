@@ -68,7 +68,7 @@ impl PrefabLibrary {
     /// the file is gone.
     pub fn reload(&mut self, path: &str) -> Result<()> {
         let abs = self.file_path(path);
-        if abs.exists() {
+        if argus_os::fs::exists(&abs) {
             self.load_file(&abs)
         } else {
             self.prefabs.remove(path);
@@ -159,14 +159,14 @@ impl PrefabLibrary {
     pub fn write(&mut self, path: &str, doc: &EntityDoc) -> Result<()> {
         let abs = self.file_path(path);
         if let Some(dir) = abs.parent() {
-            std::fs::create_dir_all(dir).map_err(|e| {
+            argus_os::fs::create_dir_all(dir).map_err(|e| {
                 ArgusError::new(
                     codes::MISSING_FILE,
                     format!("cannot create {}: {e}", dir.display()),
                 )
             })?;
         }
-        std::fs::write(&abs, doc.to_toml_string()?).map_err(|e| {
+        argus_os::fs::write(&abs, doc.to_toml_string()?).map_err(|e| {
             ArgusError::new(
                 codes::MISSING_FILE,
                 format!("cannot write {}: {e}", abs.display()),
@@ -177,12 +177,12 @@ impl PrefabLibrary {
 }
 
 fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(rd) = std::fs::read_dir(dir) else {
+    let Ok(rd) = argus_os::fs::read_dir(dir) else {
         return;
     };
-    for entry in rd.flatten() {
-        let p = entry.path();
-        if p.is_dir() {
+    for entry in rd {
+        let p = entry.path;
+        if entry.is_dir {
             walk(&p, out);
         } else if p.extension().and_then(|s| s.to_str()) == Some("toml") {
             out.push(p);

@@ -366,7 +366,7 @@ impl AudioConfig {
     /// Read `<root>/audio.toml`, or the defaults when there is none.
     pub fn load(root: &std::path::Path) -> Result<AudioConfig> {
         let p = root.join("audio.toml");
-        match std::fs::read_to_string(&p) {
+        match argus_os::fs::read_to_string(&p) {
             Ok(text) => AudioConfig::parse("audio.toml", &text),
             Err(_) => Ok(AudioConfig::default()),
         }

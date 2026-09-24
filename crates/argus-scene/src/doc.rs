@@ -248,7 +248,7 @@ pub fn edit_file(
     child: &str,
     f: impl FnOnce(&mut Table) -> Result<()>,
 ) -> Result<EntityDoc> {
-    let text = if path.exists() {
+    let text = if argus_os::fs::exists(path) {
         tomlv::read(path)?
     } else {
         String::new()
@@ -280,14 +280,14 @@ pub fn edit_file(
     f(t)?;
     let out = doc.to_string();
     if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).map_err(|e| {
+        argus_os::fs::create_dir_all(dir).map_err(|e| {
             ArgusError::new(
                 codes::MISSING_FILE,
                 format!("cannot create {}: {e}", dir.display()),
             )
         })?;
     }
-    std::fs::write(path, &out).map_err(|e| {
+    argus_os::fs::write(path, &out).map_err(|e| {
         ArgusError::new(
             codes::MISSING_FILE,
             format!("cannot write {}: {e}", path.display()),

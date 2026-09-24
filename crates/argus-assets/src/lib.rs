@@ -27,13 +27,14 @@ pub use animator::{
 use argus_audio::{SoundDef, Source};
 use argus_ecs::{ArgusError, Result};
 pub use argus_material::MaterialSpec;
+use argus_os::time::Instant;
 pub use effect::{Area, ColorCurve, Curve, EmitterSpec, Space};
 use serde_json::{json, Value as Json};
 pub use sidecar::{AutoMode, AutoTileSpec};
 use sidecar::{Direction, Shape, SidecarKind};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::time::{Instant, SystemTime};
+use std::time::SystemTime;
 
 /// Error codes this crate adds (52xx).
 pub mod codes {
@@ -346,8 +347,8 @@ impl Report {
 /// Decode a PNG to RGBA8.
 pub fn decode_png(path: &Path) -> Result<(u32, u32, Vec<u8>)> {
     let e = |m: String| ArgusError::new(codes::BAD_SOURCE, format!("{}: {m}", path.display()));
-    let file = std::fs::File::open(path).map_err(|x| e(x.to_string()))?;
-    let mut decoder = png::Decoder::new(std::io::BufReader::new(file));
+    let bytes = argus_os::fs::read(path).map_err(|x| e(x.to_string()))?;
+    let mut decoder = png::Decoder::new(std::io::Cursor::new(bytes));
     decoder.set_transformations(png::Transformations::normalize_to_color8());
     let mut reader = decoder.read_info().map_err(|x| e(x.to_string()))?;
     let mut buf = vec![0u8; reader.output_buffer_size()];
@@ -370,15 +371,17 @@ pub fn decode_png(path: &Path) -> Result<(u32, u32, Vec<u8>)> {
 pub fn encode_png(path: &Path, w: u32, h: u32, rgba: &[u8]) -> Result<()> {
     let e = |m: String| ArgusError::new(codes::CACHE, format!("{}: {m}", path.display()));
     if let Some(d) = path.parent() {
-        std::fs::create_dir_all(d).map_err(|x| e(x.to_string()))?;
+        argus_os::fs::create_dir_all(d).map_err(|x| e(x.to_string()))?;
     }
-    let file = std::fs::File::create(path).map_err(|x| e(x.to_string()))?;
-    let mut enc = png::Encoder::new(std::io::BufWriter::new(file), w, h);
-    enc.set_color(png::ColorType::Rgba);
-    enc.set_depth(png::BitDepth::Eight);
-    let mut wr = enc.write_header().map_err(|x| e(x.to_string()))?;
-    wr.write_image_data(rgba).map_err(|x| e(x.to_string()))?;
-    Ok(())
+    let mut out = Vec::new();
+    {
+        let mut enc = png::Encoder::new(&mut out, w, h);
+        enc.set_color(png::ColorType::Rgba);
+        enc.set_depth(png::BitDepth::Eight);
+        let mut wr = enc.write_header().map_err(|x| e(x.to_string()))?;
+        wr.write_image_data(rgba).map_err(|x| e(x.to_string()))?;
+    }
+    argus_os::fs::write(path, out).map_err(|x| e(x.to_string()))
 }
 
 fn fnv(h: &mut u64, bytes: &[u8]) {
@@ -413,26 +416,24 @@ pub struct Importer {
 }
 
 fn walk(dir: &Path, base: &Path, out: &mut Stamp) {
-    let Ok(rd) = std::fs::read_dir(dir) else {
+    let Ok(rd) = argus_os::fs::read_dir(dir) else {
         return;
     };
-    for e in rd.flatten() {
-        let name = e.file_name().to_string_lossy().into_owned();
+    for e in rd {
+        let name = e
+            .path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
         if name.starts_with('.') {
             continue;
         }
-        let Ok(ft) = e.file_type() else { continue };
-        let p = e.path();
-        if ft.is_dir() {
+        let p = e.path;
+        if e.is_dir {
             walk(&p, base, out);
-        } else if let Ok(md) = e.metadata() {
-            if let Ok(rel) = p.strip_prefix(base) {
-                let rel = rel.to_string_lossy().replace('\\', "/");
-                out.insert(
-                    rel,
-                    (md.modified().unwrap_or(SystemTime::UNIX_EPOCH), md.len()),
-                );
-            }
+        } else if let Ok(rel) = p.strip_prefix(base) {
+            let rel = rel.to_string_lossy().replace('\\', "/");
+            out.insert(rel, (e.modified, e.len));
         }
     }
 }
@@ -599,7 +600,7 @@ impl Importer {
             }
             self.failed.remove(&n);
             self.inputs.remove(&n);
-            let _ = std::fs::remove_file(self.cache.join(format!("{n}.png")));
+            let _ = argus_os::fs::remove_file(self.cache.join(format!("{n}.png")));
         }
         report.removed.sort();
         report.removed.dedup();
@@ -666,7 +667,7 @@ impl Importer {
     }
 
     fn read(&self, rel: &str) -> Result<Vec<u8>> {
-        std::fs::read(self.assets.join(rel)).map_err(|e| {
+        argus_os::fs::read(self.assets.join(rel)).map_err(|e| {
             ArgusError::new(codes::BAD_SOURCE, format!("cannot read assets/{rel}: {e}"))
                 .at(Some(format!("assets/{rel}")))
         })
@@ -1168,13 +1169,14 @@ impl Importer {
         for v in &mut def.variations {
             if let Source::File(f) = v {
                 let local = format!("{dir}{f}");
-                let rel = if self.assets.join(&local).is_file() && !f.starts_with(&dir) {
+                let rel = if argus_os::fs::is_file(self.assets.join(&local)) && !f.starts_with(&dir)
+                {
                     local.clone()
                 } else {
                     f.clone()
                 };
                 let path = self.assets.join(&rel);
-                if !path.is_file() {
+                if !argus_os::fs::is_file(&path) {
                     return Err(ArgusError::new(
                         codes::BAD_SOURCE,
                         format!("{name}: variation {f:?} is not a file under assets/ (looked for assets/{local} and assets/{f})"),
@@ -1263,9 +1265,9 @@ impl Importer {
             "failed": failed,
         }))
         .unwrap_or_default();
-        std::fs::create_dir_all(&self.cache)
+        argus_os::fs::create_dir_all(&self.cache)
             .map_err(|e| ArgusError::new(codes::CACHE, e.to_string()))?;
-        std::fs::write(self.cache.join("manifest.json"), text)
+        argus_os::fs::write(self.cache.join("manifest.json"), text)
             .map_err(|e| ArgusError::new(codes::CACHE, e.to_string()))
     }
 }

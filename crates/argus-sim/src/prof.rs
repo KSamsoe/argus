@@ -8,10 +8,11 @@
 
 use crate::clock::ClockKind;
 use crate::system::Stage;
+use argus_os::time::Instant;
 use std::collections::VecDeque;
 use std::fmt::Write as _;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 /// One system's sample within a tick.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -193,10 +194,10 @@ impl Capture {
     /// Write the trace to `path`, creating parent directories.
     pub fn write(&self, path: &std::path::Path) -> std::io::Result<usize> {
         if let Some(dir) = path.parent() {
-            std::fs::create_dir_all(dir)?;
+            argus_os::fs::create_dir_all(dir)?;
         }
         let text = self.chrome_trace();
-        std::fs::write(path, &text)?;
+        argus_os::fs::write(path, &text)?;
         Ok(text.len())
     }
 }

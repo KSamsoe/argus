@@ -76,7 +76,7 @@ pub struct MoveReport {
 
 /// Read the moves log (missing file is an empty log).
 pub fn read_log(root: &Path) -> Vec<MoveRecord> {
-    let Ok(text) = std::fs::read_to_string(root.join(".argus").join("moves.log")) else {
+    let Ok(text) = argus_os::fs::read_to_string(root.join(".argus").join("moves.log")) else {
         return Vec::new();
     };
     text.lines()
@@ -101,7 +101,7 @@ pub fn read_log(root: &Path) -> Vec<MoveRecord> {
 fn append_log(root: &Path, rec: &MoveRecord) -> Result<()> {
     use std::io::Write;
     let dir = root.join(".argus");
-    std::fs::create_dir_all(&dir).map_err(|e| {
+    argus_os::fs::create_dir_all(&dir).map_err(|e| {
         ArgusError::new(
             codes::MISSING_FILE,
             format!("cannot create {}: {e}", dir.display()),
@@ -162,12 +162,12 @@ pub fn content_files(root: &Path) -> Vec<String> {
 }
 
 fn walk(dir: &Path, root: &Path, out: &mut Vec<String>) {
-    let Ok(rd) = std::fs::read_dir(dir) else {
+    let Ok(rd) = argus_os::fs::read_dir(dir) else {
         return;
     };
-    for entry in rd.flatten() {
-        let p = entry.path();
-        if p.is_dir() {
+    for entry in rd {
+        let p = entry.path;
+        if entry.is_dir {
             walk(&p, root, out);
         } else if p.extension().and_then(|s| s.to_str()) == Some("toml") {
             out.push(rel(root, &p));
@@ -191,7 +191,7 @@ pub fn rewrite_strings(path: &Path, rel: &str, f: &dyn Fn(&str) -> Option<String
     let mut changed = false;
     rewrite_table(doc.as_table_mut(), f, &mut changed);
     if changed {
-        std::fs::write(path, doc.to_string()).map_err(|e| {
+        argus_os::fs::write(path, doc.to_string()).map_err(|e| {
             ArgusError::new(
                 codes::MISSING_FILE,
                 format!("cannot write {}: {e}", path.display()),
@@ -270,7 +270,7 @@ fn classify(root: &Path, from: &str) -> Result<(MoveKind, String)> {
             return Ok((MoveKind::Entity, name.to_string()));
         }
     }
-    if root.join(from).is_file() {
+    if argus_os::fs::is_file(root.join(from)) {
         return Ok((MoveKind::Asset, from.to_string()));
     }
     Err(ArgusError::new(
@@ -393,34 +393,34 @@ pub fn move_asset(project: &mut Project, from: &str, to: &str) -> Result<MoveRep
                 ));
             }
             doc.insert(&new_ref, item);
-            std::fs::write(&path, doc.to_string()).map_err(|e| {
+            argus_os::fs::write(&path, doc.to_string()).map_err(|e| {
                 ArgusError::new(codes::MISSING_FILE, format!("cannot write {file}: {e}"))
             })?;
         }
         _ => {
             let src = root.join(from);
             let dst = root.join(to);
-            if !src.exists() {
+            if !argus_os::fs::exists(&src) {
                 return Err(ArgusError::new(
                     codes::MISSING_FILE,
                     format!("{from} does not exist"),
                 ));
             }
-            if dst.exists() {
+            if argus_os::fs::exists(&dst) {
                 return Err(
                     ArgusError::new(codes::BAD_MOVE, format!("{to} already exists"))
                         .hint("Move it aside first; asset.move never overwrites."),
                 );
             }
             if let Some(dir) = dst.parent() {
-                std::fs::create_dir_all(dir).map_err(|e| {
+                argus_os::fs::create_dir_all(dir).map_err(|e| {
                     ArgusError::new(
                         codes::MISSING_FILE,
                         format!("cannot create {}: {e}", dir.display()),
                     )
                 })?;
             }
-            std::fs::rename(&src, &dst).map_err(|e| {
+            argus_os::fs::rename(&src, &dst).map_err(|e| {
                 ArgusError::new(
                     codes::BAD_MOVE,
                     format!("cannot rename {from} to {to}: {e}"),
@@ -431,7 +431,7 @@ pub fn move_asset(project: &mut Project, from: &str, to: &str) -> Result<MoveRep
 
     for rel in files {
         let path = root.join(&rel);
-        if !path.exists() {
+        if !argus_os::fs::exists(&path) {
             continue;
         }
         let mut count = 0usize;

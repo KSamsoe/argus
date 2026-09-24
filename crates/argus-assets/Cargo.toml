@@ -6,6 +6,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+argus-os = { path = "../argus-os", version = "0.0.1" }
 argus-ecs = { path = "../argus-ecs", version = "0.0.1" }
 argus-audio = { path = "../argus-audio", version = "0.0.1", default-features = false }
 argus-material = { path = "../argus-material", version = "0.0.1" }

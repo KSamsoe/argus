@@ -1,0 +1,36 @@
+[package]
+name = "argus-web"
+description = "Argus Engine web player (phase 2 item 1, the spike): a project's world assembled without the daemon, stepped by the page, drawn into a canvas with WebGPU or WebGL2, and a pack format that carries a project to the browser"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# The wasm module is a cdylib, asked for by tools/web/build.sh (`cargo rustc
+# --crate-type cdylib`); natively it is a library, since a Windows DLL of it
+# would export more symbols than a DLL may hold.
+
+[dependencies]
+argus-os = { path = "../argus-os", version = "0.0.1" }
+argus-ecs = { path = "../argus-ecs", version = "0.0.1" }
+argus-sim = { path = "../argus-sim", version = "0.0.1" }
+argus-luau = { path = "../argus-luau", version = "0.0.1" }
+argus-scene = { path = "../argus-scene", version = "0.0.1" }
+argus-input = { path = "../argus-input", version = "0.0.1" }
+argus-assets = { path = "../argus-assets", version = "0.0.1" }
+argus-tiles = { path = "../argus-tiles", version = "0.0.1" }
+argus-physics = { path = "../argus-physics", version = "0.0.1" }
+argus-camera = { path = "../argus-camera", version = "0.0.1" }
+argus-anim = { path = "../argus-anim", version = "0.0.1" }
+argus-tween = { path = "../argus-tween", version = "0.0.1" }
+argus-particles = { path = "../argus-particles", version = "0.0.1" }
+argus-render = { path = "../argus-render", version = "0.0.1" }
+argus-audio = { path = "../argus-audio", version = "0.0.1" }
+serde_json = "1"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "=0.2.128"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+# cpal's WebAudio host, for argus-audio's device in the browser.
+cpal = { version = "0.15", features = ["wasm-bindgen"] }
+web-sys = { version = "0.3", features = ["console", "HtmlCanvasElement"] }

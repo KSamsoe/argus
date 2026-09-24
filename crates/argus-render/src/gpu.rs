@@ -4,6 +4,7 @@
 
 use argus_ecs::{ArgusError, Result};
 use std::collections::HashMap;
+#[cfg(not(target_arch = "wasm32"))]
 use std::sync::Arc;
 
 /// One instance as the shader reads it (80 bytes).
@@ -71,6 +72,8 @@ pub struct Atlas {
 
 /// Where a frame goes.
 enum Target {
+    // A page draws into its canvas; offscreen frames are the desktop's.
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     Offscreen {
         texture: wgpu::Texture,
         view: wgpu::TextureView,
@@ -133,6 +136,7 @@ fn err(e: impl std::fmt::Display) -> ArgusError {
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 
 impl Gpu {
+    #[cfg(not(target_arch = "wasm32"))]
     fn instance(software: bool) -> wgpu::Instance {
         let _ = software;
         wgpu::Instance::new(&wgpu::InstanceDescriptor {
@@ -146,6 +150,10 @@ impl Gpu {
         surface: Option<&wgpu::Surface<'static>>,
         software: bool,
     ) -> Result<(wgpu::Adapter, wgpu::Device, wgpu::Queue)> {
+        #[cfg(target_arch = "wasm32")]
+        let _ = software;
+        #[cfg(target_arch = "wasm32")]
+        let software = false;
         let mut opts = wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::HighPerformance,
             force_fallback_adapter: software,
@@ -167,8 +175,13 @@ impl Gpu {
                 &wgpu::DeviceDescriptor {
                     label: Some("argus"),
                     required_features: wgpu::Features::empty(),
-                    required_limits: wgpu::Limits::downlevel_defaults()
-                        .using_resolution(adapter.limits()),
+                    // WebGL2 has lower limits than any native backend.
+                    required_limits: if adapter.get_info().backend == wgpu::Backend::Gl {
+                        wgpu::Limits::downlevel_webgl2_defaults()
+                    } else {
+                        wgpu::Limits::downlevel_defaults()
+                    }
+                    .using_resolution(adapter.limits()),
                     memory_hints: wgpu::MemoryHints::Performance,
                 },
                 None,
@@ -179,6 +192,7 @@ impl Gpu {
     }
 
     /// An offscreen renderer of the given size.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn offscreen(width: u32, height: u32, software: bool) -> Result<Gpu> {
         let instance = Self::instance(software);
         let (adapter, device, queue) =
@@ -214,7 +228,56 @@ impl Gpu {
         Self::build(adapter, device, queue, FORMAT, target, width, height)
     }
 
+    /// A renderer presenting into a canvas (phase 2 item 1). The browser
+    /// cannot block, so this is async; WebGPU when the browser has it, else
+    /// WebGL2. A WebGPU canvas offers no sRGB format, so frames are drawn
+    /// through an sRGB view of it, the colours native gets.
+    #[cfg(target_arch = "wasm32")]
+    pub async fn web(canvas: web_sys::HtmlCanvasElement, webgl: bool) -> Result<Gpu> {
+        let (width, height) = (canvas.width().max(1), canvas.height().max(1));
+        let desc = wgpu::InstanceDescriptor {
+            backends: if webgl {
+                wgpu::Backends::GL
+            } else {
+                wgpu::Backends::BROWSER_WEBGPU | wgpu::Backends::GL
+            },
+            ..Default::default()
+        };
+        let instance = if webgl {
+            wgpu::Instance::new(&desc)
+        } else {
+            wgpu::util::new_instance_with_webgpu_detection(&desc).await
+        };
+        let surface = instance
+            .create_surface(wgpu::SurfaceTarget::Canvas(canvas))
+            .map_err(err)?;
+        let (adapter, device, queue) =
+            Self::adapter_and_device(&instance, Some(&surface), false).await?;
+        let caps = surface.get_capabilities(&adapter);
+        let base = caps
+            .formats
+            .iter()
+            .copied()
+            .find(|f| f.is_srgb())
+            .unwrap_or(caps.formats[0]);
+        let format = base.add_srgb_suffix();
+        let config = wgpu::SurfaceConfiguration {
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            format: base,
+            width,
+            height,
+            present_mode: wgpu::PresentMode::Fifo,
+            alpha_mode: caps.alpha_modes[0],
+            view_formats: if format == base { vec![] } else { vec![format] },
+            desired_maximum_frame_latency: 2,
+        };
+        surface.configure(&device, &config);
+        let target = Target::Surface { surface, config };
+        Self::build(adapter, device, queue, format, target, width, height)
+    }
+
     /// A renderer presenting into a window.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn windowed(window: Arc<winit::window::Window>, software: bool) -> Result<Gpu> {
         let instance = Self::instance(software);
         let size = window.inner_size();
@@ -376,6 +439,9 @@ impl Gpu {
     ) -> Result<usize> {
         let composed = argus_material::compose(spec);
         let layout = &composed.layout;
+        // The GPU's own check of a material. A browser cannot block on it;
+        // there the importer's naga check is the one that runs.
+        #[cfg(not(target_arch = "wasm32"))]
         self.device.push_error_scope(wgpu::ErrorFilter::Validation);
         let shader = self
             .device
@@ -477,6 +543,7 @@ impl Gpu {
             multiview: None,
             cache: None,
         });
+        #[cfg(not(target_arch = "wasm32"))]
         if let Some(e) = pollster::block_on(self.device.pop_error_scope()) {
             return Err(ArgusError::new(
                 argus_material::codes::SHADER,
@@ -781,7 +848,10 @@ impl Gpu {
             Target::Offscreen { view, .. } => (None, view.clone()),
             Target::Surface { surface, .. } => {
                 let f = surface.get_current_texture().map_err(err)?;
-                let v = f.texture.create_view(&Default::default());
+                let v = f.texture.create_view(&wgpu::TextureViewDescriptor {
+                    format: Some(self.format),
+                    ..Default::default()
+                });
                 (Some(f), v)
             }
         };

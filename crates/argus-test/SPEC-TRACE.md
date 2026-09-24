@@ -34,6 +34,7 @@ Every statement in the design document (v0.3) that constrains the scenario test 
 |---|---|---|---|
 | Same scene, seed, input log, and code: bit-identical. | Done | The golden comparison and the series rerun both rely on it and both pass. | both runner tests |
 | The runner is a client of the same daemon. | Done | `Driver` is the whole surface; the daemon reloads the scene that was open when the run ends, so a test run is a visitor, not an owner. | `daemon.rs::test_run` |
+| A test edits the world, not the project. | Done | During `test.run` an edit is live only: a set on an authored entity changes the world and writes no override, a despawn deletes no file, and a spawn with an id (which would be a file) is refused with a hint. Found in phase 2 item 1: Hollow's planks test moved the hero with `edit.commit`, which wrote the new position into `player.toml`, and the phase 1 gate commit carried it. | `argus-daemon/tests/test_run.rs::a_scenario_edits_the_world_and_leaves_the_files` (fails with the guard off) |
 
 ## Errors, stated so they are decisions
 
