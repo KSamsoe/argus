@@ -64,10 +64,16 @@ Decisions taken while building it:
 
 ## 3. Replay export in the test runner
 
-**Status: not started.** Constraints:
+**Status: done** (2026-09-24) in `argus-test` (the harness saves a failing run's replay the moment it fails) and the daemon (`replay.save`, `replay.open`; marks are built on the same capture). A run's first failed expectation, or its error, saves `.argus/replays/<scenario>/seed<n>/`: the replay file, the frame, a clip of the two seconds before and its contact sheet, the sound, and `replay.json` with the failure's message and the scenario, file, and seed. `argus test` prints `replay at frame N: argus replay open path=...` under the failure, and `replay.open` reproduces it paused at that frame, the lead-in in the log and the traces, so `sim.seek` and an open window work on it until the editor (phase 4). The first five failures of a run get clips; `--software` draws them with the software rasteriser, as CI would; `--no-replays` saves none. On Hollow a deliberately failing scenario saved both of its seeds at the failing frame (120, not the run's end at 180), and the replay reopened to the same world. Traces: rows in `argus-test`'s and the daemon's. Constraints:
 
 - §9: run a failing test and dump a replay file the human can open (in the editor, phase 4; with `sim.seek` until then), and export a short clip of the failing window so the human can see it without reproducing it.
 - §9: everything runs identically in CI with the software render adapter.
+
+Decisions taken while building it:
+
+- **The replay is of the moment it failed.** The harness saves when the first expectation fails (or the script errors), not when the run ends; a run goes on after a failed expectation, and its end can be far from what went wrong.
+- **A mark and a replay are one thing.** `replay.save` is a mark without the queue, and a mark is a replay with a note and a place in the queue; the item 7 report key will write the same.
+- **Clips are capped, replays are not.** A seed sweep that fails on all fifty seeds keeps fifty replay files (a few kilobytes each) and five clips.
 
 ## 4. Proposals and A/B by feel
 

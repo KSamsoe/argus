@@ -359,3 +359,116 @@ fn seed_specs_parse() {
     assert!(parse_seeds("5..1").is_err());
     assert!(parse_seeds("x").is_err());
 }
+
+/// §9 (phase 2 item 3): a failing run saves a replay the moment it fails,
+/// which reproduces the failure in the daemon; an error saves where the
+/// script stopped; a passing run and `replays: false` save nothing.
+#[test]
+fn a_failing_run_saves_a_replay_of_the_moment_it_failed() {
+    let (t, mut d) = fixture("runner-replays");
+    common::write(
+        t.path(),
+        "tests/fail.luau",
+        r#"
+return scenario "the player walks too far" {
+  scene = "arena", seeds = range(1, 2),
+  run = function(t)
+    t.input:hold("move", {1, 0}, 100)
+    t:run_until { frames = 30 }
+    t.expect:field("@player", "Transform.pos.x"):lt(10)
+    t:run_until { frames = 30 }
+  end,
+}
+"#,
+    );
+    common::write(
+        t.path(),
+        "tests/stops.luau",
+        r#"
+return scenario "the script stops" {
+  scene = "arena", seed = 7,
+  run = function(t)
+    t:run_until { frames = 12 }
+    error("gave up here")
+  end,
+}
+"#,
+    );
+    common::write(t.path(), "tests/pass.luau", SWEEP);
+    let r = run(
+        &mut d,
+        &Options {
+            replays: true,
+            software: true,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let scenario = |name: &str| {
+        r["scenarios"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|s| s["name"] == name)
+            .unwrap()
+            .clone()
+    };
+    let walked = scenario("the player walks too far");
+    for s in walked["seeds"].as_array().unwrap() {
+        assert_eq!(s["ok"], false);
+        let rep = &s["replay"];
+        assert_eq!(
+            rep["frame"], 30,
+            "saved when the expectation failed, not at the end: {rep}"
+        );
+        assert_eq!(rep["note"], "@player Transform.pos.x: 60 < 10 failed");
+        assert_eq!(rep["about"]["scenario"], "the player walks too far");
+        let dir = std::path::Path::new(rep["dir"].as_str().unwrap());
+        assert!(dir.ends_with(format!("the_player_walks_too_far/seed{}", s["seed"])));
+        assert!(dir.join("replay.bin").is_file() && dir.join("replay.json").is_file());
+        if !rep["picture"].is_null() {
+            assert!(
+                rep["clip"].is_string(),
+                "a clip of the seconds before it, drawn in software: {rep}"
+            );
+        }
+    }
+    let stopped = scenario("the script stops");
+    let rep = &stopped["seeds"][0]["replay"];
+    assert_eq!(rep["frame"], 12, "{rep}");
+    assert!(rep["note"].as_str().unwrap().contains("gave up here"));
+    for s in scenario("health never goes negative")["seeds"]
+        .as_array()
+        .unwrap()
+    {
+        assert!(s["replay"].is_null(), "a passing run saves nothing");
+    }
+
+    // The replay reproduces the failure in the daemon.
+    let dir = walked["seeds"][0]["replay"]["dir"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let open = d.call("replay.open", &json!({ "path": dir })).unwrap();
+    assert_eq!(open["frame"], 30);
+    assert_eq!(open["digest"]["same"], true, "{open}");
+    assert_eq!(open["against_mark"]["same"], true);
+    let x = d
+        .call("world.get", &json!({ "entity": "@player" }))
+        .unwrap()["components"]["Transform"]["pos"][0]
+        .clone();
+    assert_eq!(x, 60.0);
+
+    // Asked not to, it saves none.
+    std::fs::remove_dir_all(t.path().join(".argus/replays")).unwrap();
+    let r = run(
+        &mut d,
+        &Options {
+            name: Some("walks".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert!(r["scenarios"][0]["seeds"][0]["replay"].is_null());
+    assert!(!t.path().join(".argus/replays").exists());
+}

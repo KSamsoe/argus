@@ -326,11 +326,23 @@ fn the_cli_talks_to_a_daemon_over_its_socket() {
         out.contains("    seed 4: count {has = [\"Enemy\"]}: 1 == 0 failed"),
         "{out}"
     );
+    // The failing run saved its moment, and says how to open it (§9).
+    assert!(
+        out.contains("    seed 4: replay at frame 0") && out.contains("argus replay open path="),
+        "{out}"
+    );
     assert!(
         out.trim_end().ends_with("2 scenarios, 4 runs, 1 failed")
             || out.contains("2 scenarios, 4 runs, 1 failed, "),
         "{out}"
     );
+    assert!(t
+        .path()
+        .join(".argus/replays/wrong/seed4/replay.bin")
+        .is_file());
+    let (code, out, _) = cli(&name, &["test", "wrong", "--no-replays"]);
+    assert_eq!(code, EXIT_RPC);
+    assert!(!out.contains("replay at frame"), "{out}");
     let (code, out, _) = cli(&name, &["test", "bat", "dies", "--seeds", "1..2", "--json"]);
     assert_eq!(code, EXIT_OK, "{out}");
     let rep: Json = serde_json::from_str(out.trim()).unwrap();

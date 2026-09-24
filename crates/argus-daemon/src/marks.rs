@@ -198,18 +198,47 @@ fn diff_json(then: &World, now: &World) -> Json {
     })
 }
 
+/// Every file a replay directory can hold.
+const REPLAY_FILES: [&str; 6] = [
+    "replay.bin",
+    "replay.json",
+    "frame.png",
+    "clip.png",
+    "clip-sheet.png",
+    "clip.wav",
+];
+
+/// A replay directory as `replay.save` and `replay.open` report it.
+fn replay_summary(dir: &Path, info: &Json) -> Json {
+    let path = |f: &str| {
+        dir.join(f)
+            .to_string_lossy()
+            .trim_start_matches(r"\\?\")
+            .to_string()
+    };
+    let file = |k: &str, f: &str| info[k][f].as_str().map(path);
+    json!({
+        "dir": dir.to_string_lossy().trim_start_matches(r"\\?\").to_string(),
+        "frame": info["frame"],
+        "scene": info["scene"],
+        "note": info["note"],
+        "about": info["about"],
+        "picture": file("picture", "file"),
+        "clip": file("clip", "file"),
+        "sheet": file("clip", "sheet"),
+        "sound": file("sound", "file"),
+        "ms": info["ms"],
+    })
+}
+
 impl Daemon {
-    /// `mark.drop`: this moment as a mark. See the module docs.
-    pub(super) fn mark_drop(&mut self, params: &Json) -> Result<Json> {
+    /// This moment, into `dir`: the replay file, the frame, the clip and
+    /// its sheet, and the sound; returns what `mark.json` and
+    /// `replay.json` hold about it (frame, run identity, digest, the input
+    /// and events of the lead-in, the files). A mark and a replay are
+    /// both this.
+    fn capture(&mut self, dir: &Path, want_clip: bool, software: bool) -> Result<Json> {
         self.require_session()?;
-        let note = json::opt_str(params, "note")?
-            .unwrap_or("")
-            .trim()
-            .to_string();
-        let author = json::opt_str(params, "author")?
-            .unwrap_or("human")
-            .to_string();
-        let want_clip = json::bool_param(params, "clip", true)?;
         self.before_ticks();
         let started = std::time::Instant::now();
         let frame = self.sched.tick();
@@ -227,9 +256,8 @@ impl Daemon {
                 s.input.clone(),
             )
         };
-        let id = ids(&root).last().map_or(1, |i| i + 1);
-        let dir = mark_dir(&root, id);
-        std::fs::create_dir_all(&dir).map_err(|e| bad_mark(id, e))?;
+        std::fs::create_dir_all(dir)
+            .map_err(|e| ArgusError::new(codes::BAD_MARK, format!("{}: {e}", dir.display())))?;
         let code = code_version(&root);
 
         // The replay: where the lead-in starts, the commands since, the world now.
@@ -259,31 +287,25 @@ impl Daemon {
         )?;
 
         let window_from = frame.saturating_sub(lead);
-        let mut mark = json!({
-            "id": id,
-            "status": "open",
-            "source": "desktop",
+        let mut out = json!({
             "frame": frame,
             "time": round3(driving.time()),
             "clock": driving.to_string(),
             "scene": scene,
             "seed": seed,
             "code": code,
-            "note": note,
-            "author": author,
-            "dropped_at": unix_now(),
             "digest": format!("{:016x}", self.world.digest()),
             "input": input.as_ref().map(|i| input_window(&i.borrow(), window_from, frame)),
             "events": self.events_window(window_from, frame),
             "replay": { "file": "replay.bin", "from": start.tick, "to": frame, "bytes": bytes },
         });
-        self.mark_pictures(
-            &mut mark, &dir, &start, frame, clip_len, every, fps, want_clip,
+        self.pictures(
+            &mut out, dir, &start, frame, clip_len, every, fps, want_clip, software,
         );
         #[cfg(feature = "audio")]
         if let Some(a) = &self.audio {
             if let Ok((n, peak)) = a.clip(CLIP_SECONDS as f32, &dir.join("clip.wav")) {
-                mark["sound"] = json!({
+                out["sound"] = json!({
                     "file": "clip.wav",
                     "seconds": CLIP_SECONDS,
                     "frames": n,
@@ -291,15 +313,43 @@ impl Daemon {
                 });
             }
         }
-        mark["ms"] = json!((started.elapsed().as_secs_f64() * 1e4).round() / 10.0);
+        out["ms"] = json!((started.elapsed().as_secs_f64() * 1e4).round() / 10.0);
+        Ok(out)
+    }
+
+    /// `mark.drop`: this moment as a mark. See the module docs.
+    pub(super) fn mark_drop(&mut self, params: &Json) -> Result<Json> {
+        let root = self.require_session()?.root.clone();
+        let note = json::opt_str(params, "note")?
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        let author = json::opt_str(params, "author")?
+            .unwrap_or("human")
+            .to_string();
+        let want_clip = json::bool_param(params, "clip", true)?;
+        let id = ids(&root).last().map_or(1, |i| i + 1);
+        let mut mark = self.capture(&mark_dir(&root, id), want_clip, false)?;
+        let frame = mark["frame"].as_u64().unwrap_or(0);
+        for (k, v) in [
+            ("id", json!(id)),
+            ("status", json!("open")),
+            ("source", json!("desktop")),
+            ("note", json!(note)),
+            ("author", json!(author)),
+            ("dropped_at", json!(unix_now())),
+        ] {
+            mark[k] = v;
+        }
         write_mark(&root, &mark)?;
         self.emit_mark("mark.dropped", id, frame, &note);
         Ok(self.mark_summary(&root, &mark))
     }
 
-    /// The frame and the clip, into `mark`: what they are, or why there are none.
+    /// The frame and the clip, into `mark`: what they are, or why there
+    /// are none. `software` draws with the software rasteriser, as CI does.
     #[allow(clippy::too_many_arguments)]
-    fn mark_pictures(
+    fn pictures(
         &mut self,
         mark: &mut Json,
         dir: &Path,
@@ -309,6 +359,7 @@ impl Daemon {
         every: u64,
         fps: f64,
         want_clip: bool,
+        software: bool,
     ) {
         #[cfg(feature = "render")]
         {
@@ -321,7 +372,7 @@ impl Daemon {
                 .unwrap_or(FRAME_SIZE);
             self.refresh_assets();
             match self
-                .draw_offscreen((fw, fh))
+                .draw_offscreen((fw, fh), software)
                 .and_then(|img| img.save_png(&dir.join("frame.png")))
             {
                 Ok(()) => {
@@ -338,7 +389,7 @@ impl Daemon {
             let from = frame.saturating_sub(clip_len).max(start.tick);
             let t = std::time::Instant::now();
             mark["clip"] = match self
-                .render_clip(start, from, frame, every, (cw, ch))
+                .render_clip(start, from, frame, every, (cw, ch), software)
                 .and_then(|frames| {
                     let bytes = argus_render::save_apng(&frames, fps, &dir.join("clip.png"))?;
                     // The same clip as one picture of eight, for a reader
@@ -362,7 +413,7 @@ impl Daemon {
         }
         #[cfg(not(feature = "render"))]
         {
-            let _ = (dir, start, frame, clip_len, every, fps, want_clip);
+            let _ = (dir, start, frame, clip_len, every, fps, want_clip, software);
             mark["picture"] = json!({ "skipped": "this daemon was built without the renderer" });
             mark["clip"] = json!({ "skipped": "this daemon was built without the renderer" });
         }
@@ -370,12 +421,16 @@ impl Daemon {
 
     /// The world now, drawn offscreen at alpha 1.
     #[cfg(feature = "render")]
-    fn draw_offscreen(&mut self, (w, h): (u32, u32)) -> Result<argus_render::Image> {
+    fn draw_offscreen(
+        &mut self,
+        (w, h): (u32, u32),
+        software: bool,
+    ) -> Result<argus_render::Image> {
         let _ = self.sched.present(&mut self.world);
         let tick = self.sched.tick();
         let extras = self.tile_extras(argus_render::view_for(&self.world, w, h));
         let ses = self.session.as_ref().expect("session");
-        let r = self.render.offscreen(w, h, false, &ses.assets)?;
+        let r = self.render.offscreen(w, h, software, &ses.assets)?;
         r.set_time(shader_time(&self.sched, 1.0));
         let store = ses.particles.borrow();
         r.render_frame(&self.world, tick, 1.0, &extras, Some(&store))?;
@@ -393,16 +448,18 @@ impl Daemon {
         to: u64,
         every: u64,
         size: (u32, u32),
+        software: bool,
     ) -> Result<Vec<argus_render::Image>> {
         let sources = self.session.as_ref().expect("session").sources.clone();
         let now = sources.capture(&self.world, &self.sched, false);
-        let out = self.clip_frames(&sources, start, from, to, every, size);
+        let out = self.clip_frames(&sources, start, from, to, every, size, software);
         self.put_back(&sources, &now);
         self.sched.set_quiet(false);
         out
     }
 
     #[cfg(feature = "render")]
+    #[allow(clippy::too_many_arguments)]
     fn clip_frames(
         &mut self,
         sources: &crate::ring::Sources,
@@ -411,6 +468,7 @@ impl Daemon {
         to: u64,
         every: u64,
         size: (u32, u32),
+        software: bool,
     ) -> Result<Vec<argus_render::Image>> {
         self.put_back(sources, start);
         self.sched.set_quiet(true);
@@ -427,13 +485,13 @@ impl Daemon {
         if from > start.tick {
             step(self, from - start.tick)?;
         }
-        let mut frames = vec![self.draw_offscreen(size)?];
+        let mut frames = vec![self.draw_offscreen(size, software)?];
         let mut t = from;
         while t < to {
             let n = every.min(to - t);
             step(self, n)?;
             t += n;
-            frames.push(self.draw_offscreen(size)?);
+            frames.push(self.draw_offscreen(size, software)?);
         }
         Ok(frames)
     }
@@ -636,29 +694,22 @@ impl Daemon {
         let scene = mark["scene"].as_str().unwrap_or_default().to_string();
         let seed = mark["seed"].as_u64();
         let frame = mark["frame"].as_u64().unwrap_or(0);
-        self.forks.clear();
-        self.active = "main".to_string();
-        let cfg = ProjectConfig::load(&root)?;
-        self.open_scene(root.clone(), &cfg, &scene, seed)
-            .map_err(|e| {
-                bad_mark(
-                    id,
-                    format!("its scene {scene:?} does not load: {}", e.message),
-                )
-            })?;
-        let mut out = if mark["source"] == "web" {
-            self.open_web(id, &mark, frame)?
+        let file = if mark["source"] == "web" {
+            None
         } else {
-            self.open_desktop(&root, id, frame)?
+            Some(
+                replay::read(&mark_dir(&root, id).join("replay.bin"))
+                    .map_err(|e| bad_mark(id, e.message))?,
+            )
         };
-        #[cfg(feature = "audio")]
-        if let Some(a) = self.audio.as_mut() {
-            a.silence();
-        }
-        #[cfg(feature = "render")]
-        if let Some((_, r)) = &mut self.render.window {
-            r.forget_motion();
-        }
+        self.load_for(&root, &scene, seed)
+            .map_err(|e| bad_mark(id, e.message))?;
+        let mut out = match file {
+            None => self.open_web(id, &mark, frame)?,
+            Some(file) => self.open_file(file, frame)?,
+        };
+        out["id"] = json!(id);
+        self.after_open();
         let digest = format!("{:016x}", self.world.digest());
         let same = mark["digest"].as_str() == Some(digest.as_str());
         out["digest"] = json!({ "mark": mark["digest"], "now": digest, "same": same });
@@ -674,7 +725,9 @@ impl Daemon {
                 .as_ref()
                 .and_then(|s| s.ring.borrow().lead_in(frame, clip_len).cloned());
             if let Some(start) = start {
-                self.mark_pictures(&mut mark, &dir, &start, frame, clip_len, every, fps, true);
+                self.pictures(
+                    &mut mark, &dir, &start, frame, clip_len, every, fps, true, false,
+                );
                 write_mark(&root, &mark)?;
             }
         }
@@ -684,11 +737,38 @@ impl Daemon {
         Ok(out)
     }
 
-    /// Read the replay back, restore its keyframe, play the lead-in, and
-    /// compare with the world the mark saved.
-    fn open_desktop(&mut self, root: &Path, id: u64, frame: u64) -> Result<Json> {
-        let file = replay::read(&mark_dir(root, id).join("replay.bin"))
-            .map_err(|e| bad_mark(id, e.message))?;
+    /// A fresh load of a scene with a seed, for a mark or a replay: the run
+    /// before it is another run.
+    fn load_for(&mut self, root: &Path, scene: &str, seed: Option<u64>) -> Result<()> {
+        self.forks.clear();
+        self.active = "main".to_string();
+        let cfg = ProjectConfig::load(root)?;
+        self.open_scene(root.to_path_buf(), &cfg, scene, seed)
+            .map(|_| ())
+            .map_err(|e| {
+                ArgusError::new(
+                    codes::BAD_MARK,
+                    format!("its scene {scene:?} does not load: {}", e.message),
+                )
+            })
+    }
+
+    /// After a replay: no sound effects from its lead-in, and the window
+    /// does not blend from the world before it.
+    fn after_open(&mut self) {
+        #[cfg(feature = "audio")]
+        if let Some(a) = self.audio.as_mut() {
+            a.silence();
+        }
+        #[cfg(feature = "render")]
+        if let Some((_, r)) = &mut self.render.window {
+            r.forget_motion();
+        }
+    }
+
+    /// Restore a replay file's keyframe, play the lead-in to `frame`, and
+    /// compare with the world the file saved.
+    fn open_file(&mut self, file: replay::ReplayFile, frame: u64) -> Result<Json> {
         let (sources, ring, input, particles) = {
             let s = self.session.as_ref().expect("session");
             (
@@ -717,7 +797,6 @@ impl Daemon {
             None => Json::Null,
         };
         Ok(json!({
-            "id": id,
             "frame": self.sched.tick(),
             "from": k.tick,
             "replayed": n,
@@ -907,6 +986,80 @@ impl Daemon {
             }
         }
         self.render.bar = key;
+    }
+
+    /// `replay.save`: this moment as a replay directory, with no queue: the
+    /// replay file, the frame, the clip and its sheet, the sound, and
+    /// `replay.json` (what `mark.json` holds, plus a note and whatever
+    /// `about` says). The test runner saves one for each failing run
+    /// (phase 2 item 3); an agent can save one of anything.
+    pub(super) fn replay_save(&mut self, params: &Json) -> Result<Json> {
+        let root = self.require_session()?.root.clone();
+        let dir = match json::opt_str(params, "dir")? {
+            Some(d) if Path::new(d).is_absolute() => PathBuf::from(d),
+            Some(d) => root.join(d),
+            None => root.join(".argus").join("replays").join(format!(
+                "{}-{}",
+                unix_now(),
+                self.sched.tick()
+            )),
+        };
+        let clip = json::bool_param(params, "clip", true)?;
+        let software = json::bool_param(params, "software", false)?;
+        // What a save to this directory left before is another moment's.
+        for f in REPLAY_FILES {
+            let _ = std::fs::remove_file(dir.join(f));
+        }
+        let mut info = self.capture(&dir, clip, software)?;
+        info["note"] = json!(json::opt_str(params, "note")?.unwrap_or(""));
+        info["saved_at"] = json!(unix_now());
+        if let Some(about) = params.get("about").filter(|v| !v.is_null()) {
+            info["about"] = about.clone();
+        }
+        let text = serde_json::to_string_pretty(&info).expect("json") + "\n";
+        std::fs::write(dir.join("replay.json"), text)
+            .map_err(|e| ArgusError::new(codes::BAD_MARK, format!("{}: {e}", dir.display())))?;
+        Ok(replay_summary(&dir, &info))
+    }
+
+    /// `replay.open`: reproduce a saved replay (a directory `replay.save`
+    /// or a failing test wrote, or its `replay.bin`): load its scene with
+    /// its seed, restore the keyframe, play the lead-in, and compare the
+    /// world with the one it saved. Paused at its frame; `sim.seek` moves
+    /// within the lead-in and a window shows it.
+    pub(super) fn replay_open(&mut self, params: &Json) -> Result<Json> {
+        let root = self.require_session()?.root.clone();
+        let path = PathBuf::from(json::str_param(params, "path")?);
+        let path = if path.is_absolute() {
+            path
+        } else {
+            root.join(path)
+        };
+        let dir = if path.is_file() {
+            path.parent().map(Path::to_path_buf).unwrap_or_default()
+        } else {
+            path
+        };
+        let started = std::time::Instant::now();
+        let file = replay::read(&dir.join("replay.bin"))?;
+        let info: Json = std::fs::read_to_string(dir.join("replay.json"))
+            .ok()
+            .and_then(|t| serde_json::from_str(&t).ok())
+            .unwrap_or(Json::Null);
+        let scene = file.meta["scene"].as_str().unwrap_or_default().to_string();
+        let seed = file.meta["seed"].as_u64();
+        let code = file.meta["code"].clone();
+        let frame = file.to;
+        self.load_for(&root, &scene, seed)?;
+        let mut out = self.open_file(file, frame)?;
+        self.after_open();
+        let digest = format!("{:016x}", self.world.digest());
+        let same = info["digest"].as_str().map(|d| d == digest);
+        out["digest"] = json!({ "saved": info["digest"], "now": digest, "same": same });
+        out["code"] = json!({ "saved": code, "now": code_version(&root) });
+        out["replay"] = replay_summary(&dir, &info);
+        out["ms"] = json!((started.elapsed().as_secs_f64() * 1e4).round() / 10.0);
+        Ok(out)
     }
 
     /// Run `n` ticks (turns on a discrete clock) as `sim.step` does, logging

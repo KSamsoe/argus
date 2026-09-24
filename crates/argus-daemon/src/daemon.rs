@@ -490,6 +490,8 @@ impl Daemon {
             "mark.close" => self.mark_close(params),
             "mark.open" => self.mark_open(params),
             "mark.import" => self.mark_import(params),
+            "replay.save" => self.replay_save(params),
+            "replay.open" => self.replay_open(params),
             "obs.diff" => self.obs_diff(params),
             "obs.trace" => self.obs_trace(params),
             "obs.why" => self.obs_why(params),
@@ -4554,6 +4556,8 @@ impl Daemon {
                 }
             },
             update_goldens: json::bool_param(params, "update", false)?,
+            replays: json::bool_param(params, "replays", true)?,
+            software: json::bool_param(params, "software", false)?,
         };
         self.live_edits = true;
         let report = argus_test::run(self, &opts);

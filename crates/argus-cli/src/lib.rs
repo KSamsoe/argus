@@ -69,6 +69,10 @@ pub struct Invocation {
     pub file: Option<String>,
     /// `--update`: rewrite goldens, for `argus test`.
     pub update: bool,
+    /// `--software`: clips of failing tests drawn with the software rasteriser.
+    pub software: bool,
+    /// `--no-replays`: failing tests save no replays.
+    pub no_replays: bool,
     /// `--window [WxH]`: open a window, for `daemon start` and `daemon run`.
     pub window: Option<(u32, u32)>,
     /// `--play`: enter play mode at start, for `daemon start` and `daemon run`.
@@ -98,6 +102,8 @@ pub fn parse(argv: &[String]) -> Result<Invocation, String> {
             "--seeds" => inv.seeds = Some(need(&mut it)?),
             "--file" => inv.file = Some(need(&mut it)?),
             "--update" => inv.update = true,
+            "--software" => inv.software = true,
+            "--no-replays" => inv.no_replays = true,
             "--play" => inv.play = true,
             "--window" => {
                 let size = match it.clone().next() {
@@ -262,7 +268,7 @@ pub fn run(argv: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
     }
 }
 
-/// `argus test [name] [--seeds 1..50] [--file tests/x.luau] [--update] [--json]`:
+/// `argus test [name] [--seeds 1..50] [--file tests/x.luau] [--update] [--software] [--no-replays] [--json]`:
 /// `test.run` on the project's daemon, reported compactly (§9). Exit 0
 /// when every run passed, 1 otherwise.
 fn test_command(
@@ -285,6 +291,12 @@ fn test_command(
     }
     if inv.update {
         params["update"] = json!(true);
+    }
+    if inv.software {
+        params["software"] = json!(true);
+    }
+    if inv.no_replays {
+        params["replays"] = json!(false);
     }
     let mut client = match project::connect(inv, err) {
         Ok(c) => c,

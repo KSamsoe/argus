@@ -122,9 +122,33 @@ end
 local Num = {}
 Num.__index = Num
 
+-- Clips left to draw this run: a failing sweep of fifty seeds keeps its
+-- replays, and the first few failures their clips.
+local clips_left = 5
+
+-- A failing run's replay (§9, phase 2 item 3), saved the moment it fails,
+-- where `replay.open` (and later the editor) opens it: the keyframe before,
+-- the input since, the world then, and a clip of the seconds up to it.
+local function save_failure(ctx, why)
+  if ctx.saved or not ctx.loaded or not ctx.opts.replays then return end
+  ctx.saved = true
+  local seed = ctx.result.seed
+  local dir = ".argus/replays/" .. slug(ctx.spec.name) .. "/seed" .. tostring(seed)
+  local clip = clips_left > 0
+  if clip then clips_left -= 1 end
+  local r, err = H.call("replay.save", {
+    dir = dir, note = why, clip = clip, software = ctx.opts.software == true,
+    about = { scenario = ctx.spec.name, file = ctx.spec.file, seed = seed },
+  })
+  ctx.result.replay = r or { error = err and tostring(err.message) or "replay.save failed" }
+end
+
 local function record(ctx, e)
   table.insert(ctx.result.expectations, e)
-  if not e.ok then ctx.result.ok = false end
+  if not e.ok then
+    ctx.result.ok = false
+    save_failure(ctx, e.message)
+  end
   return e.ok
 end
 
@@ -574,7 +598,7 @@ end
 local function run_seed(spec, seed, opts, series)
   if seed == false then seed = nil end
   local t0 = H.now_ms()
-  local ctx = { opts = opts, series = series or {}, result = { seed = seed, ok = true, expectations = {} }, ran = false }
+  local ctx = { opts = opts, spec = spec, series = series or {}, result = { seed = seed, ok = true, expectations = {} }, ran = false }
   for _, s in ipairs(ctx.series) do s.samples = {} end
   local function where(e)
     local msg = tostring(e)
@@ -596,6 +620,7 @@ local function run_seed(spec, seed, opts, series)
       ctx.result.seed = st.seed
       seed = st.seed
     end
+    ctx.loaded = true
     -- The run's events start where the load's end; what `on_load` systems
     -- emit (a generated floor) belongs to the run.
     if loaded.run_from ~= nil then
@@ -614,6 +639,7 @@ local function run_seed(spec, seed, opts, series)
   if not ok then
     ctx.result.ok = false
     ctx.result.error = tostring(err)
+    save_failure(ctx, ctx.result.error)
   end
   local st = H.call("sim.status", {})
   if st then ctx.result.tick = st.tick end
@@ -640,6 +666,7 @@ end
 
 function M.run(opts)
   opts = opts or {}
+  clips_left = 5
   local report = { ok = true, scenarios = {}, total_runs = 0, passed_runs = 0, failed_runs = 0 }
   for _, spec in ipairs(registry) do
     local wanted = true

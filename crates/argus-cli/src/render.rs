@@ -173,6 +173,21 @@ pub fn test_report(r: &Json) -> String {
                     );
                 }
             }
+            let r = &s["replay"];
+            if let Some(dir) = r["dir"].as_str() {
+                let clip = if r["clip"].is_string() {
+                    ", with a clip"
+                } else {
+                    ""
+                };
+                let _ = writeln!(
+                    out,
+                    "    seed {seed}: replay at frame {}{clip}: argus replay open path={dir}",
+                    cell(&r["frame"])
+                );
+            } else if let Some(e) = r["error"].as_str() {
+                let _ = writeln!(out, "    seed {seed}: no replay: {e}");
+            }
         }
         if failed.len() > 10 {
             let _ = writeln!(out, "    ... and {} more failing seeds", failed.len() - 10);

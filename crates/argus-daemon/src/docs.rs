@@ -432,6 +432,18 @@ pub const METHODS: &[MethodDoc] = &[
         returns: "mark.drop's summary",
     },
     MethodDoc {
+        name: "replay.save",
+        doc: "Save this moment as a replay, with no queue: a replay file (the keyframe five seconds back, the input since, the world now), the frame, a two-second clip and its contact sheet, the last two seconds of sound, and replay.json (the run's identity, the digest, the input and events of those seconds, a note, and what about says). test.run saves one for each failing run (section 9).",
+        params: "dir: string (default .argus/replays/<time>-<frame>; relative to the project; replaces what was there); note: string; clip: boolean (default true); software: boolean (draw with the software rasteriser); about: any JSON kept with it",
+        returns: "{dir, frame, scene, note, about, picture, clip, sheet, sound: absolute paths, ms}",
+    },
+    MethodDoc {
+        name: "replay.open",
+        doc: "Reproduce a saved replay (the directory replay.save or a failing test wrote, or its replay.bin): load its scene with its seed, restore its keyframe, and play the seconds before it so obs.events and obs.trace hold them, stopping at its frame. Then compare the world with the one it saved, field by field. Paused there; sim.seek moves within the lead-in, and an open window shows it (the editor opens these in phase 4).",
+        params: "path: string (relative to the project)",
+        returns: "{frame, from, replayed, against_mark: {same, appeared, vanished, changed, first}, digest: {saved, now, same}, code: {saved, now}, remapped, dropped, missing_effects, replay: replay.save's summary, ms}",
+    },
+    MethodDoc {
         name: "sim.status",
         doc: "Clock state.",
         params: "",
@@ -505,9 +517,9 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "test.run",
-        doc: "Run scenarios headless in this daemon: each seed loads the scene fresh, scripts input, runs frames, and checks expectations; state goldens live in tests/goldens/ and a mismatch is a field-level diff. The scene that was open is reloaded afterwards. `argus test` is this.",
-        params: "name: string (optional; exact or substring); file: string (optional, tests/x.luau); seeds: string (optional override: \"7\", \"1..50\", \"1,2,9\"); update: boolean (rewrite goldens)",
-        returns: "{ok, ms, total_runs, passed_runs, failed_runs, scenarios: [{name, file, scene, ok, seeds: [{seed, ok, ms, tick, error, expectations: [{kind, desc, ok, message, ...}], log}]}], load_errors}",
+        doc: "Run scenarios headless in this daemon: each seed loads the scene fresh, scripts input, runs frames, and checks expectations; state goldens live in tests/goldens/ and a mismatch is a field-level diff. A failing run saves a replay the moment it fails (the first failed expectation, or the error) under .argus/replays/<scenario>/seed<n>/, with a clip of the seconds before it for the first five failures; replay.open reproduces one (section 9). The scene that was open is reloaded afterwards. `argus test` is this.",
+        params: "name: string (optional; exact or substring); file: string (optional, tests/x.luau); seeds: string (optional override: \"7\", \"1..50\", \"1,2,9\"); update: boolean (rewrite goldens); replays: boolean (default true); software: boolean (draw clips with the software rasteriser, as CI does)",
+        returns: "{ok, ms, total_runs, passed_runs, failed_runs, scenarios: [{name, file, scene, ok, seeds: [{seed, ok, ms, tick, error, expectations: [{kind, desc, ok, message, ...}], log, replay: replay.save's summary, for a failing run}]}], load_errors}",
     },
     MethodDoc {
         name: "render.window",

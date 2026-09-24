@@ -41,6 +41,12 @@ pub struct Options {
     pub seeds: Option<String>,
     /// Rewrite goldens instead of comparing.
     pub update_goldens: bool,
+    /// Save a replay of each failing run where it failed, through the
+    /// driver's `replay.save` (§9, phase 2 item 3): under
+    /// `.argus/replays/<scenario>/seed<n>/`, with a clip for the first five.
+    pub replays: bool,
+    /// Draw those clips with the software rasteriser, as CI does (§9).
+    pub software: bool,
 }
 
 /// Parse a seeds spec into a list.
@@ -238,6 +244,8 @@ pub fn run(driver: &mut dyn Driver, opts: &Options) -> Result<Json, String> {
             "name": opts.name,
             "file": opts.file,
             "seeds": seeds,
+            "replays": opts.replays,
+            "software": opts.software,
             "update": opts.update_goldens,
         }),
     )

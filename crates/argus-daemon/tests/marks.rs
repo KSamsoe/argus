@@ -287,3 +287,49 @@ cur = 5
     let p = ok(&mut d, "world.get", json!({ "entity": "@hero" }));
     assert_eq!(p["components"]["Transform"]["pos"][1], y);
 }
+
+#[test]
+fn a_replay_is_a_mark_with_no_queue() {
+    let t = temp("replays");
+    project(t.path());
+    let mut d = open(t.path());
+    play(&mut d);
+    let r = ok(
+        &mut d,
+        "replay.save",
+        json!({ "note": "look at this", "about": { "why": "a test" } }),
+    );
+    assert_eq!(r["frame"], 400);
+    let dir = Path::new(r["dir"].as_str().unwrap()).to_path_buf();
+    assert!(
+        dir.parent().unwrap().ends_with(".argus/replays"),
+        "{}",
+        dir.display()
+    );
+    assert_eq!(
+        ok(&mut d, "mark.list", json!({}))["open"],
+        0,
+        "not in the queue"
+    );
+    // Saving over it again, without a clip, leaves no stale clip behind.
+    ok(&mut d, "sim.step", json!({ "n": 20 }));
+    let again = ok(
+        &mut d,
+        "replay.save",
+        json!({ "dir": dir.to_string_lossy(), "clip": false }),
+    );
+    assert_eq!(again["frame"], 420);
+    assert!(again["clip"].is_null() && !dir.join("clip.png").exists());
+    ok(&mut d, "sim.step", json!({ "n": 50 }));
+    let o = ok(
+        &mut d,
+        "replay.open",
+        json!({ "path": dir.join("replay.bin").to_string_lossy() }),
+    );
+    assert_eq!(o["frame"], 420);
+    assert_eq!(o["digest"]["same"], true, "{o}");
+    assert!(
+        o["replay"]["about"].is_null(),
+        "the second save replaced the first: {o}"
+    );
+}
