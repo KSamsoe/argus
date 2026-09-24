@@ -11,6 +11,7 @@ use crate::prof::{
 };
 use crate::rng::{self, Pcg32};
 use crate::system::{ClockBinding, Stage, SystemCtx, SystemDesc, SystemFn};
+use argus_ecs::codec::{Reader, Writer};
 use argus_ecs::{Access, ArgusError, ComponentId, Event, Registry, Result, Snapshot, World};
 use argus_os::time::Instant;
 use std::collections::HashMap;
@@ -92,6 +93,56 @@ pub struct SimState {
     pub paused: bool,
     /// Systems switched off (by a fault or by request), with the reason.
     pub disabled: Vec<(String, String)>,
+}
+
+impl SimState {
+    /// Write the sim state for a keyframe on disk (phase 2 item 2).
+    pub fn encode(&self, w: &mut Writer) {
+        self.continuous.encode(w);
+        self.discrete.encode(w);
+        w.u64(self.seed);
+        w.count(self.rng.len());
+        for (name, (state, inc)) in &self.rng {
+            w.str(name);
+            w.u64(*state);
+            w.u64(*inc);
+        }
+        w.bool(self.playing);
+        w.bool(self.paused);
+        w.count(self.disabled.len());
+        for (name, why) in &self.disabled {
+            w.str(name);
+            w.str(why);
+        }
+    }
+
+    /// Read what [`SimState::encode`] wrote.
+    pub fn decode(r: &mut Reader) -> Result<SimState> {
+        let continuous = Clock::decode(r)?;
+        let discrete = Clock::decode(r)?;
+        let seed = r.u64()?;
+        let mut rng = Vec::new();
+        for _ in 0..r.count()? {
+            let name = r.str()?;
+            rng.push((name, (r.u64()?, r.u64()?)));
+        }
+        let playing = r.bool()?;
+        let paused = r.bool()?;
+        let mut disabled = Vec::new();
+        for _ in 0..r.count()? {
+            let name = r.str()?;
+            disabled.push((name, r.str()?));
+        }
+        Ok(SimState {
+            continuous,
+            discrete,
+            seed,
+            rng,
+            playing,
+            paused,
+            disabled,
+        })
+    }
 }
 
 /// World snapshot plus sim state.

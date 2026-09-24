@@ -31,6 +31,7 @@ use crate::moves;
 use crate::project::Project;
 use crate::resolve::{resolve, Provenance, ResolveCtx, ResolvedEntity};
 use crate::tomlv;
+use argus_ecs::codec::{Reader, Writer};
 use argus_ecs::{ArgusError, Entity, Event, FieldType, Result, SchemaBuilder, Value, World};
 use argus_os::time::Instant;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -145,6 +146,56 @@ pub struct StreamState {
     current: Option<String>,
     spawned: BTreeMap<String, Entity>,
     pending: Vec<PendingRef>,
+}
+
+impl StreamState {
+    /// Write it for a keyframe on disk (phase 2 item 2).
+    pub fn encode(&self, w: &mut Writer) {
+        w.count(self.loaded.len());
+        for r in &self.loaded {
+            w.str(r);
+        }
+        w.opt(self.current.as_deref(), |w, c| w.str(c));
+        w.count(self.spawned.len());
+        for (id, e) in &self.spawned {
+            w.str(id);
+            w.u64(e.to_bits());
+        }
+        w.count(self.pending.len());
+        for p in &self.pending {
+            w.str(&p.from);
+            w.str(&p.path);
+            w.str(&p.target);
+        }
+    }
+
+    /// Read what [`StreamState::encode`] wrote.
+    pub fn decode(r: &mut Reader) -> Result<StreamState> {
+        let mut loaded = BTreeSet::new();
+        for _ in 0..r.count()? {
+            loaded.insert(r.str()?);
+        }
+        let current = r.opt(|r| r.str())?;
+        let mut spawned = BTreeMap::new();
+        for _ in 0..r.count()? {
+            let id = r.str()?;
+            spawned.insert(id, Entity::from_bits(r.u64()?));
+        }
+        let mut pending = Vec::new();
+        for _ in 0..r.count()? {
+            pending.push(PendingRef {
+                from: r.str()?,
+                path: r.str()?,
+                target: r.str()?,
+            });
+        }
+        Ok(StreamState {
+            loaded,
+            current,
+            spawned,
+            pending,
+        })
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

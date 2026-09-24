@@ -43,3 +43,7 @@ argus-audio = { path = "../argus-audio", version = "0.0.1", optional = true }
 serde_json = "1"
 toml_edit = "0.22"
 interprocess = "2"
+
+[dev-dependencies]
+# The web player, to check a web mark against this daemon's world (phase 2 item 2).
+argus-web = { path = "../argus-web" }

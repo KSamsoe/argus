@@ -15,6 +15,7 @@
 
 pub mod annotate;
 pub mod gpu;
+mod overlay;
 pub mod semantic;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod window;
@@ -28,7 +29,7 @@ use argus_os::time::Instant;
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
-pub use annotate::{annotate, Mark};
+pub use annotate::{annotate, status_bar, Mark};
 pub use gpu::{DrawStats, Gpu, Instance, Run};
 pub use semantic::{semantic, Describe, FrameSpec, SemanticFrame, View};
 
@@ -125,6 +126,76 @@ pub fn register(world: &mut World) -> argus_ecs::Result<()> {
     Ok(())
 }
 
+/// Pictures as an animated PNG, looping, `fps` a second (phase 2 item 2:
+/// a mark's clip). Every browser and most viewers play it; one that does
+/// not shows the first picture. Returns the bytes written.
+pub fn save_apng(frames: &[Image], fps: f64, path: &Path) -> argus_ecs::Result<usize> {
+    let e = |e: &dyn std::fmt::Display| {
+        argus_ecs::ArgusError::new(codes::PNG, format!("{}: {e}", path.display()))
+    };
+    let Some(first) = frames.first() else {
+        return Err(e(&"no pictures to write"));
+    };
+    if let Some(d) = path.parent() {
+        argus_os::fs::create_dir_all(d).map_err(|x| e(&x))?;
+    }
+    let mut out = Vec::new();
+    {
+        let mut enc = png::Encoder::new(&mut out, first.width, first.height);
+        enc.set_color(png::ColorType::Rgba);
+        enc.set_depth(png::BitDepth::Eight);
+        enc.set_animated(frames.len() as u32, 0)
+            .map_err(|x| e(&x))?;
+        let ms = (1000.0 / fps.max(0.1)).round() as u16;
+        enc.set_frame_delay(ms, 1000).map_err(|x| e(&x))?;
+        let mut w = enc.write_header().map_err(|x| e(&x))?;
+        for f in frames {
+            if f.width != first.width || f.height != first.height {
+                return Err(e(&"pictures of different sizes"));
+            }
+            w.write_image_data(&f.rgba).map_err(|x| e(&x))?;
+        }
+        w.finish().map_err(|x| e(&x))?;
+    }
+    std::fs::write(path, &out).map_err(|x| e(&x))?;
+    Ok(out.len())
+}
+
+/// Eight of `frames`, evenly spaced from the first to the last, at half
+/// size in a four-by-two grid, each labelled (a mark's clip for a reader
+/// that sees one picture of an animated PNG: an agent).
+pub fn contact_sheet(frames: &[Image], labels: &[String]) -> Option<Image> {
+    let first = frames.first()?;
+    let (w, h) = ((first.width / 2).max(1), (first.height / 2).max(1));
+    let n = frames.len().min(8);
+    let cols = 4u32;
+    let rows = (n as u32).div_ceil(cols);
+    let mut sheet = Image {
+        width: w * cols,
+        height: h * rows,
+        rgba: vec![0; (w * cols * h * rows * 4) as usize],
+    };
+    for k in 0..n {
+        let i = if n == 1 {
+            0
+        } else {
+            k * (frames.len() - 1) / (n - 1)
+        };
+        let small = frames[i].scaled(w, h);
+        let (ox, oy) = ((k as u32 % cols) * w, (k as u32 / cols) * h);
+        for y in 0..h {
+            let src = (y * w * 4) as usize;
+            let dst = (((oy + y) * sheet.width + ox) * 4) as usize;
+            sheet.rgba[dst..dst + (w * 4) as usize]
+                .copy_from_slice(&small.rgba[src..src + (w * 4) as usize]);
+        }
+        if let Some(l) = labels.get(i) {
+            sheet.text(ox as i64 + 3, oy as i64 + 3, l, 1, [255, 214, 90, 255]);
+        }
+    }
+    Some(sheet)
+}
+
 /// A frame's pixels, top row first.
 #[derive(Clone, Debug)]
 pub struct Image {
@@ -163,6 +234,23 @@ impl Image {
         let mut w = enc.write_header().map_err(|x| e(&x))?;
         w.write_image_data(&self.rgba).map_err(|x| e(&x))?;
         Ok(())
+    }
+
+    /// The same picture scaled to `width` by `height`, nearest pixel.
+    pub fn scaled(&self, width: u32, height: u32) -> Image {
+        let mut rgba = Vec::with_capacity((width * height * 4) as usize);
+        for y in 0..height {
+            let sy = (y as u64 * self.height as u64 / height.max(1) as u64) as u32;
+            for x in 0..width {
+                let sx = (x as u64 * self.width as u64 / width.max(1) as u64) as u32;
+                rgba.extend(self.pixel(sx, sy));
+            }
+        }
+        Image {
+            width,
+            height,
+            rgba,
+        }
     }
 
     /// Count of pixels within a tolerance of a colour.

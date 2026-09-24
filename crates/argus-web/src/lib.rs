@@ -17,7 +17,7 @@
 
 #![warn(missing_docs)]
 
-use argus_ecs::{ArgusError, Event, Result, Value, World};
+use argus_ecs::{ArgusError, Event, Result, World};
 use argus_input::{ActionMap, DeviceInput, Devices, InputState};
 use argus_luau::{ScriptConfig, ScriptHost};
 use argus_scene::{DefSchema, Project, Scene, SceneDoc, SeedPolicy};
@@ -395,34 +395,7 @@ impl Player {
     /// entity order, floats to the bit. Two runs with the same digest are
     /// the same world.
     pub fn digest(&self) -> u64 {
-        let mut h = 0xcbf29ce484222325u64;
-        let mut live: Vec<_> = self.world.live().collect();
-        live.sort();
-        let reg = self.world.registry();
-        for e in live {
-            fnv(&mut h, e.to_string().as_bytes());
-            let Ok(comps) = self.world.components_of(e) else {
-                continue;
-            };
-            let mut comps: Vec<_> = comps.to_vec();
-            comps.sort_by(|a, b| reg.schema(*a).name.cmp(&reg.schema(*b).name));
-            for c in comps {
-                let schema = reg.schema(c);
-                fnv(&mut h, schema.name.as_bytes());
-                let _ = self.world.with_row(e, c, |row| {
-                    for f in &schema.fields {
-                        if let Some(v) = self.world.decode_field(f, row) {
-                            let s = match v {
-                                Value::Float(x) => format!("{:016x}", x.to_bits()),
-                                other => format!("{other:?}"),
-                            };
-                            fnv(&mut h, s.as_bytes());
-                        }
-                    }
-                });
-            }
-        }
-        h
+        self.world.digest()
     }
 
     /// The events so far, as one digest.

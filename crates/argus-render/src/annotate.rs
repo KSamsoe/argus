@@ -118,6 +118,34 @@ fn glyph(c: char) -> &'static [&'static str; 7] {
     }
 }
 
+/// A bar `width` pixels wide with one line of text on it, for the bottom
+/// of the window (phase 2 item 2: the note prompt after F8). Scale 2 on a
+/// window wider than 900 pixels; the text is cut to fit.
+pub fn status_bar(width: u32, text: &str, rgba: [u8; 4]) -> Image {
+    let scale = if width > 900 { 2 } else { 1 };
+    let pad = 4 * scale;
+    let height = 8 * scale + 2 * pad;
+    let mut img = Image {
+        width,
+        height,
+        rgba: vec![0; (width * height * 4) as usize],
+    };
+    img.fill_rect(0, 0, width as i64, height as i64, [18, 16, 26, 255]);
+    img.fill_rect(0, 0, width as i64, scale as i64, rgba);
+    let fits = ((width.saturating_sub(2 * pad)) / (6 * scale)) as usize;
+    let shown: String = if text.chars().count() > fits {
+        let skip = text.chars().count() - fits;
+        text.chars().skip(skip).collect()
+    } else {
+        text.to_string()
+    };
+    img.text(pad as i64, (pad + scale) as i64, &shown, scale, rgba);
+    for px in img.rgba.chunks_mut(4) {
+        px[3] = 235;
+    }
+    img
+}
+
 /// Pixels a line of text takes at `scale`: 6 across a character, 8 down.
 pub fn text_size(s: &str, scale: u32) -> (u32, u32) {
     (s.chars().count() as u32 * 6 * scale, 8 * scale)

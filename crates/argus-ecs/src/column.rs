@@ -127,6 +127,15 @@ impl Column {
         row
     }
 
+    /// Every row's bytes, in row order.
+    pub fn bytes(&self) -> &[u8] {
+        if self.stride == 0 || self.len == 0 {
+            return &[];
+        }
+        // SAFETY: the first len * stride bytes are initialised rows.
+        unsafe { std::slice::from_raw_parts(self.ptr.as_ptr(), self.len * self.stride) }
+    }
+
     /// Append a row from a byte slice of exactly `stride` bytes.
     pub fn push(&mut self, bytes: &[u8]) -> usize {
         assert_eq!(bytes.len(), self.stride, "row size mismatch");

@@ -23,6 +23,7 @@
 mod system;
 
 use argus_assets::{ColorCurve, Curve, EmitterSpec, Importer};
+use argus_ecs::codec::{Reader, Writer};
 use argus_ecs::{Component, Entity, Result, StrId, World};
 use argus_sim::Scheduler;
 use std::cell::RefCell;
@@ -481,6 +482,83 @@ pub struct ParticleStore {
 }
 
 impl ParticleStore {
+    /// Write the pools for a keyframe on disk (phase 2 item 2): each
+    /// emitter's effect by name and its particles.
+    pub fn encode_pools(pools: &BTreeMap<Entity, Pool>, w: &mut Writer) {
+        w.count(pools.len());
+        for (e, p) in pools {
+            w.u64(e.to_bits());
+            w.str(&p.effect.name);
+            w.count(p.head);
+            w.count(p.x.len());
+            for a in [&p.x, &p.y, &p.vx, &p.vy, &p.life, &p.rate] {
+                for v in a {
+                    w.f32(*v);
+                }
+            }
+            for v in p.origin.iter().chain(&p.origin_prev) {
+                w.f32(*v);
+            }
+            w.u64(p.tick);
+            w.f32(p.dt);
+            w.bool(p.announced);
+        }
+    }
+
+    /// Read pools [`ParticleStore::encode_pools`] wrote, finding each
+    /// effect by name among this store's. A pool whose effect is gone is
+    /// dropped, and named in the second list.
+    pub fn decode_pools(&self, r: &mut Reader) -> Result<(BTreeMap<Entity, Pool>, Vec<String>)> {
+        let mut pools = BTreeMap::new();
+        let mut missing = Vec::new();
+        for _ in 0..r.count()? {
+            let e = Entity::from_bits(r.u64()?);
+            let name = r.str()?;
+            let head = r.count()?;
+            let n = r.count()?;
+            let mut arrays: [Vec<f32>; 6] = Default::default();
+            for a in &mut arrays {
+                for _ in 0..n {
+                    a.push(r.f32()?);
+                }
+            }
+            let mut o = [0.0f32; 4];
+            for v in &mut o {
+                *v = r.f32()?;
+            }
+            let tick = r.u64()?;
+            let dt = r.f32()?;
+            let announced = r.bool()?;
+            if head > n {
+                return Err(r.bad(format!("a pool's head {head} is past its {n} particles")));
+            }
+            let Some(effect) = self.effects.get(&name) else {
+                missing.push(name);
+                continue;
+            };
+            let [x, y, vx, vy, life, rate] = arrays;
+            pools.insert(
+                e,
+                Pool {
+                    effect: effect.clone(),
+                    head,
+                    x,
+                    y,
+                    vx,
+                    vy,
+                    life,
+                    rate,
+                    origin: [o[0], o[1]],
+                    origin_prev: [o[2], o[3]],
+                    tick,
+                    dt,
+                    announced,
+                },
+            );
+        }
+        Ok((pools, missing))
+    }
+
     /// Take every effect from an importer. An effect whose file now fails
     /// to import keeps its last good version.
     pub fn set_assets(&mut self, assets: &Importer) {

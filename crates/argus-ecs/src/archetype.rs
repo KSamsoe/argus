@@ -18,8 +18,8 @@ pub struct Archetype {
     pub id: ArchetypeId,
     /// Sorted component ids.
     pub components: Vec<ComponentId>,
-    columns: Vec<Column>,
-    entities: Vec<Entity>,
+    pub(crate) columns: Vec<Column>,
+    pub(crate) entities: Vec<Entity>,
     index: HashMap<ComponentId, usize>,
 }
 

@@ -52,6 +52,7 @@ Every statement in the design document (v0.3) that constrains the scheduler, clo
 | A snapshot includes the RNG states. | Done | `SimState::rng`; `SimSnapshot` = world snapshot + sim state; `restore` resumes the exact sequence. | `rng_determinism::sim_state_restores_mid_sequence_for_replay` |
 | Forks get their own tick counter. | Done | Each `Scheduler` owns its clocks; a fork clones `SimState`. | `prof_snapshot::full_snapshot_carries_world_and_sim_state` |
 | Run identity: `clock = "continuous@60"`. | Done | `Clock::parse` / `Display`. | `clocks::clock_specs_round_trip` |
+| (Phase 2 item 2.) The sim state in a keyframe on disk. | Done | `SimState::encode` and `decode`, `Clock::encode` and `decode`: both clocks with their accumulators, the seed, every RNG stream's state, the play state, and the systems switched off. | `argus-daemon/tests/marks.rs` (a mark reopened in another daemon lands on the same world) |
 | Floating point is f32 in the sim. | Note | Clock arithmetic is f64 (tick × timestep) so long sessions do not drift; component data stays f32. | |
 
 ## §7 Scripting

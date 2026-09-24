@@ -47,6 +47,11 @@ pub enum DeviceEvent {
     },
     /// The user asked to close the window.
     CloseRequested,
+    /// Text typed, as the keyboard layout gives it (a note after F8).
+    Text {
+        /// The characters.
+        text: String,
+    },
     /// The window gained or lost keyboard focus.
     Focus {
         /// Focused now.
@@ -137,10 +142,28 @@ impl ApplicationHandler for App {
                 });
             }
             WindowEvent::KeyboardInput { event, .. } => {
+                let pressed = event.state == ElementState::Pressed;
+                if pressed {
+                    if let Some(t) = event
+                        .text
+                        .as_ref()
+                        .filter(|t| !t.chars().any(char::is_control))
+                    {
+                        self.events.push(DeviceEvent::Text {
+                            text: t.to_string(),
+                        });
+                    }
+                }
                 if !event.repeat {
                     self.events.push(DeviceEvent::Key {
                         code: physical_key_name(&event.physical_key),
-                        pressed: event.state == ElementState::Pressed,
+                        pressed,
+                    });
+                } else if pressed && physical_key_name(&event.physical_key) == "Backspace" {
+                    // Held backspace keeps deleting in a note.
+                    self.events.push(DeviceEvent::Key {
+                        code: "Backspace".into(),
+                        pressed: true,
                     });
                 }
             }

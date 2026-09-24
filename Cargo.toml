@@ -10,3 +10,17 @@ repository = "https://github.com/KSamsoe/argus"
 
 [profile.release]
 debug = 1
+
+# Pictures are compressed in debug builds too (a mark's clip, obs.frame):
+# unoptimized, deflate is several times slower, and a mark's clip made
+# the game stall for most of a second (phase 2 item 2).
+[profile.dev.package.png]
+opt-level = 3
+[profile.dev.package.fdeflate]
+opt-level = 3
+[profile.dev.package.flate2]
+opt-level = 3
+[profile.dev.package.miniz_oxide]
+opt-level = 3
+[profile.dev.package.crc32fast]
+opt-level = 3

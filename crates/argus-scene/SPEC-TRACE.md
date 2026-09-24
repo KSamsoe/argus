@@ -23,7 +23,7 @@ Every statement in the design document (v0.3) that constrains authored content (
 | Spec | Status | Where | Test |
 |---|---|---|---|
 | Files are the source of truth, read by git, humans, and agents in that order. The index is a cache, never committed. | Done | Everything here reads and writes TOML; `Project::init` writes `.argus/` into `.gitignore`. The index is piece 6. | `scenes::*` |
-| `argus.toml`: project name, clock config, plugin list, default scene. | Done | `ProjectConfig` (`name`, `clock`, `default_scene`, `plugins`); the clock spec is validated with `argus_sim::Clock::parse`. | `scenes::a_flat_scene_spawns_authored_entities_with_ids` |
+| `argus.toml`: project name, clock config, plugin list, default scene. | Done | `ProjectConfig` (`name`, `clock`, `default_scene`, `plugins`); the clock spec is validated with `argus_sim::Clock::parse`. Phase 2 adds `[ring] every` and `budget_mb` (item 0) and `[marks] key`, the key that drops a mark, F8 unless set (item 2). | `scenes::a_flat_scene_spawns_authored_entities_with_ids`, `argus-daemon/tests/window.rs` |
 | Layout: `components/`, `systems/`, `defs/`, `prefabs/`, `scenes/<name>/scene.toml`, one authored entity per file, `rooms/<room>/room.toml`, `assets/`, `tests/`, `plugins/`, `.argus/` gitignored. | Done | `Project::init` creates it; `Project::scenes` lists `scenes/*/scene.toml`; `Scene::open` reads flat or room layouts. `components/` and `systems/` are read by `argus-luau`. | `tests/common/mod.rs` is the §4 layout; `scenes::*` |
 | One authored entity per TOML file: small, flat, diffable, never a reason to read a neighbour's file. | Done | `EntityDoc`; the spec's `door.east.toml` parses verbatim. Edits rewrite only the changed key and keep comments and spacing. | `docs_prefabs::the_spec_entity_file_parses_into_overrides_only`, `moves_edits::overrides_are_written_back_without_disturbing_the_file` |
 | Entity refs by string id, room-qualified (`@cavern-04/door.west`); def refs like `item:key.brass`, not GUIDs. | Done | `@x` resolves in the writer's room first, then scene-wide; `@room/x` is explicit. Def refs are validated against the loaded tables. | `scenes::rooms_stream_by_graph_distance_and_refs_follow`, `scenes::graph_and_reference_problems_are_issues_with_locations` |
@@ -53,6 +53,7 @@ Every statement in the design document (v0.3) that constrains authored content (
 |---|---|---|---|
 | Given the same scene, seed, input log, and code version, the world at tick N is bit-identical. | Done (scene half) | Entities spawn in sorted id order, rooms in sorted name order, children after their parent; the same files give the same handles and the same values. A scene with any open issue refuses to spawn (4611), so a run never starts from a half-loaded world. | `scenes::loading_is_deterministic`, `docs_prefabs::schema_errors_carry_both_locations` |
 | Every scene declares which clock drives its sim stage. | Done | `SceneDoc::clock`, validated; falls back to `argus.toml`. | `scenes::a_flat_scene_spawns_authored_entities_with_ids` |
+| (Phase 2 item 2.) The rooms loaded, in a keyframe on disk. | Done | `StreamState::encode` and `decode`. | `argus-daemon/tests/marks.rs` |
 
 ## §17 Performance
 

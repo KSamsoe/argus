@@ -26,6 +26,7 @@ pub mod history;
 pub mod json;
 pub mod launch;
 pub mod query;
+pub mod replay;
 pub mod ring;
 pub mod rpc;
 pub mod server;
@@ -55,6 +56,10 @@ pub mod codes {
     pub const BAD_LOCK: u32 = 4708;
     /// The scenario runner could not run (a broken harness or tests directory), as opposed to a failing test.
     pub const TEST_RUNNER: u32 = 4709;
+    /// No mark with that id in `.argus/marks/` (phase 2 item 2).
+    pub const NO_MARK: u32 = 4710;
+    /// A mark's files are missing or unreadable, or it cannot be reproduced here.
+    pub const BAD_MARK: u32 = 4711;
     /// The renderer's: this machine has no graphics adapter at all, not
     /// even a software one (argus-render's 5001, here for clients that
     /// build without the renderer).

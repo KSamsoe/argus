@@ -127,6 +127,8 @@ pub struct Gpu {
     target: Target,
     width: u32,
     height: u32,
+    /// A picture over the frame's bottom edge (a mark's note prompt).
+    overlay: Option<crate::overlay::Overlay>,
 }
 
 fn err(e: impl std::fmt::Display) -> ArgusError {
@@ -197,6 +199,13 @@ impl Gpu {
         let instance = Self::instance(software);
         let (adapter, device, queue) =
             pollster::block_on(Self::adapter_and_device(&instance, None, software))?;
+        let target = Self::offscreen_target(&device, width, height);
+        Self::build(adapter, device, queue, FORMAT, target, width, height)
+    }
+
+    /// The texture an offscreen frame is drawn into and the buffer it is
+    /// read back through.
+    fn offscreen_target(device: &wgpu::Device, width: u32, height: u32) -> Target {
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("offscreen"),
             size: wgpu::Extent3d {
@@ -219,13 +228,12 @@ impl Gpu {
             usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
             mapped_at_creation: false,
         });
-        let target = Target::Offscreen {
+        Target::Offscreen {
             texture,
             view,
             readback,
             padded_row,
-        };
-        Self::build(adapter, device, queue, FORMAT, target, width, height)
+        }
     }
 
     /// A renderer presenting into a canvas (phase 2 item 1). The browser
@@ -400,6 +408,7 @@ impl Gpu {
             target,
             width,
             height,
+            overlay: None,
         };
         // Built-in atlases for described-shape placeholders (section 14).
         gpu.add_atlas_rgba(
@@ -691,15 +700,23 @@ impl Gpu {
 
     /// Resize a window target (no-op offscreen).
     pub fn resize(&mut self, width: u32, height: u32) {
-        if let Target::Surface { surface, config } = &mut self.target {
-            if width > 0 && height > 0 {
+        if width == 0 || height == 0 || (width, height) == (self.width, self.height) {
+            return;
+        }
+        match &mut self.target {
+            Target::Surface { surface, config } => {
                 config.width = width;
                 config.height = height;
                 surface.configure(&self.device, config);
-                self.width = width;
-                self.height = height;
+            }
+            // A new texture on the same device: far cheaper than a new
+            // renderer (a mark draws its frame and its clip at two sizes).
+            Target::Offscreen { .. } => {
+                self.target = Self::offscreen_target(&self.device, width, height);
             }
         }
+        self.width = width;
+        self.height = height;
     }
 
     /// Register an atlas from RGBA8 pixels with explicit frame rects,
@@ -855,6 +872,9 @@ impl Gpu {
                 (Some(f), v)
             }
         };
+        if let Some(o) = &self.overlay {
+            o.place(&self.queue, self.width, self.height);
+        }
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -924,6 +944,9 @@ impl Gpu {
             }
             stats.atlases = bound.len();
             stats.materials = drawn_with.len();
+            if let Some(o) = &self.overlay {
+                o.draw(&mut pass);
+            }
         }
         if let Target::Offscreen {
             texture,
@@ -959,6 +982,18 @@ impl Gpu {
             f.present();
         }
         Ok(stats)
+    }
+
+    /// Show a picture over the bottom edge of every frame, one texel a
+    /// pixel, or none (phase 2 item 2: the note typed after F8).
+    pub fn set_overlay(&mut self, img: Option<&crate::Image>) {
+        if img.is_none() && self.overlay.is_none() {
+            return;
+        }
+        let o = self
+            .overlay
+            .get_or_insert_with(|| crate::overlay::Overlay::new(&self.device, self.format));
+        o.set(&self.device, &self.queue, img);
     }
 
     /// The last offscreen frame as tightly packed RGBA8 rows, top row first.

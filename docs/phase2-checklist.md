@@ -43,13 +43,22 @@ Decisions taken while planning it, confirmed in the build:
 
 ## 2. Marks and clips
 
-**Status: not started.** Constraints:
+**Status: done** (2026-09-24) in the daemon (`marks.rs`: `mark.drop`, `mark.list`, `mark.get`, `mark.open`, `mark.note`, `mark.close`, `mark.import`, the F8 prompt; `replay.rs`: replay files), `argus-ecs` (a world to bytes and back, `World::digest`), `argus-sim`, `argus-input`, `argus-particles`, and `argus-scene` (their parts of a keyframe to bytes and back), and `argus-render` (the overlay bar, typed text from the window, animated PNGs, contact sheets, offscreen renderers that change size). F8 in the window drops a mark at that frame, pauses, and asks for a note on the window's bottom line; Enter keeps it, Escape skips it, and closing the window keeps what was typed. A mark is a directory in `.argus/marks/`: the note, the run's identity, the world's digest, the last five seconds of input and events, the frame, a two-second clip (an animated PNG and a contact sheet of eight of its pictures), the last two seconds of sound, and a replay file that reproduces it in a daemon that did not take it. `mark.open` plays the five seconds before the mark into the event log and the traces and compares the world with the saved one field by field; after a code change the difference is the change's effect at that frame. A mark from the web build goes into the same queue with `mark.import`, and a test shows the daemon reaching the browser's world exactly. A mark on Hollow takes 0.37 s in a debug build with the window open (the clip is 0.32 s of it), and its files are 13 KB of replay, 75 KB of frame, 1.7 MB of clip, and 384 KB of sound. Found while building it: the offscreen renderer was rebuilt whenever a size changed (now it changes the size of its texture), the PNG crates are several times slower unoptimized (they are optimized in debug builds now), and winit's one event loop a process means the window tests are one test. Traces: rows in the daemon's, `argus-ecs`'s, `argus-sim`'s, `argus-input`'s, `argus-particles`'s, `argus-scene`'s, and `argus-render`'s. Constraints:
 
 - §10: while playing, the human presses one key (F8 by default) to drop a mark. A mark captures the frame, a snapshot, the last five seconds of input, a two-second clip rendered from the ring, and an optional one-line note typed afterward ("dash feels late").
 - §10: marks land in `.argus/marks/` and surface to the agent as a queue; each is a fully reproducible bug report. The agent runs `sim.seek` to the mark's frame, traces the relevant entities, and proposes a change without asking "what were you doing".
 - §16: `marks` is one of the MCP tools.
 - The clip is rendered offscreen from replay (seek to two seconds before, step, capture), so marks need no GPU frame ring and work headless.
 - The note is typed in the window before the UI tree exists (phase 3): one line drawn with the annotation font from phase 1 item 12.
+
+Decisions taken while building it:
+
+- **A mark is files, and it outlives the daemon.** Closing the game's window ends the daemon, so a mark kept in memory would be gone by the time the agent looks. The replay file holds a keyframe (the world, the clocks and random streams, the input state, the particle pools, the rooms), the input commands after it, and the world at the mark. The same file serves item 3 (a failing test's replay) and item 7 (a release build's report key).
+- **"A snapshot" is two.** The keyframe the five seconds before the mark start from, so opening the mark rebuilds those seconds for `obs.events` and `obs.trace`; and the world at the mark, so opening it after a fix says field by field what the fix changed there.
+- **A saved world reads into newer code.** Components are matched by name; a component whose fields changed is copied field by field, new fields taking their defaults; one that is gone is dropped and named. Strings are translated into the reading world's table. The alternative, refusing a mark once any schema changes, would make marks useless exactly when the agent is fixing what they show.
+- **The clip is for the human; the agent also gets a contact sheet.** An agent reading an animated PNG sees its first picture only, so eight of the clip's pictures, labelled with their frames, go into one picture beside it.
+- **Notes are typed, not spoken.** §10 says "spoken or typed"; speech needs the microphone and speech to text, which is not this item.
+- **The key is F8 unless the project says otherwise** (`[marks] key` in `argus.toml`, by the name the window sends: `Backquote`, `KeyM`). F9 stays free for item 4's A/B toggle.
 
 ## 3. Replay export in the test runner
 

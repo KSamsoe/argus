@@ -16,6 +16,10 @@ pub struct Snapshot {
 }
 
 impl Snapshot {
+    /// A snapshot that is this world (read back from disk, say).
+    pub fn of(world: World) -> Snapshot {
+        Snapshot { world }
+    }
     /// Frame counter at capture.
     pub fn frame(&self) -> u64 {
         self.world.frame()

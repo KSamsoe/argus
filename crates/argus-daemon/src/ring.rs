@@ -50,6 +50,32 @@ pub struct Keyframe {
     seq: u64,
 }
 
+impl Keyframe {
+    /// A keyframe read back from a replay file (phase 2 item 2): a
+    /// barrier, since nothing before it is known.
+    pub fn read_back(
+        tick: u64,
+        time: f64,
+        sim: SimSnapshot,
+        input: Option<InputSnapshot>,
+        pools: BTreeMap<Entity, Pool>,
+        rooms: Option<StreamState>,
+    ) -> Keyframe {
+        let pool_bytes: usize = pools.values().map(|p| p.len() * 24).sum();
+        Keyframe {
+            tick,
+            time,
+            bytes: sim.world.bytes() + pool_bytes + 1024,
+            sim,
+            input,
+            pools,
+            rooms,
+            barrier: true,
+            seq: 0,
+        }
+    }
+}
+
 /// What the tick-end hook captures from, shared with the daemon.
 #[derive(Clone)]
 pub struct Sources {
@@ -151,6 +177,28 @@ impl Ring {
     /// The keyframe a seek to `tick` starts from: the latest at or before it.
     pub fn at_or_before(&self, tick: u64) -> Option<&Keyframe> {
         self.keys.iter().rev().find(|k| k.tick <= tick)
+    }
+
+    /// Where a replay of the `lead` ticks up to `tick` starts: the latest
+    /// keyframe at or before `tick - lead`, or, when a change between ticks
+    /// came after that, the barrier it made, since a replay never crosses
+    /// one (a mark's lead-in, phase 2 item 2).
+    pub fn lead_in(&self, tick: u64, lead: u64) -> Option<&Keyframe> {
+        let want = tick.saturating_sub(lead);
+        self.keys
+            .iter()
+            .rev()
+            .find(|k| k.barrier && k.tick <= tick && k.tick > want)
+            .or_else(|| self.at_or_before(want))
+    }
+
+    /// Start over from one keyframe (a replay file's): the run before it
+    /// is another run.
+    pub fn restart(&mut self, k: Keyframe) {
+        self.keys.clear();
+        self.end = k.tick;
+        self.floor = k.tick;
+        self.push(k);
     }
 
     /// The run branched at `tick`: what came after it on the old branch

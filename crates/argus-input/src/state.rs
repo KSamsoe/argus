@@ -14,6 +14,7 @@
 
 use crate::codes;
 use crate::map::{ActionKind, ActionMap};
+use argus_ecs::codec::{Reader, Writer};
 use argus_ecs::{ArgusError, Result, Value, Vec2};
 use serde_json::{json, Value as Json};
 use std::collections::BTreeMap;
@@ -722,6 +723,17 @@ impl InputState {
         self.cursor = s.cursor.min(self.journal.len());
     }
 
+    /// Replace the journal with one read from a replay file and go back to
+    /// the snapshot at its start (its journal position counted from the
+    /// file's first command): stepping on replays the file's run.
+    pub fn load_journal(&mut self, entries: Vec<JournalEntry>, s: &InputSnapshot) {
+        self.journal = entries;
+        self.cursor = 0;
+        self.restore(s);
+        self.branched = None;
+        self.live = false;
+    }
+
     /// Commands recorded after the current point, waiting to be issued again.
     pub fn future(&self) -> &[JournalEntry] {
         &self.journal[self.cursor..]
@@ -839,5 +851,254 @@ impl InputState {
     /// Whether injects use turn semantics.
     pub fn is_discrete(&self) -> bool {
         self.discrete
+    }
+}
+
+// ----- on disk (phase 2 item 2: a keyframe in a replay file) ---------------
+
+fn put_value(w: &mut Writer, v: &ActionValue) {
+    match *v {
+        ActionValue::Button(b) => {
+            w.u8(0);
+            w.bool(b);
+        }
+        ActionValue::Axis(x) => {
+            w.u8(1);
+            w.f32(x);
+        }
+        ActionValue::Axis2(x, y) => {
+            w.u8(2);
+            w.f32(x);
+            w.f32(y);
+        }
+    }
+}
+
+fn get_value(r: &mut Reader) -> Result<ActionValue> {
+    Ok(match r.u8()? {
+        0 => ActionValue::Button(r.bool()?),
+        1 => ActionValue::Axis(r.f32()?),
+        2 => ActionValue::Axis2(r.f32()?, r.f32()?),
+        k => return Err(r.bad(format!("action value kind {k}"))),
+    })
+}
+
+fn put_key(w: &mut Writer, (slot, action): &(u8, String)) {
+    w.u8(*slot);
+    w.str(action);
+}
+
+fn get_key(r: &mut Reader) -> Result<(u8, String)> {
+    let slot = r.u8()?;
+    Ok((slot, r.str()?))
+}
+
+fn put_json(w: &mut Writer, v: &Json) {
+    w.str(&v.to_string());
+}
+
+fn get_json(r: &mut Reader) -> Result<Json> {
+    let s = r.str()?;
+    serde_json::from_str(&s).map_err(|e| r.bad(format!("a JSON value: {e}")))
+}
+
+impl InputSnapshot {
+    /// How far into the journal it was.
+    pub fn cursor(&self) -> usize {
+        self.cursor
+    }
+
+    /// Write it for a keyframe on disk, its journal position counted from
+    /// `base` (the first command the file keeps).
+    pub fn encode(&self, w: &mut Writer, base: usize) {
+        w.count(self.scheduled.len());
+        for (tick, changes) in &self.scheduled {
+            w.u64(*tick);
+            w.count(changes.len());
+            for (slot, action, v) in changes {
+                w.u8(*slot);
+                w.str(action);
+                put_value(w, v);
+            }
+        }
+        w.count(self.current.len());
+        for (k, v) in &self.current {
+            put_key(w, k);
+            put_value(w, v);
+        }
+        for list in [&self.pressed, &self.released] {
+            w.count(list.len());
+            for k in list {
+                put_key(w, k);
+            }
+        }
+        w.opt(self.last_tick, |w, t| w.u64(t));
+        w.count(self.device_last.len());
+        for (k, v) in &self.device_last {
+            put_key(w, k);
+            put_value(w, v);
+        }
+        w.count(self.releases.len());
+        for (k, spans) in &self.releases {
+            put_key(w, k);
+            w.count(spans.len());
+            for (a, b) in spans {
+                w.u64(*a);
+                w.u64(*b);
+            }
+        }
+        w.count(self.cursor.saturating_sub(base));
+    }
+
+    /// Read what [`InputSnapshot::encode`] wrote.
+    pub fn decode(r: &mut Reader) -> Result<InputSnapshot> {
+        let mut scheduled = BTreeMap::new();
+        for _ in 0..r.count()? {
+            let tick = r.u64()?;
+            let mut changes = Vec::new();
+            for _ in 0..r.count()? {
+                let slot = r.u8()?;
+                let action = r.str()?;
+                changes.push((slot, action, get_value(r)?));
+            }
+            scheduled.insert(tick, changes);
+        }
+        let mut current = BTreeMap::new();
+        for _ in 0..r.count()? {
+            let k = get_key(r)?;
+            current.insert(k, get_value(r)?);
+        }
+        let mut lists = [Vec::new(), Vec::new()];
+        for list in &mut lists {
+            for _ in 0..r.count()? {
+                list.push(get_key(r)?);
+            }
+        }
+        let [pressed, released] = lists;
+        let last_tick = r.opt(|r| r.u64())?;
+        let mut device_last = BTreeMap::new();
+        for _ in 0..r.count()? {
+            let k = get_key(r)?;
+            device_last.insert(k, get_value(r)?);
+        }
+        let mut releases = BTreeMap::new();
+        for _ in 0..r.count()? {
+            let k = get_key(r)?;
+            let mut spans = Vec::new();
+            for _ in 0..r.count()? {
+                spans.push((r.u64()?, r.u64()?));
+            }
+            releases.insert(k, spans);
+        }
+        Ok(InputSnapshot {
+            scheduled,
+            current,
+            pressed,
+            released,
+            last_tick,
+            device_last,
+            releases,
+            cursor: r.u32()? as usize,
+        })
+    }
+}
+
+impl JournalEntry {
+    /// Write it for a replay file.
+    pub fn encode(&self, w: &mut Writer) {
+        w.u64(self.now);
+        match &self.command {
+            Command::Inject {
+                slot,
+                action,
+                value,
+                frames,
+                hold,
+            } => {
+                w.u8(0);
+                w.u8(*slot);
+                w.str(action);
+                w.opt(value.as_ref(), put_json);
+                w.opt(*frames, |w, f| w.u64(f));
+                w.bool(*hold);
+            }
+            Command::Script { steps } => {
+                w.u8(1);
+                w.count(steps.len());
+                for s in steps {
+                    put_json(w, s);
+                }
+            }
+            Command::Devices { changes } => {
+                w.u8(2);
+                w.count(changes.len());
+                for (slot, action, v) in changes {
+                    w.u8(*slot);
+                    w.str(action);
+                    put_value(w, v);
+                }
+            }
+            Command::Replay { entries } => {
+                w.u8(3);
+                w.count(entries.len());
+                for e in entries {
+                    w.u64(e.tick);
+                    w.u8(e.slot);
+                    w.str(&e.action);
+                    put_value(w, &e.value);
+                }
+            }
+        }
+    }
+
+    /// Read what [`JournalEntry::encode`] wrote.
+    pub fn decode(r: &mut Reader) -> Result<JournalEntry> {
+        let now = r.u64()?;
+        let command = match r.u8()? {
+            0 => {
+                let slot = r.u8()?;
+                let action = r.str()?;
+                Command::Inject {
+                    slot,
+                    action,
+                    value: r.opt(get_json)?,
+                    frames: r.opt(|r| r.u64())?,
+                    hold: r.bool()?,
+                }
+            }
+            1 => {
+                let mut steps = Vec::new();
+                for _ in 0..r.count()? {
+                    steps.push(get_json(r)?);
+                }
+                Command::Script { steps }
+            }
+            2 => {
+                let mut changes = Vec::new();
+                for _ in 0..r.count()? {
+                    let slot = r.u8()?;
+                    let action = r.str()?;
+                    changes.push((slot, action, get_value(r)?));
+                }
+                Command::Devices { changes }
+            }
+            3 => {
+                let mut entries = Vec::new();
+                for _ in 0..r.count()? {
+                    let tick = r.u64()?;
+                    let slot = r.u8()?;
+                    let action = r.str()?;
+                    entries.push(LogEntry {
+                        tick,
+                        slot,
+                        action,
+                        value: get_value(r)?,
+                    });
+                }
+                Command::Replay { entries }
+            }
+            k => return Err(r.bad(format!("input command kind {k}"))),
+        };
+        Ok(JournalEntry { now, command })
     }
 }

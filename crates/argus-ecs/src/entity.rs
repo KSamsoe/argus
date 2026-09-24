@@ -104,9 +104,9 @@ pub(crate) struct Slot {
 /// Slot allocator with a free list and generation counters.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Entities {
-    slots: Vec<Slot>,
-    free: Vec<u32>,
-    alive: usize,
+    pub(crate) slots: Vec<Slot>,
+    pub(crate) free: Vec<u32>,
+    pub(crate) alive: usize,
 }
 
 impl Entities {

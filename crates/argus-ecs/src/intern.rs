@@ -64,6 +64,11 @@ impl Interner {
         id
     }
 
+    /// Every string, in id order.
+    pub fn all(&self) -> Vec<String> {
+        self.inner.borrow().strings.clone()
+    }
+
     /// Resolve an id. Unknown ids resolve to the empty string rather than
     /// panicking, because a corrupt id must not take the daemon down (§2).
     pub fn get(&self, id: StrId) -> std::cell::Ref<'_, str> {

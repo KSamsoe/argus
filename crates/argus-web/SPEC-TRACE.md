@@ -15,13 +15,13 @@ Every statement in the design document (v0.3) that constrains the web spike (pha
 
 | Spec | Status | Where | Test |
 |---|---|---|---|
-| Cross-platform bit-determinism is a non-goal; the spike measures whether it holds. | Done (measured) | `Player::digest` hashes every field of every live entity with floats by their bits, and the event digest hashes every event's frame, name, and fields. Hollow's run scenario gives the same digests natively, in Chrome, and in wasm under Node, at every checkpoint, from a release and a size-tuned build. | `tests/player.rs::hollow_runs_without_the_daemon_and_twice_the_same` (`--nocapture` prints the digests), `tools/web/check.mjs` |
+| Cross-platform bit-determinism is a non-goal; the spike measures whether it holds. | Done (measured) | `Player::digest` is `World::digest` (moved into `argus-ecs` by item 2, so the daemon's marks compare the same one): every field of every live entity with floats by their bits. The event digest hashes every event's frame, name, and fields. Hollow's run scenario gives the same digests natively, in Chrome, and in wasm under Node, at every checkpoint, from a release and a size-tuned build. | `tests/player.rs::hollow_runs_without_the_daemon_and_twice_the_same` (`--nocapture` prints the digests), `tools/web/check.mjs` |
 
 ## §10 Marks from the browser
 
 | Spec | Status | Where | Test |
 |---|---|---|---|
-| A mark is a fully reproducible bug report. | Partial (the spike) | `WebPlayer::mark(note)`: scene, seed, code revision (`ARGUS_CODE` at build time), tick, the input log, the world and event digests, and the note. `Player::replay_log` schedules the log from load, and the `mark_replay` example replays a mark natively and compares digests. Marks as the daemon keeps them are item 2; posting them from the browser is item 7. | `tools/web/check.mjs` takes a mark after real key presses and replays it natively (`same: true`) |
+| A mark is a fully reproducible bug report. | Partial (the spike) | `WebPlayer::mark(note)`: scene, seed, code revision (`ARGUS_CODE` at build time), tick, the input log, the world and event digests, and the note. `Player::replay_log` schedules the log from load, and the `mark_replay` example replays a mark natively and compares digests. The daemon takes one into its queue with `mark.import` (item 2) and opens it by replaying from the load; posting marks from the browser is item 7. | `tools/web/check.mjs` takes a mark after real key presses and replays it natively (`same: true`); `argus-daemon/tests/marks.rs::a_web_mark_reaches_the_same_world_in_the_daemon` |
 
 ## Known limitations, stated so they are decisions
 

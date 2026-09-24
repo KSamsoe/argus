@@ -37,6 +37,9 @@ pub struct ProjectConfig {
     /// `[ring] budget_mb`: memory the keyframes may use before the ring
     /// thins further than its age schedule. `None`: 1024.
     pub ring_budget_mb: Option<u64>,
+    /// `[marks] key`: the key that drops a mark while playing, by the name
+    /// the window sends (`F8`, `Backquote`, `KeyM`). `None`: F8 (§10).
+    pub mark_key: Option<String>,
 }
 
 impl ProjectConfig {
@@ -98,6 +101,23 @@ impl ProjectConfig {
         };
         let ring_every = positive("every")?;
         let ring_budget_mb = positive("budget_mb")?;
+        let mark_key = match t
+            .get("marks")
+            .and_then(|i| i.as_table_like())
+            .and_then(|m| m.get("key"))
+        {
+            None => None,
+            Some(i) => match i.as_str().map(str::trim) {
+                Some(k) if !k.is_empty() && !k.contains(char::is_whitespace) => Some(k.to_string()),
+                _ => {
+                    return Err(ArgusError::new(
+                        codes::BAD_SCENE,
+                        "argus.toml [marks] key must be a key's name, like \"F8\" or \"Backquote\"",
+                    )
+                    .at(Some(at("marks"))))
+                }
+            },
+        };
         Ok(ProjectConfig {
             name,
             clock,
@@ -105,6 +125,7 @@ impl ProjectConfig {
             plugins,
             ring_every,
             ring_budget_mb,
+            mark_key,
         })
     }
 
@@ -195,6 +216,7 @@ impl Project {
                 plugins: Vec::new(),
                 ring_every: None,
                 ring_budget_mb: None,
+                mark_key: None,
             };
             argus_os::fs::write(&cfg, c.to_toml()).map_err(|e| {
                 ArgusError::new(codes::MISSING_FILE, format!("cannot write argus.toml: {e}"))

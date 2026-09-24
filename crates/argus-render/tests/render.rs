@@ -476,3 +476,47 @@ fn particle_pools_draw_as_one_run_each_between_ticks() {
     assert_eq!(px(-1.8, 0.0)[..3], [255, 0, 0]);
     assert_ne!(px(-0.7, 0.0)[..3], [255, 0, 0]);
 }
+
+/// Phase 2 item 2: the bar the window shows while a mark's note is typed,
+/// drawn over the frame's bottom edge pixel for pixel, and gone when set
+/// to none.
+#[test]
+fn an_overlay_bar_draws_over_the_bottom_of_the_frame() {
+    let Some(mut r) = renderer(480, 270) else {
+        return;
+    };
+    let mut w = world_with_camera(10.0);
+    shape(&mut w, 0.0, 0.0, "rect", 40.0, "#20A040", 0.0);
+    let bar = argus_render::status_bar(
+        480,
+        "MARK 3 AT 0:41.2  NOTE: dash feels late_",
+        [255, 214, 90, 255],
+    );
+    assert_eq!(bar.height, 16);
+    r.gpu_mut().set_overlay(Some(&bar));
+    r.render(&w, 0, 1.0).unwrap();
+    let img = r.capture().unwrap();
+    if let Ok(dir) = std::env::var("ARGUS_SHOTS") {
+        img.save_png(&std::path::Path::new(&dir).join("overlay.png"))
+            .unwrap();
+    }
+    // Above the bar, the green the rect fills the view with.
+    let above = img.pixel(240, 270 - 17);
+    assert!(above[1] > 120 && above[0] < 80, "{above:?}");
+    // The bar: dark (a little of the green shows through), the text on it.
+    let dark = img.pixel(470, 270 - 3);
+    assert!(dark[0] < 40 && dark[1] < 80, "{dark:?}");
+    let yellow = (254..270).any(|y| {
+        (0..300).any(|x| {
+            let p = img.pixel(x, y);
+            p[0] > 200 && p[1] > 170 && p[2] < 140
+        })
+    });
+    assert!(yellow, "the text is on the bar");
+
+    r.gpu_mut().set_overlay(None);
+    r.render(&w, 0, 1.0).unwrap();
+    let img = r.capture().unwrap();
+    let p = img.pixel(470, 270 - 3);
+    assert!(p[1] > 120, "gone: {p:?}");
+}

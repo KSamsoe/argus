@@ -26,12 +26,14 @@
 extern crate self as argus_ecs;
 
 pub mod archetype;
+pub mod codec;
 pub mod column;
 pub mod entity;
 pub mod error;
 pub mod event;
 pub mod hierarchy;
 pub mod intern;
+mod persist;
 pub mod query;
 pub mod schema;
 pub mod snapshot;
@@ -46,6 +48,7 @@ pub use error::{codes, ArgusError, Result};
 pub use event::{Event, EventRecord};
 pub use hierarchy::{propagate, GlobalTransform, Parent, Transform};
 pub use intern::{Interner, StrId};
+pub use persist::StateReport;
 pub use query::{Access, ArchetypeView, DynColumn, Fetch, Query};
 pub use schema::{
     Component, ComponentId, ComponentKind, ComponentSchema, DefRef, FieldSchema, FieldValue,

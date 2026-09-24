@@ -17,22 +17,22 @@ use std::collections::HashMap;
 /// The ECS world.
 #[derive(Clone, Debug)]
 pub struct World {
-    registry: Registry,
-    entities: Entities,
-    archetypes: Vec<Archetype>,
-    archetype_map: HashMap<Vec<ComponentId>, ArchetypeId>,
+    pub(crate) registry: Registry,
+    pub(crate) entities: Entities,
+    pub(crate) archetypes: Vec<Archetype>,
+    pub(crate) archetype_map: HashMap<Vec<ComponentId>, ArchetypeId>,
     /// Authored string id -> entity.
-    names: HashMap<String, Entity>,
+    pub(crate) names: HashMap<String, Entity>,
     /// Entity index -> authored string id.
-    ids: HashMap<u32, String>,
+    pub(crate) ids: HashMap<u32, String>,
     /// A room-scoped id's last part (`player` of `a/player`) -> the entities
     /// it could mean, so `@player` finds `@a/player` when there is only one.
-    short: HashMap<String, Vec<Entity>>,
-    strings: Interner,
-    events: Vec<EventRecord>,
-    frame: u64,
+    pub(crate) short: HashMap<String, Vec<Entity>>,
+    pub(crate) strings: Interner,
+    pub(crate) events: Vec<EventRecord>,
+    pub(crate) frame: u64,
     /// The system running now, which every event it emits is tagged with.
-    emitter: Option<std::sync::Arc<str>>,
+    pub(crate) emitter: Option<std::sync::Arc<str>>,
     /// The shared broadphase over `Transform.pos` (or `GlobalTransform`
     /// when present), rebuilt by [`World::rebuild_broadphase`].
     broadphase: SpatialHash,
@@ -411,7 +411,7 @@ impl World {
 
     // ----- components -------------------------------------------------------
 
-    fn archetype_for(&mut self, comps: Vec<ComponentId>) -> ArchetypeId {
+    pub(crate) fn archetype_for(&mut self, comps: Vec<ComponentId>) -> ArchetypeId {
         if let Some(&id) = self.archetype_map.get(&comps) {
             return id;
         }

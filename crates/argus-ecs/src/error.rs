@@ -17,6 +17,8 @@ pub mod codes {
     pub const BAD_PATH: u32 = 4004;
     /// Schema is invalid (duplicate field, duplicate component name, bad layout).
     pub const BAD_SCHEMA: u32 = 4005;
+    /// Saved state (a replay file's keyframe) could not be read back.
+    pub const BAD_STATE: u32 = 4010;
     /// Value outside the field's declared range.
     pub const OUT_OF_RANGE: u32 = 4102;
     /// Entity is not alive (never spawned, or despawned).

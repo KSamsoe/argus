@@ -8,6 +8,7 @@
 //!
 //! Wall-clock time never enters here: `time()` is tick count times timestep.
 
+use argus_ecs::codec::{Reader, Writer};
 use argus_ecs::{ArgusError, Result};
 use std::fmt;
 
@@ -18,6 +19,36 @@ pub enum ClockKind {
     Continuous,
     /// Ticks only on command.
     Discrete,
+}
+
+impl Clock {
+    /// Write the clock for a keyframe on disk.
+    pub fn encode(&self, w: &mut Writer) {
+        w.u8(match self.kind {
+            ClockKind::Continuous => 0,
+            ClockKind::Discrete => 1,
+        });
+        w.f64(self.timestep);
+        w.u64(self.tick);
+        w.f64(self.speed);
+        w.f64(self.accumulator);
+    }
+
+    /// Read a clock [`Clock::encode`] wrote.
+    pub fn decode(r: &mut Reader) -> Result<Clock> {
+        let kind = match r.u8()? {
+            0 => ClockKind::Continuous,
+            1 => ClockKind::Discrete,
+            k => return Err(r.bad(format!("clock kind {k}"))),
+        };
+        Ok(Clock {
+            kind,
+            timestep: r.f64()?,
+            tick: r.u64()?,
+            speed: r.f64()?,
+            accumulator: r.f64()?,
+        })
+    }
 }
 
 impl fmt::Display for ClockKind {

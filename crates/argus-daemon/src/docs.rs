@@ -390,6 +390,48 @@ pub const METHODS: &[MethodDoc] = &[
         returns: "{keyframes, bytes, budget, every, oldest, newest, barriers, end, floor, tick}",
     },
     MethodDoc {
+        name: "mark.drop",
+        doc: "Mark this moment as a bug report (section 10): what F8 does in the window. Saves the frame as a picture, a two-second clip replayed from the ring, the last two seconds of sound, the last five seconds of input and events, the world's digest, and a replay file (a keyframe and the input since) that reproduces it after this daemon is gone. On a discrete clock the seconds are turns: ten of lead-in, a clip of eight. Marks land in .argus/marks/<id>/ and wait in the queue (mark.list).",
+        params: "note: string (optional; mark.note adds one later); author: string (default \"human\"); clip: boolean (default true)",
+        returns: "{id, status, source, frame, time, scene, note, author, dropped_at, dir, picture, clip, sound: absolute paths, ms}",
+    },
+    MethodDoc {
+        name: "mark.list",
+        doc: "The marks waiting for the agent, oldest first: the queue. A mark leaves it when closed.",
+        params: "all: boolean (default false: open marks only)",
+        returns: "{open, closed, rows: [mark.drop's summary]}",
+    },
+    MethodDoc {
+        name: "mark.get",
+        doc: "Everything a mark holds: its frame, note, run identity (scene, seed, code, clock), digest, the input of the five seconds before (changes, and what was already held), the events of those seconds (counts by name and the latest 40), and its files.",
+        params: "id: integer",
+        returns: "mark.json plus paths: the summary with absolute paths",
+    },
+    MethodDoc {
+        name: "mark.open",
+        doc: "Reproduce a mark: load its scene with its seed, restore its keyframe, and play the five seconds before it, so obs.events and obs.trace hold them, stopping at the mark's frame. Then compare the world with the one the mark saved, field by field: after a fix, the difference is the fix's effect at that frame. A web mark (mark.import) replays its input from the load instead. The sim is paused at the mark; sim.seek moves within the lead-in. A mark with no clip gets one.",
+        params: "id: integer",
+        returns: "{id, frame, from, replayed, against_mark: {same, appeared, vanished, changed, first: [{entity, fields: [[path, then, now]]}]} (null for a web mark), digest: {mark, now, same}, code: {mark, now}, remapped, dropped: components changed or gone since, missing_effects, mark, note, ms}",
+    },
+    MethodDoc {
+        name: "mark.note",
+        doc: "Set a mark's note (\"dash feels late\"), as the window's prompt after F8 does.",
+        params: "id: integer; note: string",
+        returns: "mark.drop's summary",
+    },
+    MethodDoc {
+        name: "mark.close",
+        doc: "Done with a mark: it leaves the queue. The note says what was done.",
+        params: "id: integer; note: string (optional: \"fixed: dash buffer 6 frames\"); author: string (default \"agent\")",
+        returns: "mark.drop's summary",
+    },
+    MethodDoc {
+        name: "mark.import",
+        doc: "Put a mark from the web build (the JSON WebPlayer.mark gives: scene, seed, code, tick, digest, input log, note) into the queue. It has no keyframe: mark.open replays its input from the load, and the digests say whether this build reached the same world.",
+        params: "path: string (the mark's JSON; relative to the project)",
+        returns: "mark.drop's summary",
+    },
+    MethodDoc {
         name: "sim.status",
         doc: "Clock state.",
         params: "",

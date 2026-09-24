@@ -23,6 +23,9 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
+#[path = "marks.rs"]
+mod marks;
+
 /// Identifies a client connection for subscriptions.
 pub type ConnId = u64;
 
@@ -64,6 +67,8 @@ struct Session {
     sources: crate::ring::Sources,
     /// The tick `sim.play` started from, which `sim.stop` goes back to.
     play_from: Option<u64>,
+    /// The key that drops a mark (`[marks] key`, F8 by default).
+    mark_key: String,
 }
 
 #[derive(Default)]
@@ -152,6 +157,10 @@ pub struct Daemon {
     audio_error: Option<Json>,
     /// Turns taken by device commands on a discrete scene.
     device_turns: u64,
+    /// The note being typed in the window after F8 (phase 2 item 2).
+    mark_prompt: Option<marks::Prompt>,
+    /// A line the window shows for a moment, and until when.
+    toast: Option<(String, std::time::Instant)>,
     /// Notifications waiting for the transport, per connection.
     pub outbox: Vec<(ConnId, Json)>,
 }
@@ -195,6 +204,8 @@ impl Daemon {
             audio: None,
             audio_error: None,
             device_turns: 0,
+            mark_prompt: None,
+            toast: None,
             outbox: Vec::new(),
         }
     }
@@ -472,6 +483,13 @@ impl Daemon {
             "sim.seek" => self.sim_seek(params),
             "sim.fork" => self.sim_fork(params),
             "sim.snapshot" => self.sim_snapshot(params),
+            "mark.drop" => self.mark_drop(params),
+            "mark.list" => self.mark_list(params),
+            "mark.get" => self.mark_get(params),
+            "mark.note" => self.mark_note(params),
+            "mark.close" => self.mark_close(params),
+            "mark.open" => self.mark_open(params),
+            "mark.import" => self.mark_import(params),
             "obs.diff" => self.obs_diff(params),
             "obs.trace" => self.obs_trace(params),
             "obs.why" => self.obs_why(params),
@@ -617,7 +635,10 @@ impl Daemon {
         #[cfg(feature = "render")]
         {
             let evs = self.render.poll();
+            let typed = std::mem::take(&mut self.render.typed);
             if self.render.closed_now {
+                // A note half typed when the window closed is kept.
+                self.finish_prompt(true);
                 self.render.closed_now = false;
                 #[cfg(feature = "audio")]
                 if let Some(a) = self.audio.as_mut() {
@@ -632,6 +653,7 @@ impl Daemon {
                     self.shutdown = true;
                 }
             }
+            let evs = self.mark_keys(evs, typed);
             if !evs.is_empty() {
                 self.device_input(&evs);
             }
@@ -872,6 +894,7 @@ impl Daemon {
             ))),
             sources,
             play_from: None,
+            mark_key: cfg.mark_key.clone().unwrap_or_else(|| "F8".to_string()),
             root,
             project,
             scene,
@@ -943,6 +966,8 @@ impl Daemon {
                     .as_ref()
                     .map(|_| Index::path(&s.root).to_string_lossy().into_owned()));
                 st["index_error"] = json!(s.index_error);
+                // The queue an agent works through (section 10).
+                st["marks_open"] = json!(marks::open_count(&s.root));
                 st
             }
         }
@@ -4183,6 +4208,18 @@ impl Daemon {
             visible,
             &self.session.as_ref().expect("session").assets,
         )?;
+        self.toast = Some((
+            "F8 MARKS THIS MOMENT FOR THE AGENT".to_string(),
+            std::time::Instant::now() + std::time::Duration::from_secs(4),
+        ));
+        // The renderer a mark draws its frame and clip with, made now so
+        // the first F8 does not wait for it.
+        let _ = self.render.offscreen(
+            width,
+            height,
+            false,
+            &self.session.as_ref().expect("session").assets,
+        );
         #[cfg(feature = "audio")]
         if json::bool_param(params, "audio", true)? {
             if let Some(a) = self.audio.as_mut() {
@@ -4236,6 +4273,7 @@ impl Daemon {
             "atlases": atlases,
             "materials": self.render.materials(),
             "gamepads": self.render.pads.is_some(),
+            "bar": self.render.bar.as_ref().map(|(t, _)| t.clone()),
         })
     }
 
@@ -4255,6 +4293,7 @@ impl Daemon {
             .unwrap_or((1, 1));
         let extras = self.tile_extras(argus_render::view_for(&self.world, size.0, size.1));
         let t = shader_time(&self.sched, alpha);
+        self.update_bar(size.0);
         if let (Some((_, r)), Some(ses)) = (&mut self.render.window, &self.session) {
             r.set_time(t);
             let store = ses.particles.borrow();
@@ -4821,6 +4860,10 @@ pub(crate) mod render {
         /// Set by `poll` when the user closed the window.
         pub closed_now: bool,
         pads_announced: bool,
+        /// Text typed since the last poll (a mark's note).
+        pub typed: Vec<String>,
+        /// The bar the window shows now: its text and width.
+        pub bar: Option<(String, u32)>,
     }
 
     fn pad_button(b: gilrs::Button) -> Option<&'static str> {
@@ -4904,6 +4947,7 @@ pub(crate) mod render {
                             pressed,
                         }),
                         DeviceEvent::Focus { focused: false } => out.push(DeviceInput::ReleaseAll),
+                        DeviceEvent::Text { text } => self.typed.push(text),
                         DeviceEvent::Resized { width, height } => r.gpu_mut().resize(width, height),
                         _ => {}
                     }
@@ -4995,7 +5039,7 @@ pub(crate) mod render {
             assets: &argus_assets::Importer,
         ) -> Result<&mut Renderer> {
             let fresh = match &self.offscreen {
-                Some((w, h, r)) => *w != width || *h != height || r.gpu().software != software,
+                Some((_, _, r)) => r.gpu().software != software,
                 None => true,
             };
             if fresh {
@@ -5003,7 +5047,13 @@ pub(crate) mod render {
                 r.load_catalog(assets)?;
                 self.offscreen = Some((width, height, r));
             }
-            Ok(&mut self.offscreen.as_mut().expect("just set").2)
+            let o = self.offscreen.as_mut().expect("just set");
+            if (o.0, o.1) != (width, height) {
+                o.2.gpu_mut().resize(width, height);
+                o.2.forget_motion();
+                (o.0, o.1) = (width, height);
+            }
+            Ok(&mut o.2)
         }
 
         /// Materials the GPU refused, from whichever renderers are open.
