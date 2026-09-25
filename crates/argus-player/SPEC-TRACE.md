@@ -23,10 +23,10 @@ Every statement in the design document (v0.3) that constrains a game as players 
 | Spec | Status | Where | Test |
 |---|---|---|---|
 | Windows from day one. | Done | `argus build` on Windows; the executable links its C and C++ runtimes statically (carried from phase 1) and loads only Windows' own DLLs. | the release build of Hollow: 15.8 MB, its headless check |
-| Linux from day one. | Partial | The code is platform-neutral (`save::save_dir`, winit, cpal, gilrs); `argus build --target linux` runs on Linux, since the executable links the platform's window, audio, and gamepad libraries. Not yet built: klab was unreachable, and building in this machine's WSL needs Rust installed there. | |
+| Linux from day one. | Done | `argus build --release` on klab (Ubuntu 24.04, `libasound2-dev` and `libudev-dev` for sound and gamepads): a 13.6 MB executable in 1 min 20 s, saving to `~/.local/share/<game>`. Its self-check passed, and the world after 300 ticks is the one the Windows release reaches, bit for bit (`b41656c1f507aaf2`). | klab's build of Hollow (docs/playtest.md) |
 | macOS from day one. | Deferred | The same code path; `argus build --target macos` runs on a Mac, and there is none here. | |
 | The web target (wasm + WebGPU, with a WebGL2 fallback). | Done | `argus build --target web`: the page (`tools/web/index.html`, `main.js`), the wasm module, the packs in `data/` and `data/packs.json`; the page loads them with `WebPlayer.from_packs`. | `tools/web/check.mjs` on the built site: WebGPU and forced WebGL2 |
-| A shareable link is the cheapest way to get a human's feel onto a build the agent made. | Partial | `tools/web/serve.mjs` serves a built site and takes the reports its players post (`POST /marks`), and `mark.pull` fetches them. Hosting it on klab for a second person is the phase 2 gate's. | `tools/web/check.mjs` (the round trip through the server) |
+| A shareable link is the cheapest way to get a human's feel onto a build the agent made. | Partial | Hollow's web build runs on klab (`argus-play.service`, `tools/web/serve.mjs`, docs/playtest.md): the page, and the reports its players post, which `mark.pull` fetches over the tailnet or an SSH tunnel. A report posted there was pulled and opened as a mark that reached the same world. The HTTPS link (`https://klab.tailde2255.ts.net:8443/`) waits on HTTPS certificates being turned on for the tailnet. `tools/web/deploy.sh` puts up a new build. | `tools/web/check.mjs`; the round trip through klab's server |
 
 ## §15 Assets and content
 
@@ -50,7 +50,7 @@ Every statement in the design document (v0.3) that constrains a game as players 
 
 | Spec | Status | Where | Test |
 |---|---|---|---|
-| Phase 2: first `argus build` for desktop and web so a playtest link exists before the editor does. | Partial | Everything but the hosting: Windows and web builds, packs, patches, languages, the recorder, the report key, reports into marks. The link itself (klab) and the Linux build wait on reaching klab and on a Rust toolchain for WSL. | above |
+| Phase 2: first `argus build` for desktop and web so a playtest link exists before the editor does. | Partial | Windows, Linux, and web builds, packs, patches, languages, the recorder, the report key, reports into marks, and the page served from klab. The HTTPS link waits on the tailnet's certificates. | above |
 | Gate: a second human opens the web build from a link and drops a mark that reaches the agent the same way. | Partial | The path is built and checked end to end locally: the page's F8 posts a report to `serve.mjs`, `mark.pull` imports it, `mark.open` reproduces it. Serving it from klab is the gate's step. | `tools/web/check.mjs`; `argus-daemon/tests/reports.rs` |
 
 ## Known limitations, stated so they are decisions
@@ -59,4 +59,6 @@ Every statement in the design document (v0.3) that constrains a game as players 
 - The web page's report key is F8; `[marks] key` applies to the desktop executable.
 - `argus build` builds the executable from the engine's source tree with cargo (`ARGUS_ENGINE`, default the tree the CLI came from). A packaged engine would ship prebuilt executables per platform.
 - A crash that corrupts memory rather than panicking is not caught; a report needs the process alive to write it.
-- `mark.pull` speaks plain HTTP: it pulls from the server's LAN or tailnet address, not the public link.
+- `mark.pull` speaks plain HTTP: it pulls from the server's tailnet address, or through an SSH tunnel, not the HTTPS link.
+- A Linux release needs the glibc of the machine that built it or newer (2.39 for klab's Ubuntu 24.04). A release for older distributions is built on an older one.
+- Windows and Linux reach the same world for Hollow (§6 promises the same platform only); a game using platform-dependent float functions might not, and nothing yet checks that across platforms routinely.

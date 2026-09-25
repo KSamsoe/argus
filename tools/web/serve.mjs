@@ -2,8 +2,10 @@
 //
 //   node tools/web/serve.mjs [site] [port] [host] [marks-dir]
 //
-// Defaults: target-web/site, 8765, 127.0.0.1, <site>/../marks. On a
-// playtest server (klab) the host is the address players reach.
+// Defaults: target-web/site, 8765, 127.0.0.1, <site>/../marks. The host may
+// be several addresses, comma-separated: on klab, 127.0.0.1 for Tailscale's
+// HTTPS proxy, which players reach, and the tailnet address, which
+// `argus mark pull` reaches over plain HTTP.
 //
 //   GET  /...           the site's files
 //   POST /marks         a report from the page (a replay file, ARGR), at
@@ -20,7 +22,7 @@ import { randomBytes } from "node:crypto";
 
 const root = process.argv[2] ?? "target-web/site";
 const port = Number(process.argv[3] ?? 8765);
-const host = process.argv[4] ?? "127.0.0.1";
+const hosts = (process.argv[4] ?? "127.0.0.1").split(",").filter(Boolean);
 const marks = resolve(process.argv[5] ?? join(dirname(resolve(root)), "marks"));
 const MAX = 8 << 20;
 const types = {
@@ -67,7 +69,7 @@ async function listReports(res) {
   send(res, 200, { marks: rows });
 }
 
-createServer(async (req, res) => {
+const handle = async (req, res) => {
   const path = decodeURIComponent(new URL(req.url, "http://x").pathname);
   try {
     if (path === "/marks" && req.method === "POST") return await takeReport(req, res);
@@ -84,4 +86,10 @@ createServer(async (req, res) => {
   } catch {
     send(res, 404, { error: "not found" });
   }
-}).listen(port, host, () => console.log(`serving ${root} on http://${host}:${port}/, reports into ${marks}`));
+};
+
+for (const host of hosts) {
+  createServer(handle).listen(port, host, () =>
+    console.log(`serving ${root} on http://${host}:${port}/, reports into ${marks}`),
+  );
+}
