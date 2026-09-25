@@ -1,0 +1,18 @@
+# argus-game: spec trace
+
+The release executable (§15, phase 2 item 7): what a player double-clicks. The runtime it runs, the packs, and the recorder are `argus-player`'s, and their rows are in `crates/argus-player/SPEC-TRACE.md`; these are the executable's own. Statuses as in the other traces: **Done**, **Partial**, **Deferred**.
+
+## §15 Shipping
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| A player who has never heard of a daemon can double-click it. | Done | `argus build` puts it beside `data/` under the game's name; it mounts the packs, opens the game with `argus_player::Player`, and plays it in a 1280x720 window with the keyboard, the mouse, and gamepads (`argus_player::desktop`, shared with the daemon's window), sound through the mixer's device, and the continuous clock paced by elapsed time (at most five ticks a frame, the window's vsync pacing the loop). A release build has no console window; a failure to start or a crash is shown in a message box. | the release build of Hollow, headless (the window was not opened for Kevin: see docs/phase2-checklist.md item 7) |
+| No socket, no `.argus/` directory, and no way to attach. | Done | The crate links `argus-player` and the runtime crates, never the daemon, the index, or the CLI; the game's files are in memory under a root that is not on disk. | `cargo tree -p argus-game`; the executable's strings; a run leaves nothing beside it |
+| A player pressing a report key produces a replay file. | Done | F8, or `[marks] key` in `argus.toml`: the game pauses, the bottom line asks for a note (the overlay bar the daemon's F8 prompt uses), Enter saves `reports/<unix time>-report.argr` in the save location, Escape goes back; closing the window keeps a half-typed note. The bottom line then says where the report went. | `argus-player/tests/recorder.rs`; `argus-daemon/tests/reports.rs` |
+| Hitting a crash produces a replay file. | Done | A panic in a frame is caught: the report is saved as `-crash.argr` with the panic's message and place as its note, and the player is told where. | the report path above; a crash itself was not provoked in a release build |
+| `argus build` checks what it built. | Done | `--headless <ticks>` runs the game with no window or sound device and prints the world's digest; `argus build` compares it with the project's. | the builds of Hollow |
+
+## Known limitations, stated so they are decisions
+
+- The window opens at 1280x720 and can be resized; there is no fullscreen toggle or settings screen yet (the UI tree is phase 3).
+- A report is not sent anywhere from the desktop; the player finds it in the save location.

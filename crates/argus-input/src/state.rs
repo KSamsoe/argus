@@ -734,6 +734,19 @@ impl InputState {
         self.live = false;
     }
 
+    /// Forget the first `n` journaled commands and the logged changes
+    /// before `tick`: a release build's recorder keeps only its window
+    /// (§15, phase 2 item 7). The recorded future is never forgotten. A
+    /// snapshot taken before counts from the old start; move it with
+    /// [`InputSnapshot::forget`] and the same `n`, which this returns.
+    pub fn forget(&mut self, n: usize, tick: u64) -> usize {
+        let n = n.min(self.cursor);
+        self.journal.drain(..n);
+        self.cursor -= n;
+        self.log.retain(|e| e.tick >= tick);
+        n
+    }
+
     /// Take on commands another world was given (an A/B trial's worlds
     /// share their input, phase 2 item 4): they join this journal's
     /// recorded future and are issued as their ticks come.
@@ -924,6 +937,12 @@ impl InputSnapshot {
     /// How far into the journal it was.
     pub fn cursor(&self) -> usize {
         self.cursor
+    }
+
+    /// The journal it counts in lost its first `n` commands
+    /// ([`InputState::forget`]).
+    pub fn forget(&mut self, n: usize) {
+        self.cursor = self.cursor.saturating_sub(n);
     }
 
     /// Write it for a keyframe on disk, its journal position counted from

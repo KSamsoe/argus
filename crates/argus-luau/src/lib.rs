@@ -251,9 +251,10 @@ impl ScriptHost {
         self.root = Some(root.to_path_buf());
         let mut ok = true;
         for rel in scan(root) {
-            let src = argus_os::fs::read_to_string(root.join(&rel))
+            // Source, or bytecode where a release pack compiled it (§15).
+            let src = argus_os::fs::read(root.join(&rel))
                 .map_err(|e| ArgusError::new(codes::SYNTAX, format!("cannot read {rel}: {e}")))?;
-            ok &= self.load_source(world, sched, &rel, &src);
+            ok &= self.load_bytes(world, sched, &rel, &src);
         }
         Ok(ok)
     }
@@ -271,15 +272,15 @@ impl ScriptHost {
         let mut report = ReloadReport::default();
         let present = scan(&root);
         for rel in &present {
-            let src = argus_os::fs::read_to_string(root.join(rel))
+            let src = argus_os::fs::read(root.join(rel))
                 .map_err(|e| ArgusError::new(codes::SYNTAX, format!("cannot read {rel}: {e}")))?;
             let changed = self
                 .files
                 .get(rel)
-                .map(|r| r.hash != fnv(src.as_bytes()))
+                .map(|r| r.hash != fnv(&src))
                 .unwrap_or(true);
             if changed {
-                self.load_source(world, sched, rel, &src);
+                self.load_bytes(world, sched, rel, &src);
                 report.reloaded.push(rel.clone());
             }
         }
@@ -317,6 +318,18 @@ impl ScriptHost {
         rel: &str,
         src: &str,
     ) -> bool {
+        self.load_bytes(world, sched, rel, src.as_bytes())
+    }
+
+    /// [`load_source`](Self::load_source) for source or for [`compile`]d
+    /// bytecode, which Luau tells apart by its first byte.
+    pub fn load_bytes(
+        &mut self,
+        world: &mut World,
+        sched: &mut Scheduler,
+        rel: &str,
+        src: &[u8],
+    ) -> bool {
         self.errors.remove(rel);
         let previous_systems = self
             .files
@@ -342,7 +355,7 @@ impl ScriptHost {
                 self.files.insert(
                     rel.to_string(),
                     FileRecord {
-                        hash: fnv(src.as_bytes()),
+                        hash: fnv(src),
                         systems: Vec::new(),
                     },
                 );
@@ -429,7 +442,7 @@ impl ScriptHost {
         self.files.insert(
             rel.to_string(),
             FileRecord {
-                hash: fnv(src.as_bytes()),
+                hash: fnv(src),
                 systems: declared_systems,
             },
         );
@@ -579,6 +592,35 @@ impl ScriptHost {
     pub fn memory_used(&self) -> usize {
         self.lua.used_memory()
     }
+}
+
+/// Compile a script to Luau bytecode, as a release pack ships it (§15:
+/// "Luau precompiled to bytecode"). The options are the ones loading source
+/// uses (optimisation 1, line numbers kept), so a precompiled script runs
+/// exactly as its source does and its errors still name lines. A syntax
+/// error is the same `script.errors` row a load would give.
+pub fn compile(rel: &str, src: &str) -> std::result::Result<Vec<u8>, ScriptError> {
+    mlua::Compiler::new().compile(src).map_err(|e| {
+        let text = match &e {
+            mlua::Error::SyntaxError { message, .. } => message.clone(),
+            other => other.to_string(),
+        };
+        // Luau says `[string "..."]:3: message` or `:3: message`.
+        let tail = text.rsplit_once("]:").map_or(text.as_str(), |(_, t)| t);
+        let tail = tail.trim_start_matches(':');
+        let (line, message) = match tail.split_once(':') {
+            Some((n, m)) if n.trim().parse::<u32>().is_ok() => {
+                (n.trim().parse().ok(), m.trim().to_string())
+            }
+            _ => (None, text.trim().to_string()),
+        };
+        ScriptError {
+            file: rel.to_string(),
+            line,
+            message,
+            phase: ErrorPhase::Syntax,
+        }
+    })
 }
 
 /// Project-relative `.luau` files in load order.

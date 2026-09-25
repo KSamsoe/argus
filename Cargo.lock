@@ -153,6 +153,8 @@ version = "0.0.1"
 dependencies = [
  "argus-daemon",
  "argus-ecs",
+ "argus-player",
+ "argus-scene",
  "argus-sim",
  "interprocess",
  "serde_json",
@@ -173,6 +175,7 @@ dependencies = [
  "argus-material",
  "argus-particles",
  "argus-physics",
+ "argus-player",
  "argus-post",
  "argus-render",
  "argus-scene",
@@ -180,8 +183,6 @@ dependencies = [
  "argus-test",
  "argus-tiles",
  "argus-tween",
- "argus-web",
- "gilrs",
  "interprocess",
  "serde_json",
  "toml_edit 0.22.27",
@@ -201,6 +202,18 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "argus-game"
+version = "0.0.1"
+dependencies = [
+ "argus-input",
+ "argus-player",
+ "argus-render",
+ "argus-scene",
+ "argus-sim",
+ "serde_json",
 ]
 
 [[package]]
@@ -270,6 +283,30 @@ dependencies = [
  "argus-ecs",
  "argus-sim",
  "argus-tiles",
+]
+
+[[package]]
+name = "argus-player"
+version = "0.0.1"
+dependencies = [
+ "argus-anim",
+ "argus-assets",
+ "argus-audio",
+ "argus-camera",
+ "argus-ecs",
+ "argus-input",
+ "argus-luau",
+ "argus-os",
+ "argus-particles",
+ "argus-physics",
+ "argus-post",
+ "argus-render",
+ "argus-scene",
+ "argus-sim",
+ "argus-tiles",
+ "argus-tween",
+ "gilrs",
+ "serde_json",
 ]
 
 [[package]]
@@ -354,22 +391,12 @@ dependencies = [
 name = "argus-web"
 version = "0.0.1"
 dependencies = [
- "argus-anim",
- "argus-assets",
  "argus-audio",
- "argus-camera",
  "argus-ecs",
- "argus-input",
- "argus-luau",
  "argus-os",
- "argus-particles",
- "argus-physics",
- "argus-post",
+ "argus-player",
  "argus-render",
- "argus-scene",
  "argus-sim",
- "argus-tiles",
- "argus-tween",
  "cpal",
  "js-sys",
  "serde_json",

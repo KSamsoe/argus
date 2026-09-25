@@ -1,0 +1,18 @@
+[package]
+name = "argus-game"
+description = "Argus Engine release executable (phase 2 item 7): a game from its packs in a window, with no protocol, no index, and no .argus/; the report key and a crash save replay files"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "argus-game"
+path = "src/main.rs"
+
+[dependencies]
+argus-player = { path = "../argus-player", version = "0.0.1", features = ["desktop"] }
+argus-render = { path = "../argus-render", version = "0.0.1" }
+argus-input = { path = "../argus-input", version = "0.0.1" }
+argus-scene = { path = "../argus-scene", version = "0.0.1" }
+argus-sim = { path = "../argus-sim", version = "0.0.1" }
+serde_json = "1"

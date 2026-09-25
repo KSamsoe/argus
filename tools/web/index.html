@@ -5,9 +5,19 @@
 <style>
   body { margin: 0; background: #16141c; color: #c9c4d6; font: 13px/1.4 ui-monospace, Consolas, monospace; }
   canvas { display: block; margin: 12px auto 0; width: 960px; height: 540px; max-width: 100%; outline: none; background: #000; }
-  p { max-width: 960px; margin: 8px auto; padding: 0 12px; }
+  p, form { max-width: 960px; margin: 8px auto; padding: 0 12px; }
+  form { display: flex; gap: 8px; }
+  form input { flex: 1; font: inherit; padding: 6px 8px; background: #22202b; color: #f0ecf8; border: 1px solid #ffc440; }
+  form button { font: inherit; padding: 6px 10px; background: #2d2a38; color: #f0ecf8; border: 1px solid #5a5570; cursor: pointer; }
+  #said { color: #8fdca0; min-height: 1.4em; }
 </style>
 <canvas id="game" width="960" height="540" tabindex="0"></canvas>
+<form id="report" hidden>
+  <input id="note" maxlength="300" autocomplete="off" placeholder="What just happened? Enter sends, Esc goes back to the game.">
+  <button type="submit">Send report</button>
+  <button type="button" id="cancel">Cancel</button>
+</form>
+<p id="said"></p>
 <p id="status">Loading.</p>
-<p>Arrows or WASD to move, Space or Z to jump. Click the game first.</p>
+<p>Arrows or WASD to move, Space or Z to jump. Click the game first. Press F8 when something feels wrong: the game pauses and asks what happened, and the last half minute goes to the developer with your note.</p>
 <script type="module" src="main.js"></script>

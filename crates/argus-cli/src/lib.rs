@@ -6,9 +6,10 @@
 //! [`argus_daemon::METHODS`]: `argus world query` is `world.query`,
 //! `argus input log get` is `input.log.get`, and the help for each is the
 //! same doc, params, and returns text the daemon serves as
-//! `session.docs`. The only commands that are not methods are `help` and
+//! `session.docs`. The only commands that are not methods are `help`,
 //! `daemon` (start, stop, status, run), which exist so a method has a
-//! process to reach.
+//! process to reach, and `build` (phase 2 item 7), which makes a release
+//! and needs no running game.
 //!
 //! Parameters are `key=value` words (values parsed as JSON when they are
 //! JSON, strings otherwise, with `[a, b]` and `{k: v}` accepted with bare
@@ -18,6 +19,7 @@
 
 #![warn(missing_docs)]
 
+pub mod build;
 pub mod client;
 pub mod help;
 pub mod params;
@@ -77,6 +79,14 @@ pub struct Invocation {
     pub window: Option<(u32, u32)>,
     /// `--play`: enter play mode at start, for `daemon start` and `daemon run`.
     pub play: bool,
+    /// `--target <windows|linux|macos|web>`, for `argus build`.
+    pub target: Option<String>,
+    /// `--release`: an optimised build, for `argus build`.
+    pub release: bool,
+    /// `--out <dir>`: where `argus build` writes.
+    pub out: Option<PathBuf>,
+    /// `--since <dir>`: the build `argus build` patches.
+    pub since: Option<PathBuf>,
 }
 
 /// Parse a command line (without the program name).
@@ -105,6 +115,10 @@ pub fn parse(argv: &[String]) -> Result<Invocation, String> {
             "--software" => inv.software = true,
             "--no-replays" => inv.no_replays = true,
             "--play" => inv.play = true,
+            "--release" => inv.release = true,
+            "--target" => inv.target = Some(need(&mut it)?),
+            "--out" => inv.out = Some(PathBuf::from(need(&mut it)?)),
+            "--since" => inv.since = Some(PathBuf::from(need(&mut it)?)),
             "--window" => {
                 let size = match it.clone().next() {
                     Some(s) if s.contains('x') && !s.starts_with('-') => {
@@ -163,6 +177,8 @@ pub enum Command {
     Daemon(Vec<String>),
     /// `argus test [name]`: `test.run` with a compact report (§9).
     Test(Vec<String>),
+    /// `argus build`: a release of the project (§15).
+    Build,
     /// Nothing recognisable.
     Unknown(Vec<String>),
 }
@@ -177,6 +193,7 @@ pub fn resolve(words: &[String]) -> Command {
     match words[0].as_str() {
         "help" => return Command::Help(words[1..].to_vec()),
         "daemon" => return Command::Daemon(words[1..].to_vec()),
+        "build" => return Command::Build,
         "test" if words.len() == 1 || !METHODS.iter().any(|m| m.name == words[..2].join(".")) => {
             return Command::Test(words[1..].to_vec())
         }
@@ -237,6 +254,7 @@ pub fn run(argv: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
         }
         Command::Daemon(words) => project::daemon_command(&inv, &words, out, err),
         Command::Test(words) => test_command(&inv, &words, out, err),
+        Command::Build => build::build_command(&inv, out, err),
         Command::Method(method, bare) => {
             let mut args = bare;
             args.extend(inv.args.iter().cloned());

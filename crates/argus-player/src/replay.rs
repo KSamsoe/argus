@@ -1,8 +1,9 @@
 //! Replay files (phase 2 item 2): a keyframe on disk, the input commands
 //! after it, and the world at the frame the file reproduces. A mark keeps
 //! one, so it reproduces after the daemon that took it is gone; the test
-//! runner's replay export (item 3) and a release build's report key
-//! (item 7) write the same file.
+//! runner's replay export (item 3) and a release build's report key and
+//! crash handler (item 7, [`crate::recorder`]) write the same file, the
+//! last from a browser as bytes.
 //!
 //! Layout: the tag `ARGR` and a version; the run's identity as JSON (scene,
 //! seed, code, clock, `from`, `to`); the keyframe (the world as
@@ -10,7 +11,7 @@
 //! particle pools, the rooms); the journal of input commands from `from`
 //! to `to`; and the world at `to`, which a reader compares a replay with.
 
-use crate::ring::Keyframe;
+use crate::keyframe::Keyframe;
 use argus_ecs::codec::{Reader, Writer};
 use argus_ecs::{ArgusError, Result, Snapshot, StateReport, World};
 use argus_input::{InputSnapshot, JournalEntry};
@@ -64,6 +65,22 @@ pub fn write(
     journal: &[JournalEntry],
     end: Option<&World>,
 ) -> Result<usize> {
+    let bytes = encode(meta, k, base, journal, end);
+    if let Some(d) = path.parent() {
+        argus_os::fs::create_dir_all(d).map_err(|e| io(path, e))?;
+    }
+    argus_os::fs::write(path, &bytes).map_err(|e| io(path, e))?;
+    Ok(bytes.len())
+}
+
+/// A replay file's bytes (see [`write`]).
+pub fn encode(
+    meta: &Json,
+    k: &Keyframe,
+    base: usize,
+    journal: &[JournalEntry],
+    end: Option<&World>,
+) -> Vec<u8> {
     let mut w = Writer::new();
     w.magic(TAG, VERSION);
     w.str(&meta.to_string());
@@ -81,12 +98,7 @@ pub fn write(
         e.encode(&mut w);
     }
     w.opt(end, |w, world| w.bytes(&world.encode_state()));
-    let bytes = w.into_bytes();
-    if let Some(d) = path.parent() {
-        std::fs::create_dir_all(d).map_err(|e| io(path, e))?;
-    }
-    std::fs::write(path, &bytes).map_err(|e| io(path, e))?;
-    Ok(bytes.len())
+    w.into_bytes()
 }
 
 fn io(path: &Path, e: impl std::fmt::Display) -> ArgusError {
@@ -98,8 +110,13 @@ fn io(path: &Path, e: impl std::fmt::Display) -> ArgusError {
 
 /// Read a replay file.
 pub fn read(path: &Path) -> Result<ReplayFile> {
-    let bytes = std::fs::read(path).map_err(|e| io(path, e))?;
-    let mut r = Reader::new(&bytes, "replay file");
+    let bytes = argus_os::fs::read(path).map_err(|e| io(path, e))?;
+    decode(&bytes)
+}
+
+/// A replay file from its bytes.
+pub fn decode(bytes: &[u8]) -> Result<ReplayFile> {
+    let mut r = Reader::new(bytes, "replay file");
     r.magic(TAG, VERSION)?;
     let meta: Json =
         serde_json::from_str(&r.str()?).map_err(|e| r.bad(format!("its identity: {e}")))?;

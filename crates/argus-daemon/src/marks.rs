@@ -27,8 +27,13 @@
 //! world with the one the mark saved, field by field. After a fix the
 //! difference is the fix's effect at that frame.
 //!
-//! A mark from the web build (`mark.import`) has no keyframe: it is the
-//! run's identity and its input log, and opens by replaying from the load.
+//! A report from a release build or the web page (phase 2 item 7) is a
+//! replay file its bounded recorder wrote, with the player's note in it;
+//! `mark.import` takes one, or `mark.pull` fetches the reports browsers
+//! posted to the server hosting a playtest build, and it becomes a mark like
+//! any other. A mark from the web spike's page (item 1) has no keyframe: it
+//! is the run's identity and its input log, and opens by replaying from the
+//! load.
 
 use super::*;
 use crate::replay;
@@ -647,7 +652,12 @@ impl Daemon {
         } else {
             root.join(path)
         };
-        let text = std::fs::read_to_string(&path)
+        let bytes = std::fs::read(&path)
+            .map_err(|e| ArgusError::new(codes::BAD_MARK, format!("{}: {e}", path.display())))?;
+        if bytes.starts_with(b"ARGR") {
+            return self.import_report(&root, &path, &bytes, params);
+        }
+        let text = String::from_utf8(bytes)
             .map_err(|e| ArgusError::new(codes::BAD_MARK, format!("{}: {e}", path.display())))?;
         let web: Json = serde_json::from_str(&text).map_err(|e| {
             ArgusError::new(
@@ -684,6 +694,113 @@ impl Daemon {
         write_mark(&root, &mark)?;
         self.emit_mark("mark.dropped", id, frame, &note);
         Ok(self.mark_summary(&root, &mark))
+    }
+
+    /// A report (a replay file from a release build's or the web page's
+    /// recorder) as a mark: the file is its replay, its note the player's.
+    fn import_report(
+        &mut self,
+        root: &Path,
+        path: &Path,
+        bytes: &[u8],
+        params: &Json,
+    ) -> Result<Json> {
+        let file = replay::decode(bytes).map_err(|e| {
+            ArgusError::new(
+                codes::BAD_MARK,
+                format!("{}: {}", path.display(), e.message),
+            )
+        })?;
+        let meta = &file.meta;
+        let id = ids(root).last().map_or(1, |i| i + 1);
+        let dir = mark_dir(root, id);
+        std::fs::create_dir_all(&dir)
+            .map_err(|e| ArgusError::new(codes::BAD_MARK, format!("{}: {e}", dir.display())))?;
+        std::fs::write(dir.join("replay.bin"), bytes)
+            .map_err(|e| ArgusError::new(codes::BAD_MARK, format!("{}: {e}", dir.display())))?;
+        let note = meta["note"].as_str().unwrap_or("").trim().to_string();
+        let kind = meta["kind"].as_str().unwrap_or("report");
+        let mark = json!({
+            "id": id,
+            "status": "open",
+            "source": if kind == "crash" { "crash" } else { "report" },
+            "frame": file.to,
+            "scene": meta["scene"],
+            "seed": meta["seed"],
+            "code": meta["code"],
+            "clock": meta["clock"],
+            "game": meta["game"],
+            "note": note,
+            "author": params.get("author").cloned().unwrap_or(json!("player")),
+            "dropped_at": unix_now(),
+            "digest": meta["digest"],
+            "replay": { "file": "replay.bin", "from": file.from, "to": file.to, "bytes": bytes.len() },
+            "imported_from": params.get("from").cloned().unwrap_or(json!(path.to_string_lossy())),
+        });
+        write_mark(root, &mark)?;
+        self.emit_mark("mark.dropped", id, file.to, &note);
+        Ok(self.mark_summary(root, &mark))
+    }
+
+    /// `mark.pull`: the reports browsers posted to a playtest server
+    /// (`tools/web/serve.mjs`, on klab), each once, into the queue.
+    pub(super) fn mark_pull(&mut self, params: &Json) -> Result<Json> {
+        let root = self.require_session()?.root.clone();
+        let mut url = json::str_param(params, "url")?.to_string();
+        if !url.ends_with('/') {
+            url.push('/');
+        }
+        let author = params.get("author").cloned().unwrap_or(json!("player"));
+        let timeout = std::time::Duration::from_secs(10);
+        let net = |e: String| {
+            ArgusError::new(codes::BAD_MARK, e)
+                .hint("The server is tools/web/serve.mjs; pull from its LAN or tailnet address, http://host:port/.")
+        };
+        let list: Json = serde_json::from_slice(
+            &crate::http::get(&format!("{url}marks"), timeout).map_err(net)?,
+        )
+        .map_err(|e| net(format!("{url}marks: {e}")))?;
+        let seen_file = root.join(".argus").join("marks").join("pulled.json");
+        let mut seen: Json = std::fs::read_to_string(&seen_file)
+            .ok()
+            .and_then(|t| serde_json::from_str(&t).ok())
+            .unwrap_or_else(|| json!({}));
+        let mut pulled = Vec::new();
+        let mut already = 0;
+        for m in list["marks"].as_array().cloned().unwrap_or_default() {
+            let Some(rid) = m["id"].as_str() else {
+                continue;
+            };
+            let known = seen[&url]
+                .as_array()
+                .is_some_and(|a| a.iter().any(|x| x == rid));
+            if known {
+                already += 1;
+                continue;
+            }
+            let bytes = crate::http::get(&format!("{url}marks/{rid}"), timeout).map_err(net)?;
+            let incoming = root.join(".argus").join("marks").join("incoming");
+            std::fs::create_dir_all(&incoming)
+                .map_err(|e| ArgusError::new(codes::BAD_MARK, e.to_string()))?;
+            let file = incoming.join(format!("{rid}.argr"));
+            std::fs::write(&file, &bytes)
+                .map_err(|e| ArgusError::new(codes::BAD_MARK, e.to_string()))?;
+            let summary = self.mark_import(&json!({
+                "path": file.to_string_lossy(),
+                "author": author,
+                "from": format!("{url}marks/{rid}"),
+            }))?;
+            pulled.push(summary);
+            if !seen[&url].is_array() {
+                seen[&url] = json!([]);
+            }
+            seen[&url].as_array_mut().expect("array").push(json!(rid));
+            let _ = std::fs::write(
+                &seen_file,
+                serde_json::to_string_pretty(&seen).unwrap_or_default(),
+            );
+        }
+        Ok(json!({ "server": url, "pulled": pulled, "already": already }))
     }
 
     /// `mark.open`: reproduce a mark. See the module docs.

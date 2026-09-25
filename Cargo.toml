@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/argus-ecs", "crates/argus-ecs-derive", "crates/argus-os", "crates/argus-sim", "crates/argus-luau", "crates/argus-scene", "crates/argus-index", "crates/argus-input", "crates/argus-daemon", "crates/argus-test", "crates/argus-cli", "crates/argus-render", "crates/argus-audio", "crates/argus-assets", "crates/argus-tiles", "crates/argus-physics", "crates/argus-camera", "crates/argus-post", "crates/argus-anim", "crates/argus-tween", "crates/argus-particles", "crates/argus-material", "crates/argus-web"]
+members = ["crates/argus-ecs", "crates/argus-ecs-derive", "crates/argus-os", "crates/argus-sim", "crates/argus-luau", "crates/argus-scene", "crates/argus-index", "crates/argus-input", "crates/argus-daemon", "crates/argus-test", "crates/argus-cli", "crates/argus-render", "crates/argus-audio", "crates/argus-assets", "crates/argus-tiles", "crates/argus-physics", "crates/argus-camera", "crates/argus-post", "crates/argus-anim", "crates/argus-tween", "crates/argus-particles", "crates/argus-material", "crates/argus-web", "crates/argus-player", "crates/argus-game"]
 
 [workspace.package]
 version = "0.0.1"
@@ -10,6 +10,14 @@ repository = "https://github.com/KSamsoe/argus"
 
 [profile.release]
 debug = 1
+
+# What `argus build --release` makes for players (phase 2 item 7): the
+# release build without debug info. A crash report carries the panic's
+# message and place, and script errors their file and line, without it.
+[profile.ship]
+inherits = "release"
+debug = false
+strip = true
 
 # Pictures are compressed in debug builds too (a mark's clip, obs.frame):
 # unoptimized, deflate is several times slower, and a mark's clip made

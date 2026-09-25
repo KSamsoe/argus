@@ -43,6 +43,12 @@ Every statement in the design document (v0.3) that constrains the `argus` comman
 
 Phase 0 item 9, "CLI": this crate, plus `argus_daemon::launch` (shared with `argusd`) and `session.shutdown` in the daemon so `argus daemon stop` is a method call like everything else.
 
+## Phase 2, item 7: argus build
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§15) `argus build --release --target windows` produces a single directory. | Done | `build.rs`: `argus build [--target windows|linux|macos|web] [--release] [--out dir] [--since dir]`, a local command like `daemon` (a release needs no running game). Packs from `argus_player::pack::build`; the executable is `argus-game` built with cargo from the engine's tree (`ARGUS_ENGINE`), `--release` in the `ship` profile (optimised, no debug info), copied as the game's name; the web target builds the wasm module with wasi-sdk's toolchain and wasm-bindgen and writes the page and `data/packs.json`. `--since` makes a patch beside the old packs. A desktop build runs on its own platform. The build checks itself: the game from its packs, and the executable run headless, reach the project's world after 300 ticks, or the build fails. `build.json` records it. | the builds of Hollow for Windows (debug and release) and the web |
+
 ## Known limitations, stated so they are decisions
 
 - A daemon started by the CLI outlives the shell; `argus daemon stop` ends it, and `.argus/daemon.json` is removed on a clean exit. `stop` returns once the daemon is gone (its record removed and its socket silent), not when it agreed to go: a command right after it used to reach the daemon on its way out and fail with "connection lost" (found after the phase-1 gate; `cli::the_binary_finds_starts_and_stops_a_project_daemon`). A daemon killed otherwise leaves a stale record, which `argus daemon status` reports and a method call replaces.

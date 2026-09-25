@@ -9,8 +9,10 @@
 // native player's), real key presses moving the hero and opening the audio,
 // a mark of that moment replayed natively (the same world or not), the
 // hero falling into the hall's pit (the post stack's flash, shake, and
-// hit-stop, marked inside the stop and replayed natively), and the same
-// picture with WebGL2 forced. Node 24 and cargo, no npm packages.
+// hit-stop, marked inside the stop and replayed natively), a report of it
+// sent the way the page's F8 sends one, through the server and back, and
+// replayed natively (phase 2 item 7), and the same picture with WebGL2
+// forced. Node 24 and cargo, no npm packages.
 import { spawn, spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -25,7 +27,7 @@ const DEBUG = 9334;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 mkdirSync(out, { recursive: true });
 
-const server = spawn(process.execPath, ["tools/web/serve.mjs", site, String(HTTP)], { stdio: "ignore" });
+const server = spawn(process.execPath, ["tools/web/serve.mjs", site, String(HTTP), "127.0.0.1", join(out, "marks")], { stdio: "ignore" });
 const profile = mkdtempSync(join(tmpdir(), "argus-chrome-"));
 const browser = spawn(chrome, [
   "--headless=new",
@@ -189,6 +191,18 @@ try {
     report.pit.native = r.stdout.trim() ? JSON.parse(r.stdout) : { error: r.stderr || String(r.error) };
     await sleep(300);
     report.pit.screenshot = await screenshot("pit.png");
+
+    // The page's report key sends this: the recorder's replay file, posted
+    // to the server the page came from; the desktop reproduces it.
+    report.pit.sent = await evaluate(
+      `argus.send(argus.report("fell in the pit (from the check)")).then(() => document.getElementById("said").textContent)`,
+    );
+    const listed = await (await fetch(`http://127.0.0.1:${HTTP}/marks`)).json();
+    const last = listed.marks[listed.marks.length - 1];
+    const body = Buffer.from(await (await fetch(`http://127.0.0.1:${HTTP}/marks/${last.id}`)).arrayBuffer());
+    writeFileSync(join(out, "pit-report.argr"), body);
+    const rr = spawnSync("cargo", ["run", "-q", "-p", "argus-web", "--example", "mark_replay", "--", project, join(out, "pit-report.argr")], { encoding: "utf8" });
+    report.pit.report = { id: last.id, bytes: last.bytes, native: rr.stdout.trim() ? JSON.parse(rr.stdout) : { error: rr.stderr || String(rr.error) } };
   }
 
   // 5. WebGL2 forced.

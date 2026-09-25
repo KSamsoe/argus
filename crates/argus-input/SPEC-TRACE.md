@@ -57,6 +57,12 @@ Every statement in the design document (v0.3) that constrains action maps and th
 
 In the daemon: `Daemon::device_input(events)` is the one entry point; `poll_devices` pumps the window (keys, mouse buttons, focus loss as release-all) and polls gamepads through gilrs (opened with the window, pads already connected announced on the first poll), once per frame before the frame's ticks. `input.devices` reports what is held and connected. `argusd --window --play` and `argus daemon start --window --play` open a window already playing.
 
+## Phase 2, item 7: the bounded recorder
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§15) The recorder stays in release, bounded. | Done | `InputState::forget(n, tick)` drops the first `n` journaled commands (never the recorded future) and the value log before `tick`; `InputSnapshot::forget(n)` moves a snapshot's journal position to match. The release build's recorder calls both when its older keyframe goes. | `argus-player/tests/recorder.rs` |
+
 ## Known limitations, stated so they are decisions
 
 - Keyboard and mouse arrive only through the daemon's window; gamepads are polled only while a window is open. Mouse position is not an action yet; a pointer action type comes with the UI (phase 3).

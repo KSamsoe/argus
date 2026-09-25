@@ -28,6 +28,12 @@ Every statement in the design document (v0.3) that constrains the asset importer
 |---|---|---|---|
 | Assets are queried, not read (P2). | Done | `asset.list {kind}` (paged rows: name, kind, source, frames, clips, warnings, plus failures), `asset.get {name}` (every frame, clip, file, and warning), `asset.import {force}`. `asset.move` rescans after a rename. `session.open` reports asset totals. | `argus-daemon/tests/assets.rs` |
 
+## Phase 2, item 7: the import cache in a release pack
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§15) A release pack is built from the import cache, not the source tree. | Done | `catalog.rs`: `Importer::packed_sprites` gives each sprite's cached texture and what the importer made of it (frames, pivots, properties, clips, auto-tiling, the placeholder shape) as `argus.cache/catalog.json`, and names the source images and sprite sidecars a pack leaves out. `Importer::packed(root)` loads a mounted pack's sprites from the catalog; a scan then imports the rest (sounds, animators, emitters, materials) from their sidecars and neither imports nor drops the catalog's sprites. | `argus-player/tests/packs.rs` |
+
 ## Known limitations, stated so they are decisions
 
 - The watcher polls file metadata twice a second rather than using OS notifications. It is deterministic, has no dependency, and costs one metadata read per file.

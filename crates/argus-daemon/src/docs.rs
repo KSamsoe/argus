@@ -427,9 +427,15 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "mark.import",
-        doc: "Put a mark from the web build (the JSON WebPlayer.mark gives: scene, seed, code, tick, digest, input log, note) into the queue. It has no keyframe: mark.open replays its input from the load, and the digests say whether this build reached the same world.",
-        params: "path: string (the mark's JSON; relative to the project)",
+        doc: "Put a player's report into the queue as a mark: a replay file (.argr) a release build saves when its report key is pressed or it crashes, or the web page posts, with the player's note in it (phase 2 item 7); mark.open reproduces it like any mark. Also takes a web spike mark (the JSON WebPlayer.mark gives), which has no keyframe: mark.open replays its input from the load.",
+        params: "path: string (the report or mark; relative to the project); author: string (default player)",
         returns: "mark.drop's summary",
+    },
+    MethodDoc {
+        name: "mark.pull",
+        doc: "Fetch the reports browsers posted to a playtest server (tools/web/serve.mjs, hosting a web build) and put each into the queue as a mark, once: the ones already pulled from that server are remembered in .argus/marks/pulled.json.",
+        params: "url: string (the server's LAN or tailnet address, http://host:port/); author: string (default player)",
+        returns: "{server, pulled: [mark.drop's summary], already: how many were pulled before}",
     },
     MethodDoc {
         name: "edit.propose",

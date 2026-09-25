@@ -209,7 +209,7 @@ fn a_web_mark_reaches_the_same_world_in_the_daemon() {
     let t = temp("marks-web");
     copy(&hollow, t.path());
     // The web player, as the browser runs it: right for a second and a half.
-    let mut p = argus_web::Player::open(t.path(), None, None).unwrap();
+    let mut p = argus_player::Player::open(t.path(), None, None).unwrap();
     p.key("ArrowRight", true);
     p.step(90).unwrap();
     p.key("ArrowRight", false);

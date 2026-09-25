@@ -11,12 +11,10 @@ use crate::rpc;
 use argus_ecs::{ArgusError, Entity, Event, EventRecord, Result, Value, World};
 use argus_index::shapes::{overrides_json, resolved_json, Summary};
 use argus_index::{Index, SyncReport};
-use argus_input::{ActionMap, InputState};
-use argus_luau::{ScriptConfig, ScriptHost};
-use argus_scene::{
-    Bulk, DefSchema, EntityDoc, Project, ProjectConfig, Rect, Scene, SceneDoc, SeedPolicy,
-};
-use argus_sim::{Clock, ClockKind, Scheduler, SchedulerConfig};
+use argus_input::InputState;
+use argus_luau::ScriptHost;
+use argus_scene::{Bulk, DefSchema, EntityDoc, Project, ProjectConfig, Rect, Scene};
+use argus_sim::{ClockKind, Scheduler, SchedulerConfig};
 use serde_json::{json, Map, Value as Json};
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -506,6 +504,7 @@ impl Daemon {
             "mark.close" => self.mark_close(params),
             "mark.open" => self.mark_open(params),
             "mark.import" => self.mark_import(params),
+            "mark.pull" => self.mark_pull(params),
             "replay.save" => self.replay_save(params),
             "edit.propose" => self.edit_propose(params),
             "proposal.list" => self.proposal_list(params),
@@ -789,104 +788,54 @@ impl Daemon {
         self.events.ticked.clear();
         self.events.through = 0;
         self.mutations += 1;
-        let scene_doc = SceneDoc::load(&root, scene_name)?;
-        let clock = Clock::parse(scene_doc.clock.as_deref().unwrap_or(&cfg.clock))?;
-        let seed = seed.unwrap_or(match scene_doc.seed {
-            SeedPolicy::Fixed(s) => s,
-            SeedPolicy::Random => std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_nanos() as u64)
-                .unwrap_or(1),
-        });
-        let sched_cfg = match clock.kind {
-            ClockKind::Continuous => SchedulerConfig::continuous(1.0 / clock.timestep),
-            ClockKind::Discrete => SchedulerConfig::discrete(),
-        }
-        .seed(seed);
-
-        // Fresh world and scheduler; scripts declare components and systems.
+        // Fresh world and scheduler, assembled as every player assembles
+        // them (argus-player, phase 2 item 7); the daemon's own parts go
+        // around it. A random seed policy takes the clock's.
         self.close();
-        self.world = World::new();
-        argus_ecs::hierarchy::register(&mut self.world)?;
-        self.sched = Scheduler::new(sched_cfg);
+        let random_seed = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos() as u64)
+            .unwrap_or(1);
+        let a = argus_player::assemble(
+            &root,
+            cfg,
+            scene_name,
+            seed,
+            &argus_player::Options {
+                random_seed,
+                audio: !self.building_fork,
+            },
+        )?;
+        let argus_player::Assembly {
+            world,
+            sched,
+            clock,
+            seed,
+            input,
+            tiles,
+            anims,
+            particles,
+            host,
+            project,
+            scene,
+            issues,
+            load,
+            assets,
+            asset_report,
+            #[cfg(feature = "audio")]
+            audio,
+            ..
+        } = a;
+        self.world = world;
+        self.sched = sched;
         let history = Rc::new(RefCell::new(crate::history::History::default()));
         let h = history.clone();
         self.sched
             .observe(Box::new(move |w, frame| h.borrow_mut().record(w, frame)));
-        // The action map's components exist before scripts load, so a
-        // system may declare reads = {"Actions"}.
-        let input = match ActionMap::load(&root)? {
-            Some(map) => {
-                let state = Rc::new(RefCell::new(InputState::new(
-                    map,
-                    clock.kind == ClockKind::Discrete,
-                )));
-                argus_input::install(&mut self.world, &mut self.sched, state.clone())?;
-                Some(state)
-            }
-            None => None,
-        };
-        #[cfg(feature = "render")]
-        argus_render::register(&mut self.world)?;
-        #[cfg(feature = "audio")]
-        argus_audio::register(&mut self.world)?;
-        let tiles = Rc::new(RefCell::new(argus_tiles::MapStore::new(&root)));
-        argus_physics::install(&mut self.world, &mut self.sched, tiles.clone())?;
-        let zones = Rc::new(RefCell::new(argus_camera::Zones::default()));
-        argus_camera::install(&mut self.world, &mut self.sched, zones.clone())?;
-        argus_post::install(&mut self.world, &mut self.sched)?;
-        // After the renderer registered Sprite (which it writes), before
-        // scripts, so it runs first in the late stage.
-        let anims = Rc::new(RefCell::new(argus_anim::AnimStore::default()));
-        argus_anim::install(&mut self.world, &mut self.sched, anims.clone())?;
-        argus_tween::install(&mut self.world, &mut self.sched)?;
-        let particles = Rc::new(RefCell::new(argus_particles::ParticleStore::default()));
-        argus_particles::install(&mut self.world, &mut self.sched, particles.clone())?;
-        let mut host = ScriptHost::new(ScriptConfig::default())?;
-        host.load_project(&mut self.world, &mut self.sched, &root)?;
-        let def_schemas: Vec<DefSchema> = host
-            .defs()
-            .iter()
-            .map(|d| {
-                DefSchema::new(d.schema.clone())
-                    .key(d.key.clone())
-                    .prefix(d.prefix.clone())
-            })
-            .collect();
-        let project = Project::open(&root, def_schemas)?;
-        let mut scene = Scene::open(&project, scene_name, self.world.registry())?;
-        zones.borrow_mut().rects = scene
-            .rooms()
-            .filter_map(|r| r.doc.bounds.map(|b| (r.name.clone(), b)))
-            .collect();
-        let mut issues: Vec<ArgusError> = project.issues().to_vec();
-        issues.extend(scene.issues().iter().cloned());
-        let mut load = None;
-        if issues.is_empty() {
-            let report = if scene.has_rooms() {
-                scene.spawn_around(&mut self.world, None)?
-            } else {
-                scene.spawn_all(&mut self.world)?
-            };
-            load = Some(report);
-        }
-        apply_system_groups(
-            &mut self.sched,
-            &scene_doc.enable,
-            &scene_doc.disable,
-            self.world.registry(),
-        )?;
-        self.sched.validate()?;
         let (index, index_error) = match Index::open(&root) {
             Ok(i) => (Some(i), None),
             Err(e) => (None, Some(e.message)),
         };
-        // The asset importer: scan once now; the server polls it after.
-        let mut assets = argus_assets::Importer::new(&root);
-        let asset_report = assets.scan();
-        tiles.borrow_mut().set_tilesets(&assets);
-        anims.borrow_mut().set_assets(&assets);
-        particles.borrow_mut().set_assets(&assets);
         #[cfg(feature = "render")]
         if !self.building_fork {
             self.render.offscreen = None;
@@ -895,22 +844,20 @@ impl Daemon {
             }
         }
         #[cfg(feature = "audio")]
-        if !self.building_fork {
-            // Variations come from the run seed, so sound.played replays.
-            match argus_audio::AudioEngine::load(&root, seed) {
-                Ok(mut a) => {
-                    a.set_asset_sounds(assets.sidecar_sounds());
-                    if self.has_window() {
-                        let _ = a.open_device();
-                    }
-                    self.audio = Some(a);
-                    self.audio_error = None;
+        match audio {
+            Some(Ok(mut a)) => {
+                if self.has_window() {
+                    let _ = a.open_device();
                 }
-                Err(e) => {
-                    self.audio = None;
-                    self.audio_error = Some(json::error_json(&e));
-                }
+                self.audio = Some(a);
+                self.audio_error = None;
             }
+            Some(Err(e)) => {
+                self.audio = None;
+                self.audio_error = Some(json::error_json(&e));
+            }
+            // A fork keeps the mixer it has.
+            None => {}
         }
         let ring_every = cfg.ring_every.unwrap_or(match clock.kind {
             ClockKind::Continuous => ((1.0 / clock.timestep).round() as u64).max(1),
@@ -4885,31 +4832,6 @@ fn split_child(scene: &Scene, id: &str) -> (String, String) {
     }
 }
 
-fn apply_system_groups(
-    sched: &mut Scheduler,
-    enable: &[String],
-    disable: &[String],
-    registry: &argus_ecs::Registry,
-) -> Result<()> {
-    let names: Vec<String> = sched
-        .systems(registry)?
-        .into_iter()
-        .map(|s| s.name)
-        .collect();
-    let matches = |pat: &str, name: &str| {
-        pat == "*" || pat == name || pat.strip_suffix('*').is_some_and(|p| name.starts_with(p))
-    };
-    for n in &names {
-        if !enable.is_empty() && !enable.iter().any(|p| matches(p, n)) {
-            sched.disable(n, "not in scene.toml systems.enable")?;
-        }
-        if disable.iter().any(|p| matches(p, n)) {
-            sched.disable(n, "listed in scene.toml systems.disable")?;
-        }
-    }
-    Ok(())
-}
-
 fn tick_json(t: &argus_sim::TickRecord) -> Json {
     json!({
         "tick": t.tick,
@@ -4939,9 +4861,9 @@ impl argus_test::Driver for Daemon {
 pub(crate) mod render {
     use argus_ecs::Result;
     use argus_input::DeviceInput;
-    use argus_render::window::{DeviceEvent, WindowHost};
+    use argus_player::desktop::{window_input, Pads, WindowInput};
+    use argus_render::window::WindowHost;
     use argus_render::Renderer;
-    use std::collections::BTreeMap;
 
     #[derive(Default)]
     pub(crate) struct RenderState {
@@ -4949,54 +4871,15 @@ pub(crate) mod render {
         pub window: Option<(WindowHost, Renderer)>,
         /// An offscreen renderer kept between `obs.frame` calls of one size.
         pub offscreen: Option<(u32, u32, Renderer)>,
-        /// Gamepads, opened with the window; `None` if the platform has none.
-        pub pads: Option<gilrs::Gilrs>,
-        /// gilrs id -> the index the action map sees (connection order).
-        pad_index: BTreeMap<usize, u32>,
+        /// Gamepads, opened with the window (argus-player's, shared with a
+        /// release build).
+        pub pads: Option<Pads>,
         /// Set by `poll` when the user closed the window.
         pub closed_now: bool,
-        pads_announced: bool,
         /// Text typed since the last poll (a mark's note).
         pub typed: Vec<String>,
         /// The bar the window shows now: its text and width.
         pub bar: Option<(String, u32)>,
-    }
-
-    fn pad_button(b: gilrs::Button) -> Option<&'static str> {
-        use gilrs::Button as B;
-        Some(match b {
-            B::South => "south",
-            B::East => "east",
-            B::West => "west",
-            B::North => "north",
-            B::LeftTrigger => "lb",
-            B::RightTrigger => "rb",
-            B::LeftTrigger2 => "lt",
-            B::RightTrigger2 => "rt",
-            B::Select => "select",
-            B::Start => "start",
-            B::Mode => "mode",
-            B::LeftThumb => "lthumb",
-            B::RightThumb => "rthumb",
-            B::DPadUp => "dpad_up",
-            B::DPadDown => "dpad_down",
-            B::DPadLeft => "dpad_left",
-            B::DPadRight => "dpad_right",
-            _ => return None,
-        })
-    }
-
-    fn pad_axis(a: gilrs::Axis) -> Option<&'static str> {
-        use gilrs::Axis as A;
-        Some(match a {
-            A::LeftStickX => "left_x",
-            A::LeftStickY => "left_y",
-            A::RightStickX => "right_x",
-            A::RightStickY => "right_y",
-            A::LeftZ => "lt",
-            A::RightZ => "rt",
-            _ => return None,
-        })
     }
 
     impl Drop for RenderState {
@@ -5016,11 +4899,6 @@ pub(crate) mod render {
             }
         }
 
-        fn index_of(&mut self, id: usize) -> u32 {
-            let next = self.pad_index.len() as u32;
-            *self.pad_index.entry(id).or_insert(next)
-        }
-
         /// Pump the window and the pads; device events in the input
         /// layer's names. Resizes are handled here.
         pub fn poll(&mut self) -> Vec<DeviceInput> {
@@ -5031,21 +4909,12 @@ pub(crate) mod render {
                     close = true;
                 }
                 for ev in host.take_events() {
-                    match ev {
-                        DeviceEvent::Key { code, pressed } => out.push(DeviceInput::Key {
-                            name: code,
-                            pressed,
-                        }),
-                        DeviceEvent::Mouse {
-                            button, pressed, ..
-                        } => out.push(DeviceInput::Mouse {
-                            button: button.to_ascii_lowercase(),
-                            pressed,
-                        }),
-                        DeviceEvent::Focus { focused: false } => out.push(DeviceInput::ReleaseAll),
-                        DeviceEvent::Text { text } => self.typed.push(text),
-                        DeviceEvent::Resized { width, height } => r.gpu_mut().resize(width, height),
-                        _ => {}
+                    match window_input(ev) {
+                        Some(WindowInput::Device(d)) => out.push(d),
+                        Some(WindowInput::Text(t)) => self.typed.push(t),
+                        Some(WindowInput::Resized(w, h)) => r.gpu_mut().resize(w, h),
+                        // The host reports the close as the pump's answer.
+                        Some(WindowInput::Close) | None => {}
                     }
                 }
             }
@@ -5054,76 +4923,8 @@ pub(crate) mod render {
                 self.closed_now = true;
                 out.push(DeviceInput::ReleaseAll);
             }
-            let mut raw = Vec::new();
-            if let Some(g) = &mut self.pads {
-                if !self.pads_announced {
-                    self.pads_announced = true;
-                    for (id, gp) in g.gamepads() {
-                        raw.push((
-                            usize::from(id),
-                            gp.name().to_string(),
-                            gilrs::EventType::Connected,
-                        ));
-                    }
-                }
-                while let Some(ev) = g.next_event() {
-                    let name = g.gamepad(ev.id).name().to_string();
-                    raw.push((usize::from(ev.id), name, ev.event));
-                }
-            }
-            for (id, name, ev) in raw {
-                let pad = self.index_of(id);
-                use gilrs::EventType as E;
-                match ev {
-                    E::Connected => out.push(DeviceInput::PadConnected {
-                        pad,
-                        name,
-                        connected: true,
-                    }),
-                    E::Disconnected => out.push(DeviceInput::PadConnected {
-                        pad,
-                        name,
-                        connected: false,
-                    }),
-                    E::ButtonPressed(b, _) | E::ButtonRepeated(b, _) => {
-                        if let Some(b) = pad_button(b) {
-                            out.push(DeviceInput::PadButton {
-                                pad,
-                                button: b.into(),
-                                pressed: true,
-                            });
-                        }
-                    }
-                    E::ButtonReleased(b, _) => {
-                        if let Some(b) = pad_button(b) {
-                            out.push(DeviceInput::PadButton {
-                                pad,
-                                button: b.into(),
-                                pressed: false,
-                            });
-                        }
-                    }
-                    E::ButtonChanged(b, v, _) => {
-                        // Analog triggers arrive as button values.
-                        if let Some(n @ ("lt" | "rt")) = pad_button(b) {
-                            out.push(DeviceInput::PadAxis {
-                                pad,
-                                axis: n.into(),
-                                value: v,
-                            });
-                        }
-                    }
-                    E::AxisChanged(a, v, _) => {
-                        if let Some(a) = pad_axis(a) {
-                            out.push(DeviceInput::PadAxis {
-                                pad,
-                                axis: a.into(),
-                                value: v,
-                            });
-                        }
-                    }
-                    _ => {}
-                }
+            if let Some(p) = &mut self.pads {
+                out.extend(p.poll());
             }
             out
         }
@@ -5199,13 +5000,7 @@ pub(crate) mod render {
             self.window = Some((host, r));
             if self.pads.is_none() {
                 // Pads already plugged in are reported as connected on the first poll.
-                self.pads = gilrs::Gilrs::new().ok();
-                if let Some(g) = &self.pads {
-                    let ids: Vec<usize> = g.gamepads().map(|(id, _)| usize::from(id)).collect();
-                    for id in ids {
-                        self.index_of(id);
-                    }
-                }
+                self.pads = Some(Pads::open()).filter(Pads::is_open);
             }
             Ok(())
         }

@@ -125,6 +125,12 @@ Phase 0 item 3, "Luau binding with component and def schemas": this crate.
 - Luau heap in the snapshot: not snapshotted, and per-system state is unsupported; see the §19 row. A seek reports a system that keeps it.
 - Luau performance ceiling: per-entity proxies allocate once per `each` call, not per entity, and `vec2` values cross as native vectors, but every field access is still a Rust round trip with mlua's per-call allocations (about a microsecond per entity per system at 50k). Promoting a system to Rust changes nothing around it because the declaration contract is identical.
 
+## Phase 2, item 7: bytecode
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§15) Luau precompiled to bytecode in a release build. | Done | `compile(rel, src)`: Luau bytecode with the options loading source uses (optimisation 1, line numbers kept), or the syntax error as a `script.errors` row with its line. `load_project` and `reload` read bytes, and `load_bytes` takes source or bytecode, which Luau tells apart by the first byte. A run-time error in bytecode still names the file and line. | `bytecode::bytecode_runs_as_its_source_does_and_keeps_its_lines`, `bytecode::a_syntax_error_is_caught_when_compiling_with_its_line` |
+
 ## Known limitations, stated so they are decisions
 
 - One Luau VM per `ScriptHost`; a forked world needs its own host (or the same host with a different scheduler, since the VM holds no world state).

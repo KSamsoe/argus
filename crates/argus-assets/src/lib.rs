@@ -18,6 +18,7 @@
 #![warn(missing_docs)]
 
 pub mod animator;
+mod catalog;
 pub mod effect;
 pub mod sidecar;
 
@@ -28,11 +29,12 @@ use argus_audio::{SoundDef, Source};
 use argus_ecs::{ArgusError, Result};
 pub use argus_material::MaterialSpec;
 use argus_os::time::Instant;
+pub use catalog::{PackedSprites, CATALOG, TEXTURES};
 pub use effect::{Area, ColorCurve, Curve, EmitterSpec, Space};
 use serde_json::{json, Value as Json};
 pub use sidecar::{AutoMode, AutoTileSpec};
 use sidecar::{Direction, Shape, SidecarKind};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
@@ -413,6 +415,9 @@ pub struct Importer {
     inputs: BTreeMap<String, Stamp>,
     /// Stamps of the whole tree at the last poll.
     tree: Stamp,
+    /// Sprites a release pack's catalog supplied (phase 2 item 7), which a
+    /// scan neither imports nor counts as gone.
+    packed: BTreeSet<String>,
 }
 
 fn walk(dir: &Path, base: &Path, out: &mut Stamp) {
@@ -453,6 +458,7 @@ impl Importer {
             failed: BTreeMap::new(),
             inputs: BTreeMap::new(),
             tree: BTreeMap::new(),
+            packed: BTreeSet::new(),
         }
     }
 
@@ -591,7 +597,7 @@ impl Importer {
             .entries
             .keys()
             .chain(self.failed.keys())
-            .filter(|n| !groups.contains_key(*n))
+            .filter(|n| !groups.contains_key(*n) && !self.packed.contains(*n))
             .cloned()
             .collect();
         for n in gone {
@@ -605,6 +611,9 @@ impl Importer {
         report.removed.sort();
         report.removed.dedup();
         for (name, g) in groups {
+            if self.packed.contains(&name) {
+                continue;
+            }
             // The files this asset reads: its own, plus a sound's variations
             // (added after the sidecar is parsed, below).
             let mut files: Vec<&String> = [&g.png, &g.wav, &g.wgsl, &g.sidecar]

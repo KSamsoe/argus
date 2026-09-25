@@ -1,0 +1,36 @@
+[package]
+name = "argus-player"
+description = "Argus Engine player runtime (phase 2 item 7): a project's world assembled one way for the daemon, the web page, and a release build; keyframes and replay files; packs; the bounded recorder"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = ["render", "audio"]
+# Sprite, Describe, and the tile extras the renderer draws.
+render = ["dep:argus-render"]
+# The mixer, which answers sound requests.
+audio = ["dep:argus-audio"]
+# The desktop's devices: window events and gamepads in the input layer's
+# names, for the daemon's window and a release build.
+desktop = ["render", "dep:gilrs"]
+
+[dependencies]
+argus-os = { path = "../argus-os", version = "0.0.1" }
+argus-ecs = { path = "../argus-ecs", version = "0.0.1" }
+argus-sim = { path = "../argus-sim", version = "0.0.1" }
+argus-luau = { path = "../argus-luau", version = "0.0.1" }
+argus-scene = { path = "../argus-scene", version = "0.0.1" }
+argus-input = { path = "../argus-input", version = "0.0.1" }
+argus-assets = { path = "../argus-assets", version = "0.0.1" }
+argus-tiles = { path = "../argus-tiles", version = "0.0.1" }
+argus-physics = { path = "../argus-physics", version = "0.0.1" }
+argus-camera = { path = "../argus-camera", version = "0.0.1" }
+argus-post = { path = "../argus-post", version = "0.0.1" }
+argus-anim = { path = "../argus-anim", version = "0.0.1" }
+argus-tween = { path = "../argus-tween", version = "0.0.1" }
+argus-particles = { path = "../argus-particles", version = "0.0.1" }
+argus-render = { path = "../argus-render", version = "0.0.1", optional = true }
+argus-audio = { path = "../argus-audio", version = "0.0.1", optional = true }
+gilrs = { version = "0.11", optional = true }
+serde_json = "1"

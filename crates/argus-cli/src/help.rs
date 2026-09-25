@@ -22,6 +22,7 @@ pub fn overview() -> String {
         let _ = writeln!(out, "    {:<22} {}", m.name, first_sentence(m.doc));
     }
     out.push_str("\n  test\n    test [name]            run the scenarios in tests/*.luau (test.run); --seeds 1..50, --file tests/x.luau, --update goldens\n");
+    out.push_str("\n  build\n    build                  a release: the executable and its packs, or the web page (--target, --release)\n");
     out.push_str("\n  daemon\n    daemon start           start the project's daemon in the background (a method does this too when needed)\n    daemon stop            session.shutdown on the running daemon\n    daemon status          is a daemon running for this project, and which\n    daemon run             run the daemon in the foreground (what argusd --project does)\n");
     out
 }
@@ -37,6 +38,9 @@ pub fn topic(words: &[String]) -> String {
     }
     if joined == "daemon" {
         return daemon();
+    }
+    if joined == "build" {
+        return build();
     }
     if joined == "test" {
         return test();
@@ -102,6 +106,11 @@ pub fn daemon() -> String {
     "usage: argus daemon start [--scene s] [--seed n]   start the project's daemon in the background\n       argus daemon stop                          ask it to exit (session.shutdown)\n       argus daemon status                        running or not, pid, socket\n       argus daemon run [--scene s] [--seed n]     serve in the foreground until stopped\n\nThe daemon is found through <project>/.argus/daemon.json. A method call starts one when none answers,\nunless --no-start is given.\n".to_string()
 }
 
+/// Help for `argus build`.
+pub fn build() -> String {
+    "usage: argus build [--target windows|linux|macos|web] [--release] [--out dir] [--since dir] [--json]\n\nA release of the project (section 15): one directory with the executable, named for the game,\nand data/ with the game's pack and a pack per language (lang/<code>/ in the project). The web\ntarget writes the page and the wasm module instead of an executable. Packs are built from the\nimport cache with the scripts compiled; a failed import or a script error stops the build.\n\n--target: default this machine's; a desktop build is made on its own platform. web needs wasi-sdk\n          (WASI_SDK) and wasm-bindgen-cli.\n--release: optimised. --out: default <project>/dist/<target>.\n--since: a previous build's directory; the game goes into a patch with only what changed.\n\nThe build checks itself: the game from its packs, and the executable run headless, reach the\nsame world as the project after the same ticks. build.json in the directory says what was made.\nA player's report key saves a replay file; `argus mark import path=<file>` makes it a mark.\n".to_string()
+}
+
 /// Help for `argus test`.
 pub fn test() -> String {
     let m = docs::find("test.run").expect("test.run is a method");
@@ -118,6 +127,7 @@ pub fn for_command(cmd: &Command) -> String {
         Command::Namespace(ns) => namespace(ns),
         Command::Daemon(_) => daemon(),
         Command::Test(_) => test(),
+        Command::Build => build(),
         Command::Help(t) => topic(t),
         Command::Unknown(_) => overview(),
     }

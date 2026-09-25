@@ -1,5 +1,7 @@
-//! What the page calls (wasm only): open a pack, step, feed keys, report,
-//! and draw into a canvas.
+//! What the page calls (wasm only): open a build's packs, step, feed keys,
+//! report, and draw into a canvas. The player keeps the bounded recorder
+//! from the start (§15, phase 2 item 7), so the page's report key sends the
+//! last thirty to sixty seconds as a replay file.
 
 use crate::Player;
 use serde_json::Value as Json;
@@ -36,7 +38,8 @@ pub struct WebPlayer {
 
 #[wasm_bindgen]
 impl WebPlayer {
-    /// Mount a pack and open its scene (default: `argus.toml`'s) with a seed
+    /// Mount a pack (a release build's game pack, or the spike's pack of
+    /// every file) and open its scene (default: `argus.toml`'s) with a seed
     /// (default: the scene's).
     #[wasm_bindgen(constructor)]
     pub fn new(
@@ -45,9 +48,42 @@ impl WebPlayer {
         seed: Option<u32>,
     ) -> Result<WebPlayer, JsValue> {
         hook();
-        let files = crate::unpack(pack).map_err(js)?;
+        let files = if pack.starts_with(b"ARGP") {
+            let p = argus_player::pack::Pack::decode(pack).map_err(js)?;
+            argus_player::pack::resolve(&[p], None).map_err(js)?.0
+        } else {
+            crate::unpack(pack).map_err(js)?
+        };
+        WebPlayer::open(files, scene, seed)
+    }
+
+    /// A release build's packs (`data/packs.json` lists them): the game, its
+    /// patches, its languages; `lang` picks one.
+    pub fn from_packs(
+        packs: js_sys::Array,
+        lang: Option<String>,
+        scene: Option<String>,
+        seed: Option<u32>,
+    ) -> Result<WebPlayer, JsValue> {
+        hook();
+        let mut all = Vec::new();
+        for v in packs.iter() {
+            let bytes = js_sys::Uint8Array::new(&v).to_vec();
+            all.push(argus_player::pack::Pack::decode(&bytes).map_err(js)?);
+        }
+        let (files, _) = argus_player::pack::resolve(&all, lang.as_deref()).map_err(js)?;
+        WebPlayer::open(files, scene, seed)
+    }
+
+    fn open(
+        files: Vec<(String, Vec<u8>)>,
+        scene: Option<String>,
+        seed: Option<u32>,
+    ) -> Result<WebPlayer, JsValue> {
         argus_os::fs::mount(ROOT, files);
-        let p = Player::open(ROOT.as_ref(), scene.as_deref(), seed.map(u64::from)).map_err(js)?;
+        let mut p =
+            Player::open(ROOT.as_ref(), scene.as_deref(), seed.map(u64::from)).map_err(js)?;
+        p.record();
         Ok(WebPlayer {
             p,
             renderer: None,
@@ -135,7 +171,17 @@ impl WebPlayer {
         self.p.input_log().to_string()
     }
 
-    /// A mark of this moment, as JSON, with the build's code revision.
+    /// A report of the last thirty to sixty seconds, with a note: a replay
+    /// file (ARGR) the page posts to the server it came from, which
+    /// `argus mark pull` turns into marks.
+    pub fn report(&self, note: &str) -> Vec<u8> {
+        self.p
+            .report(note, "report", option_env!("ARGUS_CODE").unwrap_or("none"))
+            .unwrap_or_default()
+    }
+
+    /// A mark of this moment, as JSON, with the build's code revision (the
+    /// spike's: its whole input log from the load).
     pub fn mark(&self, note: &str) -> String {
         self.p
             .mark(note, option_env!("ARGUS_CODE").unwrap_or("none"))

@@ -14,7 +14,7 @@ node tools/web/serve.mjs
 
 Then open http://127.0.0.1:8765/ and click the game. Add `?webgl` to force WebGL2, `?seed=3` for another seed, and `?paused` to draw without running.
 
-To rebuild it you need the wasm Rust target, wasi-sdk 33 or later, and wasm-bindgen-cli at the version in `Cargo.lock` (`tools/web/env.sh` says where each goes). Then:
+To rebuild it you need the wasm Rust target, wasi-sdk 33 or later, and wasm-bindgen-cli at the version in `Cargo.lock` (`tools/web/env.sh` says where each goes). Since phase 2 item 7, `build.sh` is `argus build --target web --release`, which writes the page with the project's release packs. Then:
 
 ```
 tools/web/build.sh

@@ -1,6 +1,6 @@
 [package]
 name = "argus-web"
-description = "Argus Engine web player (phase 2 item 1, the spike): a project's world assembled without the daemon, stepped by the page, drawn into a canvas with WebGPU or WebGL2, and a pack format that carries a project to the browser"
+description = "Argus Engine web player (phase 2 items 1 and 7): argus-player's world stepped by the page and drawn into a canvas with WebGPU or WebGL2"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,20 +10,10 @@ license.workspace = true
 # would export more symbols than a DLL may hold.
 
 [dependencies]
+argus-player = { path = "../argus-player", version = "0.0.1" }
 argus-os = { path = "../argus-os", version = "0.0.1" }
 argus-ecs = { path = "../argus-ecs", version = "0.0.1" }
 argus-sim = { path = "../argus-sim", version = "0.0.1" }
-argus-luau = { path = "../argus-luau", version = "0.0.1" }
-argus-scene = { path = "../argus-scene", version = "0.0.1" }
-argus-input = { path = "../argus-input", version = "0.0.1" }
-argus-assets = { path = "../argus-assets", version = "0.0.1" }
-argus-tiles = { path = "../argus-tiles", version = "0.0.1" }
-argus-physics = { path = "../argus-physics", version = "0.0.1" }
-argus-camera = { path = "../argus-camera", version = "0.0.1" }
-argus-post = { path = "../argus-post", version = "0.0.1" }
-argus-anim = { path = "../argus-anim", version = "0.0.1" }
-argus-tween = { path = "../argus-tween", version = "0.0.1" }
-argus-particles = { path = "../argus-particles", version = "0.0.1" }
 argus-render = { path = "../argus-render", version = "0.0.1" }
 argus-audio = { path = "../argus-audio", version = "0.0.1" }
 serde_json = "1"

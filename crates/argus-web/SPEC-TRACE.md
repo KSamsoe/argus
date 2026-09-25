@@ -24,6 +24,13 @@ Every statement in the design document (v0.3) that constrains the web spike (pha
 |---|---|---|---|
 | A mark is a fully reproducible bug report. | Partial (the spike) | `WebPlayer::mark(note)`: scene, seed, code revision (`ARGUS_CODE` at build time), tick, the input log, the world and event digests, and the note. `Player::replay_log` schedules the log from load, and the `mark_replay` example replays a mark natively and compares digests. The daemon takes one into its queue with `mark.import` (item 2) and opens it by replaying from the load; posting marks from the browser is item 7. | `tools/web/check.mjs` takes a mark after real key presses and replays it natively (`same: true`); `argus-daemon/tests/marks.rs::a_web_mark_reaches_the_same_world_in_the_daemon` |
 
+## Phase 2, item 7: a release build's page
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§15) The web target from `argus build`. | Done | `WebPlayer.from_packs` takes a release build's packs (and a language); the page (`tools/web/main.js`) loads the ones `data/packs.json` lists, and falls back to the spike's single pack. The player keeps the bounded recorder from the start. | `tools/web/check.mjs` on a built site |
+| (§15) A player bug report becomes a mark, from the browser. | Done | F8 on the page pauses and asks what happened; Send posts `WebPlayer.report(note)` (a replay file) to `marks` on the server the page came from (`tools/web/serve.mjs` stores it), and offers it as a file where there is no server. `argus mark pull` imports them. `examples/mark_replay` replays a report natively. | `tools/web/check.mjs` step 4: the pit's report, posted, fetched, replayed to the same world |
+
 ## Known limitations, stated so they are decisions
 
 - `Player::open` copies the daemon's `open_scene`. Item 7 shares one assembly.

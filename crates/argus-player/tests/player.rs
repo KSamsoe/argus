@@ -3,7 +3,7 @@
 //! (tools/web/check.mjs); `--nocapture` prints the digests the
 //! two compare.
 
-use argus_web::Player;
+use argus_player::Player;
 use serde_json::json;
 use std::path::Path;
 
@@ -51,7 +51,7 @@ fn hollow_runs_without_the_daemon_and_twice_the_same() {
 #[test]
 fn a_pack_round_trips_a_project() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/hollow");
-    let files = argus_web::unpack(&argus_web::pack(&root).unwrap()).unwrap();
+    let files = argus_player::unpack(&argus_player::pack(&root).unwrap()).unwrap();
     assert!(files.iter().any(|(p, _)| p == "argus.toml"));
     assert!(files
         .iter()

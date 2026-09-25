@@ -146,6 +146,13 @@ Phase 0 item 4, "JSON-RPC daemon with session, world, edit, sim (play, pause, st
 
 **Decision on the gate's "events and traces".** The phase-0 gate asks that the agent answer "why did the player die" from events and traces, while `obs.trace` is listed under phase 1. The daemon ships `obs.events` (with entity and name filters) and `world.who_writes`, which together answer the question the gate poses: the event says what happened and when, `who_writes` says which systems could have done it. `obs.trace` (one entity's component history over a window) stays in phase 1 with the snapshot ring it needs. The scenario runner (item 10) will show whether that is enough; if it is not, `obs.trace` moves. **Outcome:** it was enough for the phase-0 gate (Swarm's last-stand scenario answers "why did the player die" from `obs.events` and `who_writes`), and `obs.trace` landed where the plan put it, in phase 1 item 13, on a bounded history of its own rather than the phase-2 ring.
 
+## Phase 2, item 7: one assembly, and players' reports
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§15) A release build is the same core. | Done | `open_scene` builds its world with `argus_player::assemble`, the one assembly every player uses, and adds its own parts around it (history, index, renderer catalog, audio device, ring). The keyframe (`ring::Keyframe`, `Sources`) and the replay file (`replay`) moved to `argus-player` and are re-exported here; the window's device translation and gamepads (`argus_player::desktop`) are shared with the release executable. | the daemon's tests, unchanged |
+| (§15) A player bug report becomes a mark. | Done | `mark.import` takes a report (a replay file from a release build's report key or crash, or the web page's F8): the file becomes the mark's `replay.bin`, the player's note its note, `source` `report` or `crash`; `mark.open` reproduces it like a dropped mark and makes its clip. `mark.pull {url}` fetches the reports a playtest server (`tools/web/serve.mjs`) collected, each once (`.argus/marks/pulled.json`), over a small HTTP client (`http.rs`, plain HTTP for the LAN or tailnet address). | `reports::a_report_is_a_mark_that_reproduces_and_pull_fetches_each_once` |
+
 ## Known limitations, stated so they are decisions
 
 - A mark's clip is drawn while the game waits: 0.37 s in a debug build on Hollow with the window open, most of it the clip's 61 pictures. Released builds are faster; drawing the clip after the note is typed is the next step if it is felt.

@@ -17,9 +17,9 @@ path = "src/main.rs"
 default = ["render", "audio"]
 # The wgpu renderer: obs.frame, render.window, render.status. Off for a
 # headless-only build.
-render = ["dep:argus-render", "dep:gilrs"]
+render = ["dep:argus-render", "argus-player/desktop"]
 # The mixer and its event log; the output device opens with the window.
-audio = ["dep:argus-audio"]
+audio = ["dep:argus-audio", "argus-player/audio"]
 
 [dependencies]
 argus-ecs = { path = "../argus-ecs", version = "0.0.1" }
@@ -38,13 +38,16 @@ argus-tween = { path = "../argus-tween", version = "0.0.1" }
 argus-particles = { path = "../argus-particles", version = "0.0.1" }
 argus-material = { path = "../argus-material", version = "0.0.1" }
 argus-test = { path = "../argus-test", version = "0.0.1" }
+# The one scene assembly, keyframes, and replay files, shared with every
+# player (phase 2 item 7).
+argus-player = { path = "../argus-player", version = "0.0.1", default-features = false }
 argus-render = { path = "../argus-render", version = "0.0.1", optional = true }
-gilrs = { version = "0.11", optional = true }
 argus-audio = { path = "../argus-audio", version = "0.0.1", optional = true }
 serde_json = "1"
 toml_edit = "0.22"
 interprocess = "2"
 
 [dev-dependencies]
-# The web player, to check a web mark against this daemon's world (phase 2 item 2).
-argus-web = { path = "../argus-web" }
+# The player with its renderer and mixer, to check a web mark against this
+# daemon's world (phase 2 item 2).
+argus-player = { path = "../argus-player" }

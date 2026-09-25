@@ -54,22 +54,41 @@ pub mod fs {
     mod imp {
         use super::*;
 
+        // A path under a mounted pack is memory; anything else is the disk.
         pub fn read(p: &Path) -> io::Result<Vec<u8>> {
+            if mem::covers(p) {
+                return mem::read(p);
+            }
             std::fs::read(p)
         }
         pub fn write(p: &Path, c: &[u8]) -> io::Result<()> {
+            if mem::covers(p) {
+                return mem::write(p, c);
+            }
             std::fs::write(p, c)
         }
         pub fn create_dir_all(p: &Path) -> io::Result<()> {
+            if mem::covers(p) {
+                return mem::create_dir_all(p);
+            }
             std::fs::create_dir_all(p)
         }
         pub fn remove_file(p: &Path) -> io::Result<()> {
+            if mem::covers(p) {
+                return mem::remove_file(p);
+            }
             std::fs::remove_file(p)
         }
         pub fn rename(a: &Path, b: &Path) -> io::Result<()> {
+            if mem::covers(a) || mem::covers(b) {
+                return mem::rename(a, b);
+            }
             std::fs::rename(a, b)
         }
         pub fn metadata(p: &Path) -> io::Result<Meta> {
+            if mem::covers(p) {
+                return mem::metadata(p);
+            }
             let m = std::fs::metadata(p)?;
             Ok(Meta {
                 is_dir: m.is_dir(),
@@ -78,6 +97,9 @@ pub mod fs {
             })
         }
         pub fn read_dir(p: &Path) -> io::Result<Vec<Entry>> {
+            if mem::covers(p) {
+                return mem::read_dir(p);
+            }
             let mut out = Vec::new();
             for e in std::fs::read_dir(p)?.flatten() {
                 let Ok(m) = e.metadata() else { continue };
@@ -90,18 +112,49 @@ pub mod fs {
             }
             Ok(out)
         }
+        pub use super::mem::mount;
     }
 
     #[cfg(target_arch = "wasm32")]
     mod imp {
+        pub use super::mem::{
+            create_dir_all, metadata, mount, read, read_dir, remove_file, rename, write,
+        };
+    }
+
+    /// Files in memory, under the roots packs were mounted at: every path
+    /// in a browser, and a release build's game on the desktop (phase 2
+    /// item 7), which reads its packs and writes nothing to disk.
+    mod mem {
         use super::*;
-        use std::cell::RefCell;
         use std::collections::{BTreeMap, BTreeSet};
         use std::path::Component;
+        use std::sync::Mutex;
 
-        thread_local! {
-            static FILES: RefCell<BTreeMap<PathBuf, Vec<u8>>> = const { RefCell::new(BTreeMap::new()) };
-            static DIRS: RefCell<BTreeSet<PathBuf>> = const { RefCell::new(BTreeSet::new()) };
+        struct Mem {
+            files: BTreeMap<PathBuf, Vec<u8>>,
+            dirs: BTreeSet<PathBuf>,
+            roots: Vec<PathBuf>,
+        }
+
+        static MEM: Mutex<Mem> = Mutex::new(Mem {
+            files: BTreeMap::new(),
+            dirs: BTreeSet::new(),
+            roots: Vec::new(),
+        });
+
+        fn with<T>(f: impl FnOnce(&mut Mem) -> T) -> T {
+            f(&mut MEM.lock().unwrap_or_else(|e| e.into_inner()))
+        }
+
+        /// Whether a path is under a mounted root.
+        #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+        pub fn covers(p: &Path) -> bool {
+            if with(|m| m.roots.is_empty()) {
+                return false;
+            }
+            let p = norm(p);
+            with(|m| m.roots.iter().any(|r| p.starts_with(r)))
         }
 
         /// `a/./b/../c` is `a/c`; separators are the platform's.
@@ -126,34 +179,29 @@ pub mod fs {
             )
         }
 
-        fn is_dir_n(p: &Path) -> bool {
-            DIRS.with(|d| d.borrow().contains(p))
-                || FILES.with(|f| {
-                    f.borrow()
-                        .range(p.to_path_buf()..)
-                        .next()
-                        .is_some_and(|(k, _)| k != p && k.starts_with(p))
-                })
+        fn is_dir_n(m: &Mem, p: &Path) -> bool {
+            m.dirs.contains(p)
+                || m.files
+                    .range(p.to_path_buf()..)
+                    .next()
+                    .is_some_and(|(k, _)| k != p && k.starts_with(p))
         }
 
         pub fn read(p: &Path) -> io::Result<Vec<u8>> {
             let p = norm(p);
-            FILES
-                .with(|f| f.borrow().get(&p).cloned())
-                .ok_or_else(|| missing(&p))
+            with(|m| m.files.get(&p).cloned()).ok_or_else(|| missing(&p))
         }
         pub fn write(p: &Path, c: &[u8]) -> io::Result<()> {
             let p = norm(p);
-            FILES.with(|f| f.borrow_mut().insert(p, c.to_vec()));
+            with(|m| m.files.insert(p, c.to_vec()));
             Ok(())
         }
         pub fn create_dir_all(p: &Path) -> io::Result<()> {
             let p = norm(p);
-            DIRS.with(|d| {
-                let mut d = d.borrow_mut();
+            with(|m| {
                 for a in p.ancestors() {
                     if !a.as_os_str().is_empty() {
-                        d.insert(a.to_path_buf());
+                        m.dirs.insert(a.to_path_buf());
                     }
                 }
             });
@@ -161,8 +209,7 @@ pub mod fs {
         }
         pub fn remove_file(p: &Path) -> io::Result<()> {
             let p = norm(p);
-            FILES
-                .with(|f| f.borrow_mut().remove(&p))
+            with(|m| m.files.remove(&p))
                 .map(|_| ())
                 .ok_or_else(|| missing(&p))
         }
@@ -173,14 +220,14 @@ pub mod fs {
         }
         pub fn metadata(p: &Path) -> io::Result<Meta> {
             let p = norm(p);
-            if let Some(len) = FILES.with(|f| f.borrow().get(&p).map(|c| c.len() as u64)) {
+            if let Some(len) = with(|m| m.files.get(&p).map(|c| c.len() as u64)) {
                 return Ok(Meta {
                     is_dir: false,
                     len,
                     modified: SystemTime::UNIX_EPOCH,
                 });
             }
-            if is_dir_n(&p) {
+            if with(|m| is_dir_n(m, &p)) {
                 return Ok(Meta {
                     is_dir: true,
                     len: 0,
@@ -191,12 +238,12 @@ pub mod fs {
         }
         pub fn read_dir(p: &Path) -> io::Result<Vec<Entry>> {
             let p = norm(p);
-            if !is_dir_n(&p) {
+            if !with(|m| is_dir_n(m, &p)) {
                 return Err(missing(&p));
             }
             let mut names: BTreeMap<PathBuf, (bool, u64)> = BTreeMap::new();
-            FILES.with(|f| {
-                for (k, c) in f.borrow().range(p.clone()..) {
+            with(|m| {
+                for (k, c) in m.files.range(p.clone()..) {
                     let Ok(rest) = k.strip_prefix(&p) else { break };
                     let mut parts = rest.components();
                     let Some(first) = parts.next() else { continue };
@@ -206,9 +253,7 @@ pub mod fs {
                         .entry(child)
                         .or_insert((deeper, if deeper { 0 } else { c.len() as u64 }));
                 }
-            });
-            DIRS.with(|d| {
-                for k in d.borrow().iter() {
+                for k in m.dirs.iter() {
                     if k.parent() == Some(p.as_path()) {
                         names.entry(k.clone()).or_insert((true, 0));
                     }
@@ -228,10 +273,12 @@ pub mod fs {
         pub fn mount(root: &Path, files: Vec<(String, Vec<u8>)>) {
             let root = norm(root);
             let _ = create_dir_all(&root);
-            FILES.with(|f| {
-                let mut f = f.borrow_mut();
+            with(|m| {
+                if !m.roots.contains(&root) {
+                    m.roots.push(root.clone());
+                }
                 for (rel, bytes) in files {
-                    f.insert(norm(&root.join(rel)), bytes);
+                    m.files.insert(norm(&root.join(rel)), bytes);
                 }
             });
         }
@@ -285,9 +332,10 @@ pub mod fs {
         metadata(p).is_ok_and(|m| m.is_dir)
     }
 
-    /// In a browser, put a project's files under `root`: `files` are paths
-    /// relative to it, with `/` separators, and their bytes.
-    #[cfg(target_arch = "wasm32")]
+    /// Put a project's files in memory under `root`: `files` are paths
+    /// relative to it, with `/` separators, and their bytes. From then on
+    /// every path under `root` is memory, writes included: how a browser
+    /// and a release build (phase 2 item 7) read their packs.
     pub fn mount(root: impl AsRef<Path>, files: Vec<(String, Vec<u8>)>) {
         imp::mount(root.as_ref(), files)
     }
