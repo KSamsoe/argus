@@ -195,6 +195,18 @@ fn overrides_are_written_back_without_disturbing_the_file() {
     assert!(s.sync_entity(&mut w, "player").unwrap());
     assert_eq!(w.get::<Health>(player).unwrap().cur, 5);
 
+    // A vector's f32s are written as their shortest text: 21.2, not
+    // 21.200000762939453 (found in the phase 2 gate).
+    s.set_override(
+        &p.ctx(w.registry()),
+        "@player",
+        "Transform.pos",
+        &Value::Vec2(argus_ecs::Vec2::new(41.5, 21.2)),
+    )
+    .unwrap();
+    let text = read(t.path(), "scenes/arena/player.toml");
+    assert!(text.contains("pos = [41.5, 21.2]\n"), "{text}");
+
     // Range errors come from the schema, with its ref.
     let e = s
         .set_override(

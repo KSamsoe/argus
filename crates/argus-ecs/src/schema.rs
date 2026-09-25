@@ -317,8 +317,9 @@ field_value! {
 
 /// The f64 nearest the shortest decimal that reads back as `v`: a Rust
 /// default of `0.12f32` is described as 0.12, not 0.11999999731779099, and
-/// it survives any store that keeps 15 significant digits (the index).
-fn shortest_f64(v: f32) -> f64 {
+/// it survives any store that keeps 15 significant digits (the index), and
+/// a scene file says `21.2`, not `21.200000762939453`.
+pub fn shortest_f64(v: f32) -> f64 {
     if v.is_finite() {
         v.to_string().parse().unwrap_or(v as f64)
     } else {

@@ -1,20 +1,22 @@
 # Something to find at the top of the shaft (the phase 2 playtest's mark:
-# "put something up here like a collectible so its not pointless"). Placed
-# but off: a proposal turns it on, and says where, for Kevin to try by feel
-# (F9) and keep (F10).
+# "put something up here like a collectible so its not pointless"). It was
+# placed off, and proposal 1 turned it on in two places for Kevin to try by
+# feel (F9). He kept C (F10): up over the end of the ledge, where only a
+# jump reaches it.
 [Transform]
-pos = [37.5, 19.5]
+pos = [41.5, 21.2]
 
 [Sprite]
 atlas = "gem"
 size = [0.75, 0.75]
-visible = false
+visible = true
 z = 1.0
 
 [Collider]
 size = [0.75, 0.75]
 
 [Gem]
+active = true
 
 [Describe]
 name = "gem"

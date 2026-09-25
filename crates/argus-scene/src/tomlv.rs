@@ -3,6 +3,7 @@
 //! that caused it (§5 "Errors are documentation").
 
 use crate::codes;
+use argus_ecs::schema::shortest_f64;
 use argus_ecs::{ArgusError, FieldType, Result, Value, Vec2};
 use std::path::Path;
 use toml_edit::{Array, DocumentMut, ImDocument, Item, TableLike, Value as TValue};
@@ -151,10 +152,13 @@ pub fn from_value(v: &Value) -> Result<TValue> {
             TValue::from(i)
         }
         Value::Float(f) => TValue::from(*f),
+        // A vector is two f32s: written through their shortest text, so
+        // 21.2 is not written as 21.200000762939453 (found when a proposal
+        // moved Hollow's gem in the phase 2 gate).
         Value::Vec2(p) => {
             let mut a = Array::new();
-            a.push(p.x as f64);
-            a.push(p.y as f64);
+            a.push(shortest_f64(p.x));
+            a.push(shortest_f64(p.y));
             TValue::Array(a)
         }
         Value::Str(s) | Value::Ref(s) => TValue::from(s.as_str()),
