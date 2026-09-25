@@ -32,7 +32,7 @@ Every statement in the design document (v0.3) that constrains the `argus` comman
 
 | Spec | Status | Where | Test |
 |---|---|---|---|
-| "show as command" prints the CLI equivalent of every editor action. | Deferred | Phase 3 with the editor; the CLI's `key=value` grammar is what it will print. | |
+| "show as command" prints the CLI equivalent of every editor action. | Deferred | Phase 4 with the editor; the CLI's `key=value` grammar is what it will print. | |
 | The agent's `input.inject` says `{action: "jump"}`. | Done | `argus input inject jump` (a bare value goes to the first parameter, `action`). | `cli::key_values_become_the_params_object` |
 
 ## Parameters, stated so the grammar is a decision
