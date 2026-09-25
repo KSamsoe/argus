@@ -1,0 +1,12 @@
+# Section 17's Outpost numbers: 200 colonists and 20,000 items (stones
+# lying about on a bigger valley), with pathfinding, jobs, and needs
+# running. The same systems as the valley; only the founding differs.
+[Colony]
+size = [96.0, 64.0]
+colonists = 200
+stones = 20000
+haul_open = 200
+
+[Stockpile]
+meal = 2000.0
+food = 2000.0

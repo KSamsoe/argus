@@ -390,6 +390,23 @@ fn test_command(
     if inv.no_replays {
         params["replays"] = json!(false);
     }
+    // The test tool's key=value words too (`argus test name=speed`); they
+    // were dropped, and a filter that is dropped runs everything (found in
+    // phase 3 item 3, when a name ran six minutes of seeds).
+    for (k, v) in inv.args.iter().filter_map(|a| a.split_once('=')) {
+        match k {
+            "name" | "file" | "seeds" => params[k] = json!(v),
+            "update" | "software" => params[k] = json!(v != "false"),
+            "replays" => params[k] = json!(v != "false"),
+            other => {
+                let _ = writeln!(
+                    err,
+                    "argus: test takes name, file, seeds, update, software, and replays; not {other:?}"
+                );
+                return EXIT_USAGE;
+            }
+        }
+    }
     let mut client = match project::connect(inv, err) {
         Ok(c) => c,
         Err(e) => {

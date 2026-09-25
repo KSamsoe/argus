@@ -1,0 +1,18 @@
+# Six colonists: everyone hauls; some farm, some cook.
+["Ada"]
+skills = "farm cook"
+
+["Bram"]
+skills = "farm"
+
+["Cleo"]
+skills = "cook"
+
+["Dov"]
+skills = "farm"
+
+["Esme"]
+skills = "farm cook"
+
+["Finn"]
+skills = ""

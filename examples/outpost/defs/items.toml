@@ -1,0 +1,15 @@
+# Goods (section 4's data tables). Food is in meals: a colonist needs one a
+# day (Colony.hunger_per_day).
+["crop"]
+name = "Crop"
+food = 0.4
+color = "#C9B458"
+
+["meal"]
+name = "Meal"
+food = 1.0
+color = "#E08A4A"
+
+["stone"]
+name = "Stone"
+color = "#8A8F99"

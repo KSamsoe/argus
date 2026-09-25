@@ -1,0 +1,31 @@
+# argus-jobs: spec trace
+
+Every statement in the design document (v0.3) that constrains the job system (§12 "Pathfinding and jobs", §10 tune fields, §6 determinism, §17 Outpost's tick, §8 aggregates as its customer), with where it lives and the test that pins it. Phase 3 item 3. Statuses as in the other traces: **Done**, **Partial**, **Deferred**.
+
+## §12 Pathfinding and jobs
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| "On top of it a job system: entities publish tasks with requirements." | Done | `Job`: a kind, a priority, the skill it needs (`requires`, or its kind's), a `site` where it is worked (or the job entity's own place), seconds of `work`, and optionally a second leg: `carry` taken to `to` once the work at the site is done. A game publishes one by spawning it (`q:spawn({"Job"})`); `jobs.update` opens it the tick after. `only` makes it one worker's (a meal, a night's sleep). A `JobKind` gives every job of a kind its priority, skill, and work. | `jobs::a_job_with_a_second_leg_carries_its_cargo_there`, `jobs::a_job_kind_adds_its_priority_skill_and_work` |
+| "Agents claim them by priority and distance." | Done | `jobs.update`: an idle `Worker` whose turn it is takes the open job with the highest priority (its own plus its kind's) that it has the skill for and can reach, the nearest among equals (straight-line distance to where it would stand), ties by entity. It walks there with its `NavAgent`, works at `Worker.rate`, carries, and the job is done: `job.done` with the job's kind, worker, site, to, and carry, and the job entity is despawned. A job only for a worker that outranks the one it has takes it off that one (`job.released`). | `jobs::a_worker_takes_the_highest_priority_job_then_the_nearest_and_works_it`, `jobs::a_job_only_for_a_worker_that_outranks_its_own_takes_it_off_that` |
+| Reach is the navigation grid's. | Done | A worker never takes a job it cannot walk to: `argus_nav::search::islands` labels each open cell with its region, once a grid (the `NavStore` keeps them by the grid's hash), so reachability is one comparison per job. It stands on the site's cell if open, else the first open cell around it (the navigation's fixed order). | `jobs::skills_only_and_reach_decide_and_an_idle_worker_says_why_once` (a wall, then a door) |
+| "obs.why can explain 'why is this colonist idle' from the job system's declared events." | Done | A worker with no job says why in `Worker.idle` and in a `job.idle` event each time the reason changes ("none of the 2 open jobs is its to do: 1 need cook, 1 out of reach; 1 more taken"). `why::explain` judges every job for one worker with the rules the system decides by: could take it, has it, another has it, only for another, needs a skill, out of reach. The daemon answers `jobs.why {worker}` with it, and `obs.why` on a `job.*` event naming a worker carries it as `jobs`. | `jobs::skills_only_and_reach_decide_and_an_idle_worker_says_why_once`; Outpost's `tests/colony.luau` ("why a colonist is idle") |
+| Both Rust hot-path systems (the searches); the job system is Rust too. | Done | `jobs.update` (sim stage) reads jobs and workers column by column, decides in entity order, and writes back column by column. Idle workers look every `LOOK_TICKS` (30) ticks unless a job was posted or released, which wakes them. | `perf::perf_200_workers_hauling_among_20000_items` |
+| A claim holds only while its worker, site, and cargo do. | Done | A job whose worker is gone or has another job goes back to open (`job.released`); one whose site, destination, cargo, or `only` worker is gone is cancelled and despawned (`job.cancelled`). A worker whose way is blocked lets its job go. A carried job let go starts again from where its cargo was left. | `jobs::a_claim_is_undone_when_its_worker_goes_and_a_job_is_cancelled_when_its_site_does` |
+
+## §10, §6, §17, §8
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| §10: "In Outpost the tune fields are job priorities, consumption rates, and growth curves." | Done | `JobKind.priority` and `JobKind.work` are tune fields: a slider on a kind changes every job of it, open or not, the next tick. Outpost founds its kinds from `defs/jobs.toml` (§4: "Outpost is mostly defs"), so a table edit changes a new colony and a slider the running one. Consumption and growth are `Colony`'s tune fields. | Outpost's `tests/colony.luau` |
+| §6: the same inputs give the same world, after a seek, a fork, or a load too. | Done | Everything is in the world: who has which job, its stage and progress, where the worker stands (`Job.spot`), when an idle worker looks again (`Worker.look`), why it is idle. Posting wakes workers through the job's empty stage, never through what the system saw last tick. | `jobs::jobs_go_the_same_way_after_a_seek_with_a_fresh_store` |
+| §17: Outpost's sim tick at 10x with 200 colonists and 20,000 items under 1.6 ms, "with pathfinding, jobs, and needs all running". | Done | The engine's share, release: 200 workers hauling among 20,000 items with 400 open jobs, 0.45 ms a tick (worst 0.89), posting included. On Outpost itself, see the checklist. | `perf::perf_200_workers_hauling_among_20000_items` (ignored in debug); Outpost's `tests/stress.luau` |
+| §8: aggregates over job queues. | Done | The queue is a query (`world.query {group_by: "Job.kind", select: ["count()"]}`, `argus-index`); no `jobs.list` was needed. | `argus-index` `index::aggregates_answer_one_row_a_group` |
+
+## Known limitations, stated so they are decisions
+
+- Distance is a straight line to where the worker would stand, not the length of the path; reach is exact (islands), cost is not. A path's length would be an A* per candidate per look.
+- Preemption is by jobs addressed to a worker (`only`): a meal or sleep takes a worker off hauling. An open job for anyone does not take a worker off a lower one; it waits for someone free.
+- One job at a time a worker, one worker a job. Hauling several things in one trip, or two workers on one job, are games' own jobs made of these.
+- `JobKind` is found by name each tick; the first entity with a name wins.
+- Work begins the tick after a worker arrives, and arrival is the agent's (`NavAgent` arrived at the job's spot), so a job takes a tick or two longer than its walk and its work.

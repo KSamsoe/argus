@@ -1,0 +1,11 @@
+[package]
+name = "argus-jobs"
+description = "Argus Engine job system: entities publish tasks with requirements, workers claim them by priority and distance, walk there over the navigation grid, work, and carry"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+argus-ecs = { path = "../argus-ecs", version = "0.0.1" }
+argus-sim = { path = "../argus-sim", version = "0.0.1" }
+argus-nav = { path = "../argus-nav", version = "0.0.1" }

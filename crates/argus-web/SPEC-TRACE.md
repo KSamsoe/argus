@@ -37,6 +37,12 @@ Every statement in the design document (v0.3) that constrains the web spike (pha
 |---|---|---|---|
 | The web page draws the UI the same way as the desktop. | Done | The same renderer draws it; the page hands the mouse to `WebPlayer::pointer` (CSS pixels to the canvas) and `mouse`; `semantic()` returns the semantic frame, `fullscreen()` whether the game's settings ask for fullscreen, which the page asks the browser for (a browser grants it just after a key press or a click). | `tools/web/check.mjs`: Escape opens Hollow's pause menu, the real mouse focuses Restart the run and a click presses it (the hero back at the cave mouth), on WebGPU and with WebGL2 forced |
 
+## Phase 3, item 3
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§6) A game's speed controls on the page. | Done | `WebPlayer::frame` owes ticks at the clock's speed, which `q:speed` sets through the player. | The page's check (Hollow, at 1x); Outpost by hand |
+
 ## Known limitations, stated so they are decisions
 
 - `Player::open` copies the daemon's `open_scene`. Item 7 shares one assembly.

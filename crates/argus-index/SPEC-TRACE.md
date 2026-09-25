@@ -44,9 +44,16 @@ Every statement in the design document (v0.3) that constrains the index (§4 "Th
 |---|---|---|---|
 | Spatial predicates hit the broadphase hash, not a scan. | Done | `Source::near(center, r)` lets a source narrow the candidates of a `within` query; the live world answers from its hash, the index returns `None` and scans as before. The evaluator still measures every distance itself, so both sources give identical rows. | `argus-daemon/tests/index_shapes.rs::live_and_index_reads_have_identical_shapes` |
 
+## §8 Aggregates (phase 3, item 3)
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| L1: "world.query with selection, filters, spatial predicates, aggregates." For Outpost, "world.query with group_by and sum over stockpiles, job queues, and colonist needs, because the question is 'is the economy drifting', not 'where is entity 4011'." | Done | `query.rs`: `select` takes `count()`, `sum(F)`, `mean(F)`, `min(F)`, `max(F)`, and `group_by` one or more fields; the answer is one row a group, its keys first (`columns` says what each is), groups in key order or by `order` naming a column (`"-sum(Stockpile.food)"`), with `matched` the entities counted. Without `group_by`, the matched entities are one group and there is one row even when nothing matched. A number sums as a number, an integer field as an integer, a bool as 0 or 1, a vec2 axis by axis (a mean of positions is a group's centre). `group_by` keeps to the entities that have its components. The evaluator is the shared one, so the index answers the same. | `index::aggregates_answer_one_row_a_group`; Outpost's `tests/colony.luau` |
+
 ## Known limitations, stated so they are decisions
 
 - File change detection is by size and mtime from a periodic scan (10 s idle) plus the daemon's own writes; a file watcher is a later refinement. An outside edit to the *loaded* scene updates the index when its scene is re-indexed from disk, but the live world keeps its state until `scene.load`.
 - Deleting entity rows by the `root` secondary index measured 100x slower than by primary key on a `WITHOUT ROWID` table, so trees are deleted by key; the comment in `delete_entity_tree` records it.
 - The index holds authored content only. Runtime entities exist in the live world and never here.
+- An aggregate reads each matched entity's field one by one (`Source::field`), so a sum over the live world costs a lookup an entity: 20,000 items is milliseconds, fine for a question and not for every tick.
 - Values are stored as JSON text; numeric comparisons parse on the fly. Fine at Hollow's scale; a typed column is the next step if queries over unloaded scenes become hot.

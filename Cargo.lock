@@ -172,6 +172,7 @@ dependencies = [
  "argus-ecs",
  "argus-index",
  "argus-input",
+ "argus-jobs",
  "argus-luau",
  "argus-material",
  "argus-nav",
@@ -246,6 +247,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "argus-jobs"
+version = "0.0.1"
+dependencies = [
+ "argus-ecs",
+ "argus-nav",
+ "argus-sim",
+]
+
+[[package]]
 name = "argus-luau"
 version = "0.0.1"
 dependencies = [
@@ -312,6 +322,7 @@ dependencies = [
  "argus-camera",
  "argus-ecs",
  "argus-input",
+ "argus-jobs",
  "argus-luau",
  "argus-nav",
  "argus-os",

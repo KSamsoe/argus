@@ -178,6 +178,24 @@ fn quote_bare(s: &str) -> String {
                 // (`item:key.brass`); `of: @player` is a key and a value.
                 let glued_colon =
                     d == ':' && i + 1 < cs.len() && is_bare_start(cs[i + 1]) && !word.is_empty();
+                // A call glued to a word is part of it: `count()`,
+                // `sum(Stockpile.food)`, `dist(@player)` (phase 3 item 3).
+                if d == '(' && !word.is_empty() {
+                    let mut depth = 0;
+                    while i < cs.len() {
+                        word.push(cs[i]);
+                        depth += match cs[i] {
+                            '(' => 1,
+                            ')' => -1,
+                            _ => 0,
+                        };
+                        i += 1;
+                        if depth == 0 {
+                            break;
+                        }
+                    }
+                    continue;
+                }
                 if is_bare_start(d) || glued_colon {
                     word.push(d);
                     i += 1;

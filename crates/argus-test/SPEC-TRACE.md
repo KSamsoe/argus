@@ -46,6 +46,13 @@ Every statement in the design document (v0.3) that constrains the scenario test 
 
 Phase 0 item 10, "scenario test runner with state goldens and seed sweeps": this crate, `test.list` and `test.run` in the daemon, and `argus test` in the CLI.
 
+## Phase 3, item 3
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§9) The balance scenario: `t.expect:sum("Stockpile.food"):gte(60)` over a 30-day run on 20 seeds. | Done | `sum` is the daemon's now (`world.query` with `sum(F)`), one small answer however many entities; it read every row itself before. Outpost's `tests/outpost_food.luau` is §9's scenario, its series declared before the run (declared after it, as §9 writes it, the harness runs the seed again to sample from the start: thirty more days a seed). | Outpost's `tests/outpost_food.luau` |
+| A run is as long as it was asked to be. | Done | `t:run_until {sim_time}` and `{frames}` without a series go on in calls of at most 100,000 ticks until they are there; one call stopped at the daemon's cap, 27.8 of Outpost's days. | Outpost's `tests/outpost_food.luau` (thirty days) |
+
 ## Known limitations, stated so they are decisions
 
 - The harness is Luau over one Rust function (`call`). That keeps the runner a client by construction and makes the harness readable by the people who write scenarios; it costs a JSON round trip per call, which at tens of calls per scenario is invisible.

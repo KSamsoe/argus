@@ -98,6 +98,52 @@ fn the_spec_example_system_runs() {
     assert_eq!(hs.stage, Stage::Sim);
 }
 
+/// An engine component (declared in Rust) with a range.
+#[derive(argus_ecs::Component, Clone, Copy, Debug, PartialEq)]
+#[repr(C)]
+#[argus(doc = "A gauge")]
+struct Gauge {
+    #[argus(doc = "Its level", range(0, 1))]
+    level: f32,
+}
+
+impl Default for Gauge {
+    fn default() -> Self {
+        Gauge { level: 0.0 }
+    }
+}
+
+#[test]
+fn range_violations_on_an_engine_component_point_at_the_script_line() {
+    // The schema's source is Rust nobody edits; the script's line is the
+    // one to read (found building Outpost: JobKind.work, phase 3 item 3).
+    let (mut h, mut w, mut s) = host(1);
+    w.register::<Gauge>().unwrap();
+    let sys = r#"
+return system "sim.over" {
+  stage = "sim", writes = {"Gauge"},
+  run = function(q)
+    for e, g in q:each("Gauge") do g.level = 2 end
+  end,
+}"#;
+    assert!(
+        h.load_source(&mut w, &mut s, "systems/over.luau", sys),
+        "{:?}",
+        h.errors()
+    );
+    let e = w.spawn();
+    w.insert(e, Gauge::default()).unwrap();
+    s.step(&mut w, 1).unwrap();
+    let faults = fault_messages(&w);
+    assert_eq!(faults.len(), 1);
+    assert!(
+        faults[0].1.contains("Gauge.level must be in range"),
+        "{}",
+        faults[0].1
+    );
+    assert_eq!(faults[0].2.as_deref(), Some("systems/over.luau:5"));
+}
+
 #[test]
 fn range_violations_from_script_carry_the_schema_ref() {
     let (mut h, mut w, mut s) = host(1);

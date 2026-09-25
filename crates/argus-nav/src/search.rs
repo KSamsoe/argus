@@ -243,3 +243,33 @@ pub fn downhill(grid: &Grid, field: &Field, at: u32) -> Option<u32> {
     });
     best.map(|(_, j)| j)
 }
+
+/// The grid's islands: each open cell labelled with the first cell of the
+/// region it can walk to (a step either way is a step back, so a region is
+/// one label), blocked cells [`NO_ISLAND`]. Two open cells are reachable
+/// from each other exactly when their labels match: the job system's
+/// "can it get there" for every job at once (phase 3 item 3).
+pub fn islands(grid: &Grid) -> Vec<u32> {
+    let n = grid.len();
+    let mut label = vec![NO_ISLAND; n];
+    let mut stack = Vec::new();
+    for start in 0..n as u32 {
+        if label[start as usize] != NO_ISLAND || !grid.open(start) {
+            continue;
+        }
+        label[start as usize] = start;
+        stack.push(start);
+        while let Some(i) = stack.pop() {
+            grid.steps(i, |j, _| {
+                if label[j as usize] == NO_ISLAND {
+                    label[j as usize] = start;
+                    stack.push(j);
+                }
+            });
+        }
+    }
+    label
+}
+
+/// A blocked cell's island.
+pub const NO_ISLAND: u32 = u32::MAX;

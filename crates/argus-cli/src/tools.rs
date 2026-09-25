@@ -93,7 +93,10 @@ pub fn run(c: &mut dyn Caller, name: &str, args: &Json) -> Result<Json, Json> {
             } else {
                 c.call(
                     "world.query",
-                    pick(args, &["select", "where", "order", "limit", "scene"]),
+                    pick(
+                        args,
+                        &["select", "where", "group_by", "order", "limit", "scene"],
+                    ),
                 )
             }
         }

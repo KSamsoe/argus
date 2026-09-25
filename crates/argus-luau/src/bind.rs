@@ -881,6 +881,21 @@ impl UserData for QueryHandle {
                 Ok(())
             });
         }
+        // speed(x): ask whatever runs the game for x ticks a frame (section
+        // 6, Outpost's 1x/3x/10x), between frames. A `speed.requested`
+        // event; the daemon, a release build, and the page each set their
+        // clock's speed (sim.speed). The ticks are the same at any speed,
+        // so a replay needs nothing of it. Not 0: no tick would run to ask
+        // for another speed; a game pauses itself with q:freeze().
+        m.add_method("speed", |_, this, x: f64| {
+            if !(x > 0.0 && x <= 1000.0) {
+                return Err(mlua::Error::runtime(format!(
+                    "speed {x} is not a speed: more than 0, up to 1000 ticks a frame (a game pauses with q:freeze())"
+                )));
+            }
+            ctx(&this.link)?.emit("speed.requested", vec![("x".to_string(), Value::Float(x))]);
+            Ok(())
+        });
         // freeze(): the rest of this tick stands still, but for systems
         // declared unfrozen (the UI's among them): a pause menu, a hit-stop
         // of the game's own (phase 3 item 1; phase 2 item 6's freeze).
@@ -893,5 +908,85 @@ impl UserData for QueryHandle {
                 link: this.link.clone(),
             })
         });
+        // A data table's row, read-only (§4): q:def("item:bread").name.
+        m.add_method("def", |lua, _, r: String| def_row(lua, &r));
+        // A table's rows in file order: for _, r in q:defs("recipes") do.
+        m.add_method("defs", |lua, _, name: String| def_table(lua, &name));
     }
+}
+
+/// A def value as Lua: the numbers, strings, and vectors a table holds.
+fn def_value(lua: &Lua, v: Value) -> LuaResult<LuaValue> {
+    Ok(match v {
+        Value::Bool(b) => LuaValue::Boolean(b),
+        Value::Int(i) => LuaValue::Number(i as f64),
+        Value::UInt(u) => LuaValue::Number(u as f64),
+        Value::Float(f) => LuaValue::Number(f),
+        Value::Vec2(v) => LuaValue::Vector(mlua::Vector::new(v.x, v.y, 0.0)),
+        Value::Str(s) | Value::Ref(s) => LuaValue::String(lua.create_string(&s)?),
+        Value::Entity(_) => LuaValue::Nil,
+    })
+}
+
+fn defs_of(lua: &Lua) -> LuaResult<mlua::AppDataRef<'_, crate::DefsData>> {
+    lua.app_data_ref::<crate::DefsData>()
+        .ok_or_else(|| mlua::Error::runtime("no data tables here: the host gave scripts none"))
+}
+
+/// A frozen row table (`key` and `ref` beside its fields), made once.
+fn make_row(
+    lua: &Lua,
+    prefix_key: &str,
+    key: &str,
+    fields: Vec<(String, Value)>,
+) -> LuaResult<mlua::Table> {
+    let t = lua.create_table()?;
+    for (k, v) in fields {
+        t.set(k, def_value(lua, v)?)?;
+    }
+    t.set("key", key)?;
+    t.set("ref", prefix_key)?;
+    t.set_readonly(true);
+    Ok(t)
+}
+
+fn def_row(lua: &Lua, r: &str) -> LuaResult<LuaValue> {
+    let d = defs_of(lua)?;
+    if let Some(k) = d.made.borrow().get(r) {
+        return lua.registry_value(k);
+    }
+    let Some(fields) = d.rows.row(r) else {
+        return Err(mlua::Error::runtime(format!(
+            "no def row {r:?}: a reference is prefix:key (item:bread); world.defs lists the tables"
+        )));
+    };
+    let key = r.split_once(':').map(|(_, k)| k).unwrap_or(r);
+    let t = make_row(lua, r, key, fields)?;
+    d.made
+        .borrow_mut()
+        .insert(r.to_string(), lua.create_registry_value(t.clone())?);
+    Ok(LuaValue::Table(t))
+}
+
+fn def_table(lua: &Lua, name: &str) -> LuaResult<LuaValue> {
+    let d = defs_of(lua)?;
+    let slot = format!("table:{name}");
+    if let Some(k) = d.made.borrow().get(&slot) {
+        return lua.registry_value(k);
+    }
+    let Some((prefix, rows)) = d.rows.table(name) else {
+        return Err(mlua::Error::runtime(format!(
+            "no def table {name:?}: world.defs lists the tables"
+        )));
+    };
+    let list = lua.create_table()?;
+    for (i, (key, fields)) in rows.into_iter().enumerate() {
+        let r = format!("{prefix}:{key}");
+        list.set(i + 1, make_row(lua, &r, &key, fields)?)?;
+    }
+    list.set_readonly(true);
+    d.made
+        .borrow_mut()
+        .insert(slot, lua.create_registry_value(list.clone())?);
+    Ok(LuaValue::Table(list))
 }

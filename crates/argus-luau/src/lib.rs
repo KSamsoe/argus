@@ -100,6 +100,28 @@ pub trait Paths {
 /// The paths a host was given, where the query handle reads them.
 pub(crate) struct PathsData(pub Rc<dyn Paths>);
 
+/// A project's data tables as scripts read them (§4 "Data tables", phase 3
+/// item 3: "Outpost is mostly defs"): `q:def("item:bread")` and
+/// `q:defs("recipes")`. The player's assembly hands the host its project's
+/// tables ([`ScriptHost::set_defs`]), so this crate reads no files for it.
+pub trait DefRows {
+    /// One row by reference, `prefix:key`: its fields by name, in schema
+    /// order; none when no table has that prefix or no row that key.
+    fn row(&self, r: &str) -> Option<Vec<(String, argus_ecs::Value)>>;
+    /// A table's reference prefix and its rows in file order, each its key
+    /// and fields; none when there is no such table.
+    #[allow(clippy::type_complexity)]
+    fn table(&self, name: &str)
+        -> Option<(String, Vec<(String, Vec<(String, argus_ecs::Value)>)>)>;
+}
+
+/// The tables a host was given, and the frozen Lua tables made from them
+/// (a row is made once, not every time a system asks).
+pub(crate) struct DefsData {
+    pub rows: Rc<dyn DefRows>,
+    pub made: std::cell::RefCell<std::collections::HashMap<String, mlua::RegistryKey>>,
+}
+
 /// Where in the pipeline a script error happened.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ErrorPhase {
@@ -198,8 +220,23 @@ fn find_argus(e: &mlua::Error) -> Option<&ArgusError> {
 fn to_argus(e: mlua::Error) -> ArgusError {
     if let Some(a) = find_argus(&e) {
         let mut a = a.clone();
-        if a.r#ref.is_none() {
-            a.r#ref = parse_location(&e.to_string()).map(|(f, l)| format!("{f}:{l}"));
+        let here = parse_location(&e.to_string()).map(|(f, l)| format!("{f}:{l}"));
+        match &a.r#ref {
+            None => a.r#ref = here,
+            // A script schema's line is where its range is declared, which
+            // is the thing to read; an engine component's is Rust source
+            // nobody edits, so the script's own line says more (found
+            // building Outpost, phase 3 item 3).
+            Some(at) if !at.contains(".luau:") && here.is_some() => {
+                let decl = at.clone();
+                a.hint = if a.hint.is_empty() {
+                    format!("The field is declared at {decl}.")
+                } else {
+                    format!("{} The field is declared at {decl}.", a.hint)
+                };
+                a.r#ref = here;
+            }
+            Some(_) => {}
         }
         return a;
     }
@@ -255,6 +292,16 @@ impl ScriptHost {
     /// `q:downhill`; phase 3 item 2).
     pub fn set_paths(&self, paths: Rc<dyn Paths>) {
         self.lua.set_app_data(PathsData(paths));
+    }
+
+    /// Give scripts the project's data tables (`q:def`, `q:defs`; phase 3
+    /// item 3). Called again when the tables are read again, which forgets
+    /// the rows made from the old ones.
+    pub fn set_defs(&self, rows: Rc<dyn DefRows>) {
+        self.lua.set_app_data(DefsData {
+            rows,
+            made: Default::default(),
+        });
     }
 
     /// Create the VM: declaration globals installed, memory limit and

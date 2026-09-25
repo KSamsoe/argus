@@ -124,6 +124,14 @@ fn every_method_is_a_subcommand_and_help_comes_from_the_same_table() {
     assert!(String::from_utf8(err).unwrap().contains("argus help"));
     let (mut out, mut err) = (Vec::new(), Vec::new());
     assert_eq!(run(&args(&["--bogus"]), &mut out, &mut err), EXIT_USAGE);
+    // `argus test` refuses a key it does not know instead of running
+    // everything (it dropped name=, file=, and seeds= until phase 3 item 3).
+    let (mut out, mut err) = (Vec::new(), Vec::new());
+    assert_eq!(
+        run(&args(&["test", "nmae=speed"]), &mut out, &mut err),
+        EXIT_USAGE
+    );
+    assert!(String::from_utf8(err).unwrap().contains("not \"nmae\""));
 }
 
 #[test]
@@ -151,6 +159,16 @@ fn key_values_become_the_params_object() {
             "where": { "has": ["Enemy"], "within": { "of": "@player", "r": 6 } },
             "limit": 5
         })
+    );
+
+    // Aggregates keep their calls whole (phase 3 item 3).
+    assert_eq!(
+        params::value("[count(), sum(Stockpile.food), Job.kind]").unwrap(),
+        json!(["count()", "sum(Stockpile.food)", "Job.kind"])
+    );
+    assert_eq!(
+        params::value("dist(@player)").unwrap(),
+        json!("dist(@player)")
     );
 
     // A bare value goes to the first declared parameter; JSON literals stay typed.

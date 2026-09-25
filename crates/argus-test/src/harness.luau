@@ -222,14 +222,13 @@ local function field_of(ctx, entity, path)
   return c[field], g
 end
 
+-- The daemon adds it up (world.query's sum, phase 3 item 3), so a sum over
+-- 20,000 items is one small answer.
 local function sum_of(ctx, field, where)
-  local q = query(ctx, { field }, where)
-  local total = 0
-  for _, row in ipairs(q.rows or {}) do
-    local v = row[1]
-    if type(v) == "number" then total += v end
-  end
-  return total, q.total
+  local q = query(ctx, { "sum(" .. field .. ")" }, where)
+  local total = q.rows and q.rows[1] and q.rows[1][1]
+  if type(total) ~= "number" then total = 0 end
+  return total, q.matched
 end
 
 -- ------------------------------------------------------------- running
@@ -281,7 +280,13 @@ local function run_until(ctx, opts)
   end
   if opts.sim_time ~= nil then
     if interval == nil then
-      return callm("sim.run_until", { time = opts.sim_time })
+      -- A call runs at most 100,000 ticks (27.8 of Outpost's days at 60
+      -- Hz): go on until the time is reached (found in phase 3 item 3).
+      local last
+      repeat
+        last = callm("sim.run_until", { time = opts.sim_time })
+      until last.hit or (last.ticks or 0) == 0
+      return last
     end
     local last
     while true do
@@ -297,7 +302,13 @@ local function run_until(ctx, opts)
   local n = opts.frames or opts.ticks
   if n == nil then error("run_until needs event, sim_time, or frames", 0) end
   if interval == nil then
-    return callm("sim.run_until", { ticks = n })
+    local last, done = nil, 0
+    while done < n do
+      local step = math.min(100000, n - done)
+      last = callm("sim.run_until", { ticks = step })
+      done += step
+    end
+    return last
   end
   local last
   local done = 0

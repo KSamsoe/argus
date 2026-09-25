@@ -13,29 +13,31 @@ fn outpost() -> std::path::PathBuf {
 #[test]
 fn the_game_saves_at_the_tick_it_asks_and_a_save_loads_back() {
     let mut p = Player::open(&outpost(), None, None).unwrap();
-    // Outpost saves itself as "auto" when a day turns: at tick 3600.
+    // Outpost saves itself as "auto" when a day turns: its own clock
+    // reaches 60 s in the tick numbered 3600 (the save's tick counts ticks
+    // done).
     p.step(3700).unwrap();
     let saves = p.take_saves("test");
     assert_eq!(saves.len(), 1, "one day turned");
     let (name, bytes) = &saves[0];
     assert_eq!(name, "auto");
     let file = savegame::decode(bytes).unwrap();
-    assert_eq!(file.tick, 3601, "the world of the tick that asked");
+    assert_eq!(file.tick, 3600, "the world of the tick that asked");
     assert_eq!(file.meta["game"], "outpost");
     assert_eq!(file.meta["code"], "test");
     assert!(p.take_saves("test").is_empty(), "taken");
 
-    // The same run, stepped to 3601 in a second player, is the world saved.
+    // The same run, stepped to 3600 in a second player, is the world saved.
     let mut q = Player::open(&outpost(), None, None).unwrap();
-    q.step(3601).unwrap();
+    q.step(3600).unwrap();
     let then = q.digest();
     q.step(600).unwrap();
     let later = q.digest();
 
-    // Load it: back at 3601, and it plays on the same.
+    // Load it: back at 3600, and it plays on the same.
     let report = p.load(bytes).unwrap();
     assert_eq!(report["migrated"], serde_json::json!([]));
-    assert_eq!(p.tick(), 3601);
+    assert_eq!(p.tick(), 3600);
     assert_eq!(p.digest(), then);
     p.step(600).unwrap();
     assert_eq!(p.digest(), later);

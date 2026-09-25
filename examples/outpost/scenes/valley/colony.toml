@@ -1,6 +1,7 @@
-# The colony: its day and its rules, and the stockpile it eats from. The
-# colonists are runtime entities, founded at the load (sim.colony.found).
+# The colony: its calendar and rules, and its stockpile (where the colony
+# is). Everything else is laid out by sim.colony.found from the seed.
 [Colony]
 
 [Stockpile]
+meal = 12.0
 food = 12.0

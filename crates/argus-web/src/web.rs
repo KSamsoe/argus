@@ -302,7 +302,8 @@ impl WebPlayer {
         let hz = self.p.sched.driving().hz();
         if run && hz > 0.0 && self.p.sched.driving().kind == argus_sim::ClockKind::Continuous {
             let dt = self.last_ms.map(|l| (now_ms - l) / 1000.0).unwrap_or(0.0);
-            self.owed = (self.owed + dt * hz).min(5.0);
+            let speed = self.p.sched.speed();
+            self.owed = (self.owed + dt * hz * speed).min(5.0 * speed.max(1.0));
             let n = self.owed.floor();
             self.owed -= n;
             if n > 0.0 {

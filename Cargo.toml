@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/argus-ecs", "crates/argus-ecs-derive", "crates/argus-os", "crates/argus-sim", "crates/argus-luau", "crates/argus-scene", "crates/argus-index", "crates/argus-input", "crates/argus-daemon", "crates/argus-test", "crates/argus-cli", "crates/argus-render", "crates/argus-audio", "crates/argus-assets", "crates/argus-tiles", "crates/argus-physics", "crates/argus-camera", "crates/argus-post", "crates/argus-anim", "crates/argus-tween", "crates/argus-particles", "crates/argus-material", "crates/argus-web", "crates/argus-player", "crates/argus-game", "crates/argus-ui", "crates/argus-nav"]
+members = ["crates/argus-ecs", "crates/argus-ecs-derive", "crates/argus-os", "crates/argus-sim", "crates/argus-luau", "crates/argus-scene", "crates/argus-index", "crates/argus-input", "crates/argus-daemon", "crates/argus-test", "crates/argus-cli", "crates/argus-render", "crates/argus-audio", "crates/argus-assets", "crates/argus-tiles", "crates/argus-physics", "crates/argus-camera", "crates/argus-post", "crates/argus-anim", "crates/argus-tween", "crates/argus-particles", "crates/argus-material", "crates/argus-web", "crates/argus-player", "crates/argus-game", "crates/argus-ui", "crates/argus-nav", "crates/argus-jobs"]
 
 [workspace.package]
 version = "0.0.1"
@@ -22,6 +22,27 @@ strip = true
 # Pictures are compressed in debug builds too (a mark's clip, obs.frame):
 # unoptimized, deflate is several times slower, and a mark's clip made
 # the game stall for most of a second (phase 2 item 2).
+# The Luau VM is optimized in debug builds too (phase 3 item 3): Outpost's
+# thirty-day, twenty-seed balance scenario is two million ticks of scripts,
+# and an unoptimized interpreter made a test run of it take over twenty
+# minutes.
+[profile.dev.package.luau0-src]
+opt-level = 3
+[profile.dev.package.mlua-sys]
+opt-level = 3
+[profile.dev.package.mlua]
+opt-level = 3
+[profile.dev.package.argus-ecs]
+opt-level = 2
+[profile.dev.package.argus-sim]
+opt-level = 2
+[profile.dev.package.argus-luau]
+opt-level = 2
+[profile.dev.package.argus-nav]
+opt-level = 2
+[profile.dev.package.argus-jobs]
+opt-level = 2
+
 [profile.dev.package.png]
 opt-level = 3
 [profile.dev.package.fdeflate]

@@ -58,6 +58,14 @@ Every statement in the design document (v0.3) that constrains a game as players 
 |---|---|---|---|
 | (§12) Navigation in every scene, the same in the daemon, the executable, and the page. | Done | `assemble.rs` makes the `NavStore` over the session's tilemaps, installs `argus-nav` after the physics (its agents move after the physics step), and hands scripts the path queries (`NavPaths`, the `argus_luau::Paths` of the store). `Assembly.nav`, `Player.nav`. | Delve's tests; `argus-daemon` `nav.rs` |
 
+## Phase 3, item 3: jobs, tables, and speed in the one assembly
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§12) The job system in every scene, the same in the daemon, the executable, and the page. | Done | `assemble.rs` installs `argus-jobs` over the session's navigation, after it. | `argus-daemon` `jobs.rs`; Outpost's tests |
+| (§4) Scripts read the project's data tables. | Done | `ProjectDefs`, the project's `Defs` as `argus_luau::DefRows`, handed to the host after the tables are read (`q:def`, `q:defs`). | Outpost's tests |
+| (§6) A game's speed controls. | Done | `Player` answers `speed.requested` by setting its clock's speed after the step (`requested_speed`). | Outpost's `tests/colony.luau` (through the daemon); the executable and the page read the speed each frame |
+
 ## §18 Build plan
 
 | Spec | Status | Where | Test |

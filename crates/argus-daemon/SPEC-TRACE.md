@@ -182,6 +182,16 @@ Phase 0 item 4, "JSON-RPC daemon with session, world, edit, sim (play, pause, st
 | (§15) A release build is the same core. | Done | `open_scene` builds its world with `argus_player::assemble`, the one assembly every player uses, and adds its own parts around it (history, index, renderer catalog, audio device, ring). The keyframe (`ring::Keyframe`, `Sources`) and the replay file (`replay`) moved to `argus-player` and are re-exported here; the window's device translation and gamepads (`argus_player::desktop`) are shared with the release executable. | the daemon's tests, unchanged |
 | (§15) A player bug report becomes a mark. | Done | `mark.import` takes a report (a replay file from a release build's report key or crash, or the web page's F8): the file becomes the mark's `replay.bin`, the player's note its note, `source` `report` or `crash`; `mark.open` reproduces it like a dropped mark and makes its clip. `mark.pull {url}` fetches the reports a playtest server (`tools/web/serve.mjs`) collected, each once (`.argus/marks/pulled.json`), over a small HTTP client (`http.rs`, plain HTTP for the LAN or tailnet address). | `reports::a_report_is_a_mark_that_reproduces_and_pull_fetches_each_once` |
 
+## Phase 3, item 3: jobs and aggregates through the protocol
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§12) "obs.why can explain 'why is this colonist idle' from the job system's declared events." | Done | `jobs.rs`: `jobs.why {worker}` is every job in the order the worker weighs them with what it makes of each, and why it has none; `obs.why` on a `job.*` event naming a worker carries the same as `jobs`. | `jobs::jobs_are_posted_from_a_table_claimed_done_and_explained` |
+| (§8) Aggregates: "world.query with group_by and sum". | Done | `world.query` takes `group_by` and aggregates in `select` (the evaluator in `argus-index`, so the index answers them too); the `query` tool passes `group_by`. The job queue needs no method of its own. | `jobs::jobs_are_posted_from_a_table_claimed_done_and_explained`; `argus-index` `index::aggregates_answer_one_row_a_group` |
+| (§6) Outpost's speed controls are `sim.speed`. | Done | A tick's `speed.requested` (`q:speed`) sets the clock's speed after the step; a trial's parked world asks nothing. | `jobs::jobs_are_posted_from_a_table_claimed_done_and_explained` |
+| (§5) A read says what it did not do. | Done | `sim.run_until {ticks}` beyond `max_ticks` (100,000) runs the cap and answers `hit: false`; it said `hit: true` before, so a thirty-day run asked for in one call looked finished at day 27.8. | `protocol::sim_and_events_answer_why_the_bat_died` |
+| (§17) A system with nothing to do costs nothing. | Done | `jobs.update` returns before any query when no archetype holds a job or a worker; `prof.alloc` checks it with the physics and the rest. | `protocol::sim_and_events_answer_why_the_bat_died` |
+
 ## Known limitations, stated so they are decisions
 
 - A mark's clip is drawn while the game waits: 0.37 s in a debug build on Hollow with the window open, most of it the clip's 61 pictures. Released builds are faster; drawing the clip after the note is typed is the next step if it is felt.

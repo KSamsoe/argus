@@ -129,6 +129,14 @@ What remains in `sim.chase` is the binding's call path: each iteration is three 
 |---|---|---|---|
 | (§12) Delve's monsters and any game with NPCs use the same path queries. | Done | `q:path(from, to, grid?)` (the waypoints as vectors and the cost in steps, or nil), `q:walkable(pos, grid?)`, `q:distance(field, pos)` (steps to a `NavField`'s entity), `q:downhill(field, pos)` (the next cell's centre toward it). A point is a vector, a table, or an entity. The host is handed the queries (`ScriptHost::set_paths`, the `Paths` trait) so this crate needs no navigation of its own. A system that asks declares it reads `NavGrid` or `NavField`, so `obs.why` stays true. | `argus-daemon` `nav::a_maze_is_searched_through_the_protocol_and_from_scripts`, `nav::a_system_that_asks_for_a_path_must_say_it_reads_the_grid`; Delve's monsters |
 
+## Phase 3, item 3: data tables, speed, and where an error is
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§4) "Outpost is mostly defs": its systems read items, recipes, and job kinds from tables. | Done | `q:def("item:meal")` is a row by reference and `q:defs("jobs")` a table's rows in file order, each a read-only table of its fields plus `key` and `ref`, made once and kept (the `DefRows` trait; the assembly hands the host the project's tables, `ScriptHost::set_defs`, again after a reload or a move). | Outpost's systems (`kitchen.luau`, `work.luau`, `found.luau`); its tests |
+| (§6) Outpost's 1x/3x/10x speed controls are `sim.speed`. | Done | `q:speed(x)` emits `speed.requested`; the daemon, a release build, and the page set their clock's speed from it after the step. Not 0: nothing would tick to ask for another speed, so a game pauses with `q:freeze()`. | Outpost's `tests/colony.luau` ("speed and pause") |
+| (§7) Script errors carry `file:line`. | Done | A range or type error on an engine component (declared in Rust) now names the script line that wrote it, with the component's declaration in the hint; a script component's error still names its declaration, where the range is written (phase 0's rule). Found building Outpost: a `JobKind.work` out of range pointed at `crates/argus-jobs/src/lib.rs`. | `systems::range_violations_on_an_engine_component_point_at_the_script_line`, `systems::range_violations_from_script_carry_the_schema_ref` |
+
 ## §18 Build plan
 
 Phase 0 item 3, "Luau binding with component and def schemas": this crate.

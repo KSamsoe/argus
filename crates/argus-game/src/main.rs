@@ -276,7 +276,10 @@ impl Game {
         let d = self.p.sched.driving();
         let (kind, hz) = (d.kind, d.hz());
         if self.prompt.is_none() && kind == ClockKind::Continuous && hz > 0.0 {
-            self.owed = (self.owed + dt * hz).min(5.0);
+            // At 3x or 10x (q:speed, sim.speed) a frame owes that many
+            // ticks; a slow frame catches up at most five frames' worth.
+            let speed = self.p.sched.speed();
+            self.owed = (self.owed + dt * hz * speed).min(5.0 * speed.max(1.0));
             let n = self.owed.floor();
             self.owed -= n;
             if n > 0.0 {

@@ -143,23 +143,89 @@ struct FieldPred {
     value: Json,
 }
 
+/// An aggregate over a group's entities (§8 L1 "aggregates").
+#[derive(Clone, Copy, PartialEq)]
+enum Agg {
+    Count,
+    Sum,
+    Mean,
+    Min,
+    Max,
+}
+
+/// One `select` entry: a column of each entity, or an aggregate
+/// (`count()`, `sum(Stockpile.food)`) of each group.
+enum Sel {
+    Plain(String),
+    Agg(Agg, Option<String>),
+}
+
+fn parse_sel(s: &str) -> Result<Sel> {
+    let Some(open) = s.find('(') else {
+        return Ok(Sel::Plain(s.to_string()));
+    };
+    let Some(inner) = s[open + 1..].strip_suffix(')') else {
+        return Err(bad_params(format!(
+            "select {s:?}: an aggregate is name(Component.field), e.g. sum(Stockpile.food)"
+        )));
+    };
+    let agg = match &s[..open] {
+        "count" => Agg::Count,
+        "sum" => Agg::Sum,
+        "mean" => Agg::Mean,
+        "min" => Agg::Min,
+        "max" => Agg::Max,
+        other => {
+            return Err(bad_params(format!(
+                "select {s:?}: unknown aggregate {other:?}; use count, sum, mean, min, max"
+            )))
+        }
+    };
+    let inner = inner.trim();
+    if inner.is_empty() {
+        if agg != Agg::Count {
+            return Err(bad_params(format!(
+                "select {s:?}: {} needs a field, e.g. {}(Stockpile.food)",
+                &s[..open],
+                &s[..open]
+            )));
+        }
+        return Ok(Sel::Agg(agg, None));
+    }
+    Ok(Sel::Agg(agg, Some(inner.to_string())))
+}
+
 /// Run a query.
 pub fn run(src: &dyn Source, params: &Json) -> Result<Json> {
     let select = str_list(params, "select")?;
-    let select = if select.is_empty() {
-        vec!["id".to_string()]
-    } else {
+    let group_by = str_list(params, "group_by")?;
+    let aggregating = !group_by.is_empty() || select.iter().any(|s| s.contains('('));
+    let select = if !select.is_empty() {
         select
+    } else if aggregating {
+        vec!["count()".to_string()]
+    } else {
+        vec!["id".to_string()]
     };
+    for g in &group_by {
+        if !g.contains('.') {
+            return Err(bad_params(format!(
+                "group_by {g:?}: group by a field, Component.field"
+            )));
+        }
+        src.require_path(g)?;
+    }
+    let mut sels = Vec::new();
     for s in &select {
-        if s == "id" || s == "entity" {
-            continue;
+        let sel = parse_sel(s)?;
+        match &sel {
+            Sel::Plain(p) if p == "id" || p == "entity" => {}
+            Sel::Plain(p) if p.contains('.') => src.require_path(p)?,
+            Sel::Plain(p) => src.require_component(p)?,
+            Sel::Agg(_, Some(p)) => src.require_path(p)?,
+            Sel::Agg(_, None) => {}
         }
-        if s.contains('.') {
-            src.require_path(s)?;
-        } else {
-            src.require_component(s)?;
-        }
+        sels.push(sel);
     }
 
     let empty = json!({});
@@ -167,8 +233,16 @@ pub fn run(src: &dyn Source, params: &Json) -> Result<Json> {
     let Some(wobj) = where_.as_object() else {
         return Err(bad_params("where must be an object"));
     };
-    let has = str_list(where_, "has")?;
+    let mut has = str_list(where_, "has")?;
     let not = str_list(where_, "not")?;
+    // Grouping by a field is about the entities that have it: group_by
+    // Job.kind counts jobs, not every entity with a blank kind.
+    for g in &group_by {
+        let c = g.split('.').next().unwrap_or(g).to_string();
+        if !has.contains(&c) {
+            has.push(c);
+        }
+    }
     for c in has.iter().chain(&not) {
         src.require_component(c)?;
     }
@@ -256,6 +330,11 @@ pub fn run(src: &dyn Source, params: &Json) -> Result<Json> {
         rows.push((id, dist));
     }
 
+    if aggregating {
+        let ids: Vec<u64> = rows.iter().map(|r| r.0).collect();
+        return aggregate(src, params, &select, sels, &group_by, &ids);
+    }
+
     if let Some(order) = opt_str(params, "order")? {
         if let Some(inner) = order
             .strip_prefix("dist(")
@@ -325,6 +404,239 @@ pub fn run(src: &dyn Source, params: &Json) -> Result<Json> {
     let mut out = json!({
         "frame": src.frame(),
         "total": total,
+        "rows": out_rows,
+        "truncated": truncated,
+    });
+    if truncated {
+        out["next"] = json!(format!("c:{end}"));
+    }
+    Ok(out)
+}
+
+/// A running aggregate: numbers, or vec2s added axis by axis (a mean of
+/// positions is the group's centre).
+#[derive(Clone, Default)]
+struct Acc {
+    n: u64,
+    sum: Vec<f64>,
+    min: Vec<f64>,
+    max: Vec<f64>,
+    ints: bool,
+}
+
+impl Acc {
+    fn add(&mut self, v: &Json) {
+        let nums: Vec<f64> = match v {
+            Json::Number(n) => vec![n.as_f64().unwrap_or(0.0)],
+            Json::Bool(b) => vec![if *b { 1.0 } else { 0.0 }],
+            Json::Array(a) if !a.is_empty() && a.iter().all(Json::is_number) => {
+                a.iter().filter_map(Json::as_f64).collect()
+            }
+            _ => return,
+        };
+        let int = matches!(v, Json::Number(n) if n.is_i64() || n.is_u64());
+        if self.n == 0 {
+            self.sum = vec![0.0; nums.len()];
+            self.min = nums.clone();
+            self.max = nums.clone();
+            self.ints = int;
+        } else if nums.len() != self.sum.len() {
+            return;
+        }
+        self.n += 1;
+        self.ints &= int;
+        for (k, x) in nums.into_iter().enumerate() {
+            self.sum[k] += x;
+            self.min[k] = self.min[k].min(x);
+            self.max[k] = self.max[k].max(x);
+        }
+    }
+
+    fn out(&self, agg: Agg) -> Json {
+        let shape = |v: Vec<f64>, ints: bool| -> Json {
+            let one = |x: f64| {
+                if ints && x.fract() == 0.0 && x.abs() < 9.0e15 {
+                    json!(x as i64)
+                } else {
+                    json!(x)
+                }
+            };
+            if v.len() == 1 {
+                one(v[0])
+            } else {
+                Json::Array(v.into_iter().map(one).collect())
+            }
+        };
+        match agg {
+            Agg::Count => json!(self.n),
+            Agg::Sum if self.n == 0 => json!(0),
+            Agg::Sum => shape(self.sum.clone(), self.ints),
+            _ if self.n == 0 => Json::Null,
+            Agg::Mean => shape(self.sum.iter().map(|s| s / self.n as f64).collect(), false),
+            Agg::Min => shape(self.min.clone(), self.ints),
+            Agg::Max => shape(self.max.clone(), self.ints),
+        }
+    }
+}
+
+/// A total order over group keys: null, false, true, numbers, strings,
+/// then anything else by its text.
+fn key_cmp(a: &Json, b: &Json) -> std::cmp::Ordering {
+    fn rank(v: &Json) -> u8 {
+        match v {
+            Json::Null => 0,
+            Json::Bool(_) => 1,
+            Json::Number(_) => 2,
+            Json::String(_) => 3,
+            _ => 4,
+        }
+    }
+    match (a, b) {
+        (Json::Bool(x), Json::Bool(y)) => x.cmp(y),
+        (Json::Number(x), Json::Number(y)) => x
+            .as_f64()
+            .unwrap_or(0.0)
+            .partial_cmp(&y.as_f64().unwrap_or(0.0))
+            .unwrap_or(std::cmp::Ordering::Equal),
+        (Json::String(x), Json::String(y)) => x.cmp(y),
+        _ => rank(a)
+            .cmp(&rank(b))
+            .then_with(|| a.to_string().cmp(&b.to_string())),
+    }
+}
+
+/// Group the matched entities by `group_by` and answer one row a group
+/// (§8: "world.query with group_by and sum over stockpiles, job queues,
+/// and colonist needs"). Without `group_by`, the matched entities are one
+/// group, and there is one row even when nothing matched.
+fn aggregate(
+    src: &dyn Source,
+    params: &Json,
+    select: &[String],
+    sels: Vec<Sel>,
+    group_by: &[String],
+    ids: &[u64],
+) -> Result<Json> {
+    // A plain column is a group key; the keys not selected lead the row.
+    let mut columns: Vec<String> = Vec::new();
+    let mut cols: Vec<Sel> = Vec::new();
+    for g in group_by {
+        if !select.iter().any(|s| s == g) {
+            columns.push(g.clone());
+            cols.push(Sel::Plain(g.clone()));
+        }
+    }
+    for (s, sel) in select.iter().zip(sels) {
+        if let Sel::Plain(p) = &sel {
+            if !group_by.iter().any(|g| g == p) {
+                return Err(bad_params(format!(
+                    "select {p:?} is one value an entity, and this query answers one row a group: add it to group_by, or aggregate it (count(), sum({p}), mean, min, max)"
+                )));
+            }
+        }
+        columns.push(s.clone());
+        cols.push(sel);
+    }
+    let fields: Vec<&str> = cols
+        .iter()
+        .filter_map(|c| match c {
+            Sel::Agg(_, Some(p)) => Some(p.as_str()),
+            _ => None,
+        })
+        .collect();
+    let mut groups: Vec<(Vec<Json>, Vec<Acc>, u64)> = Vec::new();
+    let mut at: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    if group_by.is_empty() {
+        groups.push((Vec::new(), vec![Acc::default(); fields.len()], 0));
+        at.insert("[]".to_string(), 0);
+    }
+    for &id in ids {
+        let key: Vec<Json> = group_by
+            .iter()
+            .map(|g| src.field(id, g).unwrap_or(Json::Null))
+            .collect();
+        let text = Json::Array(key.clone()).to_string();
+        let i = match at.get(&text) {
+            Some(&i) => i,
+            None => {
+                groups.push((key, vec![Acc::default(); fields.len()], 0));
+                at.insert(text, groups.len() - 1);
+                groups.len() - 1
+            }
+        };
+        let g = &mut groups[i];
+        g.2 += 1;
+        for (k, f) in fields.iter().enumerate() {
+            if let Some(v) = src.field(id, f) {
+                g.1[k].add(&v);
+            }
+        }
+    }
+    let mut rows: Vec<(Vec<Json>, Vec<Json>)> = groups
+        .into_iter()
+        .map(|(key, accs, n)| {
+            let mut k = 0usize;
+            let row: Vec<Json> = cols
+                .iter()
+                .map(|c| match c {
+                    Sel::Plain(p) => {
+                        let i = group_by.iter().position(|g| g == p).expect("a key");
+                        key[i].clone()
+                    }
+                    Sel::Agg(Agg::Count, None) => json!(n),
+                    Sel::Agg(a, Some(_)) => {
+                        k += 1;
+                        accs[k - 1].out(*a)
+                    }
+                    Sel::Agg(_, None) => Json::Null,
+                })
+                .collect();
+            (key, row)
+        })
+        .collect();
+    rows.sort_by(|a, b| {
+        a.0.iter()
+            .zip(&b.0)
+            .map(|(x, y)| key_cmp(x, y))
+            .find(|o| o.is_ne())
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    // `order` names a column of the answer: "-sum(Stockpile.food)".
+    if let Some(order) = opt_str(params, "order")? {
+        let (desc, name) = match order.strip_prefix('-') {
+            Some(p) => (true, p),
+            None => (false, order),
+        };
+        let Some(c) = columns.iter().position(|s| s == name) else {
+            return Err(bad_params(format!(
+                "order {order:?}: order a grouped query by one of its columns: {}",
+                columns.join(", ")
+            )));
+        };
+        rows.sort_by(|a, b| {
+            let o = key_cmp(&a.1[c], &b.1[c]);
+            if desc {
+                o.reverse()
+            } else {
+                o
+            }
+        });
+    }
+    let (limit, offset) = page(params)?;
+    let total = rows.len();
+    let end = (offset + limit).min(total);
+    let mut out_rows = Vec::new();
+    if offset < total {
+        for (_, row) in &rows[offset..end] {
+            out_rows.push(Json::Array(row.clone()));
+        }
+    }
+    let truncated = end < total;
+    let mut out = json!({
+        "frame": src.frame(),
+        "total": total,
+        "matched": ids.len(),
+        "columns": columns,
         "rows": out_rows,
         "truncated": truncated,
     });

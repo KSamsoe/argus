@@ -35,11 +35,11 @@ fn session_open_gives_the_one_screen_summary() {
         .iter()
         .map(|v| v.as_str().unwrap())
         .collect();
-    // The physics, navigation, camera, and post systems are in every scene
-    // and cost nothing without bodies, agents, or cameras; the hit-stop
-    // check runs first in input, physics control first in sim, move and
-    // overlap last with the nav agents after them, and the camera, the post
-    // effects, then the particles last in late.
+    // The physics, navigation, jobs, camera, and post systems are in every
+    // scene and cost nothing without bodies, agents, workers, or cameras;
+    // the hit-stop check runs first in input, physics control first in sim,
+    // move and overlap last with the nav agents after them, and the camera,
+    // the post effects, then the particles last in late.
     assert_eq!(
         systems,
         [
@@ -47,6 +47,7 @@ fn session_open_gives_the_one_screen_summary() {
             "input.actions",
             "ui.input",
             "physics.control",
+            "jobs.update",
             "input.rebind",
             "sim.damage",
             "sim.move",
@@ -537,11 +538,12 @@ fn sim_and_events_answer_why_the_bat_died() {
     assert_eq!(r["tick"], 60);
     let r = ok(&mut d, "sim.run_until", json!({ "ticks": 5 }));
     assert_eq!(r["tick"], 65);
+    assert_eq!(r["hit"], true);
     let pf = ok(&mut d, "prof.frame", json!({}));
     assert_eq!(pf["tick"], 64, "the last tick that ran, numbered from 0");
     assert_eq!(pf["systems"][0][0], "post.hitstop", "stage order");
     let ps = ok(&mut d, "prof.systems", json!({ "last": 10 }));
-    assert_eq!(ps["rows"][5][0], "sim.damage");
+    assert_eq!(ps["rows"][6][0], "sim.damage");
     assert!(
         ok(&mut d, "prof.worst", json!({ "n": 2 }))["rows"]
             .as_array()
@@ -566,7 +568,7 @@ fn sim_and_events_answer_why_the_bat_died() {
     let pa = ok(&mut d, "prof.alloc", json!({ "last": 10 }));
     assert_eq!(pa["counted"], true);
     assert_eq!(
-        pa["rows"][5][0], "sim.damage",
+        pa["rows"][6][0], "sim.damage",
         "stage order, like prof.systems"
     );
     let physics: Vec<&serde_json::Value> = pa["rows"]
@@ -575,15 +577,22 @@ fn sim_and_events_answer_why_the_bat_died() {
         .iter()
         .filter(|r| {
             let n = r[0].as_str().unwrap();
-            ["physics.", "camera.", "anim.", "tween.", "particles."]
-                .iter()
-                .any(|p| n.starts_with(p))
+            [
+                "physics.",
+                "camera.",
+                "anim.",
+                "tween.",
+                "particles.",
+                "jobs.",
+            ]
+            .iter()
+            .any(|p| n.starts_with(p))
         })
         .collect();
-    assert_eq!(physics.len(), 7);
+    assert_eq!(physics.len(), 8);
     assert!(
         physics.iter().all(|r| r[2].as_f64() == Some(0.0)),
-        "physics, cameras, and emitters with none in the scene allocate nothing: {physics:?}"
+        "physics, cameras, emitters, and jobs with none in the scene allocate nothing: {physics:?}"
     );
     assert!(pa["rows"]
         .as_array()
@@ -654,6 +663,18 @@ fn sim_and_events_answer_why_the_bat_died() {
     assert_eq!(e.code, codes::BAD_PARAMS);
     let e = err(&mut d, "sim.run_until", json!({}));
     assert_eq!(e.code, codes::BAD_PARAMS);
+    // More than a call's cap says it stopped short (phase 3 item 3: a
+    // thirty-day run asked for in one call stopped at 100,000 ticks).
+    let before = ok(&mut d, "sim.status", json!({}))["tick"]
+        .as_u64()
+        .unwrap();
+    let r = ok(
+        &mut d,
+        "sim.run_until",
+        json!({ "ticks": 5, "max_ticks": 2 }),
+    );
+    assert_eq!(r["tick"], before + 2);
+    assert_eq!(r["hit"], false);
 }
 
 #[test]
@@ -662,8 +683,8 @@ fn scripts_reload_in_place_and_errors_are_data() {
     project(t.path());
     let mut d = open(t.path());
     let sys = ok(&mut d, "script.systems", json!({}));
-    assert_eq!(sys["total"], 17);
-    let dmg = &sys["rows"][5];
+    assert_eq!(sys["total"], 18);
+    let dmg = &sys["rows"][6];
     assert_eq!(dmg["name"], "sim.damage");
     assert_eq!(dmg["stage"], "sim");
     assert_eq!(dmg["writes"], json!(["Health"]));

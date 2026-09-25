@@ -12,6 +12,12 @@ The release executable (§15, phase 2 item 7): what a player double-clicks. The 
 | Hitting a crash produces a replay file. | Done | A panic in a frame is caught: the report is saved as `-crash.argr` with the panic's message and place as its note, and the player is told where. | the report path above; a crash itself was not provoked in a release build |
 | `argus build` checks what it built. | Done | `--headless <ticks>` runs the game with no window or sound device and prints the world's digest; `argus build` compares it with the project's. | the builds of Hollow |
 
+## Phase 3, item 3
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§6) Outpost's 1x/3x/10x in a release build. | Done | A frame owes `dt x hz x speed` ticks (at most five frames' worth at that speed), and the speed is the one a game asked for with `q:speed` (the player sets it after the step). | The daemon's and Outpost's tests; a window by hand |
+
 ## Known limitations, stated so they are decisions
 
 - The window opens at 1280x720 and can be resized. It fills the screen (borderless) while the game's `UiSettings.fullscreen` says so, read each frame (phase 3 item 1); a game's settings screen is its own UI (Hollow's pause menu has one). Settings last for the session; keeping them between launches is phase 5's accessibility pass.

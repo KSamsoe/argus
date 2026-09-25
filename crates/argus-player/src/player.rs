@@ -383,6 +383,11 @@ impl Player {
                 if name == "load.requested" {
                     self.loads.push(crate::savegame::request_name(fields));
                 }
+                if name == "speed.requested" {
+                    if let Some(x) = crate::requested_speed(fields) {
+                        let _ = self.sched.set_speed(x);
+                    }
+                }
             }
             self.events += 1;
             let key = format!("{}|{:?}", rec.frame, rec.event);

@@ -128,6 +128,8 @@ pub fn assemble(
         Some(tiles.clone()),
     )));
     argus_nav::install(&mut world, &mut sched, nav.clone())?;
+    // Jobs on top of it: workers claim, walk, work, and carry.
+    argus_jobs::install(&mut world, &mut sched, nav.clone())?;
     let zones = Rc::new(RefCell::new(argus_camera::Zones::default()));
     argus_camera::install(&mut world, &mut sched, zones.clone())?;
     argus_post::install(&mut world, &mut sched)?;
@@ -166,6 +168,7 @@ pub fn assemble(
         })
         .collect();
     let project = Project::open(root, defs)?;
+    host.set_defs(Rc::new(ProjectDefs(project.defs.clone())));
     let mut scene = Scene::open(&project, scene_name, world.registry())?;
     zones.borrow_mut().rects = scene
         .rooms()
@@ -284,6 +287,43 @@ impl argus_luau::Paths for NavPaths {
                 .and_then(|i| argus_nav::search::downhill(&g, &f, i))
                 .map(|n| g.centre(n))
         }))
+    }
+}
+
+/// Scripts' data tables (`q:def`, `q:defs`, phase 3 item 3): the project's
+/// as they were read when the scene opened.
+pub struct ProjectDefs(pub argus_scene::Defs);
+
+impl ProjectDefs {
+    fn fields(
+        t: &argus_scene::DefTable,
+        r: &argus_scene::DefRow,
+    ) -> Vec<(String, argus_ecs::Value)> {
+        t.schema
+            .fields
+            .iter()
+            .zip(&r.values)
+            .map(|(f, v)| (f.name.clone(), v.clone()))
+            .collect()
+    }
+}
+
+impl argus_luau::DefRows for ProjectDefs {
+    fn row(&self, r: &str) -> Option<Vec<(String, argus_ecs::Value)>> {
+        self.0.resolve(r).map(|(t, row)| Self::fields(t, row))
+    }
+    fn table(
+        &self,
+        name: &str,
+    ) -> Option<(String, Vec<(String, Vec<(String, argus_ecs::Value)>)>)> {
+        let t = self.0.table(name)?;
+        Some((
+            t.prefix.clone(),
+            t.rows
+                .iter()
+                .map(|r| (r.key.clone(), Self::fields(t, r)))
+                .collect(),
+        ))
     }
 }
 

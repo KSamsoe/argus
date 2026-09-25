@@ -117,6 +117,82 @@ fn queries_have_the_protocol_shape() {
 }
 
 #[test]
+fn aggregates_answer_one_row_a_group() {
+    let t = temp("aggregate");
+    let (idx, _, _) = synced(&t);
+    // No group_by: the matched entities are one group.
+    let r = idx
+        .query(
+            "arena",
+            &json!({ "select": ["count()", "sum(Health.cur)", "mean(Health.cur)", "min(Health.cur)", "max(Health.max)"], "where": { "has": ["Health"] } }),
+        )
+        .unwrap();
+    assert_eq!(r["total"], 1);
+    assert_eq!(r["matched"], 2);
+    assert_eq!(r["rows"], json!([[2, 13, 6.5, 3, 10]]));
+    assert_eq!(
+        r["columns"],
+        json!([
+            "count()",
+            "sum(Health.cur)",
+            "mean(Health.cur)",
+            "min(Health.cur)",
+            "max(Health.max)"
+        ])
+    );
+    // Nothing matched is still one row: a count of 0, a sum of 0, no mean.
+    let r = idx
+        .query(
+            "arena",
+            &json!({ "select": ["count()", "sum(Health.cur)", "mean(Health.cur)"], "where": { "Health.cur": { "gt": 100 } } }),
+        )
+        .unwrap();
+    assert_eq!(r["rows"], json!([[0, 0, null]]));
+    // Grouped: the key leads the row, groups in key order, `order` by a column.
+    let r = idx
+        .query(
+            "arena",
+            &json!({ "select": ["sum(Health.cur)"], "group_by": "Health.max", "where": { "has": ["Health"] } }),
+        )
+        .unwrap();
+    assert_eq!(r["columns"], json!(["Health.max", "sum(Health.cur)"]));
+    assert_eq!(r["rows"], json!([[3, 3], [10, 10]]));
+    let r = idx
+        .query(
+            "arena",
+            &json!({ "select": ["Health.max", "count()"], "group_by": ["Health.max"], "order": "-Health.max" }),
+        )
+        .unwrap();
+    // Grouped by a field: only the entities that have its component.
+    assert_eq!(r["rows"], json!([[10, 1], [3, 1]]));
+    // A vec2's mean is the group's centre.
+    let r = idx
+        .query(
+            "arena",
+            &json!({ "select": ["mean(Transform.pos)"], "where": { "has": ["Health"] } }),
+        )
+        .unwrap();
+    assert_eq!(r["rows"], json!([[[1.5, 0.0]]]));
+    // Mistakes say what to do.
+    let e = idx
+        .query("arena", &json!({ "select": ["id", "count()"] }))
+        .unwrap_err();
+    assert!(e.message.contains("group_by"), "{}", e.message);
+    let e = idx
+        .query("arena", &json!({ "select": ["total(Health.cur)"] }))
+        .unwrap_err();
+    assert!(
+        e.message.contains("count, sum, mean, min, max"),
+        "{}",
+        e.message
+    );
+    let e = idx
+        .query("arena", &json!({ "select": ["sum(Health.nope)"] }))
+        .unwrap_err();
+    assert_eq!(e.code, argus_ecs::codes::UNKNOWN_FIELD);
+}
+
+#[test]
 fn get_summary_rooms_describe_and_defs() {
     let t = temp("get");
     let (idx, _, _) = synced(&t);

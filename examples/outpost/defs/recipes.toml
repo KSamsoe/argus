@@ -1,0 +1,7 @@
+# Two crops, cooked, feed a colonist for a day; eaten raw they are 0.8.
+["meal"]
+output = "item:meal"
+count = 1
+input = "item:crop"
+input_count = 2
+work = 3.0

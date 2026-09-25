@@ -26,7 +26,21 @@ pub mod save;
 pub mod savegame;
 pub mod sha256;
 
-pub use assemble::{assemble, set_fonts, Assembly, Options};
+pub use assemble::{assemble, set_fonts, Assembly, Options, ProjectDefs};
 pub use pack::{pack, unpack};
 #[cfg(all(feature = "render", feature = "audio"))]
 pub use player::Player;
+
+/// The speed a `speed.requested` event asks for (`q:speed(x)`, phase 3
+/// item 3): ticks a frame, 0 paused.
+pub fn requested_speed(fields: &[(String, argus_ecs::Value)]) -> Option<f64> {
+    fields
+        .iter()
+        .find(|(k, _)| k == "x")
+        .and_then(|(_, v)| match v {
+            argus_ecs::Value::Float(f) => Some(*f),
+            argus_ecs::Value::Int(i) => Some(*i as f64),
+            argus_ecs::Value::UInt(u) => Some(*u as f64),
+            _ => None,
+        })
+}

@@ -21,6 +21,8 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
+#[path = "jobs.rs"]
+mod jobs;
 #[path = "marks.rs"]
 mod marks;
 #[path = "nav.rs"]
@@ -518,6 +520,7 @@ impl Daemon {
             "nav.path" => self.nav_path(params),
             "nav.field" => self.nav_field(params),
             "nav.bake" => self.nav_bake(params),
+            "jobs.why" => self.jobs_why(params),
             "sim.save" => self.sim_save(params),
             "sim.load" => self.sim_load(params),
             "mark.drop" => self.mark_drop(params),
@@ -1450,6 +1453,9 @@ impl Daemon {
             .as_mut()
             .ok_or_else(|| ArgusError::new(codes::NO_PROJECT, "no project is open"))?;
         let report = ses.project.move_asset(&from, &to)?;
+        // A moved def row is read again (moves rewrite references in tables).
+        ses.host
+            .set_defs(Rc::new(argus_player::ProjectDefs(ses.project.defs.clone())));
         ses.scene.reload_files(&ses.project.ctx(&registry));
         let entity_move = report.record.kind == argus_scene::MoveKind::Entity;
         self.sync_index(true);
@@ -3223,11 +3229,14 @@ impl Daemon {
             self.sched
                 .run_until_time(&mut self.world, t.as_f64().unwrap_or(0.0), max)?
         } else if let Some(Json::Number(n)) = params.get("ticks") {
-            let n = n.as_u64().unwrap_or(0).min(max);
+            // At most max_ticks a call; asked for more, it says it stopped
+            // short (hit: false) instead of seeming done.
+            let want = n.as_u64().unwrap_or(0);
+            let n = want.min(max);
             self.sched.step(&mut self.world, n)?;
             argus_sim::RunUntil {
                 ticks: n,
-                hit: true,
+                hit: n == want,
             }
         } else {
             return Err(bad_params("give event, time, or ticks"));
@@ -3258,6 +3267,8 @@ impl Daemon {
             })
             .collect();
         ses.project.set_def_schemas(schemas);
+        ses.host
+            .set_defs(Rc::new(argus_player::ProjectDefs(ses.project.defs.clone())));
         let registry = self.world.registry().clone();
         ses.scene.reresolve(&ses.project.ctx(&registry));
         self.sched.validate()?;
@@ -3551,6 +3562,13 @@ impl Daemon {
             if let Event::Game { name, fields } = &rec.event {
                 if name == "load.requested" && self.from_ticks && !self.backstage {
                     self.load_request = Some(argus_player::savegame::request_name(fields));
+                }
+                // q:speed(x): the clock's speed from the next frame (a
+                // trial's parked world catching up asks nothing).
+                if name == "speed.requested" && self.from_ticks && !self.backstage {
+                    if let Some(x) = argus_player::requested_speed(fields) {
+                        let _ = self.sched.set_speed(x);
+                    }
                 }
             }
             let seq = self.events.next_seq;
@@ -4038,6 +4056,11 @@ impl Daemon {
             "rows": rows,
             "entities": entities,
         });
+        // The job system's events explain themselves: the worker's jobs,
+        // each with what it makes of it (phase 3 item 3).
+        if let Some(j) = self.jobs_for_event(&ev) {
+            out["jobs"] = j;
+        }
         if rec.by.is_none() {
             out["note"] = json!("No system emitted it (an edit, the daemon, or the mixer); the rows are the systems that write the entities it names.");
         }

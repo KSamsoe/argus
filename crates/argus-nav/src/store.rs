@@ -64,6 +64,7 @@ pub struct NavStore {
     built: HashMap<Entity, Built>,
     paths: HashMap<(u64, u32, u32), Option<Rc<Route>>>,
     fields: HashMap<(u64, u32, u32), Rc<Field>>,
+    islands: HashMap<u64, Rc<Vec<u32>>>,
     scratch: Scratch,
     /// What it has done.
     pub counts: Counts,
@@ -99,6 +100,7 @@ impl NavStore {
             built: HashMap::new(),
             paths: HashMap::new(),
             fields: HashMap::new(),
+            islands: HashMap::new(),
             scratch: Scratch::default(),
             counts: Counts::default(),
         }
@@ -353,6 +355,20 @@ impl NavStore {
         }
         self.paths.insert(key, r.clone());
         r
+    }
+
+    /// The grid's islands ([`search::islands`]): one label a cell, the same
+    /// for cells that can reach each other; made once a grid.
+    pub fn islands(&mut self, grid: &Grid) -> Rc<Vec<u32>> {
+        if let Some(i) = self.islands.get(&grid.hash) {
+            return i.clone();
+        }
+        let i = Rc::new(search::islands(grid));
+        if self.islands.len() >= FIELDS_MAX {
+            self.islands.clear();
+        }
+        self.islands.insert(grid.hash, i.clone());
+        i
     }
 
     /// The flow field toward a cell of `grid`, out to `range` cost units,

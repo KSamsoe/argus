@@ -25,6 +25,7 @@ argus-scene = { path = "../argus-scene", version = "0.0.1" }
 argus-input = { path = "../argus-input", version = "0.0.1" }
 argus-assets = { path = "../argus-assets", version = "0.0.1" }
 argus-nav = { path = "../argus-nav", version = "0.0.1" }
+argus-jobs = { path = "../argus-jobs", version = "0.0.1" }
 argus-tiles = { path = "../argus-tiles", version = "0.0.1" }
 argus-physics = { path = "../argus-physics", version = "0.0.1" }
 argus-camera = { path = "../argus-camera", version = "0.0.1" }

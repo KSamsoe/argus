@@ -1,0 +1,42 @@
+# Outpost's actions (section 12): the speed controls, pause, and a free
+# camera (section 12's "Outpost's free pan-and-zoom").
+[actions.speed_1]
+type = "button"
+doc = "Play at 1x"
+[actions.speed_1.bindings]
+keyboard = ["1"]
+
+[actions.speed_3]
+type = "button"
+doc = "Play at 3x"
+[actions.speed_3.bindings]
+keyboard = ["2"]
+
+[actions.speed_10]
+type = "button"
+doc = "Play at 10x"
+[actions.speed_10.bindings]
+keyboard = ["3"]
+
+[actions.pause]
+type = "button"
+doc = "Pause or go on"
+[actions.pause.bindings]
+keyboard = ["space"]
+gamepad = ["start"]
+
+[actions.pan]
+type = "axis2"
+doc = "Move the view"
+[actions.pan.bindings]
+keyboard = ["wasd", "arrows"]
+gamepad = ["left_stick"]
+
+[actions.zoom]
+type = "axis"
+doc = "Zoom in and out"
+[actions.zoom.bindings]
+keyboard = ["minus/equal"]
+
+[slots.1]
+devices = ["keyboard", "gamepad:0"]
