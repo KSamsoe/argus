@@ -334,20 +334,33 @@ fn f9_tries_a_proposal_and_f10_keeps_the_world_showing() {
     ok(&mut d, "sim.play", json!({}));
     ok(&mut d, "sim.step", json!({ "n": 30 }));
 
-    // F9 tries it and shows B; F9 again goes on to C, then A, then B.
+    // F9 tries it and shows B; F9 again goes on to C, then A, then B. The
+    // world switched in plays on as the one before it did (a variant's own
+    // clock starts stopped, and B stood still until A came back: found in
+    // the phase 2 gate).
     for (want, v) in [("B", 1), ("C", 2), ("A", 3), ("B", 1)] {
         tap(h, F9.0, F9.1, None);
         frames_until(&mut d, &format!("showing {want}"), |d| {
             ok(d, "proposal.list", json!({}))["trial"]["showing"] == want
         });
         assert_eq!(hp(&mut d), v, "{want}");
+        assert!(d.wants_frames(), "{want} is playing");
+        let tick = ok(&mut d, "sim.status", json!({}))["tick"]
+            .as_u64()
+            .unwrap();
+        d.frame().unwrap();
+        assert_eq!(
+            ok(&mut d, "sim.status", json!({}))["tick"],
+            tick + 1,
+            "{want} ticks in real time"
+        );
     }
-    // The bar says which world shows.
+    // The bar says which world shows and the keys, on a line of their own,
+    // then what this world is and what the proposal is for.
     d.present();
-    assert!(
-        bar(&mut d).contains("PROPOSAL 1 (a frailer hero): B OF A-C: health 1"),
-        "{}",
-        bar(&mut d)
+    assert_eq!(
+        bar(&mut d),
+        "PROPOSAL 1: B OF A-C   F9 NEXT  F10 KEEP THIS\nhealth 1   a frailer hero"
     );
 
     // F10 keeps it: B is committed, and the game goes on in B.

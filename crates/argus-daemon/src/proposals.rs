@@ -494,6 +494,33 @@ impl Daemon {
         Ok(json!({ "trial": self.trial_json() }))
     }
 
+    /// Make `name` the world in use, carrying the play state over: a
+    /// trial's worlds are one game to the human, so the one switched in
+    /// plays, or waits paused, at the speed the one before it did. (A fork's
+    /// own clock starts stopped, and a variant switched in that way stood
+    /// still until A came back, found in the phase 2 gate.)
+    fn switch_to(&mut self, name: &str) -> Result<()> {
+        if name == self.active {
+            return Ok(());
+        }
+        let (playing, paused, speed) = (
+            self.sched.is_playing(),
+            self.sched.is_paused(),
+            self.sched.speed(),
+        );
+        self.sim_fork(&json!({ "name": name, "switch": true }))?;
+        if playing {
+            self.sched.play(&self.world);
+            if paused {
+                self.sched.pause();
+            }
+            if self.sched.driving().kind == ClockKind::Continuous {
+                self.sched.set_speed(speed)?;
+            }
+        }
+        Ok(())
+    }
+
     fn show_world(&mut self, idx: usize) -> Result<()> {
         self.sync_trial()?;
         let Some(t) = &self.trial else {
@@ -502,7 +529,7 @@ impl Daemon {
         let (label, name) = t.worlds[idx].clone();
         let id = t.id;
         if name != self.active {
-            self.sim_fork(&json!({ "name": name, "switch": true }))?;
+            self.switch_to(&name)?;
             let now = self.sched.tick();
             if let Some(i) = self.session.as_ref().and_then(|s| s.input.clone()) {
                 i.borrow_mut().issue_due(now);
@@ -524,8 +551,8 @@ impl Daemon {
         let Some(t) = self.trial.take() else {
             return;
         };
-        if keep_a && t.worlds[0].1 != self.active {
-            let _ = self.sim_fork(&json!({ "name": t.worlds[0].1, "switch": true }));
+        if keep_a {
+            let _ = self.switch_to(&t.worlds[0].1);
         }
         for (_, n) in &t.worlds {
             if *n != self.active {
@@ -590,9 +617,7 @@ impl Daemon {
                         .find(|(l, _)| *l == label)
                         .map(|(_, n)| n.clone());
                 }
-                if self.active != a {
-                    self.sim_fork(&json!({ "name": a, "switch": true }))?;
-                }
+                self.switch_to(&a)?;
             }
         }
         let note = format!(
@@ -604,8 +629,8 @@ impl Daemon {
         );
         let commit = self.apply_commit(&by, &note, ops, CommitKind::Normal)?;
         if let Some(name) = go_on_in {
-            if name != self.active && self.forks.contains_key(&name) {
-                self.sim_fork(&json!({ "name": name, "switch": true }))?;
+            if self.forks.contains_key(&name) {
+                self.switch_to(&name)?;
             }
         }
         self.end_trial(false);
@@ -727,28 +752,34 @@ impl Daemon {
         vec![argus_input::DeviceInput::ReleaseAll]
     }
 
-    /// The bar while a proposal is tried: which world shows, and the keys.
+    /// The bar while a proposal is tried. Its first line is which world
+    /// shows and the keys, which the bar never cuts; then what this world
+    /// is (its variant's note, when it says more than the proposal's) and
+    /// what the proposal is for.
     pub(super) fn trial_bar(&self) -> Option<String> {
         let t = self.trial.as_ref()?;
         let root = &self.session.as_ref()?.root;
         let p = read(root, t.id).ok()?;
         let (label, _) = &t.worlds[t.showing];
-        let what = if label == "A" {
-            "AS IT IS".to_string()
-        } else {
-            p["variants"]
-                .as_array()?
-                .iter()
-                .find(|v| v["label"] == json!(label))
-                .and_then(|v| v["note"].as_str().map(str::to_string))
-                .unwrap_or_default()
-        };
+        let note = p["note"].as_str().unwrap_or("");
         let last = t.worlds.last().map(|(l, _)| l.as_str()).unwrap_or("B");
-        Some(format!(
-            "PROPOSAL {} ({}): {label} OF A-{last}: {what}   F9 NEXT  F10 KEEP THIS",
-            t.id,
-            p["note"].as_str().unwrap_or("")
-        ))
+        let mut s = format!("PROPOSAL {}: {label} OF A-{last}", t.id);
+        if label == "A" {
+            s.push_str(" (AS IT IS)");
+        }
+        s.push_str("   F9 NEXT  F10 KEEP THIS\n");
+        let what = p["variants"]
+            .as_array()?
+            .iter()
+            .find(|v| v["label"] == json!(label))
+            .and_then(|v| v["note"].as_str())
+            .filter(|w| !w.is_empty() && *w != note);
+        if let Some(w) = what {
+            s.push_str(w);
+            s.push_str("   ");
+        }
+        s.push_str(note);
+        Some(s.trim_end().to_string())
     }
 
     /// Pending proposals, for the line the window shows when it opens.

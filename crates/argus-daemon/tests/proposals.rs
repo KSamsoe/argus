@@ -222,6 +222,47 @@ fn a_trial_runs_every_variant_on_the_same_input_and_the_pick_is_the_commit() {
     );
 }
 
+/// Found in the phase 2 gate: a variant's world has its own clock, which
+/// starts stopped, so the game stood still in B until A came back. The
+/// world switched in plays, or waits paused, as the one before it did, and
+/// the game goes on in the world that was kept.
+#[test]
+fn the_world_switched_in_plays_on_as_the_one_before_it_did() {
+    let t = temp("proposals-play");
+    project_with_speed(t.path());
+    let mut d = open(t.path());
+    propose(&mut d, 3.0, "speed 3", None);
+    propose(&mut d, 4.0, "speed 4", Some(1));
+    ok(&mut d, "sim.play", json!({}));
+    ok(&mut d, "sim.speed", json!({ "x": 2 }));
+    ok(&mut d, "proposal.try", json!({ "id": 1 }));
+    let status = |d: &mut Daemon| ok(d, "sim.status", json!({}));
+    for v in ["B", "C", "A", "B"] {
+        ok(&mut d, "proposal.show", json!({ "variant": v }));
+        let s = status(&mut d);
+        assert_eq!(
+            (s["playing"].clone(), s["paused"].clone()),
+            (json!(true), json!(false)),
+            "{v}"
+        );
+        assert_eq!(s["speed"], 2.0, "{v}");
+        assert!(d.wants_frames(), "{v}");
+        let tick = s["tick"].as_u64().unwrap();
+        d.frame().unwrap();
+        assert_eq!(status(&mut d)["tick"], tick + 2, "{v} ticks in real time");
+    }
+    // Paused in B, C comes in paused, and a frame does not tick it.
+    ok(&mut d, "sim.pause", json!({}));
+    ok(&mut d, "proposal.show", json!({ "variant": "C" }));
+    assert_eq!(status(&mut d)["paused"], true);
+    assert!(!d.wants_frames());
+    ok(&mut d, "sim.play", json!({}));
+    // Kept: the game goes on in C, playing.
+    ok(&mut d, "proposal.pick", json!({ "id": 1, "variant": "C" }));
+    assert_eq!(speed(&mut d), 4.0);
+    assert!(d.wants_frames(), "C plays on after the pick");
+}
+
 #[test]
 fn turning_a_proposal_down_leaves_the_world_as_it_was() {
     let t = temp("proposals-reject");

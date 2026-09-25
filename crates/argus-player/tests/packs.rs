@@ -129,19 +129,28 @@ fn a_patch_carries_only_what_changed_and_a_language_lays_over_the_game() {
     )
     .unwrap();
     // The next build: one sign says something else, and French arrives.
+    // (Its words are set whole, not searched for: the game's own change
+    // them, as the phase 2 gate's proposal did.)
     let sign = dir.join("scenes/hollow/rooms/b/sign.toml");
     let text = std::fs::read_to_string(&sign).unwrap();
-    std::fs::write(&sign, text.replace("but the view", "but the wind")).unwrap();
+    let says = |words: &str| {
+        let out: Vec<String> = text
+            .lines()
+            .map(|l| {
+                if l.starts_with("text = ") {
+                    format!("text = \"{words}\"")
+                } else {
+                    l.to_string()
+                }
+            })
+            .collect();
+        assert_ne!(out.join("\n"), text.trim_end(), "the sign has a text line");
+        out.join("\n") + "\n"
+    };
+    std::fs::write(&sign, says("The top of the shaft. Nothing but the wind.")).unwrap();
     let fr = dir.join("lang/fr/scenes/hollow/rooms/b/sign.toml");
     std::fs::create_dir_all(fr.parent().unwrap()).unwrap();
-    std::fs::write(
-        &fr,
-        text.replace(
-            "The top of the shaft. Nothing up here but the view.",
-            "Le haut du puits. Rien ici que la vue.",
-        ),
-    )
-    .unwrap();
+    std::fs::write(&fr, says("Le haut du puits. Rien ici que la vue.")).unwrap();
     let second = pack::build(
         &dir,
         &BuildOptions {
