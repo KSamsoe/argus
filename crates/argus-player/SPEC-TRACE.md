@@ -26,7 +26,7 @@ Every statement in the design document (v0.3) that constrains a game as players 
 | Linux from day one. | Done | `argus build --release` on klab (Ubuntu 24.04, `libasound2-dev` and `libudev-dev` for sound and gamepads): a 13.6 MB executable in 1 min 20 s, saving to `~/.local/share/<game>`. Its self-check passed, and the world after 300 ticks is the one the Windows release reaches, bit for bit (`b41656c1f507aaf2`). | klab's build of Hollow (docs/playtest.md) |
 | macOS from day one. | Deferred | The same code path; `argus build --target macos` runs on a Mac, and there is none here. | |
 | The web target (wasm + WebGPU, with a WebGL2 fallback). | Done | `argus build --target web`: the page (`tools/web/index.html`, `main.js`), the wasm module, the packs in `data/` and `data/packs.json`; the page loads them with `WebPlayer.from_packs`. | `tools/web/check.mjs` on the built site: WebGPU and forced WebGL2 |
-| A shareable link is the cheapest way to get a human's feel onto a build the agent made. | Partial | Hollow's web build runs on klab (`argus-play.service`, `tools/web/serve.mjs`, docs/playtest.md): the page, and the reports its players post, which `mark.pull` fetches over the tailnet or an SSH tunnel. A report posted there was pulled and opened as a mark that reached the same world. The HTTPS link (`https://klab.tailde2255.ts.net:8443/`) waits on HTTPS certificates being turned on for the tailnet. `tools/web/deploy.sh` puts up a new build. | `tools/web/check.mjs`; the round trip through klab's server |
+| A shareable link is the cheapest way to get a human's feel onto a build the agent made. | Done | Hollow's web build runs on klab (`argus-play.service`, `tools/web/serve.mjs`, docs/playtest.md): the page, and the reports its players post, which `mark.pull` fetches over the tailnet or an SSH tunnel. A report posted there was pulled and opened as a mark that reached the same world. The link is `https://klab.tailde2255.ts.net:8443/`, for the tailnet, with a Let's Encrypt certificate through `tailscale serve`, so the page draws with WebGPU; a report posted over it was stored and listed. `tools/web/deploy.sh` puts up a new build. | `tools/web/check.mjs`; the round trip through klab's server |
 
 ## §15 Assets and content
 
@@ -50,8 +50,8 @@ Every statement in the design document (v0.3) that constrains a game as players 
 
 | Spec | Status | Where | Test |
 |---|---|---|---|
-| Phase 2: first `argus build` for desktop and web so a playtest link exists before the editor does. | Partial | Windows, Linux, and web builds, packs, patches, languages, the recorder, the report key, reports into marks, and the page served from klab. The HTTPS link waits on the tailnet's certificates. | above |
-| Gate: a second human opens the web build from a link and drops a mark that reaches the agent the same way. | Partial | The path is built and checked end to end locally: the page's F8 posts a report to `serve.mjs`, `mark.pull` imports it, `mark.open` reproduces it. Serving it from klab is the gate's step. | `tools/web/check.mjs`; `argus-daemon/tests/reports.rs` |
+| Phase 2: first `argus build` for desktop and web so a playtest link exists before the editor does. | Done | Windows, Linux, and web builds, packs, patches, languages, the recorder, the report key, reports into marks, and the page served from klab at its HTTPS link. macOS waits for a Mac. | above |
+| Gate: a second human opens the web build from a link and drops a mark that reaches the agent the same way. | Partial | Everything the gate needs is in place and checked: the link on klab, the page's F8 posting a report to it, `mark.pull` importing it, `mark.open` reproducing it. The gate itself is a second person playing. | `tools/web/check.mjs`; `argus-daemon/tests/reports.rs`; the report round trip through klab |
 
 ## Known limitations, stated so they are decisions
 
