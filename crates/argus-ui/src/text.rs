@@ -59,14 +59,25 @@ impl Default for PixelFont {
     }
 }
 
+/// The pixel font's letters past printable ASCII, in atlas order after it
+/// (phase 3 item 4: the accented letters French needs, and a few other
+/// languages', so a translation's words draw in the built-in font).
+pub const PIXEL_EXTRA: &str = "àâäçèéêëîïôöùûüñßÀÂÇÈÉÊÎÔÙÛÑœŒ«»\u{2019}¿¡";
+
 /// The pixel font's frame for a character (`?` for one it lacks).
 pub fn pixel_frame(c: char) -> u32 {
     let c = match c {
         '×' => 'x',
-        ' '..='~' => c,
-        _ => '?',
+        '\u{2018}' => '\'',
+        _ => c,
     };
-    c as u32 - 32
+    match c {
+        ' '..='~' => c as u32 - 32,
+        _ => match PIXEL_EXTRA.chars().position(|x| x == c) {
+            Some(i) => 95 + i as u32,
+            None => '?' as u32 - 32,
+        },
+    }
 }
 
 impl FontFace for PixelFont {
@@ -448,7 +459,11 @@ mod tests {
         let l = lines(&f, "no wrap here", 8.0, None);
         assert_eq!(l.lines.len(), 1);
         assert_eq!(pixel_frame('A'), 33);
-        assert_eq!(pixel_frame('é'), pixel_frame('?'));
+        // Past ASCII: the letters a translation needs (phase 3 item 4), and
+        // `?` for anything else.
+        let e_acute = PIXEL_EXTRA.chars().position(|c| c == 'é').unwrap() as u32;
+        assert_eq!(pixel_frame('é'), 95 + e_acute);
+        assert_eq!(pixel_frame('\u{1F600}'), pixel_frame('?'));
         assert_eq!(f.glyphs("a b", 16.0).len(), 2, "spaces draw nothing");
     }
 

@@ -12,5 +12,5 @@ color = "button"
 event = "pause.settings"
 
 [UiText]
-text = "Settings"
+key = "pause.settings"
 align = "center"

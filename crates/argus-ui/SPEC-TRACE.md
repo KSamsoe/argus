@@ -53,6 +53,13 @@ Every statement in the design document (v0.3) that constrains the UI tree (§12 
 | No pointer action for the mouse. | Done | `argus-input`: the `pointer` action type (a place on the canvas; the mouse's `position`). | `ui::the_pointer_focuses_what_it_moves_over_and_a_click_presses_it` |
 | The web page draws it the same way as the desktop. | Done | The page draws the UI through the same renderer, and hands the mouse over as the pointer. | `tools/web/check.mjs`: Escape opens Hollow's pause menu, the real mouse focuses a button and a click presses it, on WebGPU and WebGL2 |
 
+## Phase 3, item 4: string tables
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§12) "All player-facing strings go through a string table keyed by id; the agent can author in one language and a translator can fill the others without opening the engine." | Done | `strings.rs`: a language is a file, `strings/<code>.toml`, its keys TOML's own (tables or dotted); the base language (argus.toml `[strings] base`, "en" by default) is what the others fall back to, key by key, and a key no table has shows as `[key]`. `UiText.key` names a string: the words are the table's in `UiSettings.language` (the base when empty), looked up every layout, holes filled as a text's are, so a language chosen shows at once. The engine's own strings (a dialogue's button, a rebind's prompt) are keys with English defaults a game's table can replace. `set_in_file` writes one key keeping the file's layout and comments (the protocol's `edit.text`). | `strings::a_language_falls_back_to_the_base_key_by_key`, `strings::a_keyed_text_shows_in_the_worlds_language_and_changes_with_it`, `strings::a_key_is_written_into_its_file_keeping_the_rest` |
+| (§12) Text in the built-in pixel font, in any language a game ships. | Partial | `text::PIXEL_EXTRA`: the pixel font has the accented letters French needs and a few others (ñ, ß, œ, guillemets, the typographic apostrophe, ¿ ¡) after printable ASCII; anything else draws as `?`. A distance-field font (any `.ttf`) covers what its file has. | `argus-render` `annotate::tests::the_letters_past_ascii_are_in_the_uis_order_and_drawn`; Hollow's French |
+
 ## Known limitations, stated so they are decisions
 
 - The canvas is one fixed size per project (`ui.toml`, 960 x 540 by default), scaled to fit the window whole and centred. A wider window shows the world beside it; the UI stays in the canvas.

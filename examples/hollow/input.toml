@@ -19,6 +19,13 @@ doc = "Play the run again from the cave mouth"
 keyboard = ["r"]
 gamepad = ["select"]
 
+[actions.talk]
+type = "button"
+doc = "Talk to someone near (the hermit)"
+[actions.talk.bindings]
+keyboard = ["e"]
+gamepad = ["north"]
+
 [actions.pause]
 type = "button"
 doc = "Open or close the pause menu"
@@ -38,7 +45,7 @@ gamepad = ["dpad", "left_stick"]
 type = "button"
 doc = "Press the focused button"
 [actions.ui_confirm.bindings]
-keyboard = ["enter"]
+keyboard = ["enter", "e"]
 gamepad = ["south"]
 
 [actions.ui_cancel]

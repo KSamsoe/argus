@@ -244,16 +244,32 @@ pub fn resolve(packs: &[Pack], lang: Option<&str>) -> Result<(Files, Json)> {
         })?;
         files.insert(path.clone(), b);
     }
-    let langs: Vec<&str> = packs
-        .iter()
-        .filter_map(|p| match &p.kind {
-            Kind::Lang(l) => Some(l.as_str()),
-            _ => None,
-        })
-        .collect();
+    // A language is rebuilt whole with each build: its newest pack is the
+    // language (two builds' French packs are one French).
+    let mut newest_lang: BTreeMap<&str, &Pack> = BTreeMap::new();
+    for p in packs {
+        if let Kind::Lang(l) = &p.kind {
+            let e = newest_lang.entry(l.as_str()).or_insert(p);
+            if p.seq > e.seq {
+                *e = p;
+            }
+        }
+    }
+    let langs: Vec<&str> = newest_lang.keys().copied().collect();
     let mut used = None;
+    // Every language's string table is mounted, whichever language the
+    // files are laid out in, so a player can switch in the game.
+    for lp in newest_lang.values().copied() {
+        for (path, h, _) in &lp.files {
+            if path.starts_with("strings/") {
+                if let Some(b) = blob(h, &[lp]) {
+                    files.insert(path.clone(), b);
+                }
+            }
+        }
+    }
     if let Some(l) = lang {
-        if let Some(lp) = packs.iter().find(|p| p.kind == Kind::Lang(l.to_string())) {
+        if let Some(lp) = newest_lang.get(l).copied() {
             for (path, h, _) in &lp.files {
                 let b = blob(h, &[lp])
                     .ok_or_else(|| bad_pack(format!("lang-{l}.pack lacks {path}")))?;
@@ -348,8 +364,9 @@ fn is_script(rel: &str) -> bool {
 
 /// Make a project's packs (§15): scripts compiled to bytecode; sprites from
 /// the import cache (their textures and the catalog, not the source images
-/// or sidecars); every other file as it is; `lang/<code>/` into a pack per
-/// language. Fails on any import failure or script syntax error, naming
+/// or sidecars); every other file as it is; `lang/<code>/`, and a string
+/// table other than the base language's (`strings/<code>.toml`, phase 3
+/// item 4), into a pack per language. Fails on any import failure or script syntax error, naming
 /// each, since a build that ships them ships a broken game.
 pub fn build(root: &Path, opts: &BuildOptions) -> Result<Built> {
     let cfg = argus_scene::ProjectConfig::load(root)?;
@@ -379,9 +396,18 @@ pub fn build(root: &Path, opts: &BuildOptions) -> Result<Built> {
         }
         let bytes = argus_os::fs::read(root.join(rel))
             .map_err(|e| ArgusError::new(1, format!("{rel}: {e}")))?;
+        let table = rel
+            .strip_prefix("strings/")
+            .and_then(|f| f.strip_suffix(".toml"))
+            .filter(|code| !code.contains('/') && *code != cfg.strings_base);
         let (target, path) = match rel.strip_prefix("lang/").and_then(|r| r.split_once('/')) {
             Some((code, inner)) => (Some(code.to_string()), inner.to_string()),
-            None => (None, rel.clone()),
+            None => match table {
+                // A language's strings travel in its own pack (section 15:
+                // "a language can be added without a rebuild").
+                Some(code) => (Some(code.to_string()), rel.clone()),
+                None => (None, rel.clone()),
+            },
         };
         let bytes = if is_script(&path) {
             let src = String::from_utf8_lossy(&bytes);

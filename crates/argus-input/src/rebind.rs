@@ -53,12 +53,33 @@ impl Default for InputBinding {
     }
 }
 
+/// What a button waiting for a key says, in the world's language: the
+/// assembly hands the string tables' (phase 3 item 4), since this crate
+/// reads none.
+pub type Prompt = Rc<dyn Fn(&World) -> String>;
+
 /// Register `InputBinding` and add `input.rebind` to the sim stage, after
-/// `ui.input` when it runs (install after the UI).
+/// `ui.input` when it runs (install after the UI). A waiting button says
+/// "press a key".
 pub fn install(
     world: &mut World,
     sched: &mut Scheduler,
     state: Rc<RefCell<InputState>>,
+) -> Result<()> {
+    install_with(
+        world,
+        sched,
+        state,
+        Rc::new(|_: &World| "press a key".to_string()),
+    )
+}
+
+/// [`install`], with what a waiting button says.
+pub fn install_with(
+    world: &mut World,
+    sched: &mut Scheduler,
+    state: Rc<RefCell<InputState>>,
+    prompt: Prompt,
 ) -> Result<()> {
     let id = match world.component_id_of::<InputBinding>() {
         Some(id) => id,
@@ -134,7 +155,7 @@ pub fn install(
                 };
                 let listening = waiting == Some(e);
                 let text = if listening {
-                    "press a key".to_string()
+                    prompt(ctx.world())
                 } else {
                     let action = ctx.world().strings().resolve(b.action).to_string();
                     let device = dev(&ctx.world().strings().resolve(b.device));

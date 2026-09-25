@@ -66,6 +66,13 @@ Every statement in the design document (v0.3) that constrains a game as players 
 | (§4) Scripts read the project's data tables. | Done | `ProjectDefs`, the project's `Defs` as `argus_luau::DefRows`, handed to the host after the tables are read (`q:def`, `q:defs`). | Outpost's tests |
 | (§6) A game's speed controls. | Done | `Player` answers `speed.requested` by setting its clock's speed after the step (`requested_speed`). | Outpost's `tests/colony.luau` (through the daemon); the executable and the page read the speed each frame |
 
+## Phase 3, item 4: words and conversations in the one assembly
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§12) String tables and dialogue in every scene, the same in the daemon, the executable, and the page. | Done | `assemble.rs` reads the string tables into the UI's shared state, installs `argus-dialogue` after the UI, hands scripts `q:text` (`UiTexts`) and the rebind its prompt, adds the engine's `dialogue` def table to the project's (`with_engine_defs`), and builds the graph from its rows. | Hollow's, Delve's, and Outpost's tests |
+| (§15) "Localization packs are separate so a language can be added without a rebuild." | Done | `pack.rs`: a string table other than the base language's (`strings/<code>.toml`) goes into `lang-<code>.pack`; every language pack's tables are mounted whichever language the files are laid out in, so a player switches in the game; of two builds' packs of a language, the newest is the language (the first build's was taken before). | `packs::hollow_from_its_packs_plays_as_hollow_from_its_folder`, `packs::a_patch_carries_only_what_changed_and_a_language_lays_over_the_game` |
+
 ## §18 Build plan
 
 | Spec | Status | Where | Test |

@@ -14,4 +14,4 @@ color = "button"
 action = "jump"
 
 [UiText]
-text = "Jump: {InputBinding.keys}"
+key = "controls.jump"

@@ -91,6 +91,16 @@ pub enum Op {
         /// Row-major tile ids, `w * h` of them.
         cells: Vec<u32>,
     },
+    /// Set a string in a language's table, or with `None` remove it (and
+    /// the inverse of either).
+    Text {
+        /// Language code.
+        lang: String,
+        /// String key.
+        key: String,
+        /// The words, or `None` to remove the key.
+        text: Option<String>,
+    },
     /// Paint a terrain over a rect (or erase it) and re-pick the tiles
     /// around it by the tileset's auto-tiling rules.
     Terrain {
@@ -147,6 +157,10 @@ impl Op {
                 )
             }
             Op::Despawn { entity } => ("edit.despawn", json!({ "entity": entity })),
+            Op::Text { lang, key, text } => (
+                "edit.text",
+                json!({ "lang": lang, "key": key, "text": text }),
+            ),
             _ => return None,
         })
     }
@@ -177,6 +191,7 @@ impl Op {
             Op::Tiles {
                 file, layer, rect, ..
             } => json!(["tiles", file, layer, rect]),
+            Op::Text { lang, key, text } => json!(["text", lang, key, text]),
             Op::Terrain {
                 file,
                 layer,

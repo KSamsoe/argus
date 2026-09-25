@@ -80,11 +80,29 @@ fn hollow_from_its_packs_plays_as_hollow_from_its_folder() {
     .unwrap();
     let r = &built.report;
     println!("{r:#}");
-    assert_eq!(built.packs.len(), 1);
+    // The game, and French: its string table travels in a pack of its own
+    // (phase 3 item 4), so a language can be added without a rebuild.
+    assert_eq!(built.packs.len(), 2);
     assert_eq!(built.packs[0].kind, Kind::Base);
+    assert_eq!(built.packs[1].kind, Kind::Lang("fr".into()));
+    assert!(built.packs[1]
+        .files
+        .iter()
+        .any(|f| f.0 == "strings/fr.toml"));
+    assert!(!built.packs[0]
+        .files
+        .iter()
+        .any(|f| f.0 == "strings/fr.toml"));
+    assert!(
+        built.packs[0]
+            .files
+            .iter()
+            .any(|f| f.0 == "strings/en.toml"),
+        "the base's is the game's"
+    );
     assert_eq!(
-        r["scripts_compiled"], 6,
-        "the Run component, and the pit, run, signs, pause, and pause menu systems"
+        r["scripts_compiled"], 8,
+        "the Run and Hermit components, and the pit, run, signs, pause, pause menu, and hermit systems"
     );
     assert!(r["sprites"].as_u64().unwrap() >= 3, "{r}");
     let left_out = r["sources_left_out"].to_string();
@@ -98,7 +116,13 @@ fn hollow_from_its_packs_plays_as_hollow_from_its_folder() {
     assert!(Pack::decode(&damaged).is_err(), "a damaged blob is refused");
 
     let (root, report) = mount(&built.packs, "same", None);
-    assert_eq!(report["files"], r["files"]);
+    // Every language's strings are there, in English or not, to switch to.
+    assert!(argus_os::fs::exists(root.join("strings/fr.toml")));
+    assert_eq!(
+        report["files"].as_u64().unwrap(),
+        r["files"].as_u64().unwrap() + 1,
+        "the game's files and French's table"
+    );
     assert!(!root.exists(), "the game is in memory");
     assert!(
         !argus_os::fs::exists(root.join("assets/hero.png")),

@@ -72,17 +72,19 @@ return system "sim.run" {
       end
       e:get("Sprite").visible = g.active and not g.taken
     end
-    local falls = run.falls == 0 and "no falls" or (run.falls == 1 and "1 fall" or (run.falls .. " falls"))
+    -- The line's words from the string tables (phase 3 item 4).
+    local falls = run.falls == 0 and q:text("hud.no_falls")
+      or (run.falls == 1 and q:text("hud.one_fall") or q:text("hud.falls", { n = run.falls }))
     local d = hud:get("UiText")
     if run.done then
       local found = ""
       if gems > 0 then
-        found = run.gems > 0 and ", with the gem" or ", gem missed"
+        found = q:text(run.gems > 0 and "hud.with_gem" or "hud.gem_missed")
       end
-      d.text = string.format("Out of the hollow in %.1f s, %s%s. Press R to go again.", run.time, falls, found)
+      d.text = q:text("hud.done", { time = string.format("%.1f", run.time), falls = falls, gem = found })
     else
-      local f = run.falls == 0 and "No falls yet" or (falls:sub(1, 1):upper() .. falls:sub(2))
-      d.text = string.format("Hollow. Find the way out. %s.%s", f, run.gems > 0 and " Gem found." or "")
+      local f = run.falls == 0 and q:text("hud.no_falls_yet") or (falls:sub(1, 1):upper() .. falls:sub(2))
+      d.text = q:text("hud.running", { falls = f, gem = run.gems > 0 and q:text("hud.gem_found") or "" })
     end
   end,
 }

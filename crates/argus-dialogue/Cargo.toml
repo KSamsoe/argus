@@ -1,0 +1,17 @@
+[package]
+name = "argus-dialogue"
+description = "Argus Engine dialogue: a def table of nodes (lines, choices, conditions on world state, effects as edits) played through the UI tree, in the world's language"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+argus-ecs = { path = "../argus-ecs", version = "0.0.1" }
+argus-sim = { path = "../argus-sim", version = "0.0.1" }
+argus-ui = { path = "../argus-ui", version = "0.0.1" }
+argus-scene = { path = "../argus-scene", version = "0.0.1" }
+
+[dev-dependencies]
+argus-input = { path = "../argus-input", version = "0.0.1" }
+argus-camera = { path = "../argus-camera", version = "0.0.1" }
+serde_json = "1"

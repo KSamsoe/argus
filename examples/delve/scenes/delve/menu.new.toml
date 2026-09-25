@@ -12,5 +12,5 @@ color = "button"
 event = "menu.new_run"
 
 [UiText]
-text = "New run"
+key = "menu.new"
 align = "center"

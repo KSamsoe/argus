@@ -1,0 +1,61 @@
+# Hollow en français (phase 3 item 4): the same keys as en.toml. A release
+# build ships it in lang-fr.pack, beside the game's pack.
+language.name = "Français"
+
+[pause]
+title = "Pause"
+resume = "Reprendre"
+restart = "Recommencer la partie"
+controls = "Commandes"
+settings = "Réglages"
+
+[controls]
+title = "Commandes : choisis-en une, puis une touche"
+jump = "Sauter : {InputBinding.keys}"
+restart = "Recommencer : {InputBinding.keys}"
+pause = "Pause : {InputBinding.keys}"
+back = "Retour"
+
+[settings]
+title = "Réglages"
+text = "Taille du texte : {percent} %"
+contrast = "Contraste élevé : {state}"
+fullscreen = "Plein écran : {state}"
+language = "Langue : {name}"
+on = "oui"
+off = "non"
+back = "Retour"
+
+[input]
+press_a_key = "appuie sur une touche"
+
+[dialogue]
+continue = "Continuer"
+
+[hud]
+running = "Hollow. Trouve la sortie. {falls}.{gem}"
+done = "Sorti en {time} s, {falls}{gem}. R pour rejouer."
+no_falls_yet = "Aucune chute"
+no_falls = "aucune chute"
+one_fall = "1 chute"
+falls = "{n} chutes"
+gem_found = " Gemme trouvée."
+with_gem = ", avec la gemme"
+gem_missed = ", gemme manquée"
+
+[sign]
+shaft = "Le haut du puits. Quelque chose brille là-haut."
+pit = "Attention au gouffre."
+exit = "La sortie."
+
+[hermit]
+name = "L’ermite"
+prompt = "E : parler"
+hello = "Peu de gens viennent jusqu’ici. La grotte continue après le puits, et toi aussi."
+again = "Te revoilà ?"
+ask = "Qu’y a-t-il ?"
+lead = "Où mène la grotte ?"
+lead_answer = "En haut du puits, à travers la salle, puis dehors. Attention au gouffre."
+give = "Donner la gemme"
+thanks = "Elle éclairera mes soirées. Merci."
+bye = "Au revoir"

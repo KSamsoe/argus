@@ -69,6 +69,12 @@ In the daemon: `Daemon::device_input(events)` is the one entry point; `poll_devi
 |---|---|---|---|
 | (§12) Menus are driven by actions from any device; the mouse too. | Done | `ActionKind::Pointer` (`type = "pointer"`, bound to the mouse's `position`): a place on the canvas. Hollow's and Delve's maps add `ui_move`, `ui_confirm`, `ui_cancel`, `ui_click`, and `pointer`, and `pause` on Escape and Start. | `argus-ui` `ui::the_pointer_focuses_what_it_moves_over_and_a_click_presses_it` |
 
+## Phase 3, item 4
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§12) Player-facing strings through a string table, the engine's own too. | Done | `rebind::install_with` takes what a button waiting for a key says; the assembly hands it the string tables' `input.press_a_key` in the world's language ("press a key" by default), since this crate reads no tables. | Hollow's `tests/controls.luau` (English), its French by hand |
+
 ## Known limitations, stated so they are decisions
 
 - Keyboard and mouse arrive only through the daemon's window; gamepads are polled only while a window is open.

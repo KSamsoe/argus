@@ -68,6 +68,12 @@ Every statement in the design document (v0.3) that constrains authored content (
 
 Phase 0 item 5, "TOML scenes, rooms, defs, and prefab overrides": this crate.
 
+## Phase 3, item 4
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§12) A game is written in one language. | Done | `ProjectConfig::strings_base`, argus.toml `[strings] base` ("en" when it says nothing): the string table every other language falls back to, and the one a release build keeps in the game's pack. | The games' string tables; `argus-player` `packs::hollow_from_its_packs_plays_as_hollow_from_its_folder` |
+
 ## Known limitations, stated so they are decisions
 
 - A child entity that exists only because a prefab declares it is not an "instance" of that prefab (`instances_of`), but it is counted among the entities a prefab change touched (`reapply_prefab`).

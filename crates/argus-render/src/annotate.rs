@@ -106,16 +106,236 @@ const GLYPHS: [[&str; 7]; 95] = [
     [".....", ".....", ".#...", "#.#.#", "...#.", ".....", "....."], // ~
 ];
 
-/// A glyph's rows for a character; anything outside printable ASCII is `?`
-/// (and `×` is `x`).
-fn glyph(c: char) -> &'static [&'static str; 7] {
-    let c = if c == '×' { 'x' } else { c };
-    let i = c as u32;
-    if (32..127).contains(&i) {
-        &GLYPHS[(i - 32) as usize]
+/// The letters past ASCII (`argus_ui::text::PIXEL_EXTRA`, in its order):
+/// an accent above a lowercase letter, or above a letter a row shorter.
+const EXTRA: [(char, [&str; 7]); 35] = [
+    (
+        'à',
+        [
+            ".#...", "..#..", ".###.", "....#", ".####", "#...#", ".####",
+        ],
+    ),
+    (
+        'â',
+        [
+            "..#..", ".#.#.", ".###.", "....#", ".####", "#...#", ".####",
+        ],
+    ),
+    (
+        'ä',
+        [
+            ".#.#.", ".....", ".###.", "....#", ".####", "#...#", ".####",
+        ],
+    ),
+    (
+        'ç',
+        [
+            ".....", ".###.", "#....", "#....", ".###.", "..#..", ".##..",
+        ],
+    ),
+    (
+        'è',
+        [
+            ".#...", "..#..", ".###.", "#...#", "#####", "#....", ".###.",
+        ],
+    ),
+    (
+        'é',
+        [
+            "...#.", "..#..", ".###.", "#...#", "#####", "#....", ".###.",
+        ],
+    ),
+    (
+        'ê',
+        [
+            "..#..", ".#.#.", ".###.", "#...#", "#####", "#....", ".###.",
+        ],
+    ),
+    (
+        'ë',
+        [
+            ".#.#.", ".....", ".###.", "#...#", "#####", "#....", ".###.",
+        ],
+    ),
+    (
+        'î',
+        [
+            "..#..", ".#.#.", ".##..", "..#..", "..#..", "..#..", ".###.",
+        ],
+    ),
+    (
+        'ï',
+        [
+            ".#.#.", ".....", ".##..", "..#..", "..#..", "..#..", ".###.",
+        ],
+    ),
+    (
+        'ô',
+        [
+            "..#..", ".#.#.", ".###.", "#...#", "#...#", "#...#", ".###.",
+        ],
+    ),
+    (
+        'ö',
+        [
+            ".#.#.", ".....", ".###.", "#...#", "#...#", "#...#", ".###.",
+        ],
+    ),
+    (
+        'ù',
+        [
+            ".#...", "..#..", "#...#", "#...#", "#...#", "#..##", ".##.#",
+        ],
+    ),
+    (
+        'û',
+        [
+            "..#..", ".#.#.", "#...#", "#...#", "#...#", "#..##", ".##.#",
+        ],
+    ),
+    (
+        'ü',
+        [
+            ".#.#.", ".....", "#...#", "#...#", "#...#", "#..##", ".##.#",
+        ],
+    ),
+    (
+        'ñ',
+        [
+            ".##.#", "#..#.", "#.##.", "##..#", "#...#", "#...#", "#...#",
+        ],
+    ),
+    (
+        'ß',
+        [
+            ".##..", "#..#.", "#.#..", "#..#.", "#...#", "#...#", "#.##.",
+        ],
+    ),
+    (
+        'À',
+        [
+            ".#...", ".###.", "#...#", "#####", "#...#", "#...#", "#...#",
+        ],
+    ),
+    (
+        'Â',
+        [
+            "..#..", ".###.", "#...#", "#####", "#...#", "#...#", "#...#",
+        ],
+    ),
+    (
+        'Ç',
+        [
+            ".###.", "#...#", "#....", "#....", "#...#", ".###.", "..#..",
+        ],
+    ),
+    (
+        'È',
+        [
+            ".#...", "#####", "#....", "####.", "#....", "#....", "#####",
+        ],
+    ),
+    (
+        'É',
+        [
+            "...#.", "#####", "#....", "####.", "#....", "#....", "#####",
+        ],
+    ),
+    (
+        'Ê',
+        [
+            "..#..", "#####", "#....", "####.", "#....", "#....", "#####",
+        ],
+    ),
+    (
+        'Î',
+        [
+            "..#..", ".###.", "..#..", "..#..", "..#..", "..#..", ".###.",
+        ],
+    ),
+    (
+        'Ô',
+        [
+            "..#..", ".###.", "#...#", "#...#", "#...#", "#...#", ".###.",
+        ],
+    ),
+    (
+        'Ù',
+        [
+            ".#...", "#...#", "#...#", "#...#", "#...#", "#...#", ".###.",
+        ],
+    ),
+    (
+        'Û',
+        [
+            "..#..", "#...#", "#...#", "#...#", "#...#", "#...#", ".###.",
+        ],
+    ),
+    (
+        'Ñ',
+        [
+            ".##.#", "#...#", "##..#", "#.#.#", "#..##", "#...#", "#...#",
+        ],
+    ),
+    (
+        'œ',
+        [
+            ".....", ".....", ".#.#.", "#.#.#", "#.###", "#.#..", ".#.##",
+        ],
+    ),
+    (
+        'Œ',
+        [
+            ".####", "#.#..", "#.#..", "#.###", "#.#..", "#.#..", ".####",
+        ],
+    ),
+    (
+        '«',
+        [
+            ".....", ".....", "..#.#", ".#.#.", "#.#..", ".#.#.", "..#.#",
+        ],
+    ),
+    (
+        '»',
+        [
+            ".....", ".....", "#.#..", ".#.#.", "..#.#", ".#.#.", "#.#..",
+        ],
+    ),
+    (
+        '\u{2019}',
+        [
+            "...#.", "...#.", "..#..", ".....", ".....", ".....", ".....",
+        ],
+    ),
+    (
+        '¿',
+        [
+            "..#..", ".....", "..#..", ".#...", "#....", "#...#", ".###.",
+        ],
+    ),
+    (
+        '¡',
+        [
+            "..#..", ".....", "..#..", "..#..", "..#..", "..#..", "..#..",
+        ],
+    ),
+];
+
+/// A glyph's rows by its frame in the atlas.
+fn frame_glyph(i: usize) -> &'static [&'static str; 7] {
+    if i < GLYPHS.len() {
+        &GLYPHS[i]
     } else {
-        &GLYPHS[('?' as u32 - 32) as usize]
+        EXTRA
+            .get(i - GLYPHS.len())
+            .map(|e| &e.1)
+            .unwrap_or(&GLYPHS[('?' as u32 - 32) as usize])
     }
+}
+
+/// A glyph's rows for a character, as the UI's pixel font frames it.
+fn glyph(c: char) -> &'static [&'static str; 7] {
+    frame_glyph(argus_ui::text::pixel_frame(c) as usize)
 }
 
 /// The pixel font's atlas, the UI's built-in font (`argus/font`): every
@@ -123,13 +343,14 @@ fn glyph(c: char) -> &'static [&'static str; 7] {
 /// a row. Returns width, height, RGBA, and each character's frame in
 /// texture space, space (32) first.
 pub(crate) fn font_atlas() -> (u32, u32, Vec<u8>, Vec<[f32; 4]>) {
-    let (cols, rows) = (16u32, 6u32);
+    let n = (GLYPHS.len() + EXTRA.len()) as u32;
+    let (cols, rows) = (16u32, n.div_ceil(16));
     let (w, h) = (cols * 6, rows * 8);
     let mut rgba = vec![0u8; (w * h * 4) as usize];
-    let mut frames = Vec::with_capacity(95);
-    for i in 0..95u32 {
+    let mut frames = Vec::with_capacity(n as usize);
+    for i in 0..n {
         let (cx, cy) = ((i % cols) * 6, (i / cols) * 8);
-        for (row, bits) in GLYPHS[i as usize].iter().enumerate() {
+        for (row, bits) in frame_glyph(i as usize).iter().enumerate() {
             for (col, b) in bits.bytes().enumerate() {
                 if b == b'#' {
                     let p = (((cy + row as u32) * w + cx + col as u32) * 4) as usize;
@@ -278,4 +499,25 @@ pub fn annotate(img: &mut Image, frame: &SemanticFrame) -> Vec<Mark> {
         });
     }
     marks
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_letters_past_ascii_are_in_the_uis_order_and_drawn() {
+        let letters: Vec<char> = argus_ui::text::PIXEL_EXTRA.chars().collect();
+        assert_eq!(letters.len(), EXTRA.len());
+        for (i, c) in letters.iter().enumerate() {
+            assert_eq!(EXTRA[i].0, *c, "letter {i}");
+            assert_eq!(argus_ui::text::pixel_frame(*c) as usize, GLYPHS.len() + i);
+            assert!(EXTRA[i].1.iter().all(|r| r.len() == 5), "{c} is 5 wide");
+            assert_ne!(glyph(*c), glyph('?'), "{c} has its own glyph");
+        }
+        let (w, h, rgba, frames) = font_atlas();
+        assert_eq!(frames.len(), GLYPHS.len() + EXTRA.len());
+        assert_eq!(rgba.len(), (w * h * 4) as usize);
+        assert_eq!(glyph('\u{1F600}'), glyph('?'), "anything else is ?");
+    }
 }

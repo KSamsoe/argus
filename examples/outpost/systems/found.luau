@@ -26,7 +26,7 @@ return system "sim.colony.found" {
   stage = "sim",
   on_load = true, -- the colony is there before the first tick
   reads = { "Colony", "Colonist", "Camera", "UiRoot", "JobKind" },
-  writes = { "Colony", "Stockpile", "Colonist", "Needs", "Worker", "NavAgent", "NavGrid", "NavCost", "Transform", "Sprite", "Describe", "Field", "Station", "Bed", "JobKind", "Camera", "UiRoot", "UiNode", "UiPanel", "UiText", "PlayerSlot", "Actions", "Item" },
+  writes = { "Colony", "Stockpile", "Colonist", "Needs", "Worker", "NavAgent", "NavGrid", "NavCost", "Transform", "Sprite", "Describe", "Field", "Station", "Bed", "JobKind", "Camera", "UiRoot", "UiNode", "UiPanel", "UiText", "PlayerSlot", "Actions", "Item", "Hud" },
   rng = "valley",
   doc = "Lays the valley out once (Colony.laid_out): a navigation grid of Colony.size with trees from the seed, the stockpile at the colony, a stove, ten fields, a bed each, the founders from defs/founders.toml (or Colony.colonists of them, their skills in turn), Colony.stones stones lying about, a JobKind per row of defs/jobs.toml, a camera, and the HUD. An older save's colonists get a place, a Worker, a NavAgent, and a bed.",
   run = function(q)
@@ -149,15 +149,19 @@ return system "sim.colony.found" {
       cc.zoom_min = 8
       cc.zoom_max = 40
     end
-    if q:count("UiRoot") == 0 then
-      local hud = q:spawn({ "UiRoot", "UiNode", "UiPanel", "UiText" })
-      hud:get("UiRoot").interactive = false
-      local n = hud:get("UiNode")
-      n.absolute = true
-      n.offset = vector.create(12, 10, 0)
-      n.pad = vector.create(8, 4, 0)
-      hud:get("UiPanel").color = "#05070A99"
-      hud:get("UiText").text = "Outpost"
+    -- The HUD: its line, and the notice under it (systems/hud.luau).
+    if q:count("Hud") == 0 then
+      for i, kind in ipairs({ "line", "notice" }) do
+        local hud = q:spawn({ "UiRoot", "UiNode", "UiPanel", "UiText", "Hud" })
+        hud:get("UiRoot").interactive = false
+        hud:get("UiRoot").layer = i
+        local n = hud:get("UiNode")
+        n.absolute = true
+        n.offset = vector.create(12, 10 + 28 * (i - 1), 0)
+        n.pad = vector.create(8, 4, 0)
+        hud:get("UiPanel").color = if kind == "line" then "#05070A99" else "#05070A66"
+        hud:get("Hud").kind = kind
+      end
     end
     q:emit("colony.laid_out", { day = rules.day, colonists = #ids })
   end,

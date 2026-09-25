@@ -1,0 +1,59 @@
+# Hollow's words (phase 3 item 4): every string a player reads, by key.
+# The game is written in English (argus.toml [strings] base); another
+# language is a file like this one, strings/<code>.toml, with the same keys.
+# A key it lacks shows in English. Holes: {Component.field} and
+# {@id:Component.field} come from the world, {name} from the script that
+# asks for the words.
+language.name = "English"
+
+[pause]
+title = "Paused"
+resume = "Resume"
+restart = "Restart the run"
+controls = "Controls"
+settings = "Settings"
+
+[controls]
+title = "Controls: press one, then a key"
+jump = "Jump: {InputBinding.keys}"
+restart = "Restart: {InputBinding.keys}"
+pause = "Pause: {InputBinding.keys}"
+back = "Back"
+
+[settings]
+title = "Settings"
+text = "Text size: {percent}%"
+contrast = "High contrast: {state}"
+fullscreen = "Fullscreen: {state}"
+language = "Language: {name}"
+on = "on"
+off = "off"
+back = "Back"
+
+[hud]
+running = "Hollow. Find the way out. {falls}.{gem}"
+done = "Out of the hollow in {time} s, {falls}{gem}. Press R to go again."
+no_falls_yet = "No falls yet"
+no_falls = "no falls"
+one_fall = "1 fall"
+falls = "{n} falls"
+gem_found = " Gem found."
+with_gem = ", with the gem"
+gem_missed = ", gem missed"
+
+[sign]
+shaft = "The top of the shaft. Something glints up here."
+pit = "Mind the pit."
+exit = "The way out."
+
+[hermit]
+name = "The hermit"
+prompt = "E: talk"
+hello = "Few come this far. The cave goes on past the shaft, and so can you."
+again = "Back again?"
+ask = "What is it?"
+lead = "Where does the cave lead?"
+lead_answer = "Up the shaft, across the hall, and out. Mind the pit."
+give = "Give the gem"
+thanks = "It will light my evenings. Thank you."
+bye = "Goodbye"

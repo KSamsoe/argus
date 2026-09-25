@@ -115,6 +115,22 @@ pub trait DefRows {
         -> Option<(String, Vec<(String, Vec<(String, argus_ecs::Value)>)>)>;
 }
 
+/// The game's player-facing strings as scripts read them (§12, phase 3 item
+/// 4: "all player-facing strings go through a string table keyed by id"):
+/// `q:text("hud.day", {day = 3})` and `q:languages()`. The player's
+/// assembly hands the host its string tables ([`ScriptHost::set_texts`]);
+/// the language is the world's (`UiSettings.language`).
+pub trait Texts {
+    /// A key's string in the world's language (falling back to the base
+    /// language's), or `None` where no table has it.
+    fn text(&self, world: &argus_ecs::World, key: &str) -> Option<String>;
+    /// The languages there are tables for, the base first.
+    fn languages(&self) -> Vec<String>;
+}
+
+/// The string tables a host was given.
+pub(crate) struct TextsData(pub Rc<dyn Texts>);
+
 /// The tables a host was given, and the frozen Lua tables made from them
 /// (a row is made once, not every time a system asks).
 pub(crate) struct DefsData {
@@ -292,6 +308,12 @@ impl ScriptHost {
     /// `q:downhill`; phase 3 item 2).
     pub fn set_paths(&self, paths: Rc<dyn Paths>) {
         self.lua.set_app_data(PathsData(paths));
+    }
+
+    /// Give scripts the game's string tables (`q:text`, `q:languages`;
+    /// phase 3 item 4).
+    pub fn set_texts(&self, texts: Rc<dyn Texts>) {
+        self.lua.set_app_data(TextsData(texts));
     }
 
     /// Give scripts the project's data tables (`q:def`, `q:defs`; phase 3

@@ -12,5 +12,5 @@ color = "button"
 event = "pause.restart"
 
 [UiText]
-text = "Restart the run"
+key = "pause.restart"
 align = "center"

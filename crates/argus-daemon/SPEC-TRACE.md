@@ -192,6 +192,13 @@ Phase 0 item 4, "JSON-RPC daemon with session, world, edit, sim (play, pause, st
 | (§5) A read says what it did not do. | Done | `sim.run_until {ticks}` beyond `max_ticks` (100,000) runs the cap and answers `hit: false`; it said `hit: true` before, so a thirty-day run asked for in one call looked finished at day 27.8. | `protocol::sim_and_events_answer_why_the_bat_died` |
 | (§17) A system with nothing to do costs nothing. | Done | `jobs.update` returns before any query when no archetype holds a job or a worker; `prof.alloc` checks it with the physics and the rest. | `protocol::sim_and_events_answer_why_the_bat_died` |
 
+## Phase 3, item 4: strings and dialogue through the protocol
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§12) "A translator can fill the others without opening the engine." | Done | `strings.rs`: `strings.list {lang, prefix, missing}` is a language's table beside the base's, key by key, and every language with how many strings it has and lacks; `missing` is a translator's to-do list. `edit.text {tx, lang, key, text}` queues a string edit in a transaction: written at commit (the file's layout and comments kept), in the change feed by its author, undone like any edit. The `query` tool answers `strings`, the `edit` tool takes `{op: "text"}`. | `text::strings_are_listed_changed_in_a_transaction_and_taken_back` |
+| (§12) Dialogue "inspectable through world.defs". | Done | The engine's `dialogue` table is every project's (`world.defs`); rows that do not read, and string tables that do not, are `script.errors` rows (phases `dialogue` and `strings`) with their file and line; `script.reload` reads both again. | `text::strings_are_listed_changed_in_a_transaction_and_taken_back` |
+
 ## Known limitations, stated so they are decisions
 
 - A mark's clip is drawn while the game waits: 0.37 s in a debug build on Hollow with the window open, most of it the clip's 61 pictures. Released builds are faster; drawing the clip after the note is typed is the next step if it is felt.

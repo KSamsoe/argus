@@ -560,6 +560,7 @@ fn a_players_settings_scale_the_text_and_swap_the_palette() {
             text_scale: 2.0,
             high_contrast: true,
             fullscreen: true,
+            ..Default::default()
         },
     )
     .unwrap();

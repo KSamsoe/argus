@@ -439,10 +439,13 @@ fn layout(
     // Trees in draw order: by the root's layer, then entity.
     tops.sort_by_key(|&i| (items[i].root.map_or(0, |r| r.layer), items[i].e));
 
-    // Texts, holes filled; fonts looked up once each.
+    // Texts, holes filled; fonts looked up once each. A keyed text is the
+    // string table's in the world's language (phase 3 item 4), looked up
+    // every layout, so a language chosen now shows now.
     let mut texts: Vec<TextItem> = Vec::new();
     let mut problems = Vec::new();
     let mut fonts: HashMap<StrId, Rc<dyn FontFace>> = HashMap::new();
+    let mut lang: Option<String> = None;
     for it in items.iter_mut() {
         let Some(t) = it.text else {
             continue;
@@ -453,10 +456,22 @@ fn layout(
             .prev
             .get(&it.e)
             .and_then(|p| p.text.as_ref())
-            .filter(|k| k.raw == t.text && !k.holes)
+            .filter(|k| t.key == StrId::EMPTY && k.raw == t.text && !k.holes)
             .map(|k| k.shown.clone());
         let (shown, same): (Rc<str>, Option<StrId>) = match kept {
             Some(s) => (s, Some(t.text)),
+            None if t.key != StrId::EMPTY => {
+                let l = lang.get_or_insert_with(|| crate::strings::language(world));
+                let raw = shared.strings.text(l, &world.strings().resolve(t.key));
+                if raw.contains('{') {
+                    (
+                        Rc::from(argus_ecs::text::fill(world, it.e, &raw, &mut problems)),
+                        None,
+                    )
+                } else {
+                    (Rc::from(raw), None)
+                }
+            }
             None => {
                 let raw = world.strings().resolve(t.text).to_string();
                 if raw.contains('{') {

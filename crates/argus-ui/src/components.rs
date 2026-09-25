@@ -253,12 +253,17 @@ pub struct UiRect {
 #[derive(Component, Clone, Copy, Debug, PartialEq)]
 #[repr(C)]
 #[argus(
-    doc = "Words in a UI node, wrapped to its width: text may hold {Component.field} and {@id:Component.field} holes, filled each layout. size, color, and font default to the theme's (ui.toml)"
+    doc = "Words in a UI node, wrapped to its width: text, or a string table's (key, in the current language), which may hold {Component.field} and {@id:Component.field} holes, filled each layout. size, color, and font default to the theme's (ui.toml)"
 )]
 pub struct UiText {
     /// The words.
     #[argus(doc = "The words; {Component.field} and {@id:Component.field} are filled in")]
     pub text: StrId,
+    /// A string's key.
+    #[argus(
+        doc = "A string table's key (strings/<language>.toml): when set, the words are the table's in UiSettings.language, falling back to the base language, and text is not used"
+    )]
+    pub key: StrId,
     /// Pixel size.
     #[argus(
         doc = "Text size in canvas pixels (the line's height before scaling); 0: the theme's",
@@ -289,6 +294,7 @@ impl Default for UiText {
     fn default() -> Self {
         UiText {
             text: StrId::EMPTY,
+            key: StrId::EMPTY,
             size: 0.0,
             color: StrId::EMPTY,
             font: StrId::EMPTY,

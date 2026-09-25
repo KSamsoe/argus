@@ -27,4 +27,4 @@ color = "panel"
 border = 1.0
 
 [UiText]
-text = "{Describe.text}"
+key = "sign.pit"

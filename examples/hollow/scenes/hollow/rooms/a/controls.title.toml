@@ -5,5 +5,5 @@ entity = "@controls"
 margin = [0.0, 6.0]
 
 [UiText]
-text = "Controls: press one, then a key"
+key = "controls.title"
 align = "center"

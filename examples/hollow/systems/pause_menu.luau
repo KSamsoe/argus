@@ -1,13 +1,11 @@
 -- The pause menu's buttons (phase 3 item 1): Resume closes it; Restart the
 -- run closes it and asks sim.run to start again; Controls and Settings
 -- show their page in its place, and Back (or the cancel action) brings it
--- back. The settings page cycles the text size, and turns high contrast
--- and fullscreen on and off, in @settings's UiSettings.
+-- back. The settings page cycles the text size and the language, and
+-- turns high contrast and fullscreen on and off, in @settings's
+-- UiSettings. Its words come from the string tables (phase 3 item 4), in
+-- the language chosen.
 local SIZES = { 1.0, 1.25, 1.5 }
-
-local function on(b)
-  return b and "on" or "off"
-end
 
 return system "sim.pause_menu" {
   stage = "sim",
@@ -15,7 +13,7 @@ return system "sim.pause_menu" {
   unfrozen = true,
   reads = { "UiNode", "UiSettings", "UiText" },
   writes = { "UiNode", "Run", "UiSettings", "UiText" },
-  doc = "The pause menu's buttons: Resume closes it; Restart the run closes it and asks for a new run; Controls and Settings swap their page in, and Back or cancel swaps it out; the settings page's buttons cycle the text size and turn high contrast and fullscreen on and off.",
+  doc = "The pause menu's buttons: Resume closes it; Restart the run closes it and asks for a new run; Controls and Settings swap their page in, and Back or cancel swaps it out; the settings page's buttons cycle the text size and the language (every string table there is) and turn high contrast and fullscreen on and off.",
   run = function(q)
     local menu = q:entity("@pause"):get("UiNode")
     local panel = q:entity("@pause.panel"):get("UiNode")
@@ -66,10 +64,22 @@ return system "sim.pause_menu" {
     if #q:events("settings.fullscreen") > 0 then
       s.fullscreen = not s.fullscreen
     end
+    if #q:events("settings.language") > 0 then
+      local langs = q:languages()
+      local at = 1
+      for i, l in ipairs(langs) do
+        if l == s.language or (s.language == "" and i == 1) then at = i end
+      end
+      s.language = langs[at % #langs + 1]
+    end
+    local function on(b)
+      return q:text(b and "settings.on" or "settings.off")
+    end
     local words = {
-      ["@settings.text"] = string.format("Text size: %d%%", math.floor(s.text_scale * 100 + 0.5)),
-      ["@settings.contrast"] = "High contrast: " .. on(s.high_contrast),
-      ["@settings.fullscreen"] = "Fullscreen: " .. on(s.fullscreen),
+      ["@settings.text"] = q:text("settings.text", { percent = math.floor(s.text_scale * 100 + 0.5) }),
+      ["@settings.contrast"] = q:text("settings.contrast", { state = on(s.high_contrast) }),
+      ["@settings.fullscreen"] = q:text("settings.fullscreen", { state = on(s.fullscreen) }),
+      ["@settings.language"] = q:text("settings.language", { name = q:text("language.name") }),
     }
     for id, text in pairs(words) do
       local t = q:entity(id):get("UiText")

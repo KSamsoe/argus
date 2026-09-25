@@ -1,0 +1,33 @@
+# The hermit at the cave mouth (phase 3 item 4): talk to him with E
+# (systems/hermit.luau, defs/dialogue.toml). He stands in no one's way.
+[Transform]
+pos = [7.0, 1.75]
+
+[Sprite]
+atlas = "hermit"
+size = [0.875, 1.5]
+z = 4.0
+
+[Hermit]
+
+[Describe]
+name = "hermit"
+text = "An old hermit sits by the cave mouth."
+
+# His prompt, over him while the hero is near: a UI tree hung from him.
+[UiRoot]
+follow = "@hermit"
+follow_offset = [0.0, 1.1]
+interactive = false
+
+[UiNode]
+pivot = [0.5, 1.0]
+pad = [8.0, 5.0]
+visible = false
+
+[UiPanel]
+color = "panel"
+border = 1.0
+
+[UiText]
+key = "hermit.prompt"

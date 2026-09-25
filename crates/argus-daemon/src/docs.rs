@@ -141,6 +141,7 @@ pub const TOOLS: &[ToolDoc] = &[
         params: &[
             opt("entity", STRING, "\"@id\" or \"e:n\": one entity in full"),
             opt("path", OBJECT, "{from, to, grid?}: from and to an entity (\"@player\") or [x, y]; the waypoints, steps, and cost, or why there is no way"),
+            opt("strings", ANY, "a language's code, or {lang, prefix, missing}: the game's player-facing strings in that language beside the base's (strings.list)"),
             opt("select", ARRAY, "[\"id\" | \"Component.field\" | \"Component\" | \"count()\" | \"sum(Component.field)\" | mean | min | max]; default [\"id\"]"),
             opt("where", OBJECT, "{has: [Component], not: [Component], within: {of: entity, r: number}, \"Component.field\": value | {eq|ne|lt|lte|gt|gte: value}}"),
             opt("group_by", ARRAY, "[\"Component.field\"]: one row a distinct value, with the aggregates in select"),
@@ -148,7 +149,7 @@ pub const TOOLS: &[ToolDoc] = &[
             opt("limit", INTEGER, "default 50"),
             opt("scene", STRING, "another scene, from the index"),
         ],
-        calls: &["world.get", "world.query", "nav.path"],
+        calls: &["world.get", "world.query", "nav.path", "strings.list"],
     },
     ToolDoc {
         name: "describe",
@@ -163,12 +164,12 @@ pub const TOOLS: &[ToolDoc] = &[
         name: "edit",
         doc: "Change the game's authored state (its files) in one transaction by an author with a note, so the change feed says who and why and undo takes it back. ops run in order and all are kept or none: each is {op: set|add|remove|spawn|despawn|tiles, ...} with that edit method's parameters, e.g. {op: \"set\", entity: \"@player\", path: \"CharacterController.jump_height\", value: 3.4}. undo: take back the author's last transaction instead.",
         params: &[
-            opt("ops", ARRAY, "one of ops, undo; [{op, ...}]: set {entity, path, value}, add {entity, component}, remove {entity, component}, spawn {id, room, prefab, tags, components}, despawn {entity}, tiles {file, layer, rect, cells | tile | terrain | erase}"),
+            opt("ops", ARRAY, "one of ops, undo; [{op, ...}]: set {entity, path, value}, add {entity, component}, remove {entity, component}, spawn {id, room, prefab, tags, components}, despawn {entity}, tiles {file, layer, rect, cells | tile | terrain | erase}, text {lang, key, text} (a string in strings/<lang>.toml; text null removes it)"),
             opt("undo", BOOLEAN, "one of ops, undo; undo the author's last transaction"),
             opt("note", STRING, "why, for the change feed"),
             opt("author", STRING, "default \"agent:claude\""),
         ],
-        calls: &["edit.begin", "edit.set", "edit.add", "edit.remove", "edit.spawn", "edit.despawn", "edit.tiles", "edit.commit", "edit.abort", "edit.undo"],
+        calls: &["edit.begin", "edit.set", "edit.add", "edit.remove", "edit.spawn", "edit.despawn", "edit.tiles", "edit.text", "edit.commit", "edit.abort", "edit.undo"],
     },
     ToolDoc {
         name: "run",
@@ -524,6 +525,18 @@ pub const METHODS: &[MethodDoc] = &[
         returns: "{grid, index, chunk, bytes, open, blocked, hash, use}",
     },
     MethodDoc {
+        name: "strings.list",
+        doc: "The game's player-facing strings (section 12): a language's table beside the base language's, key by key, and every language with how many strings it has and lacks. missing: only the keys the language lacks, a translator's to-do list. A key no table has shows on screen as [key]; one a language lacks shows in the base language.",
+        params: &[
+            opt("lang", STRING, "a language's code; default the base language"),
+            opt("prefix", STRING, "only keys starting with this, e.g. \"menu.\""),
+            opt("missing", BOOLEAN, "only the keys lang lacks"),
+            opt("limit", INTEGER, "default 50"),
+            opt("cursor", STRING, ""),
+        ],
+        returns: "{base, lang, columns: [key, <base>, <lang>], total, rows, truncated, next, languages: [{code, name, strings, missing}], problems?}",
+    },
+    MethodDoc {
         name: "jobs.why",
         doc: "Why a worker does what it does (section 12): every job, in the order the worker weighs them (priority, its JobKind's included, then distance), with what it makes of each: could take it, has it, another has it, only for another, needs a skill, out of reach. An idle worker's why says why it has none, as Worker.idle and the job.idle event do. obs.why on a job.* event naming a worker answers with this too. The queue itself is a query: world.query {group_by: \"Job.kind\", select: [\"count()\"]}.",
         params: &[
@@ -629,6 +642,17 @@ pub const METHODS: &[MethodDoc] = &[
             opt("tile", INTEGER, "one of cells, tile, terrain, erase; fill rect with this tile id"),
             opt("terrain", STRING, "one of cells, tile, terrain, erase; paint rect with an auto-tiling terrain"),
             opt("erase", BOOLEAN, "one of cells, tile, terrain, erase; true clears rect"),
+        ],
+        returns: "{queued}",
+    },
+    MethodDoc {
+        name: "edit.text",
+        doc: "Queue a string edit in a transaction: the words of one key in one language's table (strings/<lang>.toml, made if there is none; its layout and comments kept), or with text null the key removed. Applied at commit, undoable per author, in the change feed; the UI shows the new words at once.",
+        params: &[
+            req("tx", INTEGER, "the transaction, from edit.begin"),
+            req("lang", STRING, "a language's code, e.g. \"fr\""),
+            req("key", STRING, "the string's key, e.g. \"menu.resume\""),
+            opt("text", STRING, "the words; null removes the key"),
         ],
         returns: "{queued}",
     },

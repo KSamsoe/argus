@@ -45,6 +45,10 @@ pub struct ProjectConfig {
     /// Kevin: Outpost's day is 60 s, so §9's 30-day scenario fits §17's
     /// minute a seed). 86,400 when the project does not say.
     pub day_seconds: f64,
+    /// `[strings] base`: the language the game is written in, whose string
+    /// table (`strings/<base>.toml`) every other falls back to (phase 3
+    /// item 4). "en" when the project does not say.
+    pub strings_base: String,
 }
 
 /// A day, when a project does not say how long its days are.
@@ -142,6 +146,23 @@ impl ProjectConfig {
                     .at(Some(at("time")))),
                 },
             };
+        let strings_base = match t
+            .get("strings")
+            .and_then(|i| i.as_table_like())
+            .and_then(|m| m.get("base"))
+        {
+            None => "en".to_string(),
+            Some(i) => match i.as_str() {
+                Some(s) if !s.trim().is_empty() => s.trim().to_string(),
+                _ => {
+                    return Err(ArgusError::new(
+                        codes::BAD_SCENE,
+                        "argus.toml [strings] base must be a language's code, like \"en\"",
+                    )
+                    .at(Some(at("strings"))))
+                }
+            },
+        };
         Ok(ProjectConfig {
             name,
             clock,
@@ -151,6 +172,7 @@ impl ProjectConfig {
             ring_budget_mb,
             mark_key,
             day_seconds,
+            strings_base,
         })
     }
 
@@ -243,6 +265,7 @@ impl Project {
                 ring_budget_mb: None,
                 mark_key: None,
                 day_seconds: DAY_SECONDS,
+                strings_base: "en".to_string(),
             };
             argus_os::fs::write(&cfg, c.to_toml()).map_err(|e| {
                 ArgusError::new(codes::MISSING_FILE, format!("cannot write argus.toml: {e}"))

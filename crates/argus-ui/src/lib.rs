@@ -20,12 +20,20 @@ pub mod components;
 pub mod draw;
 pub mod input;
 pub mod layout;
+pub mod strings;
 pub mod text;
 pub mod theme;
 
 pub use components::{UiButton, UiNode, UiPanel, UiRect, UiRoot, UiText};
 pub use input::INPUT;
 pub use layout::{world_to_canvas, LAYOUT};
+pub use strings::Strings;
+
+/// Error codes this crate adds (57xx).
+pub mod codes {
+    /// A string table that does not read, or a key that cannot be written.
+    pub const BAD_STRINGS: u32 = 5701;
+}
 pub use text::{FontFace, PixelFont, SdfFont, SdfGlyph, PIXEL_FONT};
 pub use theme::{parse_color, Rgba, Theme};
 
@@ -56,6 +64,11 @@ pub struct UiSettings {
         doc = "The game's window fills the screen: the release host (desktop or web page) reads it each frame and applies it"
     )]
     pub fullscreen: bool,
+    /// Language.
+    #[argus(
+        doc = "The language player-facing text is in: a string table's code (strings/<code>.toml); empty: the game's base language (argus.toml [strings] base)"
+    )]
+    pub language: argus_ecs::StrId,
 }
 
 impl Default for UiSettings {
@@ -64,6 +77,7 @@ impl Default for UiSettings {
             text_scale: 1.0,
             high_contrast: false,
             fullscreen: false,
+            language: argus_ecs::StrId::EMPTY,
         }
     }
 }
@@ -148,6 +162,9 @@ pub struct Shared {
     pub fonts: Fonts,
     /// The last layout's problems.
     pub problems: RefCell<Vec<String>>,
+    /// The project's string tables (phase 3 item 4): what a `UiText.key`
+    /// and a script's `q:text` read.
+    pub strings: Strings,
 }
 
 /// How the canvas sits in a window: scaled to fit whole, centred. The

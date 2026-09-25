@@ -12,5 +12,5 @@ color = "button"
 event = "controls.back"
 
 [UiText]
-text = "Back"
+key = "controls.back"
 align = "center"

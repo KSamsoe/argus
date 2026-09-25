@@ -1,0 +1,16 @@
+# The message line under the HUD (phase 3 item 4): what the last turn did,
+# written by systems/messages.luau in the string tables' words.
+[UiRoot]
+interactive = false
+layer = 1
+
+[UiNode]
+absolute = true
+offset = [10.0, 36.0]
+pad = [8.0, 4.0]
+
+[UiPanel]
+color = "#05070A80"
+
+[UiText]
+text = ""

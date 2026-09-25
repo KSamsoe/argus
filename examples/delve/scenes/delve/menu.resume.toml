@@ -12,5 +12,5 @@ color = "button"
 event = "menu.resume"
 
 [UiText]
-text = "Resume"
+key = "menu.resume"
 align = "center"

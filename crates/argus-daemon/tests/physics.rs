@@ -205,6 +205,7 @@ fn a_player_runs_jumps_and_lands_on_carved_tiles() {
             "ui.input",
             "physics.control",
             "jobs.update",
+            "dialogue.update",
             "input.rebind",
             "physics.move",
             "physics.overlap",

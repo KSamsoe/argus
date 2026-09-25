@@ -1,0 +1,26 @@
+# Delve's words (phase 3 item 4): the menu, the HUD line, and the message
+# line under it, by key. Holes: {Component.field} and {@id:Component.field}
+# from the world; {name} from systems/messages.luau.
+language.name = "English"
+
+[menu]
+title = "Delve, floor {@player:Player.floor}"
+resume = "Resume"
+new = "New run"
+
+[hud]
+line = "Floor {@player:Player.floor}, turn {Turn.n}. HP {@player:Health.cur}/{@player:Health.max}."
+
+[message]
+hit = "You hit the {monster}."
+kill = "You kill the {monster}."
+hurt = "The {monster} hits you for {amount}."
+died = "The {monster} kills you on floor {floor}, after {kills} kills."
+descend = "You take the stairs down."
+no_stairs = "There are no stairs here."
+wall = "A wall."
+
+[monster]
+rat = "rat"
+bat = "bat"
+goblin = "goblin"

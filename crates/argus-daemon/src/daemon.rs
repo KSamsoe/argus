@@ -31,6 +31,8 @@ mod nav;
 mod proposals;
 #[path = "saves.rs"]
 mod saves;
+#[path = "strings.rs"]
+mod strings;
 #[path = "tuning.rs"]
 mod tuning;
 
@@ -82,8 +84,11 @@ struct Session {
     /// Keyframes of the ticks that asked for a save (`q:save`), by the
     /// save's name, written once the step is over (phase 3 item 0).
     saves: Rc<RefCell<Vec<(String, crate::ring::Keyframe)>>>,
-    /// The UI's theme and fonts (phase 3 item 1).
+    /// The UI's theme and fonts (phase 3 item 1), and the string tables
+    /// (item 4).
     ui: Rc<RefCell<argus_ui::Shared>>,
+    /// The dialogue graph (phase 3 item 4).
+    dialogue: Rc<RefCell<argus_dialogue::Graph>>,
 }
 
 #[derive(Default)]
@@ -439,6 +444,7 @@ impl Daemon {
             "scene.tiles.get" => self.scene_tiles_get(params),
             "edit.begin" => self.edit_begin(params),
             "edit.tiles" => self.edit_tiles(params),
+            "edit.text" => self.edit_text(params),
             "scene.tiles.create" => self.tiles_create(params),
             "scene.tiles.info" => {
                 let file = json::str_param(params, "file")?.to_string();
@@ -521,6 +527,7 @@ impl Daemon {
             "nav.field" => self.nav_field(params),
             "nav.bake" => self.nav_bake(params),
             "jobs.why" => self.jobs_why(params),
+            "strings.list" => self.strings_list(params),
             "sim.save" => self.sim_save(params),
             "sim.load" => self.sim_load(params),
             "mark.drop" => self.mark_drop(params),
@@ -865,6 +872,7 @@ impl Daemon {
             assets,
             asset_report,
             ui,
+            dialogue,
             #[cfg(feature = "audio")]
             audio,
             ..
@@ -922,6 +930,7 @@ impl Daemon {
             mark_key: cfg.mark_key.clone().unwrap_or_else(|| "F8".to_string()),
             saves: Rc::new(RefCell::new(Vec::new())),
             ui,
+            dialogue,
             root,
             project,
             scene,
@@ -1456,6 +1465,7 @@ impl Daemon {
         // A moved def row is read again (moves rewrite references in tables).
         ses.host
             .set_defs(Rc::new(argus_player::ProjectDefs(ses.project.defs.clone())));
+        *ses.dialogue.borrow_mut() = argus_dialogue::Graph::from_defs(&ses.project.defs);
         ses.scene.reload_files(&ses.project.ctx(&registry));
         let entity_move = report.record.kind == argus_scene::MoveKind::Entity;
         self.sync_index(true);
@@ -2269,6 +2279,7 @@ impl Daemon {
     ) -> Result<Option<Op>> {
         match op {
             Op::Tiles { .. } | Op::Terrain { .. } => self.apply_tiles(op, touched, files),
+            Op::Text { .. } => self.apply_text(op, touched, files),
             Op::Set {
                 entity,
                 path,
@@ -3266,12 +3277,16 @@ impl Daemon {
                     .prefix(d.prefix.clone())
             })
             .collect();
-        ses.project.set_def_schemas(schemas);
+        ses.project
+            .set_def_schemas(argus_player::with_engine_defs(schemas));
         ses.host
             .set_defs(Rc::new(argus_player::ProjectDefs(ses.project.defs.clone())));
         let registry = self.world.registry().clone();
         ses.scene.reresolve(&ses.project.ctx(&registry));
         self.sched.validate()?;
+        // Words and conversations are read again with the scripts.
+        self.reload_strings();
+        self.reload_dialogue();
         self.sync_index(true);
         Ok(json!({
             "reloaded": report.reloaded,
@@ -3328,6 +3343,9 @@ impl Daemon {
                 })
             })
             .collect();
+        // Dialogue rows and string tables that do not read (phase 3 item 4):
+        // content, but code-like enough to be listed with the scripts.
+        rows.extend(self.text_errors());
         // A system a fault disabled, while it stays disabled: its last fault,
         // with the file and line (found building Hollow: a script that
         // failed on its first tick was off, and this list said nothing).

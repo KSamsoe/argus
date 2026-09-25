@@ -1,0 +1,60 @@
+# Hollow's one conversation (phase 3 item 4): the hermit at the cave mouth.
+# Each row is a node, or with from a choice (it has a line) or a branch (it
+# has none) of one. Lines and names are string keys (strings/<lang>.toml),
+# so this file is the same in every language. when is a condition on the
+# world; effects are edits made when a node shows or a choice is taken.
+# systems/hermit.luau starts it at hermit.start.
+
+["hermit.start"]
+next = "dialogue:hermit.hello"
+
+# Met before: another greeting.
+["hermit.start.again"]
+from = "dialogue:hermit.start"
+when = "speaker:Hermit.met"
+next = "dialogue:hermit.again"
+
+["hermit.hello"]
+speaker = "hermit.name"
+line = "hermit.hello"
+effects = "speaker:Hermit.met = true"
+sound = "sfx/voice"
+next = "dialogue:hermit.ask"
+
+["hermit.again"]
+speaker = "hermit.name"
+line = "hermit.again"
+sound = "sfx/voice"
+next = "dialogue:hermit.ask"
+
+["hermit.ask"]
+speaker = "hermit.name"
+line = "hermit.ask"
+
+["hermit.ask.lead"]
+from = "dialogue:hermit.ask"
+line = "hermit.lead"
+next = "dialogue:hermit.lead"
+
+# Offered once the hero has found the gem (room b), until it is given.
+["hermit.ask.give"]
+from = "dialogue:hermit.ask"
+line = "hermit.give"
+when = "@hud:Run.gems >= 1 and not speaker:Hermit.has_gem"
+effects = "speaker:Hermit.has_gem = true; emit hermit.given"
+next = "dialogue:hermit.thanks"
+
+["hermit.ask.bye"]
+from = "dialogue:hermit.ask"
+line = "hermit.bye"
+
+["hermit.lead"]
+speaker = "hermit.name"
+line = "hermit.lead_answer"
+sound = "sfx/voice"
+next = "dialogue:hermit.ask"
+
+["hermit.thanks"]
+speaker = "hermit.name"
+line = "hermit.thanks"
+sound = "sfx/voice"

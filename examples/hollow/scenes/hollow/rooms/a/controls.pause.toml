@@ -14,4 +14,4 @@ color = "button"
 action = "pause"
 
 [UiText]
-text = "Pause: {InputBinding.keys}"
+key = "controls.pause"

@@ -908,6 +908,52 @@ impl UserData for QueryHandle {
                 link: this.link.clone(),
             })
         });
+        // text("hud.day", {day = 3}): a player-facing string in the world's
+        // language (section 12, phase 3 item 4), its {name} holes filled
+        // from the table and its {@id:Component.field} holes from the
+        // world; "[key]" where no string table has the key.
+        m.add_method(
+            "text",
+            |lua, this, (key, args): (String, Option<mlua::Table>)| {
+                let texts = lua.app_data_ref::<crate::TextsData>().map(|t| t.0.clone());
+                let c = ctx(&this.link)?;
+                let raw = texts.as_ref().and_then(|t| t.text(c.world(), &key));
+                let mut s = raw.unwrap_or_else(|| format!("[{key}]"));
+                if let Some(a) = args {
+                    for pair in a.pairs::<String, LuaValue>() {
+                        let (k, v) = pair?;
+                        let v = match v {
+                            LuaValue::String(s) => s.to_str()?.to_string(),
+                            LuaValue::Integer(i) => i.to_string(),
+                            LuaValue::Number(n) if n.fract() == 0.0 && n.abs() < 1e15 => {
+                                (n as i64).to_string()
+                            }
+                            LuaValue::Number(n) => format!("{n}"),
+                            LuaValue::Boolean(b) => b.to_string(),
+                            other => other.to_string()?,
+                        };
+                        s = s.replace(&format!("{{{k}}}"), &v);
+                    }
+                }
+                if s.contains("{@") {
+                    let mut problems = Vec::new();
+                    s = argus_ecs::text::fill(c.world(), Entity::NULL, &s, &mut problems);
+                }
+                Ok(s)
+            },
+        );
+        // languages(): the languages there are string tables for, the base
+        // first (a settings screen's choices).
+        m.add_method("languages", |lua, _, ()| {
+            let list = lua.create_table()?;
+            let texts = lua.app_data_ref::<crate::TextsData>().map(|t| t.0.clone());
+            if let Some(t) = texts {
+                for (i, l) in t.languages().into_iter().enumerate() {
+                    list.set(i + 1, l)?;
+                }
+            }
+            Ok(list)
+        });
         // A data table's row, read-only (§4): q:def("item:bread").name.
         m.add_method("def", |lua, _, r: String| def_row(lua, &r));
         // A table's rows in file order: for _, r in q:defs("recipes") do.

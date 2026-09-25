@@ -1,0 +1,13 @@
+# Outpost's words (phase 3 item 4): the HUD line and the notices under it,
+# by key. {name} holes are filled by systems/hud.luau.
+language.name = "English"
+
+[hud]
+line = "Day {day}, {hour}:00{night}   food {food} ({meals} meals, {crops} crops)   {colonists} colonists, {working} working   {speed}"
+night = " (night)"
+paused = "paused"
+speed = "{x}x"
+
+[notice]
+day = "Day {day} begins with {food} food stored."
+starved = "{name} starved."

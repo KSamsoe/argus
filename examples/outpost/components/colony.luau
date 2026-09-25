@@ -89,6 +89,11 @@ component "Station" {
   job = field.entity { doc = "Its job, while there is one" },
 }
 
+component "Hud" {
+  doc = "A line of the HUD (systems/hud.luau writes its words)",
+  kind = field.str { doc = "line: the day, the food, the colonists; notice: the colony's news" },
+}
+
 return component "Bed" {
   doc = "A bed",
   owner = field.entity { doc = "Whose it is" },

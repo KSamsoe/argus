@@ -1,7 +1,25 @@
 # Placeholder sounds as described tones: gameplay never waits on audio files.
 [buses]
-master = { gain_db = 0 }
-sfx    = { parent = "master", gain_db = -4 }
+master   = { gain_db = 0 }
+sfx      = { parent = "master", gain_db = -4 }
+music    = { parent = "master", gain_db = -8 }
+dialogue = { parent = "master", gain_db = -2 }
+
+# Section 13's own example (phase 3 item 4): a line said ducks the music.
+[[duck]]
+when = "dialogue"
+duck = "music"
+db = -6
+attack_ms = 200
+release_ms = 400
+
+# A voice: a short murmur as each of the hermit's lines shows.
+[sounds."sfx/voice"]
+bus = "dialogue"
+spatial = false
+gain = 0.25
+pitch_jitter = 0.08
+variations = [ { wave = "triangle", freq = 180, slide = 40, ms = 160, release_ms = 90 }, { wave = "triangle", freq = 200, slide = -30, ms = 140, release_ms = 90 } ]
 
 [sounds."sfx/step"]
 gain = 0.3

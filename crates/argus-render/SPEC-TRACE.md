@@ -64,6 +64,12 @@ Every statement in the design document (v0.3) that constrains the renderer as ph
 | (§12) SDF text. | Done | A font asset's atlas is loaded with the sprites (`load_catalog`, `reload_sprites`: white, the distance in alpha, a glyph a frame), and its glyphs draw with the built-in `sdf_text` material, which blends the four texels around by hand (the atlas sampler is nearest, for pixel art) and keeps the edge a pixel wide at any size (`fwidth`). | `ui::a_font_asset_draws_crisp_from_its_distance_field_at_any_size` |
 | (§8 L4) The semantic frame reads the UI directly. | Done | `FrameSpec.ui_canvas`: the frame's `ui` section lists each shown text and button with its words, bounds in the frame, and focus; a button's words are its own or its children's. | Delve's `tests/menu.luau`; the web check |
 
+## Phase 3, item 4: letters past ASCII
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§12) A translation's words drawn in the built-in font. | Done | `annotate.rs`: 35 letters after printable ASCII in the pixel font's atlas (5 x 7, an accent above a lowercase letter or above a capital a row shorter), in `argus_ui::text::PIXEL_EXTRA`'s order; annotations draw them too. | `annotate::tests::the_letters_past_ascii_are_in_the_uis_order_and_drawn` |
+
 ## Known limitations, stated so they are decisions
 
 - The tests that need a GPU skip only when the machine has no adapter at all. Before item 11 they skipped on any failure to start the renderer, so a renderer that could not build its pipeline passed every test; item 11 found that when a binding change broke the pipeline and every render test still passed.

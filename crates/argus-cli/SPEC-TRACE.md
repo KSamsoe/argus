@@ -71,6 +71,12 @@ Phase 0 item 9, "CLI": this crate, plus `argus_daemon::launch` (shared with `arg
 | (§8, §16) Aggregates through the `query` tool and the CLI. | Done | `query` passes `group_by`; a bare word keeps a call glued to it whole, so `argus query select=[count(), sum(Stockpile.food)] group_by=Job.kind` reads as written (the brackets broke on the parentheses). | `cli::key_values_become_the_params_object` |
 | (§9) `argus test` runs what it is asked for. | Done | `argus test` takes `name=`, `file=`, `seeds=` (and the flags) as `key=value` too, and refuses a key it does not know. It dropped them before, and a dropped filter ran every scenario: six minutes of Outpost's seeds for one scenario. | `cli::key_values_become_the_params_object` (the refusal); by hand, a filtered run |
 
+## Phase 3, item 4
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§16) The dozen tools reach strings. | Done | `query` takes `strings` (a language's code, or `{lang, prefix, missing}`) and answers with `strings.list`; `edit`'s ops take `text {lang, key, text}`. `argus strings list lang=fr missing=true` from the command line. | `schema::the_tools_call_methods_that_exist` |
+
 ## Known limitations, stated so they are decisions
 
 - A daemon started by the CLI outlives the shell; `argus daemon stop` ends it, and `.argus/daemon.json` is removed on a clean exit. `stop` returns once the daemon is gone (its record removed and its socket silent), not when it agreed to go: a command right after it used to reach the daemon on its way out and fail with "connection lost" (found after the phase-1 gate; `cli::the_binary_finds_starts_and_stops_a_project_daemon`). A daemon killed otherwise leaves a stale record, which `argus daemon status` reports and a method call replaces.

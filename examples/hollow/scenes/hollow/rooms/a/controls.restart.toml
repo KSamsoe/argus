@@ -14,4 +14,4 @@ color = "button"
 action = "restart"
 
 [UiText]
-text = "Restart: {InputBinding.keys}"
+key = "controls.restart"

@@ -655,3 +655,64 @@ return system "sim.effect" {
     let info = s.systems(w.registry()).unwrap();
     assert!(info.iter().any(|i| i.name == "sim.effect" && i.unfrozen));
 }
+
+/// Player-facing strings from a script (phase 3 item 4): a key in the
+/// world's language, its {name} holes from the table, "[key]" where there
+/// is none, and the languages there are.
+struct Words;
+
+impl argus_luau::Texts for Words {
+    fn text(&self, _: &World, key: &str) -> Option<String> {
+        match key {
+            "hud.day" => Some("Day {day}, {n} left".to_string()),
+            "menu.go" => Some("Go".to_string()),
+            _ => None,
+        }
+    }
+    fn languages(&self) -> Vec<String> {
+        vec!["en".into(), "fr".into()]
+    }
+}
+
+#[test]
+fn a_script_asks_for_its_words_by_key() {
+    let (mut h, mut w, mut s) = host(1);
+    h.set_texts(std::rc::Rc::new(Words));
+    let sys = r#"
+return system "sim.words" {
+  stage = "sim",
+  run = function(q)
+    local langs = q:languages()
+    q:emit("words", {
+      day = q:text("hud.day", { day = 3, n = 2.5 }),
+      go = q:text("menu.go"),
+      none = q:text("menu.nope"),
+      langs = table.concat(langs, ","),
+    })
+  end,
+}"#;
+    assert!(
+        h.load_source(&mut w, &mut s, "systems/words.luau", sys),
+        "{:?}",
+        h.errors()
+    );
+    s.step(&mut w, 1).unwrap();
+    let ev: Vec<(String, Value)> = w
+        .events()
+        .iter()
+        .find_map(|r| match &r.event {
+            Event::Game { name, fields } if name == "words" => Some(fields.clone()),
+            _ => None,
+        })
+        .expect("emitted");
+    let get = |k: &str| {
+        ev.iter()
+            .find(|(n, _)| n == k)
+            .map(|(_, v)| v.clone())
+            .unwrap()
+    };
+    assert_eq!(get("day"), Value::Str("Day 3, 2.5 left".into()));
+    assert_eq!(get("go"), Value::Str("Go".into()));
+    assert_eq!(get("none"), Value::Str("[menu.nope]".into()));
+    assert_eq!(get("langs"), Value::Str("en,fr".into()));
+}

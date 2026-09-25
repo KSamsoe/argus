@@ -137,6 +137,12 @@ What remains in `sim.chase` is the binding's call path: each iteration is three 
 | (§6) Outpost's 1x/3x/10x speed controls are `sim.speed`. | Done | `q:speed(x)` emits `speed.requested`; the daemon, a release build, and the page set their clock's speed from it after the step. Not 0: nothing would tick to ask for another speed, so a game pauses with `q:freeze()`. | Outpost's `tests/colony.luau` ("speed and pause") |
 | (§7) Script errors carry `file:line`. | Done | A range or type error on an engine component (declared in Rust) now names the script line that wrote it, with the component's declaration in the hint; a script component's error still names its declaration, where the range is written (phase 0's rule). Found building Outpost: a `JobKind.work` out of range pointed at `crates/argus-jobs/src/lib.rs`. | `systems::range_violations_on_an_engine_component_point_at_the_script_line`, `systems::range_violations_from_script_carry_the_schema_ref` |
 
+## Phase 3, item 4: words by key
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§12) A script's player-facing words go through the string table. | Done | `q:text(key, args?)`: the key's string in the world's language (the base's where it lacks one), `{name}` holes from `args` and `{@id:Component.field}` from the world, `[key]` where no table has it. `q:languages()`: the languages there are, the base first, for a settings screen. The host is handed the tables (`ScriptHost::set_texts`, the `Texts` trait). | `systems::a_script_asks_for_its_words_by_key`; Hollow's HUD and settings, Delve's messages, Outpost's HUD |
+
 ## §18 Build plan
 
 Phase 0 item 3, "Luau binding with component and def schemas": this crate.

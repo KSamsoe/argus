@@ -48,6 +48,7 @@ fn session_open_gives_the_one_screen_summary() {
             "ui.input",
             "physics.control",
             "jobs.update",
+            "dialogue.update",
             "input.rebind",
             "sim.damage",
             "sim.move",
@@ -260,8 +261,11 @@ fn world_get_describe_who_writes_and_defs() {
     assert_eq!(ww["systems"], json!(["sim.damage"]));
 
     let tables = ok(&mut d, "world.defs", json!({}));
-    assert_eq!(tables["tables"][0]["name"], "items");
-    assert_eq!(tables["tables"][0]["rows"], 2);
+    // The engine's dialogue table is every project's (phase 3 item 4).
+    assert_eq!(tables["tables"][0]["name"], "dialogue");
+    assert_eq!(tables["tables"][0]["rows"], 0);
+    assert_eq!(tables["tables"][1]["name"], "items");
+    assert_eq!(tables["tables"][1]["rows"], 2);
     let rows = ok(
         &mut d,
         "world.defs",
@@ -543,7 +547,7 @@ fn sim_and_events_answer_why_the_bat_died() {
     assert_eq!(pf["tick"], 64, "the last tick that ran, numbered from 0");
     assert_eq!(pf["systems"][0][0], "post.hitstop", "stage order");
     let ps = ok(&mut d, "prof.systems", json!({ "last": 10 }));
-    assert_eq!(ps["rows"][6][0], "sim.damage");
+    assert_eq!(ps["rows"][7][0], "sim.damage");
     assert!(
         ok(&mut d, "prof.worst", json!({ "n": 2 }))["rows"]
             .as_array()
@@ -568,7 +572,7 @@ fn sim_and_events_answer_why_the_bat_died() {
     let pa = ok(&mut d, "prof.alloc", json!({ "last": 10 }));
     assert_eq!(pa["counted"], true);
     assert_eq!(
-        pa["rows"][6][0], "sim.damage",
+        pa["rows"][7][0], "sim.damage",
         "stage order, like prof.systems"
     );
     let physics: Vec<&serde_json::Value> = pa["rows"]
@@ -584,15 +588,16 @@ fn sim_and_events_answer_why_the_bat_died() {
                 "tween.",
                 "particles.",
                 "jobs.",
+                "dialogue.",
             ]
             .iter()
             .any(|p| n.starts_with(p))
         })
         .collect();
-    assert_eq!(physics.len(), 8);
+    assert_eq!(physics.len(), 9);
     assert!(
         physics.iter().all(|r| r[2].as_f64() == Some(0.0)),
-        "physics, cameras, emitters, and jobs with none in the scene allocate nothing: {physics:?}"
+        "physics, cameras, emitters, jobs, and conversations with none in the scene allocate nothing: {physics:?}"
     );
     assert!(pa["rows"]
         .as_array()
@@ -683,8 +688,8 @@ fn scripts_reload_in_place_and_errors_are_data() {
     project(t.path());
     let mut d = open(t.path());
     let sys = ok(&mut d, "script.systems", json!({}));
-    assert_eq!(sys["total"], 18);
-    let dmg = &sys["rows"][6];
+    assert_eq!(sys["total"], 19);
+    let dmg = &sys["rows"][7];
     assert_eq!(dmg["name"], "sim.damage");
     assert_eq!(dmg["stage"], "sim");
     assert_eq!(dmg["writes"], json!(["Health"]));

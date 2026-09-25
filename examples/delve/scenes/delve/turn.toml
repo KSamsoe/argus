@@ -14,4 +14,4 @@ pad = [8.0, 4.0]
 color = "#05070AB0"
 
 [UiText]
-text = "Floor {@player:Player.floor}, turn {Turn.n}. HP {@player:Health.cur}/{@player:Health.max}."
+key = "hud.line"

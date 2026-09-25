@@ -70,8 +70,10 @@ pub struct Assembly {
     /// What spawning did.
     pub load: Option<LoadReport>,
     /// The UI's theme (`ui.toml`) and fonts, shared by its systems and
-    /// whatever draws them (phase 3 item 1).
+    /// whatever draws them (phase 3 item 1), and the string tables (item 4).
     pub ui: Rc<RefCell<argus_ui::Shared>>,
+    /// The dialogue graph, the project's `dialogue` table (phase 3 item 4).
+    pub dialogue: Rc<RefCell<argus_dialogue::Graph>>,
     /// The imported assets.
     pub assets: argus_assets::Importer,
     /// The import's report.
@@ -148,15 +150,26 @@ pub fn assemble(
         ..Default::default()
     }));
     argus_ui::install(&mut world, &mut sched, ui.clone())?;
+    // The string tables every UiText key and q:text reads (phase 3 item 4),
+    // and conversations played through the UI.
+    ui.borrow_mut().strings = argus_ui::Strings::load(root, &cfg.strings_base);
+    let dialogue = Rc::new(RefCell::new(argus_dialogue::Graph::default()));
+    argus_dialogue::install(&mut world, &mut sched, dialogue.clone(), ui.clone())?;
     // Rebinding, a UI over the action map (after the UI's input).
     if let Some(st) = &input {
-        argus_input::rebind::install(&mut world, &mut sched, st.clone())?;
+        let tables = ui.clone();
+        let prompt: argus_input::rebind::Prompt = Rc::new(move |w: &World| {
+            let lang = argus_ui::strings::language(w);
+            tables.borrow().strings.text(&lang, "input.press_a_key")
+        });
+        argus_input::rebind::install_with(&mut world, &mut sched, st.clone(), prompt)?;
     }
     let mut host = ScriptHost::new(ScriptConfig {
         day_seconds: cfg.day_seconds,
         ..ScriptConfig::default()
     })?;
     host.set_paths(Rc::new(NavPaths(nav.clone())));
+    host.set_texts(Rc::new(UiTexts(ui.clone())));
     host.load_project(&mut world, &mut sched, root)?;
     let defs: Vec<DefSchema> = host
         .defs()
@@ -167,8 +180,9 @@ pub fn assemble(
                 .prefix(d.prefix.clone())
         })
         .collect();
-    let project = Project::open(root, defs)?;
+    let project = Project::open(root, with_engine_defs(defs))?;
     host.set_defs(Rc::new(ProjectDefs(project.defs.clone())));
+    *dialogue.borrow_mut() = argus_dialogue::Graph::from_defs(&project.defs);
     let mut scene = Scene::open(&project, scene_name, world.registry())?;
     zones.borrow_mut().rects = scene
         .rooms()
@@ -228,6 +242,7 @@ pub fn assemble(
         scene,
         issues,
         ui,
+        dialogue,
         load,
         assets,
         asset_report,
@@ -287,6 +302,29 @@ impl argus_luau::Paths for NavPaths {
                 .and_then(|i| argus_nav::search::downhill(&g, &f, i))
                 .map(|n| g.centre(n))
         }))
+    }
+}
+
+/// The def tables the engine declares, beside a project's own: `dialogue`
+/// (phase 3 item 4), so every project has one and `world.defs` answers it.
+pub fn with_engine_defs(mut defs: Vec<DefSchema>) -> Vec<DefSchema> {
+    if !defs.iter().any(|d| d.schema.name == argus_dialogue::TABLE) {
+        defs.push(argus_dialogue::schema());
+    }
+    defs
+}
+
+/// Scripts' player-facing strings (`q:text`, `q:languages`, phase 3 item 4):
+/// the UI's string tables, in the world's language.
+pub struct UiTexts(pub Rc<RefCell<argus_ui::Shared>>);
+
+impl argus_luau::Texts for UiTexts {
+    fn text(&self, world: &World, key: &str) -> Option<String> {
+        let lang = argus_ui::strings::language(world);
+        self.0.borrow().strings.get(&lang, key).map(str::to_string)
+    }
+    fn languages(&self) -> Vec<String> {
+        self.0.borrow().strings.languages()
     }
 }
 

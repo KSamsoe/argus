@@ -86,7 +86,13 @@ pub fn run(c: &mut dyn Caller, name: &str, args: &Json) -> Result<Json, Json> {
     match name {
         "summary" => c.call("world.summary", pick(args, &["scene"])),
         "query" => {
-            if let Some(p) = args.get("path") {
+            if let Some(s) = args.get("strings") {
+                let mut p = if s.is_object() { s.clone() } else { json!({}) };
+                if let Some(l) = s.as_str() {
+                    p["lang"] = json!(l);
+                }
+                c.call("strings.list", p)
+            } else if let Some(p) = args.get("path") {
                 c.call("nav.path", p.clone())
             } else if args.get("entity").is_some() {
                 c.call("world.get", pick(args, &["entity", "scene"]))
@@ -267,10 +273,10 @@ fn transaction(c: &mut dyn Caller, args: &Json, tool: &str) -> Result<Json, Json
     let tx = begun.get("tx").cloned().unwrap_or(Json::Null);
     for (i, op) in ops.iter().enumerate() {
         let kind = op.get("op").and_then(Json::as_str).unwrap_or("");
-        if !["set", "add", "remove", "spawn", "despawn", "tiles"].contains(&kind) {
+        if !["set", "add", "remove", "spawn", "despawn", "tiles", "text"].contains(&kind) {
             let _ = c.call("edit.abort", json!({ "tx": tx }));
             return Err(bad(format!(
-                "op {i} has op {kind:?}: set, add, remove, spawn, despawn, or tiles"
+                "op {i} has op {kind:?}: set, add, remove, spawn, despawn, tiles, or text"
             )));
         }
         let mut p = op.as_object().cloned().unwrap_or_default();

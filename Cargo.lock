@@ -169,6 +169,7 @@ dependencies = [
  "argus-assets",
  "argus-audio",
  "argus-camera",
+ "argus-dialogue",
  "argus-ecs",
  "argus-index",
  "argus-input",
@@ -190,6 +191,19 @@ dependencies = [
  "interprocess",
  "serde_json",
  "toml_edit 0.22.27",
+]
+
+[[package]]
+name = "argus-dialogue"
+version = "0.0.1"
+dependencies = [
+ "argus-camera",
+ "argus-ecs",
+ "argus-input",
+ "argus-scene",
+ "argus-sim",
+ "argus-ui",
+ "serde_json",
 ]
 
 [[package]]
@@ -320,6 +334,7 @@ dependencies = [
  "argus-assets",
  "argus-audio",
  "argus-camera",
+ "argus-dialogue",
  "argus-ecs",
  "argus-input",
  "argus-jobs",
