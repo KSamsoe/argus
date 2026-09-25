@@ -235,7 +235,7 @@ pub const TOOLS: &[ToolDoc] = &[
     },
     ToolDoc {
         name: "marks",
-        doc: "The human's marks: moments they flagged while playing, each with a note, in a queue. list (default): the open ones. open: reproduce one (its scene, the seconds before it in the log, the world compared with the one they saw). get, note, close (say what was done). import: a player's report file; pull: the reports a playtest server collected.",
+        doc: "The human's marks: moments they flagged while playing, each with a note, in a queue. list (default): the open ones. open: reproduce one (its scene, the seconds before it in the log, the world compared with the one they saw). get; note (replace the mark's note, the human's words); close (say what was done). import: a player's report file; pull: the reports a playtest server collected.",
         params: &[
             opt("action", STRING, "list (default), get, open, note, close, import, or pull"),
             opt("id", INTEGER, "the mark, for get, open, note, close"),
@@ -889,7 +889,7 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "mark.note",
-        doc: "Set a mark's note (\"dash feels late\"), as the window's prompt after F8 does.",
+        doc: "Set a mark's note, the human's words (\"dash feels late\"), as the window's prompt after F8 does. It replaces the note; an agent says what it did with mark.close's note instead.",
         params: &[
             req("id", INTEGER, ""),
             req("note", STRING, ""),

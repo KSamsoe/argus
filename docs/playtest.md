@@ -6,7 +6,7 @@ A web build of a game, hosted on klab so someone else can play it, and the repor
 
 Open the link, click the game, and play. When something feels wrong, press F8: the game pauses and asks what happened. Type a line and press Enter (or click Send report). The last half minute of play goes to the developer with your note. Escape goes back to the game.
 
-The link is `https://klab.tailde2255.ts.net:8443/`, reachable by people on Kevin's tailnet. It rests on HTTPS certificates being on for the tailnet (Tailscale admin console, DNS, Enable HTTPS) and on this, run once on klab (done 2026-09-25):
+The link is `https://klab.tailde2255.ts.net:8443/`, reachable by people on Kevin's tailnet. It rests on HTTPS certificates being on for the tailnet (Tailscale admin console, DNS, Enable HTTPS) and on this, run once on klab (done 2026-09-24):
 
 ```bash
 sudo tailscale serve --bg --https=8443 http://127.0.0.1:8765
