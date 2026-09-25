@@ -1,0 +1,15 @@
+# The way out, at the end of the hall past the pit. Touching it finishes the
+# run (systems/run.luau).
+[Transform]
+pos = [68.5, 2.25]
+
+[Sprite]
+atlas = "exit"
+size = [1.5, 2.5]
+
+[Collider]
+size = [1.0, 2.0]
+
+[Describe]
+name = "exit"
+text = "The way out."

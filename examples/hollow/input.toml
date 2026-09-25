@@ -12,5 +12,12 @@ doc = "Jump; hold for a higher one"
 keyboard = ["space", "z"]
 gamepad = ["south"]
 
+[actions.restart]
+type = "button"
+doc = "Play the run again from the cave mouth"
+[actions.restart.bindings]
+keyboard = ["r"]
+gamepad = ["start"]
+
 [slots.1]
 devices = ["keyboard", "gamepad:0"]

@@ -148,6 +148,32 @@ SIGN = grid(
 )
 
 
+# The way out, 12 x 20: a stone arch in the rock's colours around daylight,
+# so the end of the hall reads as somewhere to go (the phase 2 playtest's
+# mark: "The level needs a goal to reach that isn't death").
+EXIT = grid(
+    [
+        "...AAAAAA...",
+        "..AACCCCAA..",
+        ".AACyyyyCAA.",
+        ".ACyyooyyCA.",
+        "AACyoWWoyCAA",
+        "ACyoWWWWoyCA",
+    ]
+    + ["ACyoWWWWoyCA"] * 12
+    + ["CCCCCCCCCCCC", "ABAAABAAABAA"],
+    {
+        ".": CLEAR,
+        "A": hexc("4A4458"),
+        "B": hexc("3A3548"),
+        "C": hexc("6E6882"),
+        "y": hexc("F0B050"),
+        "o": hexc("FFD880"),
+        "W": hexc("FFF4D0"),
+    },
+)
+
+
 def hero():
     frames = [
         frame("idle"),
@@ -174,4 +200,5 @@ if __name__ == "__main__":
     png("tiles/back.png", 8, 8, BACK)
     png("hero.png", 64, 13, hero())
     png("sign.png", 8, 18, SIGN)
-    print("wrote tiles/rock.png, tiles/plank.png, tiles/back.png, hero.png, sign.png")
+    png("exit.png", 12, 20, EXIT)
+    print("wrote tiles/rock.png, tiles/plank.png, tiles/back.png, hero.png, sign.png, exit.png")

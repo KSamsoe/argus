@@ -2,4 +2,7 @@
 [Describe]
 role = "hud"
 shown = true
-text = "Hollow. The hero is {@player:Animator.state}."
+text = "Hollow. Find the way out. No falls yet."
+
+# The run the HUD reports on (systems/run.luau keeps it).
+[Run]

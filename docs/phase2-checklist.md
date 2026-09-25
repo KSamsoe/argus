@@ -172,4 +172,7 @@ Decisions taken while building it:
 
 ## Gate
 
-**Status: not started.** Hollow is played by Kevin and by a second person through the web build.
+**Status: in progress.** Hollow is played by Kevin and by a second person through the web build. Section 18's gate: a human plays Hollow, drops three marks with notes, and walks away; the agent reproduces each from its replay, fixes two, and files a proposal for the third; the human returns and tries the proposal A/B.
+
+- 2026-09-25: Kevin played the web build from klab over the tailnet and sent one report: "The level needs a goal to reach that isn't death" (frame 1521, standing on the plank above the hall's pit, at the hall's end with nothing to reach). It was pulled over an SSH tunnel as mark 4 and reproduced to the same world (the build was code 22a9543, the daemon 83b243f; nothing that runs the sim had changed). Fixed: Hollow has a way out, a lit doorway at the end of the hall past the pit (`scenes/hollow/rooms/c/exit.toml`, drawn by `tools/art.py`). Reaching it finishes the run (`systems/run.luau`, a `Run` component on the HUD): the HUD gives the time and the falls, a rising tone plays, and R (or Start) plays it again from the cave mouth. `tests/goal.luau` pins it, and the pit test now checks the fall is counted.
+- Still to come: a second person's play, and the rest of the gate's marks, proposal, and A/B.

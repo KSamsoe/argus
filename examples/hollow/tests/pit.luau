@@ -9,5 +9,6 @@ return scenario "the pit puts the hero back at the cave mouth" {
     t.expect:events("player.fell"):count():eq(1)
     t.expect:events("sound.played", { sound = "sfx/fell" }):count():eq(1)
     t.expect:field("@player", "Transform.pos.x"):near(3, 0.01)
+    t.expect:field("@hud", "Run.falls"):eq(1)
   end,
 }

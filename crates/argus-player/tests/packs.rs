@@ -82,7 +82,10 @@ fn hollow_from_its_packs_plays_as_hollow_from_its_folder() {
     println!("{r:#}");
     assert_eq!(built.packs.len(), 1);
     assert_eq!(built.packs[0].kind, Kind::Base);
-    assert_eq!(r["scripts_compiled"], 2, "pit and signs");
+    assert_eq!(
+        r["scripts_compiled"], 4,
+        "the Run component, and the pit, run, and signs systems"
+    );
     assert!(r["sprites"].as_u64().unwrap() >= 3, "{r}");
     let left_out = r["sources_left_out"].to_string();
     assert!(left_out.contains("assets/hero.png") && left_out.contains("assets/hero.toml"));

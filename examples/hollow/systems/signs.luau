@@ -9,7 +9,7 @@ return system "late.signs" {
   run = function(q)
     local hero = q:entity("@player"):get("Transform").pos
     for _, d, t in q:each("Describe", "Transform") do
-      if d.name == "sign" then
+      if d.name == "sign" or d.name == "exit" then
         local dx, dy = t.pos.x - hero.x, t.pos.y - hero.y
         d.shown = dx * dx + dy * dy < 2.5 * 2.5
       end
