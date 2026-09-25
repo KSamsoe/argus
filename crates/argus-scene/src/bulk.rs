@@ -26,10 +26,13 @@ use argus_ecs::{ArgusError, Result};
 use std::path::{Path, PathBuf};
 
 /// True for a data index that sits beside entity files but is not one: a
-/// bulk index (`*.map.toml`) or a tilemap (`*.tilemap.toml`, argus-tiles).
-/// Scene loading, moves, and the index all skip these.
+/// bulk index (`*.map.toml`), a tilemap (`*.tilemap.toml`, argus-tiles), or
+/// a baked navigation grid (`*.navgrid.toml`, argus-nav). Scene loading,
+/// moves, and the index all skip these.
 pub fn is_data_index(path: &str) -> bool {
-    path.ends_with(".map.toml") || path.ends_with(".tilemap.toml")
+    path.ends_with(".map.toml")
+        || path.ends_with(".tilemap.toml")
+        || path.ends_with(".navgrid.toml")
 }
 
 /// True for a file stem an entity may not have: `scene` and `room` are the

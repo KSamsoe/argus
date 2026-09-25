@@ -26,3 +26,8 @@ height = 24.0
 [Describe]
 name = "hero"
 text = "HP {Health.cur}/{Health.max}, {Player.kills} kills"
+
+# Every floor cell's steps to the hero, which the monsters walk down
+# (phase 3 item 2: a flow field, found again when the hero moves).
+[NavField]
+grid = "@floor"

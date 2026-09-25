@@ -32,6 +32,8 @@ pub struct Player {
     input: Option<Rc<RefCell<InputState>>>,
     devices: Devices,
     tiles: Rc<RefCell<argus_tiles::MapStore>>,
+    /// Navigation grids and searches (phase 3 item 2).
+    pub nav: Rc<RefCell<argus_nav::NavStore>>,
     /// Particle pools, which the renderer draws.
     pub particles: Rc<RefCell<argus_particles::ParticleStore>>,
     /// The imported assets, which the renderer loads.
@@ -104,6 +106,7 @@ impl Player {
             input: a.input,
             devices: Devices::default(),
             tiles: a.tiles,
+            nav: a.nav,
             particles: a.particles,
             assets: a.assets,
             audio: a.audio.and_then(|r| r.ok()),

@@ -63,6 +63,12 @@ Every statement in the design document (v0.3) that constrains tilemaps as phase 
 |---|---|---|---|
 | The semantic frame says what the player sees (§8 L4), and for a platformer that is mostly the ground. | Done | `MapStore::collision_rows` gives a map's collision inside a world rect, one character a cell (`Collide::ch`), top row first, taking every `step`th cell past a size. The daemon puts it in the frame for every tilemap in view. | `argus-daemon/tests/semantic.rs` |
 
+## Phase 3, item 2: what a navigation grid reads
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§12) A navigation grid derived from the tilemap follows its edits. | Done | `MapFile::revision` moves whenever a cell changes (and when the map is read or made) and never repeats in a process; `MapStore::revision` adds the tileset tables'. A grid over the map is built again when they move. | `argus-nav` `nav::a_grid_covers_a_tilemap_and_follows_its_edits` |
+
 ## Known limitations, stated so they are decisions
 
 - A big fill is a big edit. A 1,024 × 1,024 fill touches 256 chunks and takes 85 ms including the save; brush-sized edits stay well under a frame.

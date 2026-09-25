@@ -559,8 +559,30 @@ local function make_t(ctx, spec, seed)
     function p:exists()
       local targets = query(ctx, { "id" }, where, 100000)
       local ok, msg
+      -- Over a navigation grid when one is under the entity (phase 3 item
+      -- 2): A* to each candidate until one is reached.
+      local over, why = nil, nil
+      if (targets.total or 0) > 0 then
+        for _, row in ipairs(targets.rows) do
+          local r, err = H.call("nav.path", { from = entity, to = row[1] })
+          if err == nil and r.grid ~= nil then
+            over = r.grid
+            if r.found then
+              ok, msg = true, string.format("%s: %d steps to %s over %s", d, r.steps, tostring(row[1]), r.grid)
+              break
+            end
+            why = r.why
+          elseif err ~= nil and over == nil then
+            why = err.message
+          end
+        end
+      end
       if (targets.total or 0) == 0 then
         ok, msg = false, d .. ": no entity matches"
+      elseif ok then
+        -- found over the grid
+      elseif over ~= nil then
+        ok, msg = false, string.format("%s: no way over %s to any of %d candidate(s) (%s)", d, over, targets.total, tostring(why))
       else
         local rooms = callm("scene.rooms", {})
         if rooms.rooms == nil or #rooms.rooms == 0 then

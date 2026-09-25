@@ -23,6 +23,8 @@ use std::rc::Rc;
 
 #[path = "marks.rs"]
 mod marks;
+#[path = "nav.rs"]
+mod nav;
 #[path = "proposals.rs"]
 mod proposals;
 #[path = "saves.rs"]
@@ -57,6 +59,8 @@ struct Session {
     /// Open tilemaps (phase 1, item 5), shared with the physics step so a
     /// tile edit is ground on the next tick (item 6).
     tiles: Rc<RefCell<argus_tiles::MapStore>>,
+    /// Navigation grids and the searches made on them (phase 3 item 2).
+    nav: Rc<RefCell<argus_nav::NavStore>>,
     /// Animator machines and sprite clips (item 8), refreshed on import.
     anims: Rc<RefCell<argus_anim::AnimStore>>,
     /// Particle effects and every emitter's pool (item 10), refreshed on
@@ -509,6 +513,11 @@ impl Daemon {
             "sim.seek" => self.sim_seek(params),
             "sim.fork" => self.sim_fork(params),
             "sim.snapshot" => self.sim_snapshot(params),
+            "nav.grids" => self.nav_grids(),
+            "nav.grid" => self.nav_grid(params),
+            "nav.path" => self.nav_path(params),
+            "nav.field" => self.nav_field(params),
+            "nav.bake" => self.nav_bake(params),
             "sim.save" => self.sim_save(params),
             "sim.load" => self.sim_load(params),
             "mark.drop" => self.mark_drop(params),
@@ -842,6 +851,7 @@ impl Daemon {
             seed,
             input,
             tiles,
+            nav,
             anims,
             particles,
             host,
@@ -922,6 +932,7 @@ impl Daemon {
             run_dir: None,
             assets,
             tiles,
+            nav,
             anims,
             particles,
             history,

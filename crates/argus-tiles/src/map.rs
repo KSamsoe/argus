@@ -141,6 +141,15 @@ pub struct MapFile {
     pub index: MapIndex,
     manifest: BTreeMap<Key, u64>,
     loaded: HashMap<Key, Chunk>,
+    /// See [`MapFile::revision`].
+    revision: u64,
+}
+
+/// The next [`MapFile::revision`]: never repeats in a process.
+static REVISION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+pub(crate) fn next_revision() -> u64 {
+    REVISION.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
 
 impl MapFile {
@@ -268,6 +277,7 @@ impl MapFile {
             },
             manifest: BTreeMap::new(),
             loaded: HashMap::new(),
+            revision: next_revision(),
         };
         m.check_names().map_err(|x| e(crate::codes::BAD_MAP, x))?;
         m.save()?;
@@ -363,6 +373,7 @@ impl MapFile {
             index,
             manifest: BTreeMap::new(),
             loaded: HashMap::new(),
+            revision: next_revision(),
         };
         m.check_names().map_err(bad)?;
         let mpath = m.chunk_dir().join("manifest.txt");
@@ -599,12 +610,20 @@ impl MapFile {
                         if Self::read_cell(&ch.data, i, cell) != v {
                             Self::write_cell(&mut ch.data, i, cell, v);
                             ch.dirty = true;
+                            self.revision = next_revision();
                         }
                     }
                 }
             }
         }
         Ok(())
+    }
+
+    /// Changes whenever a cell does (and when the map is read or made), and
+    /// never repeats in a process: what data derived from the map (a
+    /// navigation grid, phase 3 item 2) checks.
+    pub fn revision(&self) -> u64 {
+        self.revision
     }
 
     /// Fill `rect` with one tile.

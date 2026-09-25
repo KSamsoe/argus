@@ -420,6 +420,7 @@ impl World {
         self.frame = frame;
         self.events.clear();
         self.emitter = None;
+        self.structure = crate::world::next_structure();
         self.rebuild_broadphase();
         Ok(report)
     }

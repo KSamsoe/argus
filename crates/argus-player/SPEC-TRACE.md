@@ -52,6 +52,12 @@ Every statement in the design document (v0.3) that constrains a game as players 
 |---|---|---|---|
 | (§12) The UI in every scene, the same in the daemon, the executable, and the page. | Done | `assemble.rs` loads `ui.toml` (`Theme::load`), installs `argus-ui` after the input map and the camera and, with an input map, `input.rebind`; `set_fonts` makes each font asset a shaped `SdfFont`. `Player::devices` hands a press to a waiting rebind first. | `packs::hollow_from_its_packs_plays_as_hollow_from_its_folder` (Hollow's pause and menu systems among the scripts) |
 
+## Phase 3, item 2: navigation in the one assembly
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§12) Navigation in every scene, the same in the daemon, the executable, and the page. | Done | `assemble.rs` makes the `NavStore` over the session's tilemaps, installs `argus-nav` after the physics (its agents move after the physics step), and hands scripts the path queries (`NavPaths`, the `argus_luau::Paths` of the store). `Assembly.nav`, `Player.nav`. | Delve's tests; `argus-daemon` `nav.rs` |
+
 ## §18 Build plan
 
 | Spec | Status | Where | Test |

@@ -79,7 +79,7 @@ Decisions taken while building it:
 
 ## 2. Navigation grid, A\*, flow fields
 
-**Status: to do.**
+**Status: done** (2026-09-25) in a new crate, `argus-nav` (grids, A\*, flow fields, baked grids, the `nav.agents` system), and in `argus-ecs` (`World::structure`, which tells a cache the world's shape moved), `argus-tiles` (a map's revision), `argus-luau` (`q:path`, `q:walkable`, `q:distance`, `q:downhill`), `argus-player` (navigation in the one assembly), the daemon (`nav.grids`, `nav.grid`, `nav.path`, `nav.field`, `nav.bake`; the `query` tool's `path`), `argus-test` (`t.expect:path` over tiles), and `argus-scene` (a baked grid's index is not an entity). A `NavGrid` covers a tilemap (solid tiles blocked), a baked grid, or a rectangle; `NavCost` entities over it block cells or make them slower. A `NavAgent` walks its entity to a goal or an entity by A\*, or down a `NavField`, a flow field toward another entity that a whole crowd shares. Delve's monsters now step down the hero's flow field instead of a breadth-first search in Luau every turn, and move exactly as before (its golden is unchanged); its stairs test runs over the floor, 200 seeds, as §9 has it. Outpost walks with its jobs in item 3. Measured in release: A\* across 256 x 256 (eight ways, a fifth walls, costs 1 to 3) 0.55 ms; a flow field over 256 x 256, 1.8 ms; 200 agents with goals of their own on 128 x 128, 1.6 ms the tick they all search and 0.09 ms a tick after; 10,000 followers of one field, 1.5 ms a tick. Found while building it: the first agents system cost 7.4 ms a tick for the 10,000, mostly lookups (the grid list and the field found again per agent, and a missing `Parent` looked up as an error to throw away); read and written by column, with the tick's grids and fields looked up once, it is 1.5 ms. Traces: `crates/argus-nav/SPEC-TRACE.md`, and rows in `argus-ecs`'s, `argus-tiles`'s, `argus-luau`'s, `argus-player`'s, the daemon's, `argus-test`'s, `argus-scene`'s, and `argus-cli`'s. Constraints:
 
 - §12: a navigation grid derived from the tilemap and blocking entities, with A\* for individuals and flow fields for crowds, both Rust hot-path systems.
 - §12: Outpost is the customer, but Delve's monsters and any game with NPCs use the same path queries.
@@ -87,6 +87,16 @@ Decisions taken while building it:
 - §4: a baked navigation grid is bulk authored data: a text index plus a binary chunk, queried through the protocol.
 - §9: `t.expect:path(...):exists()` (Delve's "stairs are always reachable on floor 1", 200 seeds) answers over tiles, not only the room graph (carried in from phase 1).
 - §17: Outpost's sim tick at 10× with 200 colonists and 20,000 items under 1.6 ms "with pathfinding, jobs, and needs all running".
+
+Decisions taken while building it:
+
+- **Blocking entities are one component either way.** `NavCost` sets the cost of the cells under an entity: 0 blocks (a wall, a building), more is slower going. A grid whose `fill` is 0 is a map whose open cells are entities, which is Delve's floor.
+- **Paths are world state, caches are content.** An agent keeps the cells its path was found between and the grid's hash, and follows the path from them; searches are cached by the grid's hash and the cells. A seek, a fork, a load, or a replay walks the same way with a store that never saw the run.
+- **A grid is checked once a frame and after the world's shape changes.** The world's `structure()` moves on every spawn, despawn, component added or removed, and restore. A field edited mid-frame shows the next frame; protocol calls always check.
+- **Integer costs, fixed tie order.** A straight step of cost 1 is 10, a diagonal 14; ties go east, west, north, south. The same grid gives the same path everywhere, the browser included.
+- **Diagonals never cut a corner.** With `diagonal`, a diagonal step needs both cells beside it open.
+- **The dozen tools stay a dozen.** The `query` tool takes `path: {from, to}` (§16 names the tool set); the `nav.*` methods are the namespace's own.
+- **Scripts get queries, not the store.** `argus-luau` defines the `Paths` trait and the assembly hands it one, so the script crate needs nothing of navigation.
 
 ## 3. Job system, and Outpost's core
 

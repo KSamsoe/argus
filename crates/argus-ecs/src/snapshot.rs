@@ -56,9 +56,12 @@ impl World {
     /// Replace this world's state with the snapshot's.
     pub fn restore(&mut self, snapshot: &Snapshot) {
         *self = snapshot.world.clone();
+        self.structure = crate::world::next_structure();
     }
     /// A second world with identical state that evolves independently.
     pub fn fork(&self) -> World {
-        self.clone()
+        let mut w = self.clone();
+        w.structure = crate::world::next_structure();
+        w
     }
 }

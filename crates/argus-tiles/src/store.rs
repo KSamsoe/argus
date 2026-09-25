@@ -68,6 +68,8 @@ pub struct MapStore {
     entries: Vec<Entry>,
     by_file: HashMap<String, usize>,
     tables: HashMap<String, Rc<Vec<Collide>>>,
+    /// Moves when the tileset tables are rebuilt.
+    tables_revision: u64,
 }
 
 fn mtime(p: &Path) -> Option<SystemTime> {
@@ -82,6 +84,7 @@ impl MapStore {
             entries: Vec::new(),
             by_file: HashMap::new(),
             tables: HashMap::new(),
+            tables_revision: crate::map::next_revision(),
         }
     }
 
@@ -172,6 +175,7 @@ impl MapStore {
     /// Rebuild the tileset tables from the importer's sprites and rebind
     /// every map's collision layers (after an import or a re-import).
     pub fn set_tilesets(&mut self, assets: &Importer) {
+        self.tables_revision = crate::map::next_revision();
         self.tables = assets
             .sprites()
             .map(|(name, s)| (name.to_string(), Rc::new(table_of(s))))
@@ -179,6 +183,14 @@ impl MapStore {
         for i in 0..self.entries.len() {
             self.bind(i);
         }
+    }
+
+    /// What a map's collision was derived from: its cells' revision and the
+    /// tileset tables'. Equal twice, the collision is the same; `None` for a
+    /// map not open.
+    pub fn revision(&self, file: &str) -> Option<[u64; 2]> {
+        let e = &self.entries[*self.by_file.get(file)?];
+        Some([e.map.as_ref()?.revision(), self.tables_revision])
     }
 
     /// A map placed at `origin` for this tick. Opened on first use and

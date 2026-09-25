@@ -127,6 +127,12 @@ Release build, one thread, development laptop. Gates are `tests/perf.rs`; number
 | A system's queries are checked against its declared access (§3). | Done | A query now borrows the running system's access set (`Query::access_ref`) instead of copying it, which was two allocations per query in every Rust system; `Query::access` still takes an owned set. | `argus-daemon/tests/protocol.rs` (physics with no bodies allocates nothing) |
 | Schemas describe fields with their defaults (§3, §8 L1). | Done | A Rust `f32` default is described by its shortest decimal (`0.12`, not `0.11999999731779099`). Found by item 6: the index keeps 15 significant digits, so the live and index answers of `world.describe` disagreed on the controller's defaults. | `argus-daemon/tests/index_shapes.rs::live_and_index_reads_have_identical_shapes` |
 
+## Phase 3, item 2: what navigation needed from the core
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§12, §6) Data derived from the world (a navigation grid) knows when to look at the world again, and never trusts a stale copy after a seek. | Done | `World::structure()`: a number that moves on every spawn, despawn, component gained or lost, restore, fork, and read-back, and never repeats in a process. With the frame, a cache checks it before trusting itself. | `argus-nav` `nav::a_grid_is_rebuilt_when_what_it_covers_changes_and_only_then`, `nav::agents_walk_the_same_way_after_a_seek_with_a_fresh_store` |
+
 ## §18 Build plan
 
 Phase 0 item 1, "ECS core with SoA columns, archetypes, and hierarchy": this crate. The other phase-0 items are tracked in `docs/phase0-checklist.md`.

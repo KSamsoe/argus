@@ -36,6 +36,15 @@ pub struct World {
     /// The shared broadphase over `Transform.pos` (or `GlobalTransform`
     /// when present), rebuilt by [`World::rebuild_broadphase`].
     broadphase: SpatialHash,
+    /// See [`World::structure`].
+    pub(crate) structure: u64,
+}
+
+/// The next [`World::structure`] value: never repeats in a process.
+static STRUCTURE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+pub(crate) fn next_structure() -> u64 {
+    STRUCTURE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
 
 impl Default for World {
@@ -64,6 +73,7 @@ impl World {
             frame: 0,
             emitter: None,
             broadphase: SpatialHash::default(),
+            structure: next_structure(),
         }
     }
 
@@ -127,6 +137,16 @@ impl World {
         self.frame
     }
 
+    /// Changes whenever an entity is spawned or despawned or gains or loses
+    /// a component, and when the world is restored, forked, or read back,
+    /// and never repeats in a process. With [`World::frame`], what a cache
+    /// of data derived from the world (a navigation grid, phase 3 item 2)
+    /// checks before trusting itself: a field changed within a frame does
+    /// not move it.
+    pub fn structure(&self) -> u64 {
+        self.structure
+    }
+
     // ----- entities ---------------------------------------------------------
 
     /// Spawn a runtime entity: no string id, never written to a scene file (§3).
@@ -160,6 +180,7 @@ impl World {
             .map(|&c| self.registry.schema(c).default_row(&self.strings))
             .collect();
         let e = self.entities.alloc(false);
+        self.structure = next_structure();
         let dst = self.archetype_for(ids.clone());
         let ptrs: Vec<*const u8> = rows.iter().map(|r| r.as_ptr()).collect();
         // SAFETY: each row is exactly its schema's size, in `ids` order,
@@ -215,6 +236,7 @@ impl World {
     }
 
     fn place_in_empty(&mut self, e: Entity) {
+        self.structure = next_structure();
         // SAFETY: the empty archetype has no columns, so no row pointers are read.
         let row = unsafe { self.archetypes[0].push_row(e, &[]) };
         let slot = self.entities.slot_mut(e).expect("just allocated");
@@ -289,6 +311,7 @@ impl World {
     /// the next [`World::maintain`], with an event per reference.
     pub fn despawn(&mut self, e: Entity) -> Result<()> {
         let slot = *self.require_slot(e)?;
+        self.structure = next_structure();
         if let Some(moved) = self.archetypes[slot.archetype as usize].swap_remove(slot.row as usize)
         {
             self.entities
@@ -437,6 +460,7 @@ impl World {
         let src_id = slot.archetype as usize;
         let row = slot.row as usize;
         debug_assert_ne!(src_id, dst.0 as usize);
+        self.structure = next_structure();
 
         let ptrs: Vec<*const u8> = {
             let src = &self.archetypes[src_id];

@@ -207,6 +207,7 @@ fn a_player_runs_jumps_and_lands_on_carved_tiles() {
             "input.rebind",
             "physics.move",
             "physics.overlap",
+            "nav.agents",
             "anim.update",
             "tween.update",
             "late.listen",

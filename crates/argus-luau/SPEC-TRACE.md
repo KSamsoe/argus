@@ -123,6 +123,12 @@ What remains in `sim.chase` is the binding's call path: each iteration is three 
 |---|---|---|---|
 | (§12) Every game's pause menu: the game stands still while the menu runs. | Done | `q:freeze()`: the rest of this tick stands still, but for systems declared `unfrozen` (the UI's input and layout, and a game's menu systems): phase 2 item 6's hit-stop freeze, asked for by a script. Hollow's `sim.pause` and Delve's `sim.menu` use it. | Hollow's `tests/pause.luau`, Delve's `tests/menu.luau` |
 
+## Phase 3, item 2: path queries
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§12) Delve's monsters and any game with NPCs use the same path queries. | Done | `q:path(from, to, grid?)` (the waypoints as vectors and the cost in steps, or nil), `q:walkable(pos, grid?)`, `q:distance(field, pos)` (steps to a `NavField`'s entity), `q:downhill(field, pos)` (the next cell's centre toward it). A point is a vector, a table, or an entity. The host is handed the queries (`ScriptHost::set_paths`, the `Paths` trait) so this crate needs no navigation of its own. A system that asks declares it reads `NavGrid` or `NavField`, so `obs.why` stays true. | `argus-daemon` `nav::a_maze_is_searched_through_the_protocol_and_from_scripts`, `nav::a_system_that_asks_for_a_path_must_say_it_reads_the_grid`; Delve's monsters |
+
 ## §18 Build plan
 
 Phase 0 item 3, "Luau binding with component and def schemas": this crate.

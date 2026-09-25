@@ -86,7 +86,9 @@ pub fn run(c: &mut dyn Caller, name: &str, args: &Json) -> Result<Json, Json> {
     match name {
         "summary" => c.call("world.summary", pick(args, &["scene"])),
         "query" => {
-            if args.get("entity").is_some() {
+            if let Some(p) = args.get("path") {
+                c.call("nav.path", p.clone())
+            } else if args.get("entity").is_some() {
                 c.call("world.get", pick(args, &["entity", "scene"]))
             } else {
                 c.call(

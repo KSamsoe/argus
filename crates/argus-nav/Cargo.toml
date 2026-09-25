@@ -1,0 +1,16 @@
+[package]
+name = "argus-nav"
+description = "Argus Engine navigation: grids derived from tilemaps and blocking entities, A* for individuals, flow fields for crowds, baked grids"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+argus-ecs = { path = "../argus-ecs", version = "0.0.1" }
+argus-sim = { path = "../argus-sim", version = "0.0.1" }
+argus-tiles = { path = "../argus-tiles", version = "0.0.1" }
+argus-os = { path = "../argus-os", version = "0.0.1" }
+toml_edit = "0.22"
+
+[dev-dependencies]
+argus-assets = { path = "../argus-assets", version = "0.0.1" }

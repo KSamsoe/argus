@@ -137,16 +137,17 @@ pub const TOOLS: &[ToolDoc] = &[
     },
     ToolDoc {
         name: "query",
-        doc: "Read the world: one entity in full, or the entities matching a filter with the fields you select, as compact rows. With entity: that entity, every component and field. Otherwise select, where, and order, e.g. select [\"id\", \"Health.cur\"], where {has: [\"Enemy\"], \"Health.cur\": {lt: 3}}, order \"dist(@player)\".",
+        doc: "Read the world: one entity in full, or the entities matching a filter with the fields you select, as compact rows. With entity: that entity, every component and field. With path: the way from one place to another over the navigation grid (nav.path). Otherwise select, where, and order, e.g. select [\"id\", \"Health.cur\"], where {has: [\"Enemy\"], \"Health.cur\": {lt: 3}}, order \"dist(@player)\".",
         params: &[
             opt("entity", STRING, "\"@id\" or \"e:n\": one entity in full"),
+            opt("path", OBJECT, "{from, to, grid?}: from and to an entity (\"@player\") or [x, y]; the waypoints, steps, and cost, or why there is no way"),
             opt("select", ARRAY, "[\"id\" | \"Component.field\" | \"Component\"]; default [\"id\"]"),
             opt("where", OBJECT, "{has: [Component], not: [Component], within: {of: entity, r: number}, \"Component.field\": value | {eq|ne|lt|lte|gt|gte: value}}"),
             opt("order", STRING, "\"Component.field\", \"-Component.field\", or \"dist(entity)\""),
             opt("limit", INTEGER, "default 50"),
             opt("scene", STRING, "another scene, from the index"),
         ],
-        calls: &["world.get", "world.query"],
+        calls: &["world.get", "world.query", "nav.path"],
     },
     ToolDoc {
         name: "describe",
@@ -474,6 +475,51 @@ pub const METHODS: &[MethodDoc] = &[
             opt("rebuild", BOOLEAN, "default false"),
         ],
         returns: "{scenes, entities, failed, ms, stats}",
+    },
+    MethodDoc {
+        name: "nav.grids",
+        doc: "Every navigation grid (section 12, phase 3 item 2): a NavGrid entity's cells over the world, each blocked or open with a step cost, built from a tilemap's collision (solid tiles blocked), a baked grid, or a plain rectangle of its fill, with the NavCost entities over it (a wall, a building, mud). Each with its origin, cell size, size in cells, open and blocked cells, what it is built from, and its hash (equal hashes, equal grids).",
+        params: &[],
+        returns: "{columns: [grid, origin, cell, size, open, blocked, from, hash], rows, total}",
+    },
+    MethodDoc {
+        name: "nav.grid",
+        doc: "A navigation grid as rows of characters, top row first: # blocked, . cost 1, 2-9 that cost, + above 9. Past max columns or rows it shows every nth cell (step).",
+        params: &[
+            opt("grid", STRING, "the NavGrid entity; default the first"),
+            opt("rect", ARRAY, "[x0, y0, x1, y1] in world units; default the whole grid"),
+            opt("max", INTEGER, "most columns or rows drawn (default 120)"),
+        ],
+        returns: "{grid, origin, cell, size, first: [column, row], step, rows, legend}",
+    },
+    MethodDoc {
+        name: "nav.path",
+        doc: "The way from one place to another on a navigation grid, by A* (section 12): the cells' centres after the start and the goal itself last, its steps, and what it costs in steps of cost 1 (a diagonal is 1.4). An entity stands for where it is. Scripts ask the same with q:path; a test with t.expect:path(entity, filter):exists(). found is false with why when there is no way; grid is null when no grid covers from.",
+        params: &[
+            req("from", ANY, "an entity (\"@player\") or a place [x, y]"),
+            req("to", ANY, "an entity or a place"),
+            opt("grid", STRING, "the NavGrid entity; default the grid from is on"),
+        ],
+        returns: "{found, grid, from_cell, to_cell, steps, cost, points, expanded, cached, ms, why?}",
+    },
+    MethodDoc {
+        name: "nav.field",
+        doc: "A NavField entity's flow field (section 12, for crowds): every cell's steps to the cell the entity stands in, as rows of characters top row first: 0-9 then a-z, + beyond 35, # blocked, blank where it does not reach. Scripts read it with q:distance and q:downhill; NavAgents with field set walk down it.",
+        params: &[
+            req("of", STRING, "the entity with the NavField"),
+            opt("rect", ARRAY, "[x0, y0, x1, y1] in world units; default the whole grid"),
+            opt("max", INTEGER, "most columns or rows drawn (default 120)"),
+        ],
+        returns: "{of, target: [column, row], reached, first, step, rows, legend}",
+    },
+    MethodDoc {
+        name: "nav.bake",
+        doc: "Write a navigation grid as bulk data (section 4): a text index (<name>.navgrid.toml: size, cell, origin, open and blocked cells, a hash) and a binary chunk beside it, one byte a cell. A NavGrid whose baked names the index starts from it instead of deriving its tilemap; NavCost entities still go over it. The scene loader leaves the index alone.",
+        params: &[
+            req("grid", STRING, "the NavGrid entity"),
+            opt("file", STRING, "project-relative *.navgrid.toml; default scenes/<scene>/<grid id>.navgrid.toml"),
+        ],
+        returns: "{grid, index, chunk, bytes, open, blocked, hash, use}",
     },
     MethodDoc {
         name: "asset.list",

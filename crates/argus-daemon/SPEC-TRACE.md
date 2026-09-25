@@ -48,6 +48,12 @@ Every statement in the design document (v0.3) that constrains the daemon and the
 | The local socket needs no auth; remote access via tokens is later. | Done (phase-0 half) | Nothing listens beyond the local socket. | |
 | Identical result shapes from the live world or the index. | Deferred | Piece 6 will serve `world.*` and `scene.*` from the index when no world is loaded, with these shapes. | |
 
+## Phase 3, item 2: navigation through the protocol
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§12, §4) Navigation is queried through the protocol; a baked grid is bulk data. | Done | `nav.rs`: `nav.grids` (every grid: size, open and blocked cells, what it is built from, its hash), `nav.grid` (a grid as rows of characters), `nav.path {from, to, grid?}` (A*: the waypoints, steps, cost, whether it came from the cache; why there is no way), `nav.field {of}` (a flow field as rows of steps), `nav.bake {grid, file?}` (the index and the chunk). An entity stands for where it is. Each checks the grid against its sources first, so an answer between ticks sees the last edit. The `query` tool answers `path: {from, to}` (§16 keeps the dozen tools). | `nav::a_maze_is_searched_through_the_protocol_and_from_scripts` |
+
 ## Phase 3, item 1: the UI tree in every scene
 
 | Spec | Status | Where | Test |

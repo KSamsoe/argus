@@ -58,6 +58,12 @@ Phase 0 item 9, "CLI": this crate, plus `argus_daemon::launch` (shared with `arg
 | (§8 L4) The semantic frame's UI, read aloud. | Done | `render.rs`: `UI <id> button, focused: <words> at <bounds>` lines, in the frame's order. | checked by hand on Hollow's and Delve's menus |
 | (Phase 2 item 7) `argus build --target web` builds on this machine. | Done | The wasm build's `CARGO_TARGET_DIR` goes to cargo without Windows' `\\?\` prefix: a build script links with MinGW's `ld`, which cannot open such a path. It showed with the first new build script since the web target came (`libm`, through rustybuzz). | the web build |
 
+## Phase 3, item 2
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§16) The tools mirror the protocol, a dozen of them. | Done | `query` takes `path: {from, to, grid?}` and answers with `nav.path`: `argus query path.from=@player path.to=[10,10]`. The `nav.*` methods are the namespace's own subcommands. | `mcp::argus_mcp_serves_the_tools_of_the_one_schema`, `schema::the_tools_call_methods_that_exist` |
+
 ## Known limitations, stated so they are decisions
 
 - A daemon started by the CLI outlives the shell; `argus daemon stop` ends it, and `.argus/daemon.json` is removed on a clean exit. `stop` returns once the daemon is gone (its record removed and its socket silent), not when it agreed to go: a command right after it used to reach the daemon on its way out and fail with "connection lost" (found after the phase-1 gate; `cli::the_binary_finds_starts_and_stops_a_project_daemon`). A daemon killed otherwise leaves a stale record, which `argus daemon status` reports and a method call replaces.

@@ -57,6 +57,49 @@ impl Default for ScriptConfig {
 /// The game's day length, where the query handle reads it.
 pub(crate) struct DayLength(pub f64);
 
+/// Path queries a script can make (phase 3 item 2, §12: "Delve's monsters
+/// and any game with NPCs use the same path queries"): the navigation the
+/// player's assembly has, handed to the host ([`ScriptHost::set_paths`]),
+/// so this crate needs no part of it.
+pub trait Paths {
+    /// The waypoints from one point to another (each cell's centre after
+    /// the start, the goal itself last) on `grid`, or the grid `from` is
+    /// on, and what the way costs in steps; none when there is no way.
+    fn path(
+        &self,
+        world: &argus_ecs::World,
+        from: [f32; 2],
+        to: [f32; 2],
+        grid: argus_ecs::Entity,
+    ) -> Result<Option<(Vec<[f32; 2]>, f32)>>;
+    /// Whether a point is on an open cell of `grid` (or the grid it is on).
+    fn walkable(
+        &self,
+        world: &argus_ecs::World,
+        at: [f32; 2],
+        grid: argus_ecs::Entity,
+    ) -> Result<bool>;
+    /// Steps from a point to a `NavField` entity's cell; none where the
+    /// field does not reach.
+    fn distance(
+        &self,
+        world: &argus_ecs::World,
+        field: argus_ecs::Entity,
+        at: [f32; 2],
+    ) -> Result<Option<f32>>;
+    /// The centre of the next cell down a `NavField` from a point; none at
+    /// the field's cell or where it does not reach.
+    fn downhill(
+        &self,
+        world: &argus_ecs::World,
+        field: argus_ecs::Entity,
+        at: [f32; 2],
+    ) -> Result<Option<[f32; 2]>>;
+}
+
+/// The paths a host was given, where the query handle reads them.
+pub(crate) struct PathsData(pub Rc<dyn Paths>);
+
 /// Where in the pipeline a script error happened.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ErrorPhase {
@@ -208,6 +251,12 @@ fn parse_location(msg: &str) -> Option<(String, u32)> {
 }
 
 impl ScriptHost {
+    /// Give scripts path queries (`q:path`, `q:walkable`, `q:distance`,
+    /// `q:downhill`; phase 3 item 2).
+    pub fn set_paths(&self, paths: Rc<dyn Paths>) {
+        self.lua.set_app_data(PathsData(paths));
+    }
+
     /// Create the VM: declaration globals installed, memory limit and
     /// interrupt budget set, then sandboxed so globals are read-only (§7).
     pub fn new(config: ScriptConfig) -> Result<ScriptHost> {

@@ -210,6 +210,56 @@ fn lua_point(v: LuaValue) -> LuaResult<(f32, f32)> {
     }
 }
 
+/// The host's path queries, or an error saying there are none.
+fn paths_of(lua: &Lua) -> LuaResult<Rc<dyn crate::Paths>> {
+    lua.app_data_ref::<crate::PathsData>()
+        .map(|p| p.0.clone())
+        .ok_or_else(|| {
+            mlua::Error::runtime("no navigation here: the host gave scripts no path queries")
+        })
+}
+
+/// A system must declare what it reads, a path query too (section 3).
+fn needs_read(c: &SystemCtx<'_>, name: &str) -> LuaResult<()> {
+    let id = c.world().registry().require(name).map_err(argus_err)?;
+    if c.access().allows_read(id) {
+        return Ok(());
+    }
+    Err(argus_err(
+        ArgusError::new(
+            codes::ACCESS_VIOLATION,
+            format!(
+                "system {} asks a path query, which reads {name}, without declaring it",
+                c.name
+            ),
+        )
+        .hint(format!("Add {name:?} to the system's reads list.")),
+    ))
+}
+
+/// A point: a vector, a table, or an entity (where it is).
+fn place(c: &SystemCtx<'_>, v: LuaValue) -> LuaResult<[f32; 2]> {
+    if let LuaValue::UserData(ud) = &v {
+        if let Ok(r) = ud.borrow::<EntityRef>() {
+            let t = c
+                .world()
+                .get::<argus_ecs::Transform>(r.entity)
+                .map_err(argus_err)?;
+            return Ok([t.pos.x, t.pos.y]);
+        }
+    }
+    let (x, y) = lua_point(v)?;
+    Ok([x, y])
+}
+
+/// An optional grid entity.
+fn grid_arg(g: Option<AnyUserData>) -> LuaResult<Entity> {
+    Ok(match g {
+        Some(ud) => ud.borrow::<EntityRef>()?.entity,
+        None => Entity::NULL,
+    })
+}
+
 fn component_id(link: &Link, name: &str) -> LuaResult<ComponentId> {
     let c = ctx(link)?;
     c.world().registry().require(name).map_err(argus_err)
@@ -652,6 +702,71 @@ impl UserData for QueryHandle {
                     )),
                     None => Ok((LuaValue::Nil, LuaValue::Nil)),
                 }
+            },
+        );
+        // Paths (phase 3 item 2, section 12): q:path(from, to, grid?) is
+        // the waypoints (vectors) and the cost in steps, or nil;
+        // q:walkable(pos, grid?); q:distance(field, pos) is the steps to a
+        // NavField's entity, or nil; q:downhill(field, pos) the next cell's
+        // centre toward it, or nil. A point is a vector, a table, or an
+        // entity (its position). A system that asks declares reads of
+        // NavGrid (path, walkable) or NavField (distance, downhill).
+        m.add_method(
+            "path",
+            |lua, this, (from, to, grid): (LuaValue, LuaValue, Option<AnyUserData>)| {
+                let c = ctx(&this.link)?;
+                needs_read(c, "NavGrid")?;
+                let paths = paths_of(lua)?;
+                let (a, b) = (place(c, from)?, place(c, to)?);
+                let g = grid_arg(grid)?;
+                match paths.path(c.world(), a, b, g).map_err(argus_err)? {
+                    Some((pts, cost)) => {
+                        let t = lua.create_table()?;
+                        for (i, p) in pts.iter().enumerate() {
+                            t.set(i + 1, LuaValue::Vector(mlua::Vector::new(p[0], p[1], 0.0)))?;
+                        }
+                        Ok((LuaValue::Table(t), LuaValue::Number(cost as f64)))
+                    }
+                    None => Ok((LuaValue::Nil, LuaValue::Nil)),
+                }
+            },
+        );
+        m.add_method(
+            "walkable",
+            |lua, this, (at, grid): (LuaValue, Option<AnyUserData>)| {
+                let c = ctx(&this.link)?;
+                needs_read(c, "NavGrid")?;
+                let paths = paths_of(lua)?;
+                paths
+                    .walkable(c.world(), place(c, at)?, grid_arg(grid)?)
+                    .map_err(argus_err)
+            },
+        );
+        m.add_method(
+            "distance",
+            |lua, this, (field, at): (AnyUserData, LuaValue)| {
+                let c = ctx(&this.link)?;
+                needs_read(c, "NavField")?;
+                let paths = paths_of(lua)?;
+                let f = field.borrow::<EntityRef>()?.entity;
+                Ok(paths
+                    .distance(c.world(), f, place(c, at)?)
+                    .map_err(argus_err)?
+                    .map(|d| d as f64))
+            },
+        );
+        m.add_method(
+            "downhill",
+            |lua, this, (field, at): (AnyUserData, LuaValue)| {
+                let c = ctx(&this.link)?;
+                needs_read(c, "NavField")?;
+                let paths = paths_of(lua)?;
+                let f = field.borrow::<EntityRef>()?.entity;
+                Ok(paths
+                    .downhill(c.world(), f, place(c, at)?)
+                    .map_err(argus_err)?
+                    .map(|p| LuaValue::Vector(mlua::Vector::new(p[0], p[1], 0.0)))
+                    .unwrap_or(LuaValue::Nil))
             },
         );
         m.add_method("despawn", |_, this, e: AnyUserData| {

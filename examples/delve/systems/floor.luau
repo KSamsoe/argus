@@ -6,7 +6,7 @@ return system "sim.floor" {
   after = { "sim.menu_buttons" },
   unfrozen = true,
   reads = { "Floor", "Player", "Monster", "Stairs", "Transform", "Tile" },
-  writes = { "Floor", "Player", "Monster", "Stairs", "Transform", "Health", "Sprite", "Tile", "Describe" },
+  writes = { "Floor", "Player", "Monster", "Stairs", "Transform", "Health", "Sprite", "Tile", "Describe", "NavCost" },
   rng = "floor",
   doc = "Generates a floor when there is none or the hero asked to descend: rooms, L-shaped corridors, the hero in the first room, stairs in the last, monsters never within four steps of the hero.",
   run = function(q)
@@ -79,9 +79,11 @@ return system "sim.floor" {
     for i = 1, w * h do
       if grid[i] == "." then table.insert(cells, i - 1) end
     end
-    q:spawn_many(#cells, { "Tile", "Transform", "Sprite" }, function(e, i)
+    q:spawn_many(#cells, { "Tile", "Transform", "Sprite", "NavCost" }, function(e, i)
       local c = cells[i]
       e:get("Transform").pos = vector.create(c % w, c // w, 0)
+      -- Open ground on the floor's navigation grid.
+      e:get("NavCost").cost = 1
       local sp = e:get("Sprite")
       sp.kind = "rect"
       sp.size = vector.create(0.95, 0.95, 0)

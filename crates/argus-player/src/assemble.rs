@@ -50,6 +50,8 @@ pub struct Assembly {
     pub input: Option<Rc<RefCell<InputState>>>,
     /// Tilemaps.
     pub tiles: Rc<RefCell<argus_tiles::MapStore>>,
+    /// Navigation grids and the searches made on them (phase 3 item 2).
+    pub nav: Rc<RefCell<argus_nav::NavStore>>,
     /// Room bounds for the camera.
     pub zones: Rc<RefCell<argus_camera::Zones>>,
     /// Animator machines.
@@ -120,6 +122,12 @@ pub fn assemble(
     argus_audio::register(&mut world)?;
     let tiles = Rc::new(RefCell::new(argus_tiles::MapStore::new(root)));
     argus_physics::install(&mut world, &mut sched, tiles.clone())?;
+    // Navigation over the tilemaps; its agents move after the physics.
+    let nav = Rc::new(RefCell::new(argus_nav::NavStore::new(
+        root,
+        Some(tiles.clone()),
+    )));
+    argus_nav::install(&mut world, &mut sched, nav.clone())?;
     let zones = Rc::new(RefCell::new(argus_camera::Zones::default()));
     argus_camera::install(&mut world, &mut sched, zones.clone())?;
     argus_post::install(&mut world, &mut sched)?;
@@ -146,6 +154,7 @@ pub fn assemble(
         day_seconds: cfg.day_seconds,
         ..ScriptConfig::default()
     })?;
+    host.set_paths(Rc::new(NavPaths(nav.clone())));
     host.load_project(&mut world, &mut sched, root)?;
     let defs: Vec<DefSchema> = host
         .defs()
@@ -207,6 +216,7 @@ pub fn assemble(
         scene_doc,
         input,
         tiles,
+        nav,
         zones,
         anims,
         particles,
@@ -221,6 +231,60 @@ pub fn assemble(
         #[cfg(feature = "audio")]
         audio,
     })
+}
+
+/// Scripts' path queries (`q:path` and the rest, phase 3 item 2), answered
+/// by the session's navigation.
+struct NavPaths(Rc<RefCell<argus_nav::NavStore>>);
+
+impl argus_luau::Paths for NavPaths {
+    fn path(
+        &self,
+        world: &World,
+        from: [f32; 2],
+        to: [f32; 2],
+        grid: argus_ecs::Entity,
+    ) -> Result<Option<(Vec<[f32; 2]>, f32)>> {
+        match self.0.borrow_mut().walk(world, from, to, grid, false) {
+            Ok(Some(w)) => Ok(w
+                .route
+                .map(|r| (w.points, r.cost as f32 / argus_nav::grid::STRAIGHT as f32))),
+            Ok(None) => Ok(None),
+            Err(e) if e.code == argus_nav::codes::OFF_GRID => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+    fn walkable(&self, world: &World, at: [f32; 2], grid: argus_ecs::Entity) -> Result<bool> {
+        let g = self.0.borrow_mut().grid_for(world, at, grid, false)?;
+        Ok(g.and_then(|(_, g)| g.locate(at).map(|i| g.open(i)))
+            .unwrap_or(false))
+    }
+    fn distance(
+        &self,
+        world: &World,
+        field: argus_ecs::Entity,
+        at: [f32; 2],
+    ) -> Result<Option<f32>> {
+        let f = self.0.borrow_mut().field_of(world, field, false)?;
+        Ok(f.and_then(|(g, f)| {
+            g.locate(at)
+                .and_then(|i| f.cost(i))
+                .map(|c| c as f32 / argus_nav::grid::STRAIGHT as f32)
+        }))
+    }
+    fn downhill(
+        &self,
+        world: &World,
+        field: argus_ecs::Entity,
+        at: [f32; 2],
+    ) -> Result<Option<[f32; 2]>> {
+        let f = self.0.borrow_mut().field_of(world, field, false)?;
+        Ok(f.and_then(|(g, f)| {
+            g.locate(at)
+                .and_then(|i| argus_nav::search::downhill(&g, &f, i))
+                .map(|n| g.centre(n))
+        }))
+    }
 }
 
 /// The project's font assets as the UI's fonts (phase 3 item 1): each one
