@@ -17,6 +17,11 @@ spatial = false
 gain = 0.35
 variations = [ { wave = "triangle", freq = 440, slide = 440, ms = 420, release_ms = 180 } ]
 
+[sounds."sfx/gem"]
+spatial = false
+gain = 0.3
+variations = [ { wave = "square", freq = 988, slide = 500, ms = 140, release_ms = 90 } ]
+
 [sounds."sfx/fell"]
 spatial = false
 gain = 0.4

@@ -174,6 +174,24 @@ EXIT = grid(
 )
 
 
+# Something to find, 8 x 8: a small crystal that catches the light (the
+# playtest's mark at the top of the shaft: "put something up here like a
+# collectible so its not pointless").
+GEM = grid(
+    [
+        "...cc...",
+        "..cCCc..",
+        ".cCWCCc.",
+        "cCWCCCCc",
+        ".cCCCCc.",
+        "..cCCc..",
+        "...cc...",
+        "........",
+    ],
+    {".": CLEAR, "c": hexc("1F7A78"), "C": hexc("5FE0D0"), "W": hexc("F0FFFC")},
+)
+
+
 def hero():
     frames = [
         frame("idle"),
@@ -201,4 +219,5 @@ if __name__ == "__main__":
     png("hero.png", 64, 13, hero())
     png("sign.png", 8, 18, SIGN)
     png("exit.png", 12, 20, EXIT)
-    print("wrote tiles/rock.png, tiles/plank.png, tiles/back.png, hero.png, sign.png, exit.png")
+    png("gem.png", 8, 8, GEM)
+    print("wrote tiles/rock.png, tiles/plank.png, tiles/back.png, hero.png, sign.png, exit.png, gem.png")

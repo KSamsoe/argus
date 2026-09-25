@@ -14,12 +14,18 @@ return scenario "the way out finishes the run and restart plays it again" {
     t.expect:events("sound.played", { sound = "sfx/out" }):count():eq(1)
     t.expect:field("@hud", "Run.done"):eq(true)
     t.expect:field("@hud", "Run.falls"):eq(0)
+    -- Through the door: held there out of sight, whatever the keys do.
+    t.input:hold("move", { -1, 0 }, 60)
     t:step(60)
     t.expect:events("run.finished"):count():eq(1)
+    t.expect:events("player.fell"):count():eq(0)
+    t.expect:field("@player", "Transform.pos.x"):near(68.5, 0.01)
+    t.expect:field("@player", "Sprite.visible"):eq(false)
     t.input:hold("restart", true, 2)
     t:step(3)
     t.expect:events("run.restarted"):count():eq(1)
     t.expect:field("@hud", "Run.done"):eq(false)
     t.expect:field("@player", "Transform.pos.x"):near(3, 0.5)
+    t.expect:field("@player", "Sprite.visible"):eq(true)
   end,
 }
