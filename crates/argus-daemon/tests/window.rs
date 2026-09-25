@@ -215,13 +215,33 @@ fn f8_drops_a_mark_and_the_note_typed_after_it_is_kept() {
     let noted = ok(&mut d, "obs.events", json!({ "name": "mark.noted" }));
     assert_eq!(noted["total"], 1, "{noted}");
 
-    // Escape leaves a mark without a note.
+    // Escape takes the mark back: an F8 pressed by accident had no way
+    // out (found in the phase 2 gate).
     tap(h, F8.0, F8.1, None);
     frames_until(&mut d, "a second mark", |d| {
         ok(d, "mark.list", json!({}))["open"] == 2
     });
     type_text(h, "lost");
     tap(h, ESCAPE.0, ESCAPE.1, None);
+    frames_until(&mut d, "the prompt gone", |d| {
+        bar(d)
+            .as_str()
+            .is_some_and(|b| b.starts_with("MARK 2 CANCELLED"))
+    });
+    assert_eq!(ok(&mut d, "mark.list", json!({}))["open"], 1);
+    assert!(err(&mut d, "mark.get", json!({ "id": 2 }))
+        .message
+        .contains("2"));
+    let gone = ok(&mut d, "obs.events", json!({ "name": "mark.cancelled" }));
+    assert_eq!(gone["total"], 1, "{gone}");
+    assert_eq!(ok(&mut d, "sim.status", json!({}))["paused"], false);
+
+    // Enter with nothing typed keeps a mark without a note.
+    tap(h, F8.0, F8.1, None);
+    frames_until(&mut d, "a mark without a note", |d| {
+        ok(d, "mark.list", json!({}))["open"] == 2
+    });
+    tap(h, ENTER.0, ENTER.1, None);
     frames_until(&mut d, "the prompt gone", |d| {
         bar(d)
             .as_str()
@@ -277,7 +297,7 @@ key = \"Backquote\"
     frames_until(&mut d, "a mark from the backquote key", |d| {
         ok(d, "mark.list", json!({}))["open"] == 1
     });
-    tap(h, ESCAPE.0, ESCAPE.1, None);
+    tap(h, ENTER.0, ENTER.1, None);
     frames_until(&mut d, "the prompt gone", |d| {
         ok(d, "sim.status", json!({}))["paused"] == false
     });

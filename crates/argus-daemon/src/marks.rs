@@ -956,7 +956,7 @@ impl Daemon {
     /// Keys from the window, before the game hears them. F8 (`[marks] key`
     /// in argus.toml) drops a mark,
     /// pauses, and opens the note prompt; while it is open every key and
-    /// character goes to the note (Backspace, Enter saves, Escape skips)
+    /// character goes to the note (Backspace, Enter saves, Escape cancels the mark)
     /// and the game hears only that keys went up.
     pub(super) fn mark_keys(
         &mut self,
@@ -1039,22 +1039,35 @@ impl Daemon {
         }
     }
 
-    /// The prompt closes: keep the note (Enter) or not (Escape), and play on.
+    /// The prompt closes, and play goes on: Enter keeps the mark with what
+    /// was typed (the note is optional), Escape takes the mark back. (Escape
+    /// used to keep the mark with no note; an F8 pressed by accident then
+    /// had no way out, found in the phase 2 gate. The release game and the
+    /// web page already cancelled on Escape.)
     pub(super) fn finish_prompt(&mut self, save: bool) {
         let Some(p) = self.mark_prompt.take() else {
             return;
         };
         let note = p.text.trim().to_string();
-        let kept = save && !note.is_empty();
-        if kept {
-            if let Some(root) = self.session.as_ref().map(|s| s.root.clone()) {
-                let _ = self.set_note(&root, p.id, &note);
+        let root = self.session.as_ref().map(|s| s.root.clone());
+        if save && !note.is_empty() {
+            if let Some(root) = &root {
+                let _ = self.set_note(root, p.id, &note);
             }
         }
-        let text = if kept {
-            format!("MARK {} SAVED: {note}", p.id)
-        } else {
+        if !save {
+            if let Some(root) = &root {
+                let _ = std::fs::remove_dir_all(mark_dir(root, p.id));
+            }
+            let frame = self.sched.tick();
+            self.emit_mark("mark.cancelled", p.id, frame, "");
+        }
+        let text = if !save {
+            format!("MARK {} CANCELLED", p.id)
+        } else if note.is_empty() {
             format!("MARK {} SAVED", p.id)
+        } else {
+            format!("MARK {} SAVED: {note}", p.id)
         };
         self.toast = Some((text, Instant::now() + Duration::from_millis(2500)));
         if p.resume {
@@ -1074,7 +1087,7 @@ impl Daemon {
             };
             return Some((
                 format!(
-                    "MARK {} AT {when}  NOTE: {}_   ENTER SAVES, ESC SKIPS",
+                    "MARK {} AT {when}   ENTER SAVES, ESC CANCELS\nNOTE: {}_",
                     p.id, p.text
                 ),
                 PROMPT,
