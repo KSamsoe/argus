@@ -26,7 +26,7 @@ Carried in, found while planning:
 
 ## 0. Save games with migrations
 
-**Status: in progress.**
+**Status: done** (2026-09-24) in `argus-ecs` (component versions in the world format; `decode_state_with` and the `Migrate` trait), `argus-luau` (`migrate` as a table of steps by version or a function; the host runs them; `q:save`, `q:load`, `q.day`), `argus-player` (`savegame.rs`: the save file, reading it through migrations; `Player::take_saves`, `take_loads`, `load`), the daemon (`saves.rs`: `sim.save`, `sim.load`, the tick-end capture of a game's saves), `argus-game` (saves in the save location's `saves/`), `argus-web` and the page (saves in IndexedDB), `argus-scene` (`[time] day`), and `argus-test` (`days()` in the project's days). A save is the game's identity and a keyframe without the input state; a load opens the save's scene fresh with its seed and puts the rest back, components saved at an older version through their declared migration (or field by field, by name), each reported as a `component.migrated` event; a save from a newer version is refused. Outpost's first skeleton is in `examples/outpost`: six colonists eat from a stockpile the fields fill, a day is 60 s, the game saves itself as "auto" when a day turns, and `tests/saves/week1.save` (day 7) is the first-week save the gate asks for, loaded by `tests/week1.luau` on every run. Measured: a week of Outpost (25,200 ticks) runs in about 2.5 s in a debug build; its save is 5.6 KB. In headless Chrome, Outpost's page kept its autosave in IndexedDB, loaded it back to its tick, still had it after a reload, and refused a damaged one. Found while building it: the first version of the atomic load swapped in an empty event log and the harness's event counts after a load read nothing (a `since` cursor from before it), so a test of "nobody died" passed for the wrong reason; event numbers now keep counting over a load, and a test checks it. A fresh scene's clock starts stopped, so a game loaded while playing would have frozen, the same fault as phase 2's proposal variants; a load carries the play state over. Outpost's first meal rule wasted half of every meal and starved the colony in a week; a meal now fills a colonist up with what the stockpile has. Traces: rows in `argus-ecs`'s, `argus-luau`'s, `argus-player`'s, the daemon's, `argus-scene`'s, `argus-test`'s, `argus-os`'s, `argus-game`'s, and `argus-web`'s. Constraints:
 
 - §6: a save is a snapshot with a schema version, written by `sim.save` to a player-facing location instead of the dev ring. It must survive code changes: components carry a version, and a component's schema file may declare a migrate function from older versions.
 - §6: on `sim.load` the daemon runs migrations column by column and reports each one as an event ("Health migrated v2→v3 for 1,204 entities"), and a test can assert a saved game from last month still loads.
@@ -37,7 +37,17 @@ Carried in, found while planning:
 - §5: `sim.save` and `sim.load` in the `sim` namespace.
 - §17: save and load at 8 hours of play under 200 ms and under 500 ms with migrations ("saves must be frequent enough to be automatic"); measured at the gate, on Outpost.
 - Phase 2 decision: the Luau heap is not snapshotted, so a save holds nothing a script keeps outside components.
-- The gate: a save from the first week of the phase loads at the end, through at least one migration (question 3).
+- The gate: a save from the first week of the phase loads at the end, through at least one migration.
+
+Decisions taken while building it:
+
+- **Migrations are both, table first.** `migrate = { [2] = { rename, default, drop }, [3] = function(row) ... end }` steps from the saved version up, a table step run in Rust, a function in the VM; or one `migrate = function(row, from)`. Without one, a component's rows come field by field, by name (what marks already did), and the change is still reported.
+- **A save does not hold the input state.** A loaded game hears the player's hands now.
+- **A game asks; its runtime keeps.** `q:save(name)` captures the world of the tick that asked; the daemon writes `.argus/saves/`, a release build its save location, the page IndexedDB. `q:load(name)` happens after the step that asked, since a world is not replaced in the middle of ticks.
+- **A save from a newer version is refused**, not read field by field, since it would silently lose what the newer game knew.
+- **A load keeps the session's**: the change feed, undo, locks, and the event numbers. It leaves the game as it was when it fails.
+- **Days are the project's**: `[time] day` in argus.toml (question 2 of the plan, decided with Kevin).
+- **Delve's run persistence waits** for a need: nothing in Delve asks to be saved yet.
 
 ## 1. UI tree with layout and text
 

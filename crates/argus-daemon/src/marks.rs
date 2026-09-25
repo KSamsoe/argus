@@ -504,7 +504,7 @@ impl Daemon {
 
     /// Restore a keyframe as a seek does: the world, the scheduler, the
     /// input, the pools, the rooms; its queued events are the log's already.
-    fn put_back(&mut self, sources: &crate::ring::Sources, k: &crate::ring::Keyframe) {
+    pub(super) fn put_back(&mut self, sources: &crate::ring::Sources, k: &crate::ring::Keyframe) {
         sources.restore(k, &mut self.world, &mut self.sched);
         if let (Some(rooms), Some(s)) = (&k.rooms, self.session.as_mut()) {
             s.scene.set_stream_state(rooms);
@@ -857,7 +857,7 @@ impl Daemon {
 
     /// A fresh load of a scene with a seed, for a mark or a replay: the run
     /// before it is another run.
-    fn load_for(&mut self, root: &Path, scene: &str, seed: Option<u64>) -> Result<()> {
+    pub(super) fn load_for(&mut self, root: &Path, scene: &str, seed: Option<u64>) -> Result<()> {
         if self.tuning.is_some() {
             self.end_tuning(true, None)?;
         }
@@ -877,7 +877,7 @@ impl Daemon {
 
     /// After a replay: no sound effects from its lead-in, and the window
     /// does not blend from the world before it.
-    fn after_open(&mut self) {
+    pub(super) fn after_open(&mut self) {
         #[cfg(feature = "audio")]
         if let Some(a) = self.audio.as_mut() {
             a.silence();

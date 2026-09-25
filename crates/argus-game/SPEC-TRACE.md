@@ -16,3 +16,4 @@ The release executable (§15, phase 2 item 7): what a player double-clicks. The 
 
 - The window opens at 1280x720 and can be resized; there is no fullscreen toggle or settings screen yet (the UI tree is phase 3).
 - A report is not sent anywhere from the desktop; the player finds it in the save location.
+- Saves (phase 3 item 0): what a game asks for with `q:save` goes to the save location's `saves/<name>.save`, and `q:load` reads it back; a failure is said on the bottom line, a success is the game's to mention. `--headless N` writes the saves its ticks asked for and lists them.

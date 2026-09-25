@@ -418,6 +418,20 @@ impl UserData for QueryHandle {
     fn add_fields<F: mlua::UserDataFields<Self>>(f: &mut F) {
         f.add_field_method_get("tick", |_, this| Ok(ctx(&this.link)?.tick));
         f.add_field_method_get("time", |_, this| Ok(ctx(&this.link)?.time));
+        // The game's days (`[time] day` in argus.toml; phase 3 item 0):
+        // q.day_length its sim seconds, q.day the whole days since sim time
+        // 0, q.day_time how far into this one (0 to 1).
+        let day = |lua: &Lua| {
+            lua.app_data_ref::<crate::DayLength>()
+                .map_or(86_400.0, |d| d.0)
+        };
+        f.add_field_method_get("day_length", move |lua, _| Ok(day(lua)));
+        f.add_field_method_get("day", move |lua, this| {
+            Ok((ctx(&this.link)?.time / day(lua)).floor() as u64)
+        });
+        f.add_field_method_get("day_time", move |lua, this| {
+            Ok((ctx(&this.link)?.time / day(lua)).fract())
+        });
         f.add_field_method_get("dt", |_, this| Ok(ctx(&this.link)?.dt));
         f.add_field_method_get("name", |_, this| Ok(ctx(&this.link)?.name.to_string()));
     }
@@ -738,6 +752,20 @@ impl UserData for QueryHandle {
                 Ok(())
             },
         );
+        // save("auto") / load("auto"): ask whatever runs the game to save
+        // it, or load a save, between ticks (section 6; phase 3 item 0). A
+        // `save.requested` or `load.requested` event: the save holds the
+        // world at the end of this tick; a load happens after the step. The
+        // daemon keeps saves in .argus/saves/, a release build where the
+        // platform says, the web page in the browser's storage; each
+        // answers with game.saved or game.loaded.
+        for (method, event) in [("save", "save.requested"), ("load", "load.requested")] {
+            m.add_method(method, move |_, this, name: Option<String>| {
+                let name = name.unwrap_or_else(|| "auto".to_string());
+                ctx(&this.link)?.emit(event, vec![("name".to_string(), Value::Str(name))]);
+                Ok(())
+            });
+        }
         m.add_method("rng", |lua, this, ()| {
             lua.create_userdata(RngRef {
                 link: this.link.clone(),

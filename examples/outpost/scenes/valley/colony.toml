@@ -1,0 +1,6 @@
+# The colony: its day and its rules, and the stockpile it eats from. The
+# colonists are runtime entities, founded at the load (sim.colony.found).
+[Colony]
+
+[Stockpile]
+food = 12.0

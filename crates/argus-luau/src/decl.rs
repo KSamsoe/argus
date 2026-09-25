@@ -20,10 +20,150 @@ use std::rc::Rc;
 pub struct ComponentDecl {
     /// The schema, with `source` set to `file:line`.
     pub schema: ComponentSchema,
-    /// The `migrate` function, if declared (used by save migrations, phase 3).
-    pub migrate: Option<RegistryKey>,
+    /// The `migrate` declaration, if any (save migrations, §6).
+    pub migrate: Option<MigrateDecl>,
     /// File it came from.
     pub file: String,
+}
+
+/// How rows saved by older versions of a component come up to this one
+/// (§6 save games; §19: "a declarative rename/default/drop table ... and
+/// the function covers the rest. Probably both, table first").
+///
+/// ```luau
+/// return component "Needs" {
+///   version = 3,
+///   hunger = field.f32 {}, rest = field.f32 {},
+///   migrate = {
+///     [2] = { rename = { food = "hunger" }, drop = { "mood" } },       -- v1 to v2
+///     [3] = function(row) row.rest = 1 - row.hunger; return row end,  -- v2 to v3
+///   },
+/// }
+/// ```
+///
+/// or one function for any older version: `migrate = function(row, from)
+/// ... return row end`.
+pub enum MigrateDecl {
+    /// One function, called with the row (fields by name) and the version
+    /// it was saved at; it returns the row as the live version has it.
+    Whole(RegistryKey),
+    /// A step per version reached, applied in order from the saved one.
+    Steps(Vec<(u32, Step)>),
+}
+
+/// One version's step.
+pub enum Step {
+    /// Data: fields renamed (old, new), given a value when absent, dropped.
+    Table {
+        /// (old name, new name).
+        rename: Vec<(String, String)>,
+        /// Values for fields the row does not have.
+        default: Vec<(String, Value)>,
+        /// Fields removed.
+        drop: Vec<String>,
+    },
+    /// A function of the row, returning it.
+    Function(RegistryKey),
+}
+
+/// A Lua value as a field value, before the field's type is known.
+fn loose_value(v: &LuaValue) -> Option<Value> {
+    Some(match v {
+        LuaValue::Boolean(b) => Value::Bool(*b),
+        LuaValue::Integer(i) => Value::Float(*i as f64),
+        LuaValue::Number(n) => Value::Float(*n),
+        LuaValue::String(s) => Value::Str(s.to_str().ok()?.to_string()),
+        LuaValue::Vector(v) => Value::Vec2(argus_ecs::Vec2::new(v.x(), v.y())),
+        _ => return None,
+    })
+}
+
+/// Parse `migrate = { [v] = step, ... }` for a component at `version`.
+fn parse_steps(
+    lua: &Lua,
+    name: &str,
+    version: u32,
+    t: Table,
+    source: &Option<String>,
+) -> LuaResult<Vec<(u32, Step)>> {
+    let fail = |why: String| {
+        bad(
+            format!("component {name}: migrate {why}"),
+            "migrate = { [2] = { rename = { old = \"new\" }, default = { field = value }, drop = { \"field\" } }, [3] = function(row) ... return row end }: a step per version from 2 to the component's version.",
+            source.clone(),
+        )
+    };
+    let mut steps = Vec::new();
+    for pair in t.pairs::<LuaValue, LuaValue>() {
+        let (k, v) = pair?;
+        let to = match k {
+            LuaValue::Integer(i) => i as i64,
+            LuaValue::Number(n) if n.fract() == 0.0 => n as i64,
+            other => {
+                return Err(fail(format!(
+                    "has a key {} that is not a version",
+                    other.type_name()
+                )))
+            }
+        };
+        if to < 2 || to > version as i64 {
+            return Err(fail(format!(
+                "has a step for version {to}; this is version {version}, so steps are 2 to {version}"
+            )));
+        }
+        let step = match v {
+            LuaValue::Function(f) => Step::Function(lua.create_registry_value(f)?),
+            LuaValue::Table(st) => {
+                let (mut rename, mut default, mut drop) = (Vec::new(), Vec::new(), Vec::new());
+                for pair in st.pairs::<String, LuaValue>() {
+                    let (key, val) = pair?;
+                    let LuaValue::Table(inner) = val else {
+                        return Err(fail(format!("[{to}].{key} is not a table")));
+                    };
+                    match key.as_str() {
+                        "rename" => {
+                            for p in inner.pairs::<String, String>() {
+                                rename.push(p?);
+                            }
+                        }
+                        "default" => {
+                            for p in inner.pairs::<String, LuaValue>() {
+                                let (f, val) = p?;
+                                let v = loose_value(&val).ok_or_else(|| {
+                                    fail(format!("[{to}].default.{f} is a {}", val.type_name()))
+                                })?;
+                                default.push((f, v));
+                            }
+                        }
+                        "drop" => {
+                            for p in inner.sequence_values::<String>() {
+                                drop.push(p?);
+                            }
+                        }
+                        other => {
+                            return Err(fail(format!(
+                                "[{to}] has {other:?}; a step is rename, default, and drop"
+                            )))
+                        }
+                    }
+                }
+                // Pairs come in no order; the file's order does not matter
+                // for these, so make it stable.
+                rename.sort();
+                default.sort_by(|a, b| a.0.cmp(&b.0));
+                drop.sort();
+                Step::Table {
+                    rename,
+                    default,
+                    drop,
+                }
+            }
+            other => return Err(fail(format!("[{to}] is a {}", other.type_name()))),
+        };
+        steps.push((to as u32, step));
+    }
+    steps.sort_by_key(|(v, _)| *v);
+    Ok(steps)
 }
 
 /// A `system "name" { ... }` declaration, before validation against the world.
@@ -277,7 +417,8 @@ pub(crate) fn install_globals(lua: &Lua) -> LuaResult<()> {
                 let mut fields = Vec::new();
                 let mut doc = String::new();
                 let mut version = 1u32;
-                let mut migrate = None;
+                let mut migrate_fn = None;
+                let mut migrate_steps = None;
                 for pair in spec.pairs::<LuaValue, LuaValue>() {
                     let (k, v) = pair?;
                     let LuaValue::String(k) = k else {
@@ -296,21 +437,33 @@ pub(crate) fn install_globals(lua: &Lua) -> LuaResult<()> {
                         ("version", LuaValue::Integer(i)) => version = i as u32,
                         ("version", LuaValue::Number(n)) => version = n as u32,
                         ("migrate", LuaValue::Function(f)) => {
-                            migrate = Some(lua.create_registry_value(f)?)
+                            migrate_fn = Some(lua.create_registry_value(f)?)
                         }
+                        ("migrate", LuaValue::Table(t)) => migrate_steps = Some(t),
                         ("doc" | "version" | "migrate", other) => {
                             return Err(bad(
                                 format!(
                                     "component {name}: {k} has the wrong type ({})",
                                     other.type_name()
                                 ),
-                                "doc is a string, version a number, migrate a function.",
+                                "doc is a string, version a number, migrate a function or a table of steps by version.",
                                 Some(source.clone()),
                             ))
                         }
                         (_, v) => fields.push(parse_field(&name, &k, v, &source)?),
                     }
                 }
+                let migrate = match (migrate_fn, migrate_steps) {
+                    (Some(f), _) => Some(MigrateDecl::Whole(f)),
+                    (None, Some(t)) => Some(MigrateDecl::Steps(parse_steps(
+                        lua,
+                        &name,
+                        version,
+                        t,
+                        &Some(source.clone()),
+                    )?)),
+                    (None, None) => None,
+                };
                 let schema = build_schema(&name, fields, doc, version, &source)?;
                 let file = lua
                     .app_data_ref::<Pending>()

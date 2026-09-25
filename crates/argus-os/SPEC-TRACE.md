@@ -17,5 +17,5 @@ Every statement in the design document (v0.3) that this crate answers: the host 
 
 ## Known limitations, stated so they are decisions
 
-- The browser's file system is read-mostly and lives as long as the page. Writes go to memory; nothing persists. Save games are phase 3.
+- The browser's file system is read-mostly and lives as long as the page. Writes go to memory; nothing persists. Save games (phase 3 item 0) do not go through it: the page keeps them in IndexedDB. `time::unix_secs` stamps a save natively and in the browser.
 - Modification times in the browser are all the Unix epoch, so a hot reload keyed on them never fires there, which is fine for a player.

@@ -37,3 +37,4 @@ Every statement in the design document (v0.3) that constrains the web spike (pha
 - Natively `argus-web` is a library only: as a Windows DLL it would export more symbols than a DLL may hold. `build.sh` asks for the cdylib for wasm.
 - Only Chrome was checked. A browser without wasm's exnref exception handling refuses the module.
 - The page opens audio on the first key or click, as browsers require.
+- Saves (phase 3 item 0, decided with Kevin): `WebPlayer::take_saves`, `take_loads`, and `load`; the page keeps saves in IndexedDB (a database per game, `argus:<game>`, a save per name), so a reload keeps them. Checked in headless Chrome on Outpost: the day's autosave stored, loaded back to its tick, still there after a reload, and a damaged one refused with the game going on.

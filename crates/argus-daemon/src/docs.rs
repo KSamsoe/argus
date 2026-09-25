@@ -170,7 +170,7 @@ pub const TOOLS: &[ToolDoc] = &[
     },
     ToolDoc {
         name: "run",
-        doc: "Advance the simulation: step ticks, run until something happens, take turns, play, pause, or stop. step: that many ticks; until: run until an event, a time, or a tick count; turns: take turns on a discrete clock; play, pause, speed, and stop (back to where play started). With none, where the sim is. Always answers with sim.status after.",
+        doc: "Advance the simulation: step ticks, run until something happens, take turns, play, pause, or stop; load a save first, save the game last. step: that many ticks; until: run until an event, a time, or a tick count; turns: take turns on a discrete clock; play, pause, speed, and stop (back to where play started); load and save: a save game by name, in .argus/saves/, through the migrations its components declare. With none, where the sim is. Always answers with sim.status after.",
         params: &[
             opt("step", INTEGER, "ticks to run"),
             opt("until", OBJECT, "{event: name} | {time: seconds} | {ticks: n}; max_ticks: n (default 100000)"),
@@ -179,8 +179,10 @@ pub const TOOLS: &[ToolDoc] = &[
             opt("pause", BOOLEAN, "pause"),
             opt("stop", BOOLEAN, "stop and go back to the frame play started from"),
             opt("speed", NUMBER, "ticks per real-time frame; 0 pauses"),
+            opt("load", STRING, "a save's name, loaded before anything else"),
+            opt("save", STRING, "save the game under this name, after everything else"),
         ],
-        calls: &["sim.stop", "sim.play", "sim.pause", "sim.speed", "sim.step", "sim.run_until", "sim.advance", "sim.status"],
+        calls: &["sim.load", "sim.stop", "sim.play", "sim.pause", "sim.speed", "sim.step", "sim.run_until", "sim.advance", "sim.save", "sim.status"],
     },
     ToolDoc {
         name: "seek",
@@ -852,6 +854,24 @@ pub const METHODS: &[MethodDoc] = &[
         doc: "Take a keyframe now, kept like a change's, and report the ring: keyframes every `every` ticks, all of them for the last five minutes of sim time, then one a minute to an hour, then one per ten minutes, under a byte budget ([ring] every and budget_mb in argus.toml).",
         params: &[],
         returns: "{keyframes, bytes, budget, every, oldest, newest, barriers, end, floor, tick}",
+    },
+    MethodDoc {
+        name: "sim.save",
+        doc: "Save the game now (section 6): the world, the clocks and random streams, the particles, and the rooms loaded, with each component's schema version, so a later build loads it through the migrations the components declare. Kept in .argus/saves/<name>.save, or at path. A script asks with q:save(name), saved at the end of the tick that asked. Emits game.saved.",
+        params: &[
+            opt("name", STRING, "default \"save\""),
+            opt("path", STRING, "a file instead, absolute or project-relative (a test's fixture)"),
+        ],
+        returns: "{name, path, tick, bytes, ms}",
+    },
+    MethodDoc {
+        name: "sim.load",
+        doc: "Load a save (section 6): its scene loaded fresh with its seed, then its world, clocks, random streams, particles, and rooms put back. Components saved at an older version come up through their declared migrations (a component's migrate: a table of rename, default, and drop steps by version, or a function), else field by field by name; each is reported as a component.migrated event. A save from a newer version of the game is refused. The change feed, undo, and locks stay. A script asks with q:load(name), done after the step that asked. Emits game.loaded.",
+        params: &[
+            opt("name", STRING, "default \"save\""),
+            opt("path", STRING, "a file instead, absolute or project-relative"),
+        ],
+        returns: "{name, scene, tick, saved: its identity, entities, migrated: [{component, from, to, entities, declared, left}], remapped, dropped, missing_effects, ms}",
     },
     MethodDoc {
         name: "mark.drop",

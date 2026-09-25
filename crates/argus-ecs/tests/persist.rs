@@ -192,3 +192,159 @@ fn damaged_bytes_are_an_error_and_leave_the_world_alone() {
         .message
         .contains("after the end"));
 }
+
+/// Needs as a game's first version declares it, and its second: `food`
+/// renamed `hunger` and made a float, `rest` added, `mood` dropped.
+fn needs(w: &mut World, version: u32) {
+    let b = if version == 1 {
+        SchemaBuilder::new("Needs")
+            .field("food", FieldType::U8)
+            .field("mood", FieldType::Str)
+    } else {
+        SchemaBuilder::new("Needs")
+            .version(2)
+            .field("hunger", FieldType::F32)
+            .field("rest", FieldType::F32)
+            .field("who", FieldType::Str)
+    };
+    w.register_schema(b.build().unwrap()).unwrap();
+}
+
+/// A migration as a script host would run one: Needs v1 → v2.
+struct NeedsV2 {
+    calls: usize,
+}
+
+impl argus_ecs::Migrate for NeedsV2 {
+    fn declares(&self, component: &str) -> bool {
+        component == "Needs"
+    }
+    fn migrate(
+        &mut self,
+        live: &argus_ecs::ComponentSchema,
+        from: u32,
+        row: &mut argus_ecs::Row,
+    ) -> argus_ecs::Result<()> {
+        assert_eq!((live.name.as_str(), live.version, from), ("Needs", 2, 1));
+        self.calls += 1;
+        let food = row.iter().find(|(n, _)| n == "food").unwrap().1.clone();
+        let Value::UInt(food) = food else {
+            panic!("food is a u8: {food:?}")
+        };
+        let mood = row.iter().find(|(n, _)| n == "mood").unwrap().1.clone();
+        *row = vec![
+            ("hunger".into(), Value::Float(food as f64 / 100.0)),
+            ("who".into(), mood),
+            ("gone".into(), Value::Bool(true)),
+        ];
+        Ok(())
+    }
+}
+
+/// §6 save games (phase 3 item 0): a world saved with Needs v1 read by
+/// one with Needs v2, through its migration: every row brought up, the
+/// fields it did not set at their defaults, and the whole of it reported
+/// ("Health migrated v2→v3 for 1,204 entities").
+#[test]
+fn rows_saved_at_an_older_version_are_migrated_and_reported() {
+    let mut a = World::new();
+    needs(&mut a, 1);
+    let mut colonists = Vec::new();
+    for i in 0..5u64 {
+        let c = a.spawn();
+        a.insert_by_name(c, "Needs").unwrap();
+        a.set_field(c, "Needs.food", Value::UInt(i * 20)).unwrap();
+        a.set_field(c, "Needs.mood", format!("colonist {i}"))
+            .unwrap();
+        colonists.push(c);
+    }
+    let bytes = a.encode_state();
+
+    let mut b = World::new();
+    needs(&mut b, 2);
+    let mut m = NeedsV2 { calls: 0 };
+    let report = b.decode_state_with(&bytes, Some(&mut m)).unwrap();
+    assert_eq!(m.calls, 5);
+    assert_eq!(
+        report.migrated,
+        vec![argus_ecs::Migrated {
+            component: "Needs".into(),
+            from: 1,
+            to: 2,
+            rows: 5,
+            declared: true,
+            left: vec!["gone".into()],
+        }]
+    );
+    assert!(report.remapped.is_empty(), "{report:?}");
+    for (i, c) in colonists.iter().enumerate() {
+        assert_eq!(
+            b.get_field(*c, "Needs.hunger").unwrap(),
+            Value::Float((i as f32 * 0.2) as f64)
+        );
+        assert_eq!(b.get_field(*c, "Needs.rest").unwrap(), Value::Float(0.0));
+        assert_eq!(
+            b.get_field(*c, "Needs.who").unwrap(),
+            Value::Str(format!("colonist {i}"))
+        );
+    }
+
+    // No migration declared: field by field, by name, and still reported,
+    // with what nothing took.
+    let mut c = World::new();
+    needs(&mut c, 2);
+    let report = c.decode_state(&bytes).unwrap();
+    let m = &report.migrated[0];
+    assert_eq!((m.from, m.to, m.rows, m.declared), (1, 2, 5, false));
+    assert_eq!(m.left, vec!["food".to_string(), "mood".to_string()]);
+    assert_eq!(
+        c.get_field(colonists[3], "Needs.hunger").unwrap(),
+        Value::Float(0.0)
+    );
+
+    // A world saved by a newer version says so.
+    let mut newer = World::new();
+    needs(&mut newer, 2);
+    let c0 = newer.spawn();
+    newer.insert_by_name(c0, "Needs").unwrap();
+    let mut old = World::new();
+    needs(&mut old, 1);
+    let report = old.decode_state(&newer.encode_state()).unwrap();
+    assert_eq!(report.newer, vec![("Needs".to_string(), 2, 1)]);
+}
+
+/// A migration that returns a value the live field cannot hold names the
+/// component, the versions, and the entity.
+#[test]
+fn a_migration_that_returns_the_wrong_type_says_where() {
+    struct Bad;
+    impl argus_ecs::Migrate for Bad {
+        fn declares(&self, _: &str) -> bool {
+            true
+        }
+        fn migrate(
+            &mut self,
+            _: &argus_ecs::ComponentSchema,
+            _: u32,
+            row: &mut argus_ecs::Row,
+        ) -> argus_ecs::Result<()> {
+            *row = vec![("hunger".into(), Value::Str("lots".into()))];
+            Ok(())
+        }
+    }
+    let mut a = World::new();
+    needs(&mut a, 1);
+    let c = a.spawn();
+    a.insert_by_name(c, "Needs").unwrap();
+    let bytes = a.encode_state();
+    let mut b = World::new();
+    needs(&mut b, 2);
+    let e = b.decode_state_with(&bytes, Some(&mut Bad)).unwrap_err();
+    assert_eq!(e.code, codes::BAD_STATE);
+    assert!(
+        e.message
+            .starts_with(&format!("Needs v1→v2 on {c}: hunger: expected a f32 value")),
+        "{}",
+        e.message
+    );
+}

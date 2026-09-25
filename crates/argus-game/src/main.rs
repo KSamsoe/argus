@@ -144,9 +144,17 @@ fn run(args: Args) -> Result<(), String> {
     let save = argus_player::save::save_dir(&p.name);
     if let Some(n) = args.headless {
         p.step(n).map_err(|e| e.message)?;
+        let mut saves = Vec::new();
+        for (name, bytes) in p.take_saves(CODE) {
+            saves.push(
+                write_save(save.as_deref(), &name, &bytes)?
+                    .display()
+                    .to_string(),
+            );
+        }
         println!(
             "{}",
-            json!({ "packs": packs, "status": p.status(), "code": CODE, "save": save })
+            json!({ "packs": packs, "status": p.status(), "code": CODE, "save": save, "saves": saves })
         );
         return Ok(());
     }
@@ -267,6 +275,7 @@ impl Game {
             self.owed -= n;
             if n > 0.0 {
                 self.p.step(n as u64).map_err(|e| e.message)?;
+                self.saves_and_loads();
             }
         }
         let _ = self.p.sched.present(&mut self.p.world);
@@ -297,6 +306,28 @@ impl Game {
                 }
             }
             _ => {}
+        }
+    }
+
+    /// The saves the game asked for (`q:save`), kept under the save
+    /// location's `saves/`, and the loads it asked for (`q:load`), done. A
+    /// failure is said on the bottom line; a save that worked is the game's
+    /// to mention.
+    fn saves_and_loads(&mut self) {
+        for (name, bytes) in self.p.take_saves(CODE) {
+            if let Err(e) = write_save(self.save.as_deref(), &name, &bytes) {
+                self.toast = Some((format!("The game could not be saved: {e}"), Instant::now()));
+            }
+        }
+        for name in self.p.take_loads() {
+            let r = read_save(self.save.as_deref(), &name)
+                .and_then(|bytes| self.p.load(&bytes).map_err(|e| e.message));
+            if let Err(e) = r {
+                self.toast = Some((
+                    format!("The save {name:?} could not be loaded: {e}"),
+                    Instant::now(),
+                ));
+            }
         }
     }
 
@@ -368,4 +399,27 @@ impl Game {
         }
         self.bar = key;
     }
+}
+
+/// A save file under the save location's `saves/` (§15: "a save location
+/// per platform convention"; phase 3 item 0).
+fn save_file(save: Option<&Path>, name: &str) -> Result<PathBuf, String> {
+    let dir = save
+        .ok_or("this system has no place for saves")?
+        .join("saves");
+    Ok(dir.join(argus_player::savegame::file_name(name)))
+}
+
+fn write_save(save: Option<&Path>, name: &str, bytes: &[u8]) -> Result<PathBuf, String> {
+    let path = save_file(save, name)?;
+    if let Some(d) = path.parent() {
+        std::fs::create_dir_all(d).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
+    Ok(path)
+}
+
+fn read_save(save: Option<&Path>, name: &str) -> Result<Vec<u8>, String> {
+    let path = save_file(save, name)?;
+    std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))
 }

@@ -23,6 +23,7 @@ mod player;
 pub mod recorder;
 pub mod replay;
 pub mod save;
+pub mod savegame;
 pub mod sha256;
 
 pub use assemble::{assemble, Assembly, Options};

@@ -42,8 +42,10 @@ end
 
 function seconds(n) return n end
 function minutes(n) return n * 60 end
-function hours(n) return n * 3600 end
-function days(n) return n * 86400 end
+-- A day is the project's (`[time] day` in argus.toml, 86,400 sim seconds
+-- when it says nothing); an hour is a 24th of one.
+function hours(n) return n * (__day_seconds or 86400) / 24 end
+function days(n) return n * (__day_seconds or 86400) end
 
 -- ------------------------------------------------------------- helpers
 

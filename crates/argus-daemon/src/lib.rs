@@ -65,6 +65,9 @@ pub mod codes {
     pub const NO_PROPOSAL: u32 = 4712;
     /// A proposal that is not pending, does not apply, or cannot be tried here.
     pub const BAD_PROPOSAL: u32 = 4713;
+    /// A save that is missing, unreadable, from a newer version of the
+    /// game, or whose scene does not load (phase 3 item 0).
+    pub const BAD_SAVE: u32 = 4714;
     /// The renderer's: this machine has no graphics adapter at all, not
     /// even a software one (argus-render's 5001, here for clients that
     /// build without the renderer).

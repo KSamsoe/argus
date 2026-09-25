@@ -83,7 +83,7 @@ fn a_scenario_runs_headless_and_every_expectation_kind_reports() {
     common::write(t.path(), "tests/sweep.luau", SWEEP);
     common::write(t.path(), "tests/delve.luau", DISCRETE);
 
-    let l = list(t.path()).unwrap();
+    let l = list(t.path(), None).unwrap();
     assert_eq!(l["total"], 3);
     assert_eq!(l["rows"][0]["file"], "tests/delve.luau");
     assert_eq!(l["rows"][1]["seeds"], json!({ "from": 1, "to": 5 }));
@@ -471,4 +471,46 @@ return scenario "the script stops" {
     .unwrap();
     assert!(r["scenarios"][0]["seeds"][0]["replay"].is_null());
     assert!(!t.path().join(".argus/replays").exists());
+}
+
+/// Phase 3 (decided with Kevin): `days()` and `hours()` count in the
+/// project's day (`[time] day`), 86,400 sim seconds when it says nothing.
+#[test]
+fn days_and_hours_are_the_projects() {
+    let (t, mut d) = fixture("runner-days");
+    common::write(
+        t.path(),
+        "tests/days.luau",
+        r#"return scenario "a day" {
+  scene = "arena", seed = 7,
+  run = function(t)
+    t:log(string.format("%g %g", days(1), hours(6)))
+    t:step(1)
+    t.expect:field("@player", "Health.cur"):gte(0)
+  end,
+}
+"#,
+    );
+    let run_with = |d: &mut Local, day: Option<f64>| {
+        run(
+            d,
+            &Options {
+                day_seconds: day,
+                ..Options::default()
+            },
+        )
+        .unwrap()
+    };
+    let r = run_with(&mut d, Some(60.0));
+    assert_eq!(
+        r["ok"],
+        true,
+        "{}",
+        serde_json::to_string_pretty(&r).unwrap()
+    );
+    let log = r["scenarios"][0]["seeds"][0]["log"].to_string();
+    assert!(log.contains("60 15"), "{log}");
+    let r = run_with(&mut d, None);
+    let log = r["scenarios"][0]["seeds"][0]["log"].to_string();
+    assert!(log.contains("86400 21600"), "{log}");
 }

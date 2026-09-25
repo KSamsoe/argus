@@ -127,7 +127,10 @@ pub fn assemble(
     argus_tween::install(&mut world, &mut sched)?;
     let particles = Rc::new(RefCell::new(argus_particles::ParticleStore::default()));
     argus_particles::install(&mut world, &mut sched, particles.clone())?;
-    let mut host = ScriptHost::new(ScriptConfig::default())?;
+    let mut host = ScriptHost::new(ScriptConfig {
+        day_seconds: cfg.day_seconds,
+        ..ScriptConfig::default()
+    })?;
     host.load_project(&mut world, &mut sched, root)?;
     let defs: Vec<DefSchema> = host
         .defs()

@@ -48,7 +48,7 @@ pub use error::{codes, ArgusError, Result};
 pub use event::{Event, EventRecord};
 pub use hierarchy::{propagate, GlobalTransform, Parent, Transform};
 pub use intern::{Interner, StrId};
-pub use persist::StateReport;
+pub use persist::{Migrate, Migrated, Row, StateReport};
 pub use query::{Access, ArchetypeView, DynColumn, Fetch, Query};
 pub use schema::{
     Component, ComponentId, ComponentKind, ComponentSchema, DefRef, FieldSchema, FieldValue,

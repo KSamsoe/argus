@@ -37,6 +37,9 @@ pub struct Options {
     pub name: Option<String>,
     /// Run only scenarios from this file (project-relative).
     pub file: Option<String>,
+    /// Sim seconds in the project's day (`[time] day`), which `days()`
+    /// and `hours()` count in; `None`: 86,400.
+    pub day_seconds: Option<f64>,
     /// Seed sweep override: `"7"`, `"1..50"`, or `"1,2,9"`.
     pub seeds: Option<String>,
     /// Rewrite goldens instead of comparing.
@@ -131,8 +134,13 @@ fn arrays_to_objects_where_empty(v: Json) -> Json {
 
 /// Build the VM with the harness loaded and every scenario file executed
 /// (registering its scenarios). Load errors are collected, not fatal.
-fn prepare(root: &Path) -> Result<(Lua, Table, Vec<Json>), String> {
+fn prepare(root: &Path, day_seconds: Option<f64>) -> Result<(Lua, Table, Vec<Json>), String> {
     let lua = Lua::new();
+    if let Some(d) = day_seconds {
+        lua.globals()
+            .set("__day_seconds", d)
+            .map_err(|e| e.to_string())?;
+    }
     let harness_fns = lua.create_table().map_err(|e| e.to_string())?;
     let goldens = root.join("tests").join("goldens");
     let g1 = goldens.clone();
@@ -217,9 +225,9 @@ fn prepare(root: &Path) -> Result<(Lua, Table, Vec<Json>), String> {
 }
 
 /// `test.list`: the scenarios under `tests/` with name, file, scene, and
-/// seeds, without running anything.
-pub fn list(root: &Path) -> Result<Json, String> {
-    let (lua, harness, load_errors) = prepare(root)?;
+/// seeds, without running anything. `day_seconds` as in [`Options`].
+pub fn list(root: &Path, day_seconds: Option<f64>) -> Result<Json, String> {
+    let (lua, harness, load_errors) = prepare(root, day_seconds)?;
     let f: Function = harness.get("list").map_err(|e| e.to_string())?;
     let v: Value = f.call(()).map_err(|e| e.to_string())?;
     let rows = from_lua(&lua, v).map_err(|e| e.to_string())?;
@@ -233,7 +241,7 @@ pub fn list(root: &Path) -> Result<Json, String> {
 /// `test.run`: run the selected scenarios over their seeds and report.
 pub fn run(driver: &mut dyn Driver, opts: &Options) -> Result<Json, String> {
     let root = driver.root();
-    let (lua, harness, load_errors) = prepare(&root)?;
+    let (lua, harness, load_errors) = prepare(&root, opts.day_seconds)?;
     let seeds = match &opts.seeds {
         Some(s) => Some(parse_seeds(s)?),
         None => None,

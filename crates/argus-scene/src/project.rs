@@ -21,7 +21,7 @@ use argus_sim::Clock;
 use std::path::{Path, PathBuf};
 
 /// Contents of `argus.toml`.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ProjectConfig {
     /// Project name.
     pub name: String,
@@ -40,7 +40,15 @@ pub struct ProjectConfig {
     /// `[marks] key`: the key that drops a mark while playing, by the name
     /// the window sends (`F8`, `Backquote`, `KeyM`). `None`: F8 (§10).
     pub mark_key: Option<String>,
+    /// `[time] day`: sim seconds in one of the game's days, which the
+    /// harness's `days()` and `hours()` count in (phase 3, decided with
+    /// Kevin: Outpost's day is 60 s, so §9's 30-day scenario fits §17's
+    /// minute a seed). 86,400 when the project does not say.
+    pub day_seconds: f64,
 }
+
+/// A day, when a project does not say how long its days are.
+pub const DAY_SECONDS: f64 = 86_400.0;
 
 impl ProjectConfig {
     /// Read `argus.toml` under `root` without opening the rest of the project.
@@ -118,6 +126,22 @@ impl ProjectConfig {
                 }
             },
         };
+        let day_seconds =
+            match t
+                .get("time")
+                .and_then(|i| i.as_table_like())
+                .and_then(|m| m.get("day"))
+            {
+                None => DAY_SECONDS,
+                Some(i) => match i.as_float().or_else(|| i.as_integer().map(|n| n as f64)) {
+                    Some(d) if d > 0.0 && d.is_finite() => d,
+                    _ => return Err(ArgusError::new(
+                        codes::BAD_SCENE,
+                        "argus.toml [time] day must be a positive number of sim seconds, like 60",
+                    )
+                    .at(Some(at("time")))),
+                },
+            };
         Ok(ProjectConfig {
             name,
             clock,
@@ -126,6 +150,7 @@ impl ProjectConfig {
             ring_every,
             ring_budget_mb,
             mark_key,
+            day_seconds,
         })
     }
 
@@ -217,6 +242,7 @@ impl Project {
                 ring_every: None,
                 ring_budget_mb: None,
                 mark_key: None,
+                day_seconds: DAY_SECONDS,
             };
             argus_os::fs::write(&cfg, c.to_toml()).map_err(|e| {
                 ArgusError::new(codes::MISSING_FILE, format!("cannot write argus.toml: {e}"))

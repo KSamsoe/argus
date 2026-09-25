@@ -1,0 +1,10 @@
+name = "outpost"
+clock = "continuous@60"
+default_scene = "valley"
+plugins = []
+
+# A day is a minute of sim time (decided with Kevin, phase 3): §9's 30-day
+# starvation scenario is 108,000 ticks, under a minute a seed at §17's
+# 2,000 ticks a second.
+[time]
+day = 60

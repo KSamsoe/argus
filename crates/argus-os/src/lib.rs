@@ -18,6 +18,19 @@ pub mod time {
     pub use std::time::Instant;
     #[cfg(target_arch = "wasm32")]
     pub use web_time::Instant;
+
+    /// Seconds since 1970, for stamping a save or a report with when it
+    /// was made; 0 where the clock is not readable. Never gameplay's.
+    pub fn unix_secs() -> u64 {
+        #[cfg(not(target_arch = "wasm32"))]
+        use std::time::{SystemTime, UNIX_EPOCH};
+        #[cfg(target_arch = "wasm32")]
+        use web_time::{SystemTime, UNIX_EPOCH};
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0)
+    }
 }
 
 /// Files.

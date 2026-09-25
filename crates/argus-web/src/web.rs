@@ -188,6 +188,39 @@ impl WebPlayer {
             .to_string()
     }
 
+    /// The saves the game asked for since the last call (`q:save`), as
+    /// `[name, bytes]` pairs, which the page keeps in the browser's storage
+    /// (IndexedDB; phase 3 item 0, decided with Kevin).
+    pub fn take_saves(&mut self) -> js_sys::Array {
+        let out = js_sys::Array::new();
+        for (name, bytes) in self
+            .p
+            .take_saves(option_env!("ARGUS_CODE").unwrap_or("none"))
+        {
+            let pair = js_sys::Array::new();
+            pair.push(&JsValue::from_str(&name));
+            pair.push(&js_sys::Uint8Array::from(bytes.as_slice()));
+            out.push(&pair);
+        }
+        out
+    }
+
+    /// The saves the game asked to load since the last call (`q:load`), by
+    /// name; the page finds each in its storage and hands it to `load`.
+    pub fn take_loads(&mut self) -> js_sys::Array {
+        self.p
+            .take_loads()
+            .into_iter()
+            .map(|n| JsValue::from_str(&n))
+            .collect()
+    }
+
+    /// Load a save's bytes; what was migrated, as JSON. On an error the game
+    /// goes on as it was.
+    pub fn load(&mut self, bytes: &[u8]) -> Result<String, JsValue> {
+        self.p.load(bytes).map(|r| r.to_string()).map_err(js)
+    }
+
     /// Use a renderer made by [`open_renderer`]; the pack's sprites load into it.
     pub fn use_renderer(&mut self, r: WebRenderer) -> Result<(), JsValue> {
         let mut renderer = r.renderer;

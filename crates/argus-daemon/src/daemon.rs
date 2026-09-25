@@ -25,6 +25,8 @@ use std::rc::Rc;
 mod marks;
 #[path = "proposals.rs"]
 mod proposals;
+#[path = "saves.rs"]
+mod saves;
 #[path = "tuning.rs"]
 mod tuning;
 
@@ -71,6 +73,9 @@ struct Session {
     play_from: Option<u64>,
     /// The key that drops a mark (`[marks] key`, F8 by default).
     mark_key: String,
+    /// Keyframes of the ticks that asked for a save (`q:save`), by the
+    /// save's name, written once the step is over (phase 3 item 0).
+    saves: Rc<RefCell<Vec<(String, crate::ring::Keyframe)>>>,
 }
 
 #[derive(Default)]
@@ -165,6 +170,8 @@ pub struct Daemon {
     toast: Option<(String, std::time::Instant)>,
     /// The proposal being tried, A/B by feel (phase 2 item 4).
     trial: Option<proposals::Trial>,
+    /// A save a tick asked to load (`q:load`), done after the step.
+    load_request: Option<String>,
     /// A trial's parked world is catching up: no sound, no notifications.
     backstage: bool,
     /// The tuning session open, if any (phase 2 item 5).
@@ -217,6 +224,7 @@ impl Daemon {
             mark_prompt: None,
             toast: None,
             trial: None,
+            load_request: None,
             backstage: false,
             tuning: None,
             tune_committing: false,
@@ -498,6 +506,8 @@ impl Daemon {
             "sim.seek" => self.sim_seek(params),
             "sim.fork" => self.sim_fork(params),
             "sim.snapshot" => self.sim_snapshot(params),
+            "sim.save" => self.sim_save(params),
+            "sim.load" => self.sim_load(params),
             "mark.drop" => self.mark_drop(params),
             "mark.list" => self.mark_list(params),
             "mark.get" => self.mark_get(params),
@@ -585,7 +595,9 @@ impl Daemon {
             "render.status" => Ok(self.render_status()),
             "test.list" => {
                 let root = self.require_session()?.root.clone();
-                argus_test::list(&root).map_err(|e| ArgusError::new(codes::TEST_RUNNER, e))
+                let day = ProjectConfig::load(&root)?.day_seconds;
+                argus_test::list(&root, Some(day))
+                    .map_err(|e| ArgusError::new(codes::TEST_RUNNER, e))
             }
             "test.run" => self.test_run(params),
             other => Err(ArgusError::new(
@@ -878,6 +890,7 @@ impl Daemon {
             sources,
             play_from: None,
             mark_key: cfg.mark_key.clone().unwrap_or_else(|| "F8".to_string()),
+            saves: Rc::new(RefCell::new(Vec::new())),
             root,
             project,
             scene,
@@ -3295,7 +3308,7 @@ impl Daemon {
         let Some(ses) = &self.session else {
             return;
         };
-        let (ring, sources) = (ses.ring.clone(), ses.sources.clone());
+        let (ring, sources, saves) = (ses.ring.clone(), ses.sources.clone(), ses.saves.clone());
         let k = sources.capture(&self.world, &self.sched, true);
         {
             let mut r = ring.borrow_mut();
@@ -3310,6 +3323,7 @@ impl Daemon {
                 let k = sources.capture(world, sched, false);
                 r.push(k);
             }
+            argus_player::savegame::requested(world, sched, &sources, &mut saves.borrow_mut());
         }));
     }
 
@@ -3392,6 +3406,7 @@ impl Daemon {
         self.pump_events();
         self.from_ticks = false;
         self.events.through = self.events.through.max(self.world.frame());
+        self.answer_save_requests();
     }
 
     /// Move the world's pending events into the log and notify subscribers.
@@ -3449,6 +3464,11 @@ impl Daemon {
             }
         }
         for rec in records {
+            if let Event::Game { name, fields } = &rec.event {
+                if name == "load.requested" && self.from_ticks && !self.backstage {
+                    self.load_request = Some(argus_player::savegame::request_name(fields));
+                }
+            }
             let seq = self.events.next_seq;
             self.events.next_seq += 1;
             let row = event_json(&self.world, seq, &rec);
@@ -4591,7 +4611,9 @@ impl Daemon {
             let ses = self.require_session()?;
             (ses.scene_name.clone(), ses.seed)
         };
+        let day = ProjectConfig::load(&self.require_session()?.root)?.day_seconds;
         let opts = argus_test::Options {
+            day_seconds: Some(day),
             name: json::opt_str(params, "name")?.map(str::to_string),
             file: json::opt_str(params, "file")?.map(str::to_string),
             seeds: match params.get("seeds") {

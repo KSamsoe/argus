@@ -135,6 +135,9 @@ pub fn run(c: &mut dyn Caller, name: &str, args: &Json) -> Result<Json, Json> {
                 did.push(m.to_string());
                 Ok(())
             };
+            if let Some(name) = args.get("load").and_then(Json::as_str) {
+                step(c, "sim.load", json!({ "name": name }))?;
+            }
             if flag(args, "stop") {
                 step(c, "sim.stop", json!({}))?;
             }
@@ -158,6 +161,9 @@ pub fn run(c: &mut dyn Caller, name: &str, args: &Json) -> Result<Json, Json> {
             }
             if let Some(n) = args.get("turns").filter(|v| !v.is_null()) {
                 step(c, "sim.advance", json!({ "n": n }))?;
+            }
+            if let Some(name) = args.get("save").and_then(Json::as_str) {
+                step(c, "sim.save", json!({ "name": name }))?;
             }
             let status = c.call("sim.status", json!({}))?;
             Ok(json!({ "did": did, "result": result, "status": status }))

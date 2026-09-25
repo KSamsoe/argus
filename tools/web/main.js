@@ -1,6 +1,6 @@
 // The page around the web player: load the build's packs, make a renderer
-// for the canvas, feed it keys, run a frame per animation frame, and send
-// reports.
+// for the canvas, feed it keys, run a frame per animation frame, send
+// reports, and keep the game's saves.
 //
 // Query parameters: scene, seed; lang (a language pack); webgl (force
 // WebGL2); paused (draw but do not advance: how the headless checks step
@@ -51,9 +51,50 @@ async function send(bytes) {
   }
 }
 
+// Saves the game asks for (q:save) live in the browser's storage, so a
+// reload keeps them; a load it asks for (q:load) finds one there (phase 3
+// item 0). One IndexedDB database per game, a save per name.
+function saveStore(game) {
+  const opened = new Promise((ok, fail) => {
+    const r = indexedDB.open(`argus:${game}`, 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("saves");
+    r.onsuccess = () => ok(r.result);
+    r.onerror = () => fail(r.error);
+  });
+  const use = async (mode, f) => {
+    const db = await opened;
+    return new Promise((ok, fail) => {
+      const req = f(db.transaction("saves", mode).objectStore("saves"));
+      req.onsuccess = () => ok(req.result);
+      req.onerror = () => fail(req.error);
+    });
+  };
+  return {
+    put: (name, bytes) => use("readwrite", (s) => s.put(bytes, name)),
+    get: (name) => use("readonly", (s) => s.get(name)),
+    names: () => use("readonly", (s) => s.getAllKeys()),
+  };
+}
+
 try {
   await init();
   const player = await loadPlayer();
+  const store = saveStore(JSON.parse(player.status()).game);
+  // After a frame: keep the saves it asked for, and do the loads.
+  const savesAndLoads = () => {
+    for (const [name, bytes] of player.take_saves()) {
+      store.put(name, bytes).catch((e) => (said.textContent = `The game could not be saved: ${e}`));
+    }
+    for (const name of player.take_loads()) {
+      store
+        .get(name)
+        .then((bytes) => {
+          if (!bytes) throw new Error(`there is no save called ${name}`);
+          player.load(bytes);
+        })
+        .catch((e) => (said.textContent = `The save could not be loaded: ${e.message ?? e}`));
+    }
+  };
   player.use_renderer(await open_renderer(canvas, q.has("webgl")));
   let run = !q.has("paused");
 
@@ -114,12 +155,13 @@ try {
   canvas.focus();
 
   // What the headless checks reach for.
-  window.argus = { player, setRunning: (r) => (run = r), report: (n) => player.report(n), send };
+  window.argus = { player, setRunning: (r) => (run = r), report: (n) => player.report(n), send, store, savesAndLoads };
 
   let n = 0;
   const frame = (t) => {
     try {
       player.frame(t, run);
+      savesAndLoads();
     } catch (e) {
       status.textContent = "Stopped: " + e;
       return;

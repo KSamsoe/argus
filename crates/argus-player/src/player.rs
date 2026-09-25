@@ -42,7 +42,13 @@ pub struct Player {
     pub sources: Sources,
     /// The bounded recorder, once [`Player::record`] started it.
     pub recorder: Option<crate::recorder::Recorder>,
-    _host: ScriptHost,
+    host: ScriptHost,
+    /// Keyframes of the ticks that asked for a save (`q:save`), by name,
+    /// until [`Player::take_saves`] (phase 3 item 0).
+    saves: Rc<RefCell<Vec<(String, crate::keyframe::Keyframe)>>>,
+    /// Saves the game asked to load (`q:load`), until
+    /// [`Player::take_loads`].
+    loads: Vec<String>,
     /// Events seen, and sounds the mixer answered.
     pub events: u64,
     /// `sound.played` answers so far.
@@ -101,14 +107,78 @@ impl Player {
             audio: a.audio.and_then(|r| r.ok()),
             sources,
             recorder: None,
-            _host: a.host,
+            host: a.host,
+            saves: Rc::new(RefCell::new(Vec::new())),
+            loads: Vec::new(),
             events: 0,
             sounds: 0,
             events_digest: 0xcbf29ce484222325,
         };
+        let (saves, sources) = (p.saves.clone(), p.sources.clone());
+        p.sched.on_tick_end(Box::new(move |world, sched| {
+            crate::savegame::requested(world, sched, &sources, &mut saves.borrow_mut());
+        }));
         p.sched.run_load(&mut p.world)?;
         p.pump();
         Ok(p)
+    }
+
+    /// The saves the game asked for since the last call (`q:save(name)`),
+    /// as save files by name, each the world of the tick that asked. The
+    /// caller keeps them: a release build where the platform says, the web
+    /// page in the browser's storage. `code` is the build's.
+    pub fn take_saves(&mut self, code: &str) -> Vec<(String, Vec<u8>)> {
+        let pending = std::mem::take(&mut *self.saves.borrow_mut());
+        pending
+            .into_iter()
+            .map(|(name, k)| {
+                let meta = json!({
+                    "game": self.name,
+                    "scene": self.scene,
+                    "seed": self.seed,
+                    "code": code,
+                    "clock": self.sched.driving().to_string(),
+                    "tick": k.tick,
+                    "time": k.time,
+                    "name": name,
+                    "saved_at": argus_os::time::unix_secs(),
+                });
+                let bytes = crate::savegame::encode(&meta, &k);
+                (name, bytes)
+            })
+            .collect()
+    }
+
+    /// The saves the game asked to load since the last call
+    /// (`q:load(name)`); the caller finds each and hands it to
+    /// [`Player::load`].
+    pub fn take_loads(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.loads)
+    }
+
+    /// Load a save (§6): the save's scene opened fresh with its seed, then
+    /// its world, clocks, random streams, particles, and rooms put back,
+    /// components of older versions through their migrations. The mixer
+    /// and the recorder carry over. On an error nothing changed. Returns
+    /// what was migrated.
+    pub fn load(&mut self, bytes: &[u8]) -> Result<Json> {
+        let file = crate::savegame::decode(bytes)?;
+        let mut next = Player::open(&self.root, Some(file.scene()), file.seed())?;
+        let back = {
+            let store = next.particles.borrow();
+            file.read_into(&next.world, &store, Some(&mut next.host))?
+        };
+        next.sources
+            .restore(&back.keyframe, &mut next.world, &mut next.sched);
+        let _ = next.world.drain_events();
+        next.audio = self.audio.take().or(next.audio);
+        if self.recorder.is_some() {
+            next.record();
+        }
+        next.events = self.events;
+        next.sounds = self.sounds;
+        *self = next;
+        Ok(crate::savegame::report_json(&back))
     }
 
     /// Run `n` ticks of the driving clock.
@@ -298,6 +368,11 @@ impl Player {
     fn pump(&mut self) {
         let drained = self.world.drain_events();
         for rec in &drained {
+            if let Event::Game { name, fields } = &rec.event {
+                if name == "load.requested" {
+                    self.loads.push(crate::savegame::request_name(fields));
+                }
+            }
             self.events += 1;
             let key = format!("{}|{:?}", rec.frame, rec.event);
             fnv(&mut self.events_digest, key.as_bytes());
@@ -342,6 +417,7 @@ impl Player {
     /// What the page shows in its status line.
     pub fn status(&self) -> Json {
         json!({
+            "game": self.name,
             "scene": self.scene,
             "seed": self.seed,
             "tick": self.sched.tick(),

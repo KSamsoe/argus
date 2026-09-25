@@ -196,6 +196,7 @@ examples/
   swarm/                          bullet heaven, continuous clock (phase-0 gate)
   delve/                          grid roguelike, discrete clock (phase-0 gate)
   hollow/                         three-room platformer slice (phase-1 gate)
+  outpost/                        colony sim, headless so far; a day is 60 s (phase 3)
 docs/
   argus-engine-design-v0.3.html   the design document
   phase0-checklist.md             every phase-0 item and its status
@@ -203,9 +204,16 @@ docs/
   phase1-checklist.md             every phase-1 item and its status
   phase1-gate.md                  the phase-1 gate run
   phase2-checklist.md             every phase-2 item and its status
+  phase3-checklist.md             every phase-3 item and its status
   web-spike.md                    what the web spike found (phase 2, item 1)
   playtest.md                     the playtest server on klab: the link, reports into marks, new builds (phase 2, item 7)
 ```
+
+## Phase 3
+
+Phase 3's items, in the order agreed with Kevin, are in [docs/phase3-checklist.md](docs/phase3-checklist.md). Done so far:
+
+- **Item 0, save games.** `argus sim save name=...` saves the game and `argus sim load name=...` loads it back: the world, the clocks and random streams, the particles, and the rooms, in `.argus/saves/`. A game saves itself with `q:save("auto")` in a script, and a release build keeps its saves where the platform says, the web page in the browser's storage, so a reload keeps them. A save survives changes to the game: every component's version is written with it, and a component whose version went up declares how old rows come up, as a table of renames, defaults, and dropped fields by version, or as a function. Loading reports each component it brought up ("Needs v1→v2 for 6 entities"), and a save from a newer version is refused. A project says how long its days are (`[time] day` in `argus.toml`), which scripts (`q.day`) and tests (`days(30)`) count in. The fourth reference game starts here: [examples/outpost](examples/outpost) is six colonists eating from a stockpile the fields fill, a day is a minute, and a save from its first week is kept in its tests, so every later change to its components needs a migration. Trace: [crates/argus-player/SPEC-TRACE.md](crates/argus-player/SPEC-TRACE.md) and the crates it touched.
 
 ## Phase 1
 

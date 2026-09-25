@@ -15,15 +15,16 @@
 
 mod bind;
 mod decl;
+mod migrate;
 
 pub use bind::script_codes as codes;
-pub use decl::{ComponentDecl, DefDecl, SystemDecl};
+pub use decl::{ComponentDecl, DefDecl, MigrateDecl, Step, SystemDecl};
 
 use argus_ecs::{Access, ArgusError, Result, World};
 use argus_sim::{ClockBinding, Scheduler, Stage, SystemDesc, SystemFn};
 use bind::{Link, QueryHandle};
 use decl::Pending;
-use mlua::{Function, Lua, RegistryKey, VmState};
+use mlua::{Function, Lua, VmState};
 use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -38,6 +39,9 @@ pub struct ScriptConfig {
     pub interrupt_budget: u64,
     /// Bytes the Luau heap may hold.
     pub memory_limit: usize,
+    /// Sim seconds in one of the game's days (`[time] day` in argus.toml),
+    /// which `q.day`, `q.day_time`, and `q.day_length` count in.
+    pub day_seconds: f64,
 }
 
 impl Default for ScriptConfig {
@@ -45,9 +49,13 @@ impl Default for ScriptConfig {
         ScriptConfig {
             interrupt_budget: 5_000_000,
             memory_limit: 256 << 20,
+            day_seconds: 86_400.0,
         }
     }
 }
+
+/// The game's day length, where the query handle reads it.
+pub(crate) struct DayLength(pub f64);
 
 /// Where in the pipeline a script error happened.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -119,7 +127,7 @@ pub struct ScriptHost {
     root: Option<PathBuf>,
     files: BTreeMap<String, FileRecord>,
     components: Vec<ComponentInfo>,
-    migrations: BTreeMap<String, RegistryKey>,
+    migrations: BTreeMap<String, MigrateDecl>,
     defs: Vec<DefDecl>,
     errors: BTreeMap<String, Vec<ScriptError>>,
     budget: Rc<Cell<i64>>,
@@ -205,6 +213,7 @@ impl ScriptHost {
     pub fn new(config: ScriptConfig) -> Result<ScriptHost> {
         let lua = Lua::new();
         lua.set_app_data(Pending::default());
+        lua.set_app_data(DayLength(config.day_seconds));
         decl::install_globals(&lua).map_err(to_argus)?;
         lua.set_memory_limit(config.memory_limit)
             .map_err(to_argus)?;
