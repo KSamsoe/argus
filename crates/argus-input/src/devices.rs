@@ -77,6 +77,14 @@ pub enum DeviceInput {
         /// Connected or disconnected.
         connected: bool,
     },
+    /// The mouse is at a place on the UI canvas, in its pixels (the host
+    /// converts from the window's; phase 3 item 1).
+    Pointer {
+        /// Canvas x, from the left.
+        x: f32,
+        /// Canvas y, from the top.
+        y: f32,
+    },
     /// Focus lost: everything held is released (no stuck keys).
     ReleaseAll,
 }
@@ -117,6 +125,7 @@ struct Pad {
 pub struct Devices {
     keys: BTreeSet<String>,
     mouse: BTreeSet<String>,
+    pointer: Option<(f32, f32)>,
     pads: BTreeMap<u32, Pad>,
     /// Events seen, for `input.devices`.
     pub events_seen: u64,
@@ -155,6 +164,7 @@ impl Devices {
                     p.buttons.remove(button);
                 }
             }
+            DeviceInput::Pointer { x, y } => self.pointer = Some((*x, *y)),
             DeviceInput::PadAxis { pad, axis, value } => {
                 self.pads
                     .entry(*pad)
@@ -292,6 +302,11 @@ impl Devices {
                     }
                     ActionValue::Axis(best)
                 }
+                // Where the mouse is, once it has been anywhere.
+                ActionKind::Pointer => match (ms, self.pointer) {
+                    (Some(_), Some((x, y))) => ActionValue::Axis2(x, y),
+                    _ => continue,
+                },
                 ActionKind::Axis2 => {
                     let mut best = (0.0f32, 0.0f32);
                     let mut take = |v: (f32, f32)| {

@@ -10,7 +10,7 @@ Every statement in the design document (v0.3) that constrains action maps and th
 | An action map in `input.toml` declares actions (`move`, `jump`, `confirm`) with bindings per device and per player slot, so two gamepads are two players from the start. | Done | `map.rs`: `[actions.<name>]` with `type` (button, axis, axis2), `doc`, `toggle`, and `[actions.<name>.bindings]` per device (`keyboard`, `mouse`, `gamepad`); `[slots.<n>]` with `devices`. Bindings are parsed, validated (known devices), and reported by `input.bindings`; nothing reads them until devices arrive. | `input::the_map_parses_and_becomes_a_component` |
 | The input log records actions, not device events: a replay survives a rebind, a test written against a keyboard runs against a gamepad. | Done | `state.rs`: the log is `tick, slot, action, value` change points. Bindings never appear in it. | `input::injected_input_reaches_the_slot_entity_with_edges`, `input::a_recorded_log_replays_to_the_same_run` |
 | The agent's `input.inject` says `{action: "jump"}` rather than naming a scancode. | Done | `input.inject {action, slot, value, frames, hold}`; the value defaults to the action's active value (a button down, an axis at 1). | `input::injected_actions_reach_gameplay_and_never_name_keys` |
-| Rebinding at runtime is a UI over the same table. | Deferred | The editor (phase 4); the table is the map and `Devices::resolve` reads it on every poll, so a rebind is an edit to `input.toml` and a `scene.load`. | |
+| Rebinding at runtime is a UI over the same table. | Done (phase 3 item 1) | `rebind.rs`: a UI button with an `InputBinding {action, device}` waits, when pressed, for the next press on its device and binds the action to it (`InputState::listen`, then `capture` in the host's device path takes the press so the game does not hear it; Escape cancels): `input.rebound` or `input.rebind_cancelled`. Its `keys` field says what the action is bound to, for a text hole. `input.bind {action, device, bindings, save}` does the same through the protocol, and `save` writes it into `input.toml` keeping the rest of the file. The log records actions, so a replay survives it. | `argus-ui` `ui::a_controls_button_rebinds_an_action_to_the_next_key`, `argus-daemon` `input::input_bind_rebinds_an_action_and_save_keeps_it_in_the_file`, Hollow's `tests/controls.luau` |
 | Accessibility: input-hold and toggle alternatives are action-map options. | Done | `toggle = true` on a button: a press flips the held state; the automatic release does nothing. | `input::toggles_holds_and_scripts` |
 
 ## §3, §15 Where actions live
@@ -63,9 +63,16 @@ In the daemon: `Daemon::device_input(events)` is the one entry point; `poll_devi
 |---|---|---|---|
 | (§15) The recorder stays in release, bounded. | Done | `InputState::forget(n, tick)` drops the first `n` journaled commands (never the recorded future) and the value log before `tick`; `InputSnapshot::forget(n)` moves a snapshot's journal position to match. The release build's recorder calls both when its older keyframe goes. | `argus-player/tests/recorder.rs` |
 
+## Phase 3, item 1: the UI's actions
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§12) Menus are driven by actions from any device; the mouse too. | Done | `ActionKind::Pointer` (`type = "pointer"`, bound to the mouse's `position`): a place on the canvas. Hollow's and Delve's maps add `ui_move`, `ui_confirm`, `ui_cancel`, `ui_click`, and `pointer`, and `pause` on Escape and Start. | `argus-ui` `ui::the_pointer_focuses_what_it_moves_over_and_a_click_presses_it` |
+
 ## Known limitations, stated so they are decisions
 
-- Keyboard and mouse arrive only through the daemon's window; gamepads are polled only while a window is open. Mouse position is not an action yet; a pointer action type comes with the UI (phase 3).
+- Keyboard and mouse arrive only through the daemon's window; gamepads are polled only while a window is open.
+- A pointer action is a place on the UI canvas (phase 3 item 1): the host turns the mouse into canvas pixels (`DeviceInput::Pointer`), and a pointer never rests, so it stays where it was last put. A game reads it like any other action.
 - Several device commands in one poll on a discrete scene are one turn, not several.
 - Pad indices are connection order within one daemon's life; a pad that disconnects and reconnects gets its old index back only if gilrs reuses its id.
 - A later inject of an action replaces an earlier one that is still running: the earlier automatic release is dropped and the later inject's own `frames` decide the end. Two overlapping holds last as long as the later one, not the longer one.

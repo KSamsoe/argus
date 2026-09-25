@@ -83,8 +83,8 @@ fn hollow_from_its_packs_plays_as_hollow_from_its_folder() {
     assert_eq!(built.packs.len(), 1);
     assert_eq!(built.packs[0].kind, Kind::Base);
     assert_eq!(
-        r["scripts_compiled"], 4,
-        "the Run component, and the pit, run, and signs systems"
+        r["scripts_compiled"], 6,
+        "the Run component, and the pit, run, signs, pause, and pause menu systems"
     );
     assert!(r["sprites"].as_u64().unwrap() >= 3, "{r}");
     let left_out = r["sources_left_out"].to_string();

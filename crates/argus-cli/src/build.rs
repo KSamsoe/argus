@@ -395,7 +395,9 @@ fn web(
             "--crate-type",
             "cdylib",
         ])
-        .env("CARGO_TARGET_DIR", &tdir)
+        // Without the \\?\ prefix: a build script links with MinGW ld,
+        // which cannot open such a path.
+        .env("CARGO_TARGET_DIR", plain(&tdir))
         .env("ARGUS_CODE", code);
     if release {
         c.arg("--release");

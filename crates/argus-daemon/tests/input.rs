@@ -36,11 +36,12 @@ fn injected_actions_reach_gameplay_and_never_name_keys() {
         desc["rows"][0]["read_by"],
         json!([
             "input.actions",
+            "ui.input",
             "physics.control",
             "sim.move",
             "camera.update"
         ]),
-        "a writer reads too, and so do the character controller and the camera (pan and zoom)"
+        "a writer reads too, and so do the UI's focus, the character controller, and the camera (pan and zoom)"
     );
     let sys = ok(&mut d, "script.systems", json!({}));
     // After the hit-stop's check, which freezes the rest of a tick.
@@ -304,4 +305,67 @@ fn a_key_press_takes_a_turn_on_a_discrete_scene_that_is_playing() {
     assert_eq!(d.device_input(&[key("Space", true)]), 1);
     assert_eq!(ok(&mut d, "sim.status", json!({}))["tick"], 2);
     assert_eq!(ok(&mut d, "input.devices", json!({}))["turns_taken"], 2);
+}
+
+// ----- phase 3 item 1: rebinding at runtime ------------------------------------
+
+#[test]
+fn input_bind_rebinds_an_action_and_save_keeps_it_in_the_file() {
+    let t = temp("rebind");
+    project(t.path());
+    let mut d = open(t.path());
+    let r = ok(
+        &mut d,
+        "input.bind",
+        json!({ "action": "fire", "bindings": ["f"] }),
+    );
+    assert_eq!(
+        r,
+        json!({ "action": "fire", "device": "keyboard", "bindings": ["f"], "saved": false })
+    );
+    let ev = ok(&mut d, "obs.events", json!({ "name": "input.rebound" }));
+    assert_eq!(ev["total"], 1);
+    // Space no longer fires; F does.
+    d.device_input(&[key("Space", true)]);
+    ok(&mut d, "sim.step", json!({ "n": 1 }));
+    let p = ok(&mut d, "world.get", json!({ "entity": "@player" }));
+    assert_eq!(p["components"]["Actions"]["fire"], false);
+    d.device_input(&[key("Space", false), key("KeyF", true)]);
+    ok(&mut d, "sim.step", json!({ "n": 1 }));
+    let p = ok(&mut d, "world.get", json!({ "entity": "@player" }));
+    assert_eq!(p["components"]["Actions"]["fire"], true);
+    let b = ok(&mut d, "input.bindings", json!({}));
+    assert_eq!(b["actions"][0]["bindings"]["keyboard"], json!(["f"]));
+    assert_eq!(b["actions"][0]["bindings"]["gamepad"], json!(["south"]));
+    // Not saved: the file is as it was.
+    let file = std::fs::read_to_string(t.path().join("input.toml")).unwrap();
+    assert!(file.contains("keyboard = [\"space\"]"), "{file}");
+
+    // Saved: the file has it, and keeps the rest (docs, other devices).
+    ok(
+        &mut d,
+        "input.bind",
+        json!({ "action": "fire", "bindings": ["enter", "f"], "save": true }),
+    );
+    let file = std::fs::read_to_string(t.path().join("input.toml")).unwrap();
+    assert!(file.contains("keyboard = [\"enter\", \"f\"]"), "{file}");
+    assert!(file.contains("gamepad = [\"south\"]"), "{file}");
+    assert!(file.contains("doc = \"Shoot\""), "{file}");
+    assert!(file.contains("[slots.2]"), "{file}");
+
+    // A gamepad name is checked as the file's are; so is the device.
+    let e = err(
+        &mut d,
+        "input.bind",
+        json!({ "action": "fire", "device": "gamepad", "bindings": ["trigger_z"] }),
+    );
+    assert_eq!(e.code, argus_input::codes::BAD_MAP);
+    let e = err(
+        &mut d,
+        "input.bind",
+        json!({ "action": "fire", "device": "wheel", "bindings": ["up"] }),
+    );
+    assert_eq!(e.code, argus_input::codes::BAD_MAP);
+    let e = err(&mut d, "input.bind", json!({ "action": "fire" }));
+    assert_eq!(e.code, argus_daemon::codes::BAD_PARAMS);
 }

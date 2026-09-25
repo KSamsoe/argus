@@ -7,6 +7,7 @@ component "Run" {
   gems = field.u32 { default = 0, doc = "Gems the hero has taken this run" },
   done = field.bool { default = false, doc = "The hero reached the way out" },
   time = field.f32 { default = 0, doc = "Seconds the run took, once done" },
+  restart = field.bool { default = false, doc = "A new run was asked for (the pause menu); sim.run starts it" },
 }
 
 return component "Gem" {

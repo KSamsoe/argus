@@ -16,6 +16,7 @@ audio = ["dep:argus-audio"]
 desktop = ["render", "dep:gilrs"]
 
 [dependencies]
+argus-ui = { path = "../argus-ui", version = "0.0.1" }
 argus-os = { path = "../argus-os", version = "0.0.1" }
 argus-ecs = { path = "../argus-ecs", version = "0.0.1" }
 argus-sim = { path = "../argus-sim", version = "0.0.1" }

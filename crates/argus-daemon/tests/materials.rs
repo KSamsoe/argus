@@ -67,9 +67,9 @@ fn materials_draw_reload_and_report_their_errors_with_lines() {
     project(t.path());
     let mut d = open(t.path());
 
-    // The project's material and the library's five.
+    // The project's material and the library's six.
     let list = ok(&mut d, "asset.list", json!({ "kind": "material" }));
-    assert_eq!(list["total"], 6, "{list}");
+    assert_eq!(list["total"], 7, "{list}");
     let names: Vec<&str> = list["rows"]
         .as_array()
         .unwrap()

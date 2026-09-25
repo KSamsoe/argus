@@ -1,6 +1,17 @@
 [Turn]
 
-# The line along the top of the screen, as the semantic frame reads it.
-[Describe]
-role = "hud"
+# The line along the top of the screen: a UI text the player reads and the
+# semantic frame lists (phase 3 item 1; before, only the agent read it).
+[UiRoot]
+interactive = false
+
+[UiNode]
+absolute = true
+offset = [10.0, 8.0]
+pad = [8.0, 4.0]
+
+[UiPanel]
+color = "#05070AB0"
+
+[UiText]
 text = "Floor {@player:Player.floor}, turn {Turn.n}. HP {@player:Health.cur}/{@player:Health.max}."

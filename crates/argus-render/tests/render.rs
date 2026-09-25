@@ -478,102 +478,63 @@ fn particle_pools_draw_as_one_run_each_between_ticks() {
 }
 
 /// Phase 2 item 2: the bar the window shows while a mark's note is typed,
-/// drawn over the frame's bottom edge pixel for pixel, and gone when set
-/// to none.
+/// over the bottom of the frame, and gone when set to none. Drawn by the
+/// UI since phase 3 item 1 (it was a picture laid over the frame), so it
+/// wraps a long text in the UI's font, keeping the first line and the end.
 #[test]
-fn an_overlay_bar_draws_over_the_bottom_of_the_frame() {
+fn the_windows_bar_draws_over_the_bottom_of_the_frame() {
     let Some(mut r) = renderer(480, 270) else {
         return;
     };
     let mut w = world_with_camera(10.0);
     shape(&mut w, 0.0, 0.0, "rect", 40.0, "#20A040", 0.0);
-    let bar = argus_render::status_bar(
-        480,
+    r.set_bar(Some((
         "MARK 3 AT 0:41.2  NOTE: dash feels late_",
         [255, 214, 90, 255],
-    );
-    assert_eq!(bar.height, 16);
-    r.gpu_mut().set_overlay(Some(&bar));
+    )));
     r.render(&w, 0, 1.0).unwrap();
     let img = r.capture().unwrap();
     if let Ok(dir) = std::env::var("ARGUS_SHOTS") {
-        img.save_png(&std::path::Path::new(&dir).join("overlay.png"))
+        img.save_png(&std::path::Path::new(&dir).join("bar.png"))
             .unwrap();
     }
-    // Above the bar, the green the rect fills the view with.
-    let above = img.pixel(240, 270 - 17);
-    assert!(above[1] > 120 && above[0] < 80, "{above:?}");
-    // The bar: dark (a little of the green shows through), the text on it.
+    // The canvas (960 x 540) at half size: one line of 16 is 20 tall with
+    // 6 above and below, so the bar is the bottom 16 pixels.
+    let above = img.pixel(240, 270 - 18);
+    assert!(
+        above[1] > 120 && above[0] < 80,
+        "above it, the green: {above:?}"
+    );
     let dark = img.pixel(470, 270 - 3);
-    assert!(dark[0] < 40 && dark[1] < 80, "{dark:?}");
-    let yellow = (254..270).any(|y| {
-        (0..300).any(|x| {
+    assert!(dark[0] < 40 && dark[1] < 60, "the bar's plate: {dark:?}");
+    let yellow = (254..270)
+        .flat_map(|y| (0..300).map(move |x| (x, y)))
+        .filter(|&(x, y)| {
             let p = img.pixel(x, y);
             p[0] > 200 && p[1] > 170 && p[2] < 140
         })
-    });
-    assert!(yellow, "the text is on the bar");
+        .count();
+    assert!(yellow > 40, "the words on it: {yellow}");
 
-    r.gpu_mut().set_overlay(None);
+    // A long text: four lines at most.
+    let words: Vec<String> = (0..200).map(|i| format!("w{i:03}")).collect();
+    r.set_bar(Some((&words.join(" "), [255, 214, 90, 255])));
+    r.render(&w, 0, 1.0).unwrap();
+    let img = r.capture().unwrap();
+    let plate = (0..270)
+        .rev()
+        .take_while(|&y| img.pixel(478, y)[1] < 60)
+        .count();
+    assert_eq!(
+        plate, 46,
+        "four lines of 20 and 12 of padding, at half size"
+    );
+
+    r.set_bar(None);
     r.render(&w, 0, 1.0).unwrap();
     let img = r.capture().unwrap();
     let p = img.pixel(470, 270 - 3);
     assert!(p[1] > 120, "gone: {p:?}");
-}
-
-/// The game's own text (found by a mark: Hollow's signs spoke to the agent
-/// only): a shown Describe's words over its sprite, a HUD line at the top
-/// left, nothing for one not shown.
-#[test]
-fn shown_text_is_drawn_over_its_entity_and_the_hud_at_the_top() {
-    let Some(mut r) = renderer(640, 360) else {
-        return;
-    };
-    let mut w = world_with_camera(12.0);
-    let sign = shape(&mut w, 0.0, -2.0, "rect", 1.0, "#8A6A40", 0.0);
-    let quiet = shape(&mut w, 5.0, -2.0, "rect", 1.0, "#8A6A40", 0.0);
-    let hud = w.spawn();
-    for (e, text, shown) in [
-        (sign, "Mind the pit.", true),
-        (quiet, "Not shown.", false),
-        (hud, "Hollow. HP {@camera:Camera.height}", true),
-    ] {
-        let d = argus_render::Describe {
-            text: w.strings().intern(text),
-            role: w.strings().intern(if e == hud { "hud" } else { "" }),
-            shown,
-            ..Default::default()
-        };
-        w.insert(e, d).unwrap();
-    }
-    r.render(&w, 0, 1.0).unwrap();
-    let img = r.capture().unwrap();
-    if let Ok(dir) = std::env::var("ARGUS_SHOTS") {
-        img.save_png(&std::path::Path::new(&dir).join("text.png"))
-            .unwrap();
-    }
-    let cream = |x0: u32, y0: u32, x1: u32, y1: u32| {
-        (y0..y1)
-            .flat_map(|y| (x0..x1).map(move |x| (x, y)))
-            .filter(|&(x, y)| {
-                let p = img.pixel(x, y);
-                p[0] > 200 && p[1] > 190 && p[2] > 150
-            })
-            .count()
-    };
-    // 30 px a unit: the sign's top is at y -1.5, row 225; its words sit above.
-    let (sx, _) = r.to_pixel(0.0, -1.5);
-    assert!(
-        cream(sx as u32 - 45, 195, sx as u32 + 45, 224) > 40,
-        "the sign's words"
-    );
-    let (qx, _) = r.to_pixel(5.0, -1.5);
-    assert_eq!(
-        cream(qx as u32 - 40, 195, qx as u32 + 40, 224),
-        0,
-        "not shown, not drawn"
-    );
-    assert!(cream(0, 0, 220, 16) > 40, "the HUD line at the top left");
 }
 
 /// Phase 2 item 6: the post stack. Each pass changes the picture as it
@@ -649,16 +610,14 @@ fn post_passes_change_the_picture_in_order() {
         [255, 0, 0],
         "and the right edge came"
     );
-    // The bar is not shaken.
-    let bar = argus_render::status_bar(320, "F8", [255, 214, 90, 255]);
-    r.gpu_mut().set_overlay(Some(&bar));
+    // The bar is not shaken: its plate spans the bottom edge, both ends.
+    r.set_bar(Some(("F8", [255, 214, 90, 255])));
     let img = shot(&mut r, &w, "shake-bar");
-    let top = img.pixel(0, 180 - bar.height);
-    assert!(
-        top[0] > 200 && top[1] > 170,
-        "the bar's top line at its place: {top:?}"
-    );
-    r.gpu_mut().set_overlay(None);
+    for x in [0, 319] {
+        let p = img.pixel(x, 178);
+        assert!(p[0] < 40 && p[1] < 40, "the bar's plate at {x}: {p:?}");
+    }
+    r.set_bar(None);
     w.remove(cam, w.component_id("PostShake").unwrap()).unwrap();
 
     // Vignette: the corners darken, the middle does not.

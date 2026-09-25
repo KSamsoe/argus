@@ -766,6 +766,13 @@ impl UserData for QueryHandle {
                 Ok(())
             });
         }
+        // freeze(): the rest of this tick stands still, but for systems
+        // declared unfrozen (the UI's among them): a pause menu, a hit-stop
+        // of the game's own (phase 3 item 1; phase 2 item 6's freeze).
+        m.add_method("freeze", |_, this, ()| {
+            ctx(&this.link)?.freeze();
+            Ok(())
+        });
         m.add_method("rng", |lua, this, ()| {
             lua.create_userdata(RngRef {
                 link: this.link.clone(),

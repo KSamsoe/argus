@@ -1,0 +1,16 @@
+[Parent]
+entity = "@pause.panel"
+
+[UiNode]
+pad = [18.0, 8.0]
+order = 3
+
+[UiPanel]
+color = "button"
+
+[UiButton]
+event = "pause.controls"
+
+[UiText]
+text = "Controls"
+align = "center"

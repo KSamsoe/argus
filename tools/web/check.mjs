@@ -11,8 +11,10 @@
 // hero falling into the hall's pit (the post stack's flash, shake, and
 // hit-stop, marked inside the stop and replayed natively), a report of it
 // sent the way the page's F8 sends one, through the server and back, and
-// replayed natively (phase 2 item 7), and the same picture with WebGL2
-// forced. Node 24 and cargo, no npm packages.
+// replayed natively (phase 2 item 7), the UI (phase 3 item 1: the pause
+// menu opened by a real key, a button focused by the real mouse and pressed
+// by a click), and the same picture with WebGL2 forced. Node 24 and cargo,
+// no npm packages.
 import { spawn, spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -205,7 +207,42 @@ try {
     report.pit.report = { id: last.id, bytes: last.bytes, native: rr.stdout.trim() ? JSON.parse(rr.stdout) : { error: rr.stderr || String(rr.error) } };
   }
 
-  // 5. WebGL2 forced.
+  // 5. The UI (phase 3 item 1): Escape opens the pause menu over the game,
+  // drawn as on the desktop; the mouse over a button focuses it and a click
+  // presses it, found through the semantic frame.
+  await open(base);
+  await evaluate("document.getElementById('game').focus()");
+  await sleep(500);
+  await key("Escape", "Escape", 27, true);
+  await sleep(100);
+  await key("Escape", "Escape", 27, false);
+  await sleep(400);
+  const ui = async () => JSON.parse(await evaluate("argus.player.semantic()")).ui;
+  let seen = await ui();
+  report.ui = { opened: seen.map((u) => `${u.id}${u.focused ? " (focused)" : ""}: ${u.text}`) };
+  report.ui.screenshot = await screenshot("menu.png");
+  const restart = seen.find((u) => u.id.endsWith("pause.restart"));
+  if (restart) {
+    // The frame's pixels to the page's: the canvas element's place and size.
+    const box = JSON.parse(await evaluate("JSON.stringify(document.getElementById('game').getBoundingClientRect())"));
+    const size = JSON.parse(await evaluate("JSON.stringify([document.getElementById('game').width, document.getElementById('game').height])"));
+    const x = box.left + ((restart.bounds[0] + restart.bounds[2]) / 2) * (box.width / size[0]);
+    const y = box.top + ((restart.bounds[1] + restart.bounds[3]) / 2) * (box.height / size[1]);
+    await send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y });
+    await sleep(300);
+    seen = await ui();
+    report.ui.hovered = seen.find((u) => u.focused)?.id ?? null;
+    const tick = (await status()).tick;
+    await send("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", buttons: 1, clickCount: 1 });
+    await sleep(100);
+    await send("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", buttons: 0, clickCount: 1 });
+    await sleep(400);
+    seen = await ui();
+    s = await status();
+    report.ui.clicked = { menu_open: seen.some((u) => u.id.endsWith("pause.restart")), tick_before: tick, tick_after: s.tick, player: s.player };
+  }
+
+  // 6. WebGL2 forced.
   await open(base + "?paused&webgl");
   await sleep(1500);
   s = await status();

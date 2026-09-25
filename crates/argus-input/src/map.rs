@@ -40,6 +40,9 @@ pub enum ActionKind {
     Axis,
     /// Two axes in `[-1, 1]` each.
     Axis2,
+    /// A place on the UI canvas, in its pixels (phase 3 item 1: the mouse
+    /// for menus). It stays where it was left.
+    Pointer,
 }
 
 impl ActionKind {
@@ -49,6 +52,7 @@ impl ActionKind {
             ActionKind::Button => "button",
             ActionKind::Axis => "axis",
             ActionKind::Axis2 => "axis2",
+            ActionKind::Pointer => "pointer",
         }
     }
 
@@ -57,6 +61,7 @@ impl ActionKind {
             "button" => ActionKind::Button,
             "axis" => ActionKind::Axis,
             "axis2" => ActionKind::Axis2,
+            "pointer" => ActionKind::Pointer,
             _ => return None,
         })
     }
@@ -177,6 +182,8 @@ impl ActionMap {
                         // names are a fixed set, so a typo is an error now
                         // rather than a button that never fires.
                         let known: &[&str] = match dev {
+                            // A pointer is where the mouse is.
+                            "mouse" if kind == ActionKind::Pointer => &["position"],
                             "mouse" => crate::devices::MOUSE_NAMES,
                             "gamepad" => crate::devices::PAD_NAMES,
                             _ => &[],
@@ -238,6 +245,83 @@ impl ActionMap {
             slots,
             file: file.to_string(),
         })
+    }
+
+    /// Bind `action` on `device` to `names` instead of what it had (§12
+    /// "Rebinding at runtime is a UI over the same table"; phase 3 item 1).
+    /// Mouse and gamepad names are checked as the file's are; an empty
+    /// list unbinds the device.
+    pub fn set_bindings(&mut self, action: &str, device: &str, names: Vec<String>) -> Result<()> {
+        if !DEVICES.contains(&device) {
+            return Err(ArgusError::new(
+                codes::BAD_MAP,
+                format!(
+                    "unknown device {device:?}; devices are {}",
+                    DEVICES.join(", ")
+                ),
+            ));
+        }
+        let kind = self.action(action)?.kind;
+        let known: &[&str] = match device {
+            "mouse" if kind == ActionKind::Pointer => &["position"],
+            "mouse" => crate::devices::MOUSE_NAMES,
+            "gamepad" => crate::devices::PAD_NAMES,
+            _ => &[],
+        };
+        if let Some(bad_name) = names
+            .iter()
+            .find(|n| !known.is_empty() && !known.contains(&n.as_str()))
+        {
+            return Err(ArgusError::new(
+                codes::BAD_MAP,
+                format!(
+                    "unknown {device} input {bad_name:?}; known: {}",
+                    known.join(", ")
+                ),
+            ));
+        }
+        let a = self
+            .actions
+            .iter_mut()
+            .find(|a| a.name == action)
+            .expect("found above");
+        if names.is_empty() {
+            a.bindings.remove(device);
+        } else {
+            a.bindings.insert(device.to_string(), names);
+        }
+        Ok(())
+    }
+
+    /// Write `action`'s bindings on `device` into `input.toml` under
+    /// `root`, keeping the rest of the file as it is: a rebinding the
+    /// project keeps.
+    pub fn save_bindings(root: &Path, action: &str, device: &str, names: &[String]) -> Result<()> {
+        let path = root.join("input.toml");
+        let text = argus_os::fs::read_to_string(&path)
+            .map_err(|e| ArgusError::new(codes::NO_INPUT_MAP, format!("input.toml: {e}")))?;
+        let mut doc: toml_edit::DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| {
+            ArgusError::new(codes::BAD_MAP, format!("input.toml: {e}"))
+        })?;
+        let arr: toml_edit::Array = names.iter().map(String::as_str).collect();
+        let bindings = &mut doc["actions"][action]["bindings"];
+        if names.is_empty() {
+            if let Some(t) = bindings.as_table_like_mut() {
+                t.remove(device);
+            }
+        } else {
+            bindings[device] = toml_edit::value(arr);
+        }
+        argus_os::fs::write(&path, doc.to_string())
+            .map_err(|e| ArgusError::new(codes::BAD_MAP, format!("input.toml: {e}")))
+    }
+
+    /// The names `action` is bound to on `device`.
+    pub fn bindings(&self, action: &str, device: &str) -> Vec<String> {
+        self.action(action)
+            .ok()
+            .and_then(|a| a.bindings.get(device).cloned())
+            .unwrap_or_default()
     }
 
     /// An action by name.
@@ -324,6 +408,14 @@ impl ActionMap {
                     Value::Vec2(argus_ecs::Vec2::ZERO),
                     None,
                     doc,
+                    false,
+                ),
+                ActionKind::Pointer => b.field_full(
+                    &a.name,
+                    FieldType::Vec2,
+                    Value::Vec2(argus_ecs::Vec2::ZERO),
+                    None,
+                    format!("{doc} (a place on the UI canvas, in its pixels)"),
                     false,
                 ),
             };

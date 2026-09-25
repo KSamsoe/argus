@@ -477,9 +477,9 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "asset.list",
-        doc: "Every asset under assets/: sprites (a PNG, or a sidecar describing a shape), sounds (a WAV, or a sidecar naming variations), animators (a sidecar with type = \"animator\": states, transitions, events by frame), particle effects (type = \"emitter\"), and materials (a .wgsl shader, with a sidecar of typed parameters), with the warnings the importer found. A name is the path without the extension; sprites/hero is assets/sprites/hero.png with assets/sprites/hero.toml beside it. For an animator the frames and clips columns are its state count and names; for an emitter its pool size and sprite; for a material its parameter count and names. kind = \"material\" also lists the engine's material library (unlit, lit, palette, dissolve, outline), source builtin:<name>, unless a project asset of the same name shadows one.",
+        doc: "Every asset under assets/: sprites (a PNG, or a sidecar describing a shape), sounds (a WAV, or a sidecar naming variations), animators (a sidecar with type = \"animator\": states, transitions, events by frame), particle effects (type = \"emitter\"), materials (a .wgsl shader, with a sidecar of typed parameters), and fonts (a .ttf or .otf, baked into a distance-field atlas of the glyphs text needs; a sidecar may set size, spread, and chars), with the warnings the importer found. A name is the path without the extension; sprites/hero is assets/sprites/hero.png with assets/sprites/hero.toml beside it. For an animator the frames and clips columns are its state count and names; for an emitter its pool size and sprite; for a material its parameter count and names; for a font its glyphs baked. kind = \"material\" also lists the engine's material library (unlit, lit, palette, dissolve, outline, sdf_text), source builtin:<name>, unless a project asset of the same name shadows one.",
         params: &[
-            opt("kind", STRING, "\"sprite\" | \"sound\" | \"animator\" | \"emitter\" | \"material\"; optional"),
+            opt("kind", STRING, "\"sprite\" | \"sound\" | \"animator\" | \"emitter\" | \"material\" | \"font\"; optional"),
             opt("limit", INTEGER, "rows per page"),
             opt("cursor", STRING, "the next page, from a previous answer's cursor"),
         ],
@@ -487,7 +487,7 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "asset.get",
-        doc: "One asset as imported: frames with rects, pivots, durations, and properties; clips; the cached texture; a sound's bus, gain, and files with rate, channels, length, and peak; an animator's states; an emitter's rate, burst, and pool; a material's shader, blend, and parameters (type, default, range, from, doc); every warning with file:line. A library material (unlit, lit, palette, dissolve, outline) answers too, with builtin: true.",
+        doc: "One asset as imported: frames with rects, pivots, durations, and properties; clips; the cached texture; a sound's bus, gain, and files with rate, channels, length, and peak; an animator's states; an emitter's rate, burst, and pool; a material's shader, blend, and parameters (type, default, range, from, doc); a font's family, size and spread in atlas pixels, glyphs baked, atlas size, and characters it lacks; every warning with file:line. A library material (unlit, lit, palette, dissolve, outline, sdf_text) answers too, with builtin: true.",
         params: &[
             req("name", STRING, ""),
         ],
@@ -764,6 +764,17 @@ pub const METHODS: &[MethodDoc] = &[
         doc: "The action map from input.toml: actions with type, doc, toggle, and bindings per device; player slots with their devices.",
         params: &[],
         returns: "{file, actions: [{name, type, doc, toggle, bindings, at}], slots: [{slot, devices}]}",
+    },
+    MethodDoc {
+        name: "input.bind",
+        doc: "Rebind an action on a device from now on (section 12: rebinding at runtime is a UI over the same table). The log records actions, not keys, so a replay survives it. save also writes it into input.toml. A game's controls menu does the same with InputBinding buttons. Emits input.rebound.",
+        params: &[
+            req("action", STRING, ""),
+            opt("device", STRING, "keyboard (default), mouse, or gamepad"),
+            req("bindings", ARRAY, "names: [\"space\", \"z\"]; empty unbinds the device"),
+            opt("save", BOOLEAN, "also write it into input.toml (default false)"),
+        ],
+        returns: "{action, device, bindings, saved}",
     },
     MethodDoc {
         name: "input.state",

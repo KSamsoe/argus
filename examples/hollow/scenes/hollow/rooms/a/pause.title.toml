@@ -1,0 +1,9 @@
+[Parent]
+entity = "@pause.panel"
+
+[UiNode]
+margin = [0.0, 6.0]
+
+[UiText]
+text = "Paused"
+align = "center"

@@ -117,6 +117,70 @@ impl WebPlayer {
         self.p.key(code, pressed) as u32
     }
 
+    /// The mouse at a place on the canvas element, in its CSS pixels, with
+    /// the element's CSS size: the pointer, on the UI canvas (phase 3 item
+    /// 1). Returns turns taken, as a key does.
+    pub fn pointer(&mut self, x: f32, y: f32, css_w: f32, css_h: f32) -> u32 {
+        let Some(r) = self.renderer.as_ref() else {
+            return 0;
+        };
+        let (w, h) = r.gpu().size();
+        // CSS pixels to the drawing buffer's, then onto the UI canvas.
+        let (bx, by) = (x * w as f32 / css_w.max(1.0), y * h as f32 / css_h.max(1.0));
+        let Some(fit) = r.ui_fit() else {
+            return 0;
+        };
+        let [cx, cy] = fit.to_canvas([bx, by]);
+        self.p
+            .devices(&[argus_input::DeviceInput::Pointer { x: cx, y: cy }]) as u32
+    }
+
+    /// A mouse button (`left`, `right`, `middle`), down or up.
+    pub fn mouse(&mut self, button: &str, pressed: bool) -> u32 {
+        self.p.devices(&[argus_input::DeviceInput::Mouse {
+            button: button.to_string(),
+            pressed,
+        }]) as u32
+    }
+
+    /// The semantic frame (§8 L4) of the canvas now, as JSON: what a
+    /// screen reader reads, and where the check finds the UI's buttons and
+    /// focus (phase 3 item 1).
+    pub fn semantic(&self) -> String {
+        let (w, h) = self
+            .renderer
+            .as_ref()
+            .map(|r| r.gpu().size())
+            .unwrap_or((960, 540));
+        let canvas = {
+            let sh = self.p.ui.borrow();
+            [sh.theme.width, sh.theme.height]
+        };
+        let store = self.p.particles.borrow();
+        let sf = argus_render::semantic::semantic(
+            &self.p.world,
+            &argus_render::FrameSpec {
+                width: w,
+                height: h,
+                limit: 24,
+                groups: 12,
+                assets: Some(&self.p.assets),
+                particles: Some(&store),
+                view: None,
+                ui_canvas: Some(canvas),
+            },
+        );
+        sf.to_json().to_string()
+    }
+
+    /// Whether the game's settings ask for fullscreen
+    /// (`UiSettings.fullscreen`): the page asks the browser for it, which a
+    /// browser grants only shortly after a key press or a click, the one
+    /// that pressed the setting's button.
+    pub fn fullscreen(&self) -> bool {
+        argus_ui::wants_fullscreen(&self.p.world)
+    }
+
     /// The canvas lost focus: every key lets go.
     pub fn release_all(&mut self) {
         self.p.release_all();
@@ -255,6 +319,7 @@ impl WebPlayer {
         let extras = self.p.tile_extras(view);
         let alpha = self.owed.clamp(0.0, 1.0) as f32;
         r.set_time(self.p.sched.time() as f32);
+        r.set_ui(Some(self.p.ui.clone()));
         let store = self.p.particles.borrow();
         let tick = self.p.sched.tick();
         let rep = r

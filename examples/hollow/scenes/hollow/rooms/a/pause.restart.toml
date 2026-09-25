@@ -1,0 +1,16 @@
+[Parent]
+entity = "@pause.panel"
+
+[UiNode]
+pad = [18.0, 8.0]
+order = 2
+
+[UiPanel]
+color = "button"
+
+[UiButton]
+event = "pause.restart"
+
+[UiText]
+text = "Restart the run"
+align = "center"

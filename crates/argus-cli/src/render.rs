@@ -263,6 +263,25 @@ pub fn semantic(v: &Json) -> String {
     for h in v["hud"].as_array().into_iter().flatten() {
         let _ = writeln!(out, "HUD {}: {}", cell(&h["id"]), cell(&h["text"]));
     }
+    for u in v["ui"].as_array().into_iter().flatten() {
+        let mut how = String::new();
+        if u["button"] == true {
+            how.push_str(" button");
+        }
+        if u["focused"] == true {
+            how.push_str(", focused");
+        }
+        if u["disabled"] == true {
+            how.push_str(", disabled");
+        }
+        let _ = writeln!(
+            out,
+            "UI {}{how}: {}  at {}",
+            cell(&u["id"]),
+            cell(&u["text"]),
+            b(&u["bounds"])
+        );
+    }
     for e in v["entities"].as_array().into_iter().flatten() {
         let (id, name, text) = (cell(&e[0]), cell(&e[1]), cell(&e[2]));
         let what = match (name.is_empty(), text.is_empty()) {

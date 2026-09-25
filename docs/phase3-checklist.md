@@ -51,7 +51,7 @@ Decisions taken while building it:
 
 ## 1. UI tree with layout and text
 
-**Status: to do.**
+**Status: done** (2026-09-25) in a new crate, `argus-ui` (the components, the flexbox layout on taffy, text, the theme, focus and presses, the draw list), and in `argus-render` (the UI's own pass after the post passes; font atlases; the semantic frame's `ui` section; the window's bar through the UI), `argus-assets` (fonts: a `.ttf` or `.otf` baked into a distance-field atlas), `argus-material` (the `sdf_text` built-in; parameters padded for WebGL2), `argus-input` (the pointer action; rebinding by a UI button, `input.bind`), `argus-luau` (`q:freeze()`), `argus-player` (the UI and rebinding in the one assembly; fonts), the daemon, `argus-game` (fullscreen from the game's settings), `argus-web` and the page (the mouse as the pointer, `semantic()`, fullscreen), and the CLI (`UI` lines; a web-build fix). Hollow's HUD and signs are UI now, and Escape opens a pause menu (Resume, Restart the run, Controls, Settings): Controls rebinds Jump, Restart, and Pause to the next key pressed; Settings cycles the text size (100, 125, 150%) and turns high contrast and fullscreen on and off. Delve's HUD line and its menu (Resume, New run) are UI in Liberation Sans, shaped and drawn from a distance field. Measured: 2,000 nodes with text lay out in 0.89 ms a tick in release (a first layout from nothing, about 7.5 ms). In headless Chrome the page drew Hollow's pause menu as the desktop does, on WebGPU and WebGL2; Escape opened it, the real mouse focused Restart the run, and a click pressed it. Found while building it: a text measured whole and then broken word by word came out a pixel wider than the box laid out for it, so Delve's menu title wrapped under its buttons; a paragraph is measured as its words and spaces now, in whole pixels up. The first font made every Delve test run bake it again (2.7 s became 17.7 s); a process bakes a font once. `sdf_text`'s two parameters stopped the page on WebGL2, which binds no uniform smaller than 16 bytes; every material's parameters are padded now. And the web build could not link a new build script (`libm`, through rustybuzz): Windows' `\\?\` path prefix reached MinGW's linker. Traces: `crates/argus-ui/SPEC-TRACE.md`, and rows in `argus-render`'s, `argus-input`'s, `argus-assets`'s, `argus-material`'s, `argus-luau`'s, `argus-player`'s, the daemon's, `argus-game`'s, `argus-web`'s, and `argus-cli`'s. Constraints:
 
 - §12: a retained UI tree built from the same entities and hierarchy as everything else, with a flexbox-style layout system, bitmap and SDF text with shaping, nine-slice panels, and input focus.
 - §12: not a separate world: a menu is a query away like anything else, and the semantic frame (§8) reads it directly.
@@ -63,6 +63,19 @@ Decisions taken while building it:
 - §17: a UI tree of 2,000 nodes with text lays out in under 1 ms ("inspector panels and overview screens are most of what the player looks at").
 - The stopgaps it replaces (carried in above), and the release game's settings screen and fullscreen toggle.
 - The web page draws it the same way as the desktop.
+
+Decisions taken while building it:
+
+- **One canvas, fitted.** A project's UI is laid out on one canvas (`ui.toml`, 960 x 540 by default), scaled whole to fit the window and centred. The mouse goes onto the canvas through the same fit, so a click lands where the button is drawn.
+- **Layout is world state.** `ui.layout` runs in the tick (late stage, after the camera), so every `UiRect` is in the world: a seek, a fork, a replay, or a test sees the layout the player saw. The taffy tree is kept between ticks as a cache and compared with the world each tick.
+- **The UI runs while a game is frozen.** `ui.input` and `ui.layout` are `unfrozen`, and `q:freeze()` lets a game's pause stop everything else, the hit-stop's mechanism.
+- **Focus is fixed when a menu appears.** A menu that shows with nothing focused gets its first button that tick, so a keyboard or pad player never has to find it.
+- **The mouse is an action.** A `pointer` action is a place on the canvas; gameplay still never sees a device.
+- **Rebinding is UI over the map.** A button with an `InputBinding` takes the next press; `input.bind` is the protocol's way, and `save` writes `input.toml`.
+- **Fonts are assets, baked on import.** A distance field per font at 32 pixels an em, shaped with rustybuzz; the font ships as it is in a release and bakes at start. The OFL font Delve uses, Liberation Sans, was already on this machine (in a package's font folder), so nothing was downloaded; its licence is beside it.
+- **The window's bar is the UI's.** The F8 prompt, the proposal bar, and the release game's report prompt draw through the UI, in the game's font, four lines at most. The picture laid over the frame is gone, and so is `Describe.shown`.
+- **Fullscreen is a setting the host reads.** `UiSettings.fullscreen` is written by the game's settings screen and applied by the release window and the page each frame, so the choice goes through the input log like any other.
+- **Settings last for the session.** Keeping them between launches needs a store outside the world (a replay must not change with them); that is phase 5's accessibility pass.
 
 ## 2. Navigation grid, A\*, flow fields
 
@@ -119,6 +132,7 @@ Decisions taken while building it:
 - §17: 10,000 authored entities across 200 rooms; cold scene open (index warm) under 300 ms; room stream-in under 4 ms ("must fit inside a frame so transitions never hitch"); a 4,096 × 4,096 tilemap with 8 layers (met in phase 1 item 5).
 - The gate: Hollow reaches 200 rooms with the open and stream-in numbers green (question 4).
 - §4: the index is what keeps file-per-entity true at Hollow's scale, "where the whole scene is thousands of files".
+- Carried from item 1: Hollow's HUD, pause menu, Controls, and Settings live in room `a`, which the scene's radius of 2 keeps loaded. With 200 rooms they need a place that is always loaded.
 
 ## 7. Adaptive music, and the buses and ducking around it
 

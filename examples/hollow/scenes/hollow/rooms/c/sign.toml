@@ -8,3 +8,23 @@ size = [1.0, 2.25]
 [Describe]
 name = "sign"
 text = "Mind the pit."
+
+# Its words, over it while the hero is near (systems/signs.luau): a UI tree
+# hung from the sign itself.
+[UiRoot]
+follow = "@sign"
+follow_offset = [0.0, 1.4]
+interactive = false
+
+[UiNode]
+pivot = [0.5, 1.0]
+pad = [8.0, 5.0]
+max = [320.0, 0.0]
+visible = false
+
+[UiPanel]
+color = "panel"
+border = 1.0
+
+[UiText]
+text = "{Describe.text}"

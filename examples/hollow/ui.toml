@@ -1,0 +1,8 @@
+# Hollow's UI (phase 3 item 1): the default canvas (960 x 540) and the
+# built-in pixel font, which suits the art; a colour for buttons, which the
+# settings' high contrast turns black on white.
+[colors]
+button = "#262C34"
+
+[high_contrast_colors]
+button = "#000000"

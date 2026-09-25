@@ -26,7 +26,7 @@ fn material(
 
 const PLAIN: &str = "fn material(in: MaterialInput, p: Params) -> vec4<f32> {\n    return sample_atlas(in, in.uv) * in.color;\n}\n";
 
-/// The engine ships lit, unlit, palette, dissolve, and outline, each read
+/// The engine ships lit, unlit, palette, dissolve, outline, and sdf_text, each read
 /// from the same sidecar format a game writes and each compiling.
 #[test]
 fn the_library_is_five_materials_that_compile() {
@@ -282,5 +282,23 @@ fn sources_read_per_sprite_or_from_a_named_entity() {
     assert_eq!(s.text(), "@torch:Transform.pos");
     for bad in ["", "A", "A.b.c", "@:A.b", "@x", "A.b.z", "A..b"] {
         assert!(parse_source(bad).is_none(), "{bad}");
+    }
+}
+
+#[test]
+fn every_parameters_struct_is_a_multiple_of_16_bytes_for_webgl2() {
+    // WebGL2 binds no uniform smaller than 16 bytes, or of a size between
+    // (the web check's forced-WebGL2 page failed on sdf_text's two floats).
+    for b in builtins() {
+        let c = argus_material::compose(b);
+        let module = naga::front::wgsl::parse_str(&c.wgsl).unwrap();
+        let params = module
+            .types
+            .iter()
+            .find(|(_, t)| t.name.as_deref() == Some("Params"))
+            .map(|(_, t)| t.inner.size(module.to_ctx()))
+            .unwrap();
+        assert_eq!(params as usize, c.layout.size, "{}", b.name);
+        assert_eq!(params % 16, 0, "{}", b.name);
     }
 }

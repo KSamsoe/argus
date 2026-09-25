@@ -31,6 +31,12 @@ Every statement in the design document (v0.3) that constrains the web spike (pha
 | (§15) The web target from `argus build`. | Done | `WebPlayer.from_packs` takes a release build's packs (and a language); the page (`tools/web/main.js`) loads the ones `data/packs.json` lists, and falls back to the spike's single pack. The player keeps the bounded recorder from the start. | `tools/web/check.mjs` on a built site |
 | (§15) A player bug report becomes a mark, from the browser. | Done | F8 on the page pauses and asks what happened; Send posts `WebPlayer.report(note)` (a replay file) to `marks` on the server the page came from (`tools/web/serve.mjs` stores it), and offers it as a file where there is no server. `argus mark pull` imports them. `examples/mark_replay` replays a report natively. | `tools/web/check.mjs` step 4: the pit's report, posted, fetched, replayed to the same world |
 
+## Phase 3, item 1: the UI in the page
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| The web page draws the UI the same way as the desktop. | Done | The same renderer draws it; the page hands the mouse to `WebPlayer::pointer` (CSS pixels to the canvas) and `mouse`; `semantic()` returns the semantic frame, `fullscreen()` whether the game's settings ask for fullscreen, which the page asks the browser for (a browser grants it just after a key press or a click). | `tools/web/check.mjs`: Escape opens Hollow's pause menu, the real mouse focuses Restart the run and a click presses it (the hero back at the cave mouth), on WebGPU and with WebGL2 forced |
+
 ## Known limitations, stated so they are decisions
 
 - `Player::open` copies the daemon's `open_scene`. Item 7 shares one assembly.

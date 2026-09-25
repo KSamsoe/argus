@@ -1,0 +1,9 @@
+[Parent]
+entity = "@menu.panel"
+
+[UiNode]
+margin = [0.0, 6.0]
+
+[UiText]
+text = "Delve, floor {@player:Player.floor}"
+align = "center"

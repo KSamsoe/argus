@@ -48,6 +48,15 @@ Every statement in the design document (v0.3) that constrains the daemon and the
 | The local socket needs no auth; remote access via tokens is later. | Done (phase-0 half) | Nothing listens beyond the local socket. | |
 | Identical result shapes from the live world or the index. | Deferred | Piece 6 will serve `world.*` and `scene.*` from the index when no world is loaded, with these shapes. | |
 
+## Phase 3, item 1: the UI tree in every scene
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§12) A retained UI tree in every scene, costing nothing without one. | Done | The assembly installs `argus-ui` (`ui.input` first in sim, `ui.layout` last in late) and, with an input map, `input.rebind`; the session keeps the UI's theme and fonts and hands them to every renderer before it draws. Font assets reach the UI at open and when one is imported again. | `physics::a_player_runs_jumps_and_lands_on_carved_tiles` and `protocol::session_open_gives_the_one_screen_summary` (the system lists) |
+| (§12) The window's mouse is the UI's pointer. | Done | The window's cursor becomes `DeviceInput::Pointer` through the renderer's canvas fit; a press waiting for a rebind is taken before the game hears it. | Checked by hand in the window; the web check drives the page's same conversion with a real mouse, and `argus-ui` tests the pointer itself |
+| (§12) Rebinding at runtime, through the protocol. | Done | `input.bind {action, device, bindings, save}`: rebinds from now on and emits `input.rebound`; `save` writes `input.toml`. | `input::input_bind_rebinds_an_action_and_save_keeps_it_in_the_file` |
+| (§14) Fonts are assets. | Done | `asset.list` and `asset.get` report fonts (family, size, spread, glyphs, atlas, what the font lacks). | `argus-assets` `importer::a_font_imports_as_a_distance_field_atlas_of_the_glyphs_text_needs` |
+
 ## Phase 3, item 0: save games
 
 | Spec | Status | Where | Test |
@@ -83,7 +92,7 @@ Every statement in the design document (v0.3) that constrains the daemon and the
 |---|---|---|---|
 | L4 `obs.frame {format: "semantic"}` (§8). | Done | The renderer's semantic frame plus the tick, the time, what the tilemaps in view collide with (`tiles.maps[].rows`, one character a cell, top row first, with the first cell and where it falls in the frame's pixels; every second or third cell past 64 by 36), its own `bytes`, and `ms`. It builds no renderer, so it answers on a machine with no adapter; it runs the present stage first, like the picture. | `semantic::the_semantic_frame_says_what_the_player_sees_and_the_picture_is_marked` |
 | L5 `obs.frame {format: "png", annotate: true}` (§8). | Done | The picture with the same frame's ids and bounds drawn over it, from the view it was drawn with, and the marks returned. `obs.annotate` (the method table's name) is the same call. `obs.frame` now draws the current tick at alpha 1: a stepped world used to be pictured part way from the tick before, a tick behind what `world.query` said, once the offscreen renderer had drawn a frame. | same |
-| Delve lives at L4: the semantic frame carries the map, the log, and the menus (§8). | Partial | Delve's hero, monsters (name and HP), and stairs describe themselves and its turn counter is a HUD line, so a turn reads in under 1 KB. Its map is drawn as tile entities, so the frame gives it as one group with its bounds; a map on the engine's tilemaps would come as collision rows. The log is `obs.events`; menus wait for the UI tree. | `examples/delve` (`argus obs frame format=semantic`) |
+| Delve lives at L4: the semantic frame carries the map, the log, and the menus (§8). | Partial | Delve's hero, monsters (name and HP), and stairs describe themselves, and its HUD line and menu are UI texts and buttons in the frame's `ui` section (phase 3 item 1), so a turn reads in under 1 KB. Its map is drawn as tile entities, so the frame gives it as one group with its bounds; a map on the engine's tilemaps would come as collision rows. The log is `obs.events`. | `examples/delve` (`argus obs frame format=semantic`), Delve's `tests/menu.luau` |
 | (Found while building it.) | Done | The shader time the renderer was given ran a tick ahead of what the picture showed; it is now the drawn moment. | |
 
 ## Phase 1, item 11: materials

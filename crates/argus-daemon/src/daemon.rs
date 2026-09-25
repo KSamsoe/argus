@@ -76,6 +76,8 @@ struct Session {
     /// Keyframes of the ticks that asked for a save (`q:save`), by the
     /// save's name, written once the step is over (phase 3 item 0).
     saves: Rc<RefCell<Vec<(String, crate::ring::Keyframe)>>>,
+    /// The UI's theme and fonts (phase 3 item 1).
+    ui: Rc<RefCell<argus_ui::Shared>>,
 }
 
 #[derive(Default)]
@@ -384,6 +386,7 @@ impl Daemon {
             }
             "input.log.get" => self.input_log_get(params),
             "input.bindings" => Ok(self.input()?.borrow().map().to_json()),
+            "input.bind" => self.input_bind(params),
             "input.devices" => Ok(self.input_devices()),
             "input.state" => {
                 let slot = json::u64_param(params, "slot", 1)? as u8;
@@ -646,10 +649,16 @@ impl Daemon {
     /// turns taken. Tests call this directly; the window and gamepads
     /// reach it through `poll_devices`.
     pub fn device_input(&mut self, events: &[argus_input::DeviceInput]) -> u64 {
+        let st = self.session.as_ref().and_then(|s| s.input.clone());
         for ev in events {
+            // A controls menu waiting for a key takes the press (phase 3
+            // item 1); the game does not hear it.
+            if st.as_ref().is_some_and(|s| s.borrow_mut().capture(ev)) {
+                continue;
+            }
             self.devices.apply(ev);
         }
-        let Some(st) = self.session.as_ref().and_then(|s| s.input.clone()) else {
+        let Some(st) = st else {
             return 0;
         };
         let now = self.sched.tick();
@@ -706,6 +715,13 @@ impl Daemon {
                 self.device_input(&evs);
             }
         }
+    }
+
+    /// The UI canvas, for semantic frames (phase 3 item 1).
+    pub(crate) fn ui_canvas(&self) -> Option<[f32; 2]> {
+        let s = self.session.as_ref()?;
+        let t = &s.ui.borrow().theme;
+        Some([t.width, t.height])
     }
 
     fn input_devices(&self) -> Json {
@@ -835,6 +851,7 @@ impl Daemon {
             load,
             assets,
             asset_report,
+            ui,
             #[cfg(feature = "audio")]
             audio,
             ..
@@ -891,6 +908,7 @@ impl Daemon {
             play_from: None,
             mark_key: cfg.mark_key.clone().unwrap_or_else(|| "F8".to_string()),
             saves: Rc::new(RefCell::new(Vec::new())),
+            ui,
             root,
             project,
             scene,
@@ -1150,6 +1168,15 @@ impl Daemon {
             ses.tiles.borrow_mut().set_tilesets(&ses.assets);
             ses.anims.borrow_mut().set_assets(&ses.assets);
             ses.particles.borrow_mut().set_assets(&ses.assets);
+            // Fonts again only when one changed: the layout measures anew.
+            if changed.iter().any(|n| {
+                ses.assets
+                    .entries()
+                    .get(n)
+                    .is_none_or(|e| e.kind() == "font")
+            }) {
+                argus_player::set_fonts(&mut ses.ui.borrow_mut().fonts, &ses.assets);
+            }
             #[cfg(feature = "render")]
             {
                 // Sprites first, so a material naming one binds the new texture.
@@ -1286,6 +1313,14 @@ impl Daemon {
                     m.shader_file,
                     m.params.len(),
                     m.params.iter().map(|p| p.name.clone()).collect::<Vec<_>>(),
+                    e.warnings.len()
+                ]),
+                argus_assets::Asset::Font(f) => json!([
+                    e.name,
+                    "font",
+                    f.source,
+                    f.glyphs.len(),
+                    Json::Array(Vec::new()),
                     e.warnings.len()
                 ]),
                 argus_assets::Asset::Emitter(fx) => json!([
@@ -2572,6 +2607,44 @@ impl Daemon {
     }
 
     // ----- input ------------------------------------------------------------
+
+    /// `input.bind {action, device, bindings, save}`: rebind an action at
+    /// run time (§12 "Rebinding at runtime is a UI over the same table";
+    /// phase 3 item 1); `save` also writes it into input.toml.
+    fn input_bind(&mut self, params: &Json) -> Result<Json> {
+        let action = json::str_param(params, "action")?.to_string();
+        let device = json::opt_str(params, "device")?
+            .unwrap_or("keyboard")
+            .to_string();
+        let names: Vec<String> = params
+            .get("bindings")
+            .and_then(Json::as_array)
+            .ok_or_else(|| bad_params("bindings is an array of key, button, or input names"))?
+            .iter()
+            .map(|v| {
+                v.as_str()
+                    .map(str::to_string)
+                    .ok_or_else(|| bad_params("bindings are names"))
+            })
+            .collect::<Result<_>>()?;
+        let save = json::bool_param(params, "save", false)?;
+        let st = self.input()?;
+        st.borrow_mut().rebind(&action, &device, names.clone())?;
+        if save {
+            let root = self.require_session()?.root.clone();
+            argus_input::ActionMap::save_bindings(&root, &action, &device, &names)?;
+        }
+        self.world.emit(Event::Game {
+            name: "input.rebound".to_string(),
+            fields: vec![
+                ("action".into(), Value::Str(action.clone())),
+                ("device".into(), Value::Str(device.clone())),
+                ("binding".into(), Value::Str(names.join(", "))),
+            ],
+        });
+        self.pump_events();
+        Ok(json!({ "action": action, "device": device, "bindings": names, "saved": save }))
+    }
 
     fn input(&self) -> Result<Rc<RefCell<InputState>>> {
         let ses = self.require_session()?;
@@ -4044,6 +4117,7 @@ impl Daemon {
         )?;
         let _ = self.sched.present(&mut self.world);
         r.set_time(shader_time(&self.sched, alpha));
+        r.set_ui(self.session.as_ref().map(|s| s.ui.clone()));
         let store = self.session.as_ref().expect("session").particles.borrow();
         let rep = r.render_frame(&self.world, tick, alpha, &extras, Some(&store))?;
         drop(store);
@@ -4068,6 +4142,7 @@ impl Daemon {
                     assets: Some(&ses.assets),
                     particles: Some(&store),
                     view: Some(view),
+                    ui_canvas: self.ui_canvas(),
                 },
             );
             let marks = argus_render::annotate(&mut img, &sf);
@@ -4145,6 +4220,7 @@ impl Daemon {
                 assets: Some(&ses.assets),
                 particles: Some(&store),
                 view,
+                ui_canvas: self.ui_canvas(),
             },
         );
         drop(store);
@@ -4367,6 +4443,7 @@ impl Daemon {
         self.update_bar(size.0);
         if let (Some((_, r)), Some(ses)) = (&mut self.render.window, &self.session) {
             r.set_time(t);
+            r.set_ui(Some(ses.ui.clone()));
             let store = ses.particles.borrow();
             let _ = r.render_frame(&self.world, tick, alpha, &extras, Some(&store));
         }
@@ -4945,6 +5022,13 @@ pub(crate) mod render {
                         Some(WindowInput::Device(d)) => out.push(d),
                         Some(WindowInput::Text(t)) => self.typed.push(t),
                         Some(WindowInput::Resized(w, h)) => r.gpu_mut().resize(w, h),
+                        // The mouse, on the UI canvas: the pointer action.
+                        Some(WindowInput::Cursor(x, y)) => {
+                            if let Some(f) = r.ui_fit() {
+                                let [x, y] = f.to_canvas([x, y]);
+                                out.push(DeviceInput::Pointer { x, y });
+                            }
+                        }
                         // The host reports the close as the pump's answer.
                         Some(WindowInput::Close) | None => {}
                     }

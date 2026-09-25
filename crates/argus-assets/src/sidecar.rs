@@ -189,6 +189,8 @@ pub enum SidecarKind {
     Emitter,
     /// A material: a shader and its parameters (item 11).
     Material,
+    /// A font's settings (phase 3 item 1), which need the font beside them.
+    Font,
     /// It does not say, and nothing in it tells.
     Unknown,
 }
@@ -199,7 +201,7 @@ pub(crate) fn err(file: &str, line: u32, msg: impl Into<String>) -> ArgusError {
         .at(Some(format!("{file}:{line}")))
 }
 
-fn line_of(text: &str, item: &toml_edit::Item) -> u32 {
+pub(crate) fn line_of(text: &str, item: &toml_edit::Item) -> u32 {
     let at = item.span().map(|s| s.start).unwrap_or(0).min(text.len());
     text[..at].matches('\n').count() as u32 + 1
 }
@@ -219,7 +221,7 @@ fn num(v: Option<&toml_edit::Item>) -> Option<f64> {
     v.as_float().or_else(|| v.as_integer().map(|i| i as f64))
 }
 
-fn parse(file: &str, text: &str) -> Result<Doc> {
+pub(crate) fn parse(file: &str, text: &str) -> Result<Doc> {
     Doc::parse(text.to_string()).map_err(|e| {
         let line = e
             .span()
@@ -239,11 +241,12 @@ pub fn kind_of(file: &str, text: &str) -> Result<SidecarKind> {
             "animator" => Ok(SidecarKind::Animator),
             "emitter" => Ok(SidecarKind::Emitter),
             "material" => Ok(SidecarKind::Material),
+            "font" => Ok(SidecarKind::Font),
             other => Err(err(
                 file,
                 1,
                 format!(
-                    "type = {other:?}; types are sprite, sound, animator, emitter, and material"
+                    "type = {other:?}; types are sprite, sound, animator, emitter, material, and font"
                 ),
             )),
         };

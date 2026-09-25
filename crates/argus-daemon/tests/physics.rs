@@ -202,7 +202,9 @@ fn a_player_runs_jumps_and_lands_on_carved_tiles() {
         [
             "post.hitstop",
             "input.actions",
+            "ui.input",
             "physics.control",
+            "input.rebind",
             "physics.move",
             "physics.overlap",
             "anim.update",
@@ -210,7 +212,8 @@ fn a_player_runs_jumps_and_lands_on_carved_tiles() {
             "late.listen",
             "camera.update",
             "post.update",
-            "particles.update"
+            "particles.update",
+            "ui.layout"
         ]
     );
     let w = ok(

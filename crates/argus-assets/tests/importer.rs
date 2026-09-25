@@ -544,7 +544,7 @@ fn a_material_imports_checked_and_its_shader_errors_have_lines() {
         panic!()
     };
     assert_eq!(fx.material.as_deref(), Some("materials/tint"));
-    // Every material: the project's three and the library's five.
+    // Every material: the project's three and the library's six.
     let names: Vec<&str> = imp.materials().iter().map(|(n, _)| *n).collect();
     assert_eq!(
         names,
@@ -556,7 +556,8 @@ fn a_material_imports_checked_and_its_shader_errors_have_lines() {
             "lit",
             "palette",
             "dissolve",
-            "outline"
+            "outline",
+            "sdf_text"
         ]
     );
 
@@ -613,4 +614,109 @@ fn a_material_imports_checked_and_its_shader_errors_have_lines() {
         f.error.message
     );
     std::fs::remove_dir_all(&dir).ok();
+}
+
+// ----- phase 3 item 1: fonts ----------------------------------------------------
+
+/// The OFL font Delve ships (Liberation Sans, with its licence beside it).
+fn liberation() -> Vec<u8> {
+    let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../examples/delve/assets/fonts/LiberationSans-Regular.ttf");
+    std::fs::read(p).unwrap()
+}
+
+#[test]
+fn a_font_imports_as_a_distance_field_atlas_of_the_glyphs_text_needs() {
+    let root = project("font");
+    std::fs::create_dir_all(root.join("assets/fonts")).unwrap();
+    std::fs::write(root.join("assets/fonts/sans.ttf"), liberation()).unwrap();
+    let mut imp = Importer::new(&root);
+    let t = std::time::Instant::now();
+    let r = imp.scan();
+    println!("imported in {:?}", t.elapsed());
+    assert_eq!(r.imported, ["fonts/sans"], "{:?}", r.failed);
+    let e = imp.get("fonts/sans").unwrap();
+    assert_eq!(e.kind(), "font");
+    assert!(e.warnings.is_empty(), "{:?}", e.warnings);
+    let Asset::Font(f) = e.asset.clone() else {
+        panic!()
+    };
+    assert_eq!(f.family, "Liberation Sans");
+    assert_eq!((f.size, f.spread), (32.0, 4.0));
+    assert_eq!(f.units_per_em, 2048);
+    assert!(f.metrics[0] > 0 && f.metrics[1] < 0, "{:?}", f.metrics);
+    // Every printable character has a glyph with a cell (bar the space).
+    let bytes = f.bytes.clone();
+    let face = ttf_parser::Face::parse(&bytes, 0).unwrap();
+    for c in '!'..='~' {
+        let g = face.glyph_index(c).unwrap().0;
+        assert!(
+            f.glyphs.binary_search_by_key(&g, |b| b.id).is_ok(),
+            "{c:?} baked"
+        );
+    }
+    println!(
+        "{} glyphs, atlas {:?}, {} KB",
+        f.glyphs.len(),
+        f.atlas,
+        f.field.len() / 1024
+    );
+    assert!(f.glyphs.len() > 180, "{}", f.glyphs.len());
+    assert!(f.atlas[0] <= 1024 && f.atlas[1] <= 1024, "{:?}", f.atlas);
+    // The field: 0.5 on an edge, so an "l" (a bar) is inside at its middle
+    // and outside a spread away from its sides.
+    let l = face.glyph_index('l').unwrap().0;
+    let b = &f.glyphs[f.glyphs.binary_search_by_key(&l, |b| b.id).unwrap()];
+    let at = |x: u32, y: u32| f.field[((b.rect[1] + y) * f.atlas[0] + b.rect[0] + x) as usize];
+    let mid = (b.rect[2] / 2, b.rect[3] / 2);
+    assert!(at(mid.0, mid.1) > 150, "inside: {}", at(mid.0, mid.1));
+    assert!(at(0, mid.1) < 20, "outside: {}", at(0, mid.1));
+    assert_eq!(f.rgba().len(), f.field.len() * 4);
+
+    // A sidecar sets the size, spread, and more characters; a bad setting
+    // fails with its line; an unknown one warns.
+    write(
+        &root,
+        "fonts/sans.toml",
+        "size = 24\nspread = 3\nchars = \"\u{3b1}\u{3b2}\u{3b3}\"\nweight = 400\n",
+    );
+    let r = imp.scan();
+    assert_eq!(r.imported, ["fonts/sans"]);
+    let e = imp.get("fonts/sans").unwrap();
+    let Asset::Font(g) = &e.asset else { panic!() };
+    assert_eq!((g.size, g.spread), (24.0, 3.0));
+    let alpha = face.glyph_index('\u{3b1}').unwrap().0;
+    assert!(g.glyphs.iter().any(|b| b.id == alpha), "Greek baked");
+    assert_eq!(e.warnings.len(), 1, "{:?}", e.warnings);
+    assert!(
+        e.warnings[0].at.ends_with("sans.toml:4"),
+        "{:?}",
+        e.warnings
+    );
+    write(&root, "fonts/sans.toml", "size = 2\n");
+    let r = imp.scan();
+    assert_eq!(r.failed.len(), 1);
+    assert_eq!(
+        r.failed[0].error.r#ref.as_deref(),
+        Some("assets/fonts/sans.toml:1")
+    );
+    // A font's sidecar alone says what is missing.
+    std::fs::remove_file(root.join("assets/fonts/sans.ttf")).unwrap();
+    write(&root, "fonts/sans.toml", "type = \"font\"\n");
+    let r = imp.scan();
+    assert!(
+        r.failed[0].error.message.contains("sans.ttf"),
+        "{}",
+        r.failed[0].error.message
+    );
+    // Not a font.
+    write(&root, "fonts/bad.ttf", "not a font");
+    let r = imp.scan();
+    assert!(
+        r.failed
+            .iter()
+            .any(|f| f.name == "fonts/bad" && f.error.message.contains("not a font")),
+        "{:?}",
+        r.failed
+    );
 }

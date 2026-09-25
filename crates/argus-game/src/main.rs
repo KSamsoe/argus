@@ -247,6 +247,12 @@ impl Game {
                     }
                 }
                 Some(WindowInput::Resized(w, h)) => self.r.gpu_mut().resize(w, h),
+                Some(WindowInput::Cursor(x, y)) if self.prompt.is_none() => {
+                    if let Some(f) = self.r.ui_fit() {
+                        let [x, y] = f.to_canvas([x, y]);
+                        devs.push(DeviceInput::Pointer { x, y });
+                    }
+                }
                 _ => {}
             }
         }
@@ -279,11 +285,16 @@ impl Game {
             }
         }
         let _ = self.p.sched.present(&mut self.p.world);
+        // The game's settings say whether the window fills the screen.
+        self.host
+            .set_fullscreen(argus_ui::wants_fullscreen(&self.p.world));
         self.overlay();
         let (w, h) = self.r.gpu().size();
         let view = argus_render::view_for(&self.p.world, w, h);
         let extras = self.p.tile_extras(view);
         self.r.set_time(self.p.sched.time() as f32);
+        // The player's UI (a load replaces the player, and its UI with it).
+        self.r.set_ui(Some(self.p.ui.clone()));
         let store = self.p.particles.borrow();
         let tick = self.p.sched.tick();
         let alpha = self.owed.clamp(0.0, 1.0) as f32;
@@ -390,13 +401,7 @@ impl Game {
         if key == self.bar {
             return;
         }
-        match &want {
-            Some((text, rgba)) => {
-                let img = argus_render::status_bar(width.max(64), text, *rgba);
-                self.r.gpu_mut().set_overlay(Some(&img));
-            }
-            None => self.r.gpu_mut().set_overlay(None),
-        }
+        self.r.set_bar(want.as_ref().map(|(t, c)| (t.as_str(), *c)));
         self.bar = key;
     }
 }

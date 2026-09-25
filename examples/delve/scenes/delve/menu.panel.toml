@@ -1,0 +1,10 @@
+[Parent]
+entity = "@menu"
+
+[UiNode]
+pad = [28.0, 22.0]
+gap = 10.0
+
+[UiPanel]
+color = "panel"
+border = 2.0

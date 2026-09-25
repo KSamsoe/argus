@@ -117,6 +117,12 @@ What remains in `sim.chase` is the binding's call path: each iteration is three 
 |---|---|---|---|
 | Collision is an event (§8 L2); a script reacts to it. | Done | `q:events(name)` returns the game events emitted so far this tick with that name (all of them with no name), oldest first, each a table of its fields plus `name`; entity fields are entity handles. A late-stage system reads the physics step's `body.landed` or `overlap.begin` the tick they happen. | `systems::a_script_reads_the_events_emitted_earlier_in_its_tick`, `argus-daemon/tests/physics.rs` |
 
+## Phase 3, item 1: a pause
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§12) Every game's pause menu: the game stands still while the menu runs. | Done | `q:freeze()`: the rest of this tick stands still, but for systems declared `unfrozen` (the UI's input and layout, and a game's menu systems): phase 2 item 6's hit-stop freeze, asked for by a script. Hollow's `sim.pause` and Delve's `sim.menu` use it. | Hollow's `tests/pause.luau`, Delve's `tests/menu.luau` |
+
 ## §18 Build plan
 
 Phase 0 item 3, "Luau binding with component and def schemas": this crate.

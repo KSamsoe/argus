@@ -16,6 +16,9 @@ pub enum WindowInput {
     Text(String),
     /// The window's new size.
     Resized(u32, u32),
+    /// The mouse moved to a place in the window, in its pixels (y down);
+    /// the host puts it on the UI canvas (`argus_ui::Fit`) as a pointer.
+    Cursor(f32, f32),
     /// The close button.
     Close,
 }
@@ -33,6 +36,7 @@ pub fn window_input(ev: DeviceEvent) -> Option<WindowInput> {
             button: button.to_ascii_lowercase(),
             pressed,
         }),
+        DeviceEvent::Cursor { at } => WindowInput::Cursor(at.0, at.1),
         DeviceEvent::Focus { focused: false } => WindowInput::Device(DeviceInput::ReleaseAll),
         DeviceEvent::Text { text } => WindowInput::Text(text),
         DeviceEvent::Resized { width, height } => WindowInput::Resized(width, height),

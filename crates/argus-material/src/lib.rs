@@ -42,9 +42,9 @@ pub mod codes {
 pub const PRELUDE: &str = include_str!("../materials/prelude.wgsl");
 
 /// The shipped library, by name.
-pub const BUILTIN_NAMES: [&str; 5] = ["unlit", "lit", "palette", "dissolve", "outline"];
+pub const BUILTIN_NAMES: [&str; 6] = ["unlit", "lit", "palette", "dissolve", "outline", "sdf_text"];
 
-const BUILTIN_FILES: [(&str, &str, &str); 5] = [
+const BUILTIN_FILES: [(&str, &str, &str); 6] = [
     (
         "unlit",
         include_str!("../materials/unlit.toml"),
@@ -69,6 +69,11 @@ const BUILTIN_FILES: [(&str, &str, &str); 5] = [
         "outline",
         include_str!("../materials/outline.toml"),
         include_str!("../materials/outline.wgsl"),
+    ),
+    (
+        "sdf_text",
+        include_str!("../materials/sdf_text.toml"),
+        include_str!("../materials/sdf_text.wgsl"),
     ),
 ];
 
@@ -380,6 +385,17 @@ pub fn compose(spec: &MaterialSpec) -> Composed {
     }
     for f in &layout.fields {
         s.push_str(&format!("    {}: {},\n", f.name, f.ty));
+    }
+    // Padded to the uniform's size, a multiple of 16 bytes: WebGL2 binds
+    // nothing smaller (a material of one or two numbers failed there).
+    let end = layout
+        .fields
+        .iter()
+        .map(|f| f.offset + f.floats * 4)
+        .max()
+        .unwrap_or(16);
+    for k in 0..layout.size.saturating_sub(end) / 4 {
+        s.push_str(&format!("    _pad{k}: f32,\n"));
     }
     s.push_str("};\n@group(2) @binding(0) var<uniform> params: Params;\n@group(2) @binding(1) var material_samp: sampler;\n");
     for (k, &i) in layout.textures.iter().enumerate() {

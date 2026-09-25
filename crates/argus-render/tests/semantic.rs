@@ -76,6 +76,7 @@ fn spec() -> FrameSpec<'static> {
         assets: None,
         particles: None,
         view: None,
+        ui_canvas: None,
     }
 }
 

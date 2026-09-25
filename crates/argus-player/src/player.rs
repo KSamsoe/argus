@@ -40,6 +40,8 @@ pub struct Player {
     pub audio: Option<argus_audio::AudioEngine>,
     /// What a keyframe is captured from (the recorder's).
     pub sources: Sources,
+    /// The UI's theme and fonts, which the renderer draws with.
+    pub ui: Rc<RefCell<argus_ui::Shared>>,
     /// The bounded recorder, once [`Player::record`] started it.
     pub recorder: Option<crate::recorder::Recorder>,
     host: ScriptHost,
@@ -106,6 +108,7 @@ impl Player {
             assets: a.assets,
             audio: a.audio.and_then(|r| r.ok()),
             sources,
+            ui: a.ui,
             recorder: None,
             host: a.host,
             saves: Rc::new(RefCell::new(Vec::new())),
@@ -288,10 +291,15 @@ impl Player {
     /// daemon takes it. Returns the turns a discrete game took: one command,
     /// one turn.
     pub fn devices(&mut self, evs: &[DeviceInput]) -> u64 {
+        let st = self.input.clone();
         for ev in evs {
+            // A controls menu waiting for a key takes the press.
+            if st.as_ref().is_some_and(|s| s.borrow_mut().capture(ev)) {
+                continue;
+            }
             self.devices.apply(ev);
         }
-        let Some(st) = self.input.clone() else {
+        let Some(st) = st else {
             return 0;
         };
         let now = self.sched.tick();

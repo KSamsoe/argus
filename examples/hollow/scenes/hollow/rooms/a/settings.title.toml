@@ -1,0 +1,9 @@
+[Parent]
+entity = "@settings"
+
+[UiNode]
+margin = [0.0, 6.0]
+
+[UiText]
+text = "Settings"
+align = "center"

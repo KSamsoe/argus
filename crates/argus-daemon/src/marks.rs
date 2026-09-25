@@ -438,6 +438,7 @@ impl Daemon {
         let ses = self.session.as_ref().expect("session");
         let r = self.render.offscreen(w, h, software, &ses.assets)?;
         r.set_time(shader_time(&self.sched, 1.0));
+        r.set_ui(Some(ses.ui.clone()));
         let store = ses.particles.borrow();
         r.render_frame(&self.world, tick, 1.0, &extras, Some(&store))?;
         drop(store);
@@ -1110,13 +1111,7 @@ impl Daemon {
             return;
         }
         if let Some((_, r)) = &mut self.render.window {
-            match &want {
-                Some((text, rgba)) => {
-                    let img = argus_render::status_bar(width.max(64), text, *rgba);
-                    r.gpu_mut().set_overlay(Some(&img));
-                }
-                None => r.gpu_mut().set_overlay(None),
-            }
+            r.set_bar(want.as_ref().map(|(t, c)| (t.as_str(), *c)));
         }
         self.render.bar = key;
     }

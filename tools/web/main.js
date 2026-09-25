@@ -151,17 +151,48 @@ try {
     player.key(e.code, false);
     e.preventDefault();
   });
+  // The mouse: where it is over the canvas is the pointer on the UI
+  // canvas, and its buttons are buttons (phase 3 item 1).
+  const buttons = ["left", "middle", "right"];
+  const point = (e) => {
+    const r = canvas.getBoundingClientRect();
+    player.pointer(e.clientX - r.left, e.clientY - r.top, r.width, r.height);
+  };
+  canvas.addEventListener("pointermove", point);
+  canvas.addEventListener("pointerdown", (e) => {
+    canvas.focus();
+    point(e);
+    if (buttons[e.button]) player.mouse(buttons[e.button], true);
+  });
+  canvas.addEventListener("pointerup", (e) => {
+    point(e);
+    if (buttons[e.button]) player.mouse(buttons[e.button], false);
+  });
+  canvas.addEventListener("contextmenu", (e) => e.preventDefault());
   canvas.addEventListener("blur", () => player.release_all());
   canvas.focus();
 
   // What the headless checks reach for.
   window.argus = { player, setRunning: (r) => (run = r), report: (n) => player.report(n), send, store, savesAndLoads };
 
+  // The game's settings say whether it fills the screen (phase 3 item 1).
+  // A browser allows that only shortly after a key press or a click, which
+  // the one that pressed the setting's button is; asked once per change.
+  let fullscreen = false;
+  const fitScreen = () => {
+    const want = player.fullscreen();
+    if (want === fullscreen) return;
+    fullscreen = want;
+    if (want && !document.fullscreenElement) canvas.requestFullscreen?.().catch(() => {});
+    if (!want && document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+  };
+
   let n = 0;
   const frame = (t) => {
     try {
       player.frame(t, run);
       savesAndLoads();
+      fitScreen();
     } catch (e) {
       status.textContent = "Stopped: " + e;
       return;

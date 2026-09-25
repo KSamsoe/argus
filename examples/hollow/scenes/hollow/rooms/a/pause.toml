@@ -1,0 +1,12 @@
+# The pause menu: Escape (or Start) opens it and the game stands still
+# (systems/pause.luau); Resume or Escape again closes it.
+[UiRoot]
+layer = 10
+
+[UiNode]
+justify = "center"
+align = "center"
+visible = false
+
+[UiPanel]
+color = "#05070ACC"

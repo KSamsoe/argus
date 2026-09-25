@@ -36,6 +36,20 @@ pub struct Run {
     pub count: usize,
 }
 
+/// The UI's part of a frame (phase 3 item 1): drawn after the world and its
+/// post passes, through a view that maps canvas pixels (y down, as
+/// instances with y negated) to the window, each run inside a scissor.
+#[derive(Clone, Debug, Default)]
+pub struct UiDraw {
+    /// The view's centre.
+    pub center: [f32; 2],
+    /// The view's half size.
+    pub half: [f32; 2],
+    /// Runs of the frame's instances, each with its scissor (x, y, width,
+    /// height, in target pixels).
+    pub runs: Vec<(Run, [u32; 4])>,
+}
+
 /// One compiled material: its pipeline, its uniform, and the textures its
 /// parameters name.
 struct GpuMaterial {
@@ -110,6 +124,8 @@ pub struct Gpu {
     format: wgpu::TextureFormat,
     view_buf: wgpu::Buffer,
     view_bind: wgpu::BindGroup,
+    ui_view_buf: wgpu::Buffer,
+    ui_view_bind: wgpu::BindGroup,
     view_layout: wgpu::BindGroupLayout,
     atlas_layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
@@ -128,7 +144,6 @@ pub struct Gpu {
     width: u32,
     height: u32,
     /// A picture over the frame's bottom edge (a mark's note prompt).
-    overlay: Option<crate::overlay::Overlay>,
     /// The post passes of the next frame (phase 2 item 6).
     post: Vec<crate::post::PostPass>,
     /// Their pipelines and textures, made when first used.
@@ -382,6 +397,20 @@ impl Gpu {
                 resource: view_buf.as_entire_binding(),
             }],
         });
+        let ui_view_buf = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("ui view"),
+            size: std::mem::size_of::<ViewUniform>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let ui_view_bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("ui view"),
+            layout: &view_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: ui_view_buf.as_entire_binding(),
+            }],
+        });
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("nearest"),
             mag_filter: wgpu::FilterMode::Nearest,
@@ -398,6 +427,8 @@ impl Gpu {
             format,
             view_buf,
             view_bind,
+            ui_view_buf,
+            ui_view_bind,
             view_layout,
             atlas_layout,
             sampler,
@@ -412,7 +443,6 @@ impl Gpu {
             target,
             width,
             height,
-            overlay: None,
             post: Vec::new(),
             post_stack: None,
         };
@@ -436,7 +466,7 @@ impl Gpu {
             }
         }
         gpu.add_atlas_rgba("circle", n, n, &circle, vec![[0.0, 0.0, 1.0, 1.0]]);
-        // The pixel font the game's own text is drawn with (Describe.shown).
+        // The pixel font: the UI's built-in font.
         let (fw, fh, font, frames) = crate::annotate::font_atlas();
         let pivots = vec![[0.5, 0.5]; frames.len()];
         gpu.add_atlas_frames(crate::FONT_ATLAS, fw, fh, &font, frames, pivots);
@@ -838,6 +868,8 @@ impl Gpu {
     /// Draw one frame: `runs` are runs of `instances`, already ordered,
     /// each with one atlas and one material. The view is rolled by
     /// `view_angle` radians (camera shake). Clear colour is linear RGBA.
+    /// `ui`'s runs (of the same instances) are drawn after the post passes,
+    /// over everything.
     #[allow(clippy::too_many_arguments)]
     pub fn draw(
         &mut self,
@@ -847,8 +879,14 @@ impl Gpu {
         clear: [f32; 4],
         instances: &[Instance],
         runs: &[Run],
+        ui: Option<&UiDraw>,
     ) -> Result<DrawStats> {
-        let mut used: Vec<usize> = runs.iter().map(|r| r.material).collect();
+        let ui = ui.filter(|u| !u.runs.is_empty());
+        let mut used: Vec<usize> = runs
+            .iter()
+            .chain(ui.iter().flat_map(|u| u.runs.iter().map(|(r, _)| r)))
+            .map(|r| r.material)
+            .collect();
         used.sort_unstable();
         used.dedup();
         for &m in &used {
@@ -871,6 +909,17 @@ impl Gpu {
                 pad: [view_angle.cos(), view_angle.sin(), self.time, 0.0],
             }),
         );
+        if let Some(u) = ui {
+            self.queue.write_buffer(
+                &self.ui_view_buf,
+                0,
+                bytemuck::bytes_of(&ViewUniform {
+                    center: u.center,
+                    half: u.half,
+                    pad: [1.0, 0.0, self.time, 0.0],
+                }),
+            );
+        }
         let (frame, view) = match &self.target {
             Target::Offscreen { view, .. } => (None, view.clone()),
             Target::Surface { surface, .. } => {
@@ -882,9 +931,6 @@ impl Gpu {
                 (Some(f), v)
             }
         };
-        if let Some(o) = &self.overlay {
-            o.place(&self.queue, self.width, self.height);
-        }
         // With post passes the world goes into the stack's texture first.
         let post_on = !self.post.is_empty();
         let scene = if post_on {
@@ -965,9 +1011,6 @@ impl Gpu {
             }
             stats.atlases = bound.len();
             stats.materials = drawn_with.len();
-            if let (false, Some(o)) = (post_on, &self.overlay) {
-                o.draw(&mut pass);
-            }
         }
         if post_on {
             if let Some(stack) = &self.post_stack {
@@ -980,23 +1023,64 @@ impl Gpu {
                     (self.width, self.height),
                 );
             }
-            // The bar over the passes: a shake does not move it.
-            if let Some(o) = &self.overlay {
-                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("overlay"),
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: &view,
-                        resolve_target: None,
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Load,
-                            store: wgpu::StoreOp::Store,
-                        },
-                    })],
-                    depth_stencil_attachment: None,
-                    timestamp_writes: None,
-                    occlusion_query_set: None,
-                });
-                o.draw(&mut pass);
+        }
+        // The UI over the world and its passes: a flash or a shake does not
+        // touch it (phase 3 item 1).
+        if let Some(u) = ui {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("ui"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+            pass.set_bind_group(0, &self.ui_view_bind, &[]);
+            pass.set_vertex_buffer(0, self.instance_buf.slice(..));
+            let (mut cur_mat, mut cur_atlas) = (usize::MAX, usize::MAX);
+            for (r, sc) in &u.runs {
+                let Some(a) = self
+                    .atlas_order
+                    .get(r.atlas)
+                    .and_then(|n| self.atlases.get(n))
+                else {
+                    continue;
+                };
+                let mi = match self.materials.get(r.material) {
+                    Some(Some(m)) if m.bind.is_some() => r.material,
+                    _ => 0,
+                };
+                if mi != cur_mat {
+                    let Some(Some(m)) = self.materials.get(mi) else {
+                        continue;
+                    };
+                    let Some((bg, _)) = &m.bind else {
+                        continue;
+                    };
+                    pass.set_pipeline(&m.pipeline);
+                    pass.set_bind_group(2, bg, &[]);
+                    cur_mat = mi;
+                }
+                if r.atlas != cur_atlas {
+                    pass.set_bind_group(1, &a.bind_group, &[]);
+                    cur_atlas = r.atlas;
+                }
+                let x = sc[0].min(self.width);
+                let y = sc[1].min(self.height);
+                let w = sc[2].min(self.width - x);
+                let h = sc[3].min(self.height - y);
+                if w == 0 || h == 0 {
+                    continue;
+                }
+                pass.set_scissor_rect(x, y, w, h);
+                pass.draw(0..6, r.start as u32..(r.start + r.count) as u32);
+                stats.draw_calls += 1;
             }
         }
         if let Target::Offscreen {
@@ -1033,18 +1117,6 @@ impl Gpu {
             f.present();
         }
         Ok(stats)
-    }
-
-    /// Show a picture over the bottom edge of every frame, one texel a
-    /// pixel, or none (phase 2 item 2: the note typed after F8).
-    pub fn set_overlay(&mut self, img: Option<&crate::Image>) {
-        if img.is_none() && self.overlay.is_none() {
-            return;
-        }
-        let o = self
-            .overlay
-            .get_or_insert_with(|| crate::overlay::Overlay::new(&self.device, self.format));
-        o.set(&self.device, &self.queue, img);
     }
 
     /// The post passes the next frames run, in order (none: the world is

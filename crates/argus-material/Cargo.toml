@@ -1,6 +1,6 @@
 [package]
 name = "argus-material"
-description = "Argus Engine materials: a WGSL shader plus typed parameters declared in a sidecar, composed with the engine's sprite prelude, checked with naga so compile errors carry the shader's own line numbers, and a built-in library (unlit, lit, palette, dissolve, outline)"
+description = "Argus Engine materials: a WGSL shader plus typed parameters declared in a sidecar, composed with the engine's sprite prelude, checked with naga so compile errors carry the shader's own line numbers, and a built-in library (unlit, lit, palette, dissolve, outline, sdf_text)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

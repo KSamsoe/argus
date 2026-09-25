@@ -1,0 +1,14 @@
+type = "material"
+doc = "Text from a distance field: what a font asset's glyphs draw with (the UI picks it). The atlas holds how far each texel is from a glyph's edge, so the edge stays sharp at any size."
+
+[params.edge]
+type = "f32"
+default = 0.5
+range = [0.3, 0.7]
+doc = "Where the edge is in the field: under 0.5 draws bolder, over draws thinner"
+
+[params.softness]
+type = "f32"
+default = 1
+range = [0.25, 4]
+doc = "How wide the edge's blend is, in screen pixels"

@@ -1,0 +1,11 @@
+# Delve's UI (phase 3 item 1): its menu and HUD line in Liberation Sans
+# (assets/fonts, under the SIL Open Font License beside it), shaped and
+# drawn from a distance field. The canvas is the default 960 x 540.
+font = "fonts/LiberationSans-Regular"
+text_size = 18
+
+[colors]
+button = "#262C34"
+
+[high_contrast_colors]
+button = "#000000"

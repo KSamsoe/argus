@@ -10,14 +10,15 @@ return system "sim.run" {
   -- After the overlaps are known, so a touch is seen on its tick.
   after = { "physics.overlap" },
   reads = { "Actions", "Run", "Gem" },
-  writes = { "Run", "Gem", "Describe", "Transform", "KinematicBody", "Sprite" },
-  doc = "Counts the hero's falls and gems, finishes the run at the exit (run.finished {time, falls, gems}) and holds the hero there out of sight, restarts it on the restart action, and writes the HUD line.",
+  writes = { "Run", "Gem", "UiText", "Transform", "KinematicBody", "Sprite" },
+  doc = "Counts the hero's falls and gems, finishes the run at the exit (run.finished {time, falls, gems}) and holds the hero there out of sight, restarts it on the restart action (or the pause menu's), and writes the HUD line.",
   run = function(q)
     local hero = q:entity("@player")
     local exit = q:entity("@exit")
     local hud = q:entity("@hud")
     local run = hud:get("Run")
-    if hero:get("Actions").restart_pressed then
+    if hero:get("Actions").restart_pressed or run.restart then
+      run.restart = false
       hero:get("Transform").pos = vector.create(3, 1.8, 0)
       hero:get("KinematicBody").velocity = vector.create(0, 0, 0)
       hero:get("Sprite").visible = true
@@ -72,7 +73,7 @@ return system "sim.run" {
       e:get("Sprite").visible = g.active and not g.taken
     end
     local falls = run.falls == 0 and "no falls" or (run.falls == 1 and "1 fall" or (run.falls .. " falls"))
-    local d = hud:get("Describe")
+    local d = hud:get("UiText")
     if run.done then
       local found = ""
       if gems > 0 then

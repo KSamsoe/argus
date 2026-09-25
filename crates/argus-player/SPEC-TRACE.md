@@ -46,6 +46,12 @@ Every statement in the design document (v0.3) that constrains a game as players 
 | (Moved here from the daemon.) Keyframes and replay files. | Done | `keyframe` (`Keyframe`, `Sources`) and `replay` (the ARGR file; `encode`/`decode` for bytes, since a browser has no files) moved from the daemon, which re-exports them, so its ring, marks, and test replays share them with the recorder. | the daemon's tests |
 | A report reproduces on the desktop from wherever it was taken. | Done | `Player::play_report`: back to the report's keyframe, its commands replayed to its last tick, the world compared with the one it saved. A report taken in Chrome replays natively to the same world. | `tests/recorder.rs`; `tools/web/check.mjs` step 4 (the pit's report, through the server) |
 
+## Phase 3, item 1: the UI in the one assembly
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§12) The UI in every scene, the same in the daemon, the executable, and the page. | Done | `assemble.rs` loads `ui.toml` (`Theme::load`), installs `argus-ui` after the input map and the camera and, with an input map, `input.rebind`; `set_fonts` makes each font asset a shaped `SdfFont`. `Player::devices` hands a press to a waiting rebind first. | `packs::hollow_from_its_packs_plays_as_hollow_from_its_folder` (Hollow's pause and menu systems among the scripts) |
+
 ## §18 Build plan
 
 | Spec | Status | Where | Test |

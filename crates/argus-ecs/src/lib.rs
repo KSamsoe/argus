@@ -38,6 +38,7 @@ pub mod query;
 pub mod schema;
 pub mod snapshot;
 pub mod spatial;
+pub mod text;
 pub mod value;
 pub mod world;
 

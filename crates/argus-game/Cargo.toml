@@ -12,6 +12,7 @@ path = "src/main.rs"
 [dependencies]
 argus-player = { path = "../argus-player", version = "0.0.1", features = ["desktop"] }
 argus-render = { path = "../argus-render", version = "0.0.1" }
+argus-ui = { path = "../argus-ui", version = "0.0.1" }
 argus-input = { path = "../argus-input", version = "0.0.1" }
 argus-scene = { path = "../argus-scene", version = "0.0.1" }
 argus-sim = { path = "../argus-sim", version = "0.0.1" }

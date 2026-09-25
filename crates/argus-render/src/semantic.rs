@@ -9,7 +9,7 @@
 //! Nothing here touches the GPU, so a machine with no adapter builds it.
 
 use crate::Sprite;
-use argus_ecs::{Component, ComponentId, Entity, GlobalTransform, StrId, Transform, Value, World};
+use argus_ecs::{Component, ComponentId, Entity, GlobalTransform, StrId, Transform, World};
 use argus_particles::ParticleStore;
 use serde_json::{json, Value as Json};
 use std::collections::{BTreeMap, HashMap};
@@ -41,11 +41,6 @@ pub struct Describe {
     /// Leave it out.
     #[argus(doc = "Leave it out of the frame")]
     pub hidden: bool,
-    /// Draw the text for the player too.
-    #[argus(
-        doc = "Draw the text in the game too, in the pixel font: over the entity, or at the top of the screen for the HUD (until the UI tree, phase 3)"
-    )]
-    pub shown: bool,
 }
 
 /// What to build a frame for.
@@ -64,6 +59,29 @@ pub struct FrameSpec<'a> {
     pub particles: Option<&'a ParticleStore>,
     /// The view to use (a drawn frame's), else the drawing camera's now.
     pub view: Option<View>,
+    /// The UI canvas (ui.toml's width and height), when the world has a
+    /// UI: its nodes are placed in the frame through it (phase 3 item 1).
+    pub ui_canvas: Option<[f32; 2]>,
+}
+
+/// A UI node the frame lists (phase 3 item 1): words, or something to
+/// press, in the order it is drawn.
+#[derive(Clone, Debug, PartialEq)]
+pub struct UiSeen {
+    /// The node.
+    pub entity: Entity,
+    /// Its protocol spelling.
+    pub id: String,
+    /// Its words (a button's: its own, else its children's).
+    pub text: String,
+    /// Pixel bounds in the frame: x0, y0, x1, y1 (y down), clipped to it.
+    pub bounds: [i32; 4],
+    /// A button.
+    pub button: bool,
+    /// Has focus.
+    pub focused: bool,
+    /// Cannot be pressed.
+    pub disabled: bool,
 }
 
 /// A view: centre, half extents in world units, roll in radians.
@@ -128,6 +146,9 @@ pub struct SemanticFrame {
     pub rect: [f32; 4],
     /// What is on the screen, not in the world, in reading order.
     pub hud: Vec<Seen>,
+    /// The UI's words and buttons, in draw order (phase 3 item 1: "the
+    /// semantic frame reads it directly").
+    pub ui: Vec<UiSeen>,
     /// The notable entities (described or named), in reading order.
     pub entities: Vec<Seen>,
     /// Everything else, by kind, most first.
@@ -167,6 +188,19 @@ impl SemanticFrame {
                 "angle": round(self.view.angle),
             },
             "hud": self.hud.iter().map(line).collect::<Vec<_>>(),
+            "ui": self.ui.iter().map(|u| {
+                let mut o = json!({ "id": u.id, "text": u.text, "bounds": u.bounds });
+                if u.button {
+                    o["button"] = json!(true);
+                }
+                if u.focused {
+                    o["focused"] = json!(true);
+                }
+                if u.disabled {
+                    o["disabled"] = json!(true);
+                }
+                o
+            }).collect::<Vec<_>>(),
             "columns": ["id", "name", "text", "bounds", "z", "look"],
             "entities": self.entities.iter().map(row).collect::<Vec<_>>(),
             "groups": self.groups.iter().map(|g| json!({
@@ -183,35 +217,7 @@ fn round(x: f32) -> f64 {
     ((x as f64) * 100.0).round() / 100.0
 }
 
-/// The protocol's spelling of an entity: `@id` for a named one, else `e:N`.
-pub fn entity_id(world: &World, e: Entity) -> String {
-    match world.string_id(e) {
-        Some(id) => format!("@{id}"),
-        None => e.to_string(),
-    }
-}
-
-/// A value as text: whole numbers bare, others to two places, vectors as
-/// `(x, y)`, entities by id.
-fn show(world: &World, v: &Value) -> String {
-    let num = |f: f64| {
-        if f.fract() == 0.0 && f.abs() < 1e15 {
-            format!("{}", f as i64)
-        } else {
-            let s = format!("{f:.2}");
-            s.trim_end_matches('0').trim_end_matches('.').to_string()
-        }
-    };
-    match v {
-        Value::Bool(b) => b.to_string(),
-        Value::Int(i) => i.to_string(),
-        Value::UInt(u) => u.to_string(),
-        Value::Float(f) => num(*f),
-        Value::Vec2(p) => format!("({}, {})", num(p.x as f64), num(p.y as f64)),
-        Value::Str(s) | Value::Ref(s) => s.clone(),
-        Value::Entity(e) => entity_id(world, *e),
-    }
-}
+pub use argus_ecs::text::{entity_id, fill};
 
 /// The drawing camera's post effects doing something (phase 2 item 6).
 fn post_effects(world: &World, cam: Entity, height: u32, out: &mut Vec<Json>) {
@@ -261,39 +267,6 @@ fn post_effects(world: &World, cam: Entity, height: u32, out: &mut Vec<Json>) {
             out.push(json!({ "kind": "palette", "camera": c, "amount": round(p.amount), "colors": color(p.colors, DEFAULT_PALETTE) }));
         }
     }
-}
-
-/// Fill a text's `{Component.field}` and `{@id:Component.field}` holes. A
-/// hole that names nothing reads `{?...}` and is reported.
-pub fn fill(world: &World, e: Entity, text: &str, problems: &mut Vec<String>) -> String {
-    let mut out = String::with_capacity(text.len());
-    let mut rest = text;
-    while let Some(i) = rest.find('{') {
-        out.push_str(&rest[..i]);
-        let Some(j) = rest[i..].find('}') else {
-            out.push_str(&rest[i..]);
-            return out;
-        };
-        let hole = &rest[i + 1..i + j];
-        let (who, path) = match hole.strip_prefix('@').and_then(|h| h.split_once(':')) {
-            Some((id, p)) => (world.entity(&format!("@{id}")).ok(), p),
-            None => (Some(e), hole),
-        };
-        let got = who.ok_or_else(|| format!("no entity {}", hole.split(':').next().unwrap_or("")));
-        match got.and_then(|w| world.get_field(w, path).map_err(|e| e.message)) {
-            Ok(v) => out.push_str(&show(world, &v)),
-            Err(why) => {
-                out.push_str(&format!("{{?{hole}}}"));
-                let p = format!("{}: {{{hole}}}: {why}", entity_id(world, e));
-                if !problems.contains(&p) {
-                    problems.push(p);
-                }
-            }
-        }
-        rest = &rest[i + j + 1..];
-    }
-    out.push_str(rest);
-    out
 }
 
 const TEXT_CAP: usize = 200;
@@ -698,16 +671,109 @@ pub fn semantic(world: &World, spec: &FrameSpec) -> SemanticFrame {
         effects.push(json!({ "kind": "material", "material": m, "sprites": n }));
     }
 
+    let ui = ui_seen(world, spec);
     SemanticFrame {
         size: [spec.width, spec.height],
         camera,
         view,
         rect,
         hud,
+        ui,
         entities: notable,
         groups,
         effects,
         omitted,
         problems,
     }
+}
+
+/// The UI's words and buttons, placed in the frame through the canvas. A
+/// text inside a button is the button's words, not a line of its own.
+fn ui_seen(world: &World, spec: &FrameSpec) -> Vec<UiSeen> {
+    use argus_ui::{UiButton, UiRect, UiText};
+    let (Some(canvas), Some(rect_id)) = (spec.ui_canvas, world.component_id_of::<UiRect>()) else {
+        return Vec::new();
+    };
+    let fit = argus_ui::Fit::new(canvas, [spec.width as f32, spec.height as f32]);
+    let mut nodes: Vec<(u32, Entity, UiRect)> = Vec::new();
+    for e in world.query().has(rect_id).entities() {
+        if let Ok(r) = world.get::<UiRect>(e) {
+            if r.shown && r.alpha > 0.0 {
+                nodes.push((r.depth, e, r));
+            }
+        }
+    }
+    nodes.sort_by_key(|n| (n.0, n.1));
+    let words = |e: Entity| {
+        world
+            .get::<UiText>(e)
+            .map(|t| world.strings().resolve(t.shown).to_string())
+            .unwrap_or_default()
+    };
+    // The button a node is inside, if any.
+    let button_of = |e: Entity| -> Option<Entity> {
+        let mut cur = e;
+        for _ in 0..64 {
+            let p = world.get::<argus_ecs::Parent>(cur).ok()?.entity;
+            if p.is_null() {
+                return None;
+            }
+            if world.get::<UiButton>(p).is_ok() {
+                return Some(p);
+            }
+            cur = p;
+        }
+        None
+    };
+    let bounds = |r: &UiRect| {
+        let lo = fit.to_window([r.pos.x.max(r.clip_min.x), r.pos.y.max(r.clip_min.y)]);
+        let hi = fit.to_window([
+            (r.pos.x + r.size.x).min(r.clip_max.x),
+            (r.pos.y + r.size.y).min(r.clip_max.y),
+        ]);
+        let (w, h) = (spec.width as i32, spec.height as i32);
+        [
+            (lo[0].floor() as i32).clamp(0, w),
+            (lo[1].floor() as i32).clamp(0, h),
+            (hi[0].ceil() as i32).clamp(0, w),
+            (hi[1].ceil() as i32).clamp(0, h),
+        ]
+    };
+    let mut out: Vec<UiSeen> = Vec::new();
+    let mut at: HashMap<Entity, usize> = HashMap::new();
+    for (_, e, r) in &nodes {
+        let b = world.get::<UiButton>(*e).ok();
+        let text = words(*e);
+        if b.is_none() {
+            if text.is_empty() {
+                continue;
+            }
+            if let Some(owner) = button_of(*e) {
+                if let Some(&i) = at.get(&owner) {
+                    let t = &mut out[i].text;
+                    if !t.is_empty() {
+                        t.push(' ');
+                    }
+                    t.push_str(&text);
+                    continue;
+                }
+            }
+        }
+        let bounds = bounds(r);
+        // Off the frame (a tree hung from something out of view): not seen.
+        if bounds[2] <= bounds[0] || bounds[3] <= bounds[1] {
+            continue;
+        }
+        at.insert(*e, out.len());
+        out.push(UiSeen {
+            entity: *e,
+            id: entity_id(world, *e),
+            text: cap(text),
+            bounds,
+            button: b.is_some(),
+            focused: b.is_some_and(|b| b.focused),
+            disabled: b.is_some_and(|b| b.disabled),
+        });
+    }
+    out
 }

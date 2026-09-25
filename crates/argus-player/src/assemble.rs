@@ -67,6 +67,9 @@ pub struct Assembly {
     pub issues: Vec<ArgusError>,
     /// What spawning did.
     pub load: Option<LoadReport>,
+    /// The UI's theme (`ui.toml`) and fonts, shared by its systems and
+    /// whatever draws them (phase 3 item 1).
+    pub ui: Rc<RefCell<argus_ui::Shared>>,
     /// The imported assets.
     pub assets: argus_assets::Importer,
     /// The import's report.
@@ -127,6 +130,18 @@ pub fn assemble(
     argus_tween::install(&mut world, &mut sched)?;
     let particles = Rc::new(RefCell::new(argus_particles::ParticleStore::default()));
     argus_particles::install(&mut world, &mut sched, particles.clone())?;
+    // After the input map (it reads the players' actions) and the camera
+    // (a tree hung from the world is placed through it), before scripts,
+    // so a system may read or write the UI's components.
+    let ui = Rc::new(RefCell::new(argus_ui::Shared {
+        theme: argus_ui::Theme::load(root)?,
+        ..Default::default()
+    }));
+    argus_ui::install(&mut world, &mut sched, ui.clone())?;
+    // Rebinding, a UI over the action map (after the UI's input).
+    if let Some(st) = &input {
+        argus_input::rebind::install(&mut world, &mut sched, st.clone())?;
+    }
     let mut host = ScriptHost::new(ScriptConfig {
         day_seconds: cfg.day_seconds,
         ..ScriptConfig::default()
@@ -172,6 +187,7 @@ pub fn assemble(
         argus_assets::Importer::new(root)
     };
     let asset_report = assets.scan();
+    set_fonts(&mut ui.borrow_mut().fonts, &assets);
     tiles.borrow_mut().set_tilesets(&assets);
     anims.borrow_mut().set_assets(&assets);
     particles.borrow_mut().set_assets(&assets);
@@ -198,12 +214,24 @@ pub fn assemble(
         project,
         scene,
         issues,
+        ui,
         load,
         assets,
         asset_report,
         #[cfg(feature = "audio")]
         audio,
     })
+}
+
+/// The project's font assets as the UI's fonts (phase 3 item 1): each one
+/// shaped from its bytes and drawn from its atlas, which the renderer loads
+/// under the asset's name; a font no longer imported is dropped.
+pub fn set_fonts(fonts: &mut argus_ui::Fonts, assets: &argus_assets::Importer) {
+    let names: Vec<String> = assets.fonts().map(|(n, _)| n.clone()).collect();
+    fonts.retain(|n| names.iter().any(|m| m == n));
+    for (name, f) in assets.fonts() {
+        fonts.add(name, Rc::new(argus_ui::SdfFont::from_asset(name, f)));
+    }
 }
 
 /// `scene.toml`'s `systems.enable` and `systems.disable`: names or

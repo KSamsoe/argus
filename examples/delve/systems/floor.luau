@@ -1,6 +1,10 @@
 return system "sim.floor" {
   stage = "sim",
   on_load = true, -- the first floor is there before the first key
+  -- A new run from the menu is drawn on the turn it is asked for, which
+  -- the open menu froze.
+  after = { "sim.menu_buttons" },
+  unfrozen = true,
   reads = { "Floor", "Player", "Monster", "Stairs", "Transform", "Tile" },
   writes = { "Floor", "Player", "Monster", "Stairs", "Transform", "Health", "Sprite", "Tile", "Describe" },
   rng = "floor",

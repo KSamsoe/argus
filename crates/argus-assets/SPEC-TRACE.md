@@ -34,9 +34,16 @@ Every statement in the design document (v0.3) that constrains the asset importer
 |---|---|---|---|
 | (§15) A release pack is built from the import cache, not the source tree. | Done | `catalog.rs`: `Importer::packed_sprites` gives each sprite's cached texture and what the importer made of it (frames, pivots, properties, clips, auto-tiling, the placeholder shape) as `argus.cache/catalog.json`, and names the source images and sprite sidecars a pack leaves out. `Importer::packed(root)` loads a mounted pack's sprites from the catalog; a scan then imports the rest (sounds, animators, emitters, materials) from their sidecars and neither imports nor drops the catalog's sprites. | `argus-player/tests/packs.rs` |
 
+## Phase 3, item 1: fonts
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§12) SDF text with shaping: a font is an asset. | Done | `font.rs`: a `.ttf` or `.otf` under `assets/` imports as a signed distance field atlas (32 pixels an em, a 4-pixel reach, by default; a sidecar may set `size`, `spread`, and `chars`), baked from the glyph outlines: printable ASCII, Latin-1, common punctuation, the sidecar's characters, and whatever the font's substitutions make of them (ligatures, alternates). The font's bytes are kept for shaping. A character the font lacks is a warning. A process bakes a font once for the same inputs, so a test run that loads the project 57 times does not bake it 57 times. In a release pack the font file ships as it is and imports at start. | `importer::a_font_imports_as_a_distance_field_atlas_of_the_glyphs_text_needs` |
+
 ## Known limitations, stated so they are decisions
 
 - The watcher polls file metadata twice a second rather than using OS notifications. It is deterministic, has no dependency, and costs one metadata read per file.
 - A daemon start re-imports every asset: the cache is written for the renderer, but the manifest is not read back to skip work. Fine at example scale; reading the manifest is the change when a project's asset count makes the cold open slow.
-- PNG and WAV only. Other image and audio formats, and the native Aseprite and Tiled readers, come later.
+- PNG and WAV only, and TrueType and OpenType fonts (not collections). Other image and audio formats, and the native Aseprite and Tiled readers, come later.
+- A font imports in about 0.3 s in a debug build (Liberation Sans, 208 glyphs, a 472 x 388 atlas); it is not written to the cache, so a daemon start bakes it again.
 - Placeholder shapes are drawn with hard edges at their pixel size; the renderer's nearest-neighbour magnification keeps them crisp.

@@ -1,0 +1,16 @@
+# The controls: each button shows an action's key and rebinds it to the
+# next key pressed (Escape cancels); Back, or the cancel action, returns to
+# the pause menu (systems/pause_menu.luau). Section 12: "Rebinding at
+# runtime is a UI over the same table".
+[Parent]
+entity = "@pause"
+
+[UiNode]
+pad = [28.0, 22.0]
+gap = 8.0
+min = [300.0, 0.0]
+visible = false
+
+[UiPanel]
+color = "panel"
+border = 2.0

@@ -1,0 +1,19 @@
+# The settings (phase 3 item 1): text size, high contrast, and fullscreen,
+# which this entity's UiSettings holds for the whole UI (and the release
+# window reads); Back, or the cancel action, returns to the pause menu
+# (systems/pause_menu.luau). Section 12: "text scaling and high-contrast
+# palettes are UI theme tokens".
+[Parent]
+entity = "@pause"
+
+[UiNode]
+pad = [28.0, 22.0]
+gap = 8.0
+min = [300.0, 0.0]
+visible = false
+
+[UiPanel]
+color = "panel"
+border = 2.0
+
+[UiSettings]

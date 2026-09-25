@@ -118,74 +118,7 @@ fn glyph(c: char) -> &'static [&'static str; 7] {
     }
 }
 
-/// Most lines a bar wraps to.
-pub const BAR_LINES: usize = 4;
-
-/// A bar `width` pixels wide with text on it, for the bottom of the window
-/// (phase 2 item 2: the note prompt after F8; item 4: the proposal being
-/// tried). Scale 2 on a window wider than 900 pixels. The text wraps at
-/// spaces (and at a newline) onto up to `BAR_LINES` lines, and the bar
-/// grows to fit them. A longer text keeps its first line and its end, with
-/// "..." between: the first line says what the bar is, and the end is where
-/// a note is being typed. (One line cut to fit hid a long proposal's keys
-/// in a small window, found in the phase 2 gate.)
-pub fn status_bar(width: u32, text: &str, rgba: [u8; 4]) -> Image {
-    let scale = if width > 900 { 2 } else { 1 };
-    let pad = 4 * scale;
-    let fits = ((width.saturating_sub(2 * pad)) / (6 * scale)).max(4) as usize;
-    let mut lines = wrap(text, fits);
-    if lines.len() > BAR_LINES {
-        let tail = lines.split_off(lines.len() - (BAR_LINES - 1));
-        lines.truncate(1);
-        let first = &mut lines[0];
-        while first.chars().count() + 4 > fits && first.pop().is_some() {}
-        first.push_str(" ...");
-        lines.extend(tail);
-    }
-    let pitch = 10 * scale;
-    let height = 8 * scale + 2 * pad + (lines.len() as u32 - 1) * pitch;
-    let mut img = Image {
-        width,
-        height,
-        rgba: vec![0; (width * height * 4) as usize],
-    };
-    img.fill_rect(0, 0, width as i64, height as i64, [18, 16, 26, 255]);
-    img.fill_rect(0, 0, width as i64, scale as i64, rgba);
-    for (i, line) in lines.iter().enumerate() {
-        let y = pad + scale + i as u32 * pitch;
-        img.text(pad as i64, y as i64, line, scale, rgba);
-    }
-    for px in img.rgba.chunks_mut(4) {
-        px[3] = 235;
-    }
-    img
-}
-
-/// `text` in lines of at most `fits` characters: a newline always breaks,
-/// and a line too long breaks at its last space that fits (a word longer
-/// than a line is cut).
-pub fn wrap(text: &str, fits: usize) -> Vec<String> {
-    let fits = fits.max(1);
-    let mut lines = Vec::new();
-    for para in text.split('\n') {
-        let mut rest: Vec<char> = para.chars().collect();
-        while rest.len() > fits {
-            let cut = rest[..=fits]
-                .iter()
-                .rposition(|c| *c == ' ')
-                .filter(|&p| p > 0)
-                .unwrap_or(fits);
-            let line: String = rest[..cut].iter().collect();
-            lines.push(line.trim_end().to_string());
-            let spaces = rest[cut..].iter().take_while(|c| **c == ' ').count();
-            rest.drain(..cut + spaces);
-        }
-        lines.push(rest.into_iter().collect());
-    }
-    lines
-}
-
-/// The atlas the game's own text is drawn from (`Describe.shown`): every
+/// The pixel font's atlas, the UI's built-in font (`argus/font`): every
 /// printable ASCII character in a 6 by 8 cell, white on clear, sixteen to
 /// a row. Returns width, height, RGBA, and each character's frame in
 /// texture space, space (32) first.
@@ -212,18 +145,6 @@ pub(crate) fn font_atlas() -> (u32, u32, Vec<u8>, Vec<[f32; 4]>) {
         ]);
     }
     (w, h, rgba, frames)
-}
-
-/// A character's frame in [`font_atlas`]; anything outside printable
-/// ASCII is `?`.
-pub(crate) fn font_frame(c: char) -> usize {
-    let c = if c == '×' { 'x' } else { c };
-    let i = c as u32;
-    if (32..127).contains(&i) {
-        (i - 32) as usize
-    } else {
-        ('?' as u32 - 32) as usize
-    }
 }
 
 /// Pixels a line of text takes at `scale`: 6 across a character, 8 down.
@@ -357,28 +278,4 @@ pub fn annotate(img: &mut Image, frame: &SemanticFrame) -> Vec<Mark> {
         });
     }
     marks
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_long_bar_wraps_and_grows_and_keeps_its_first_line_and_its_end() {
-        assert_eq!(wrap("one two three", 7), ["one two", "three"]);
-        assert_eq!(wrap("abcdefghij", 4), ["abcd", "efgh", "ij"]);
-        assert_eq!(wrap("head\nbody  text", 20), ["head", "body  text"]);
-        assert_eq!(wrap("", 5), [""]);
-        // One line: the bar is as it was.
-        assert_eq!(status_bar(480, "F8", [255; 4]).height, 16);
-        // 480 pixels at scale 1 fit 78 characters: 100 wrap to two lines.
-        let text = format!("{} {}", "a".repeat(60), "b".repeat(39));
-        assert_eq!(status_bar(480, &text, [255; 4]).height, 16 + 10);
-        // Too long: four lines, the first and the last three.
-        let words: Vec<String> = (0..60).map(|i| format!("w{i:02}")).collect();
-        let lines = wrap(&words.join(" "), 20);
-        assert!(lines.len() > BAR_LINES);
-        let img = status_bar(20 * 6 + 8, &words.join(" "), [255; 4]);
-        assert_eq!(img.height, 16 + 3 * 10);
-    }
 }

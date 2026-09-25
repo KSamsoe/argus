@@ -1,0 +1,16 @@
+[Parent]
+entity = "@menu.panel"
+
+[UiNode]
+pad = [18.0, 8.0]
+order = 1
+
+[UiPanel]
+color = "button"
+
+[UiButton]
+event = "menu.resume"
+
+[UiText]
+text = "Resume"
+align = "center"

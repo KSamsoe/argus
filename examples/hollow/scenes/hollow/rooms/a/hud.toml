@@ -1,7 +1,17 @@
-# The line a player reads at the top of the screen.
-[Describe]
-role = "hud"
-shown = true
+# The line a player reads at the top of the screen: a UI text (phase 3 item
+# 1; it was a Describe drawn in the world before the UI tree).
+[UiRoot]
+interactive = false
+
+[UiNode]
+absolute = true
+offset = [12.0, 10.0]
+pad = [8.0, 4.0]
+
+[UiPanel]
+color = "#05070A99"
+
+[UiText]
 text = "Hollow. Find the way out. No falls yet."
 
 # The run the HUD reports on (systems/run.luau keeps it).

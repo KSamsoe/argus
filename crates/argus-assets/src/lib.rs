@@ -11,6 +11,9 @@
 //! human drops `hero.png` in and no reference changes. A sound is a WAV,
 //! or a sidecar naming variations in the `audio.toml` sound format.
 //!
+//! A font is a `.ttf` or `.otf` (phase 3 item 1): the importer bakes a
+//! distance-field atlas of its glyphs and keeps its bytes for shaping.
+//!
 //! The sidecar already carries what Aseprite and Tiled files hold (frame
 //! durations, tags as clips with a direction, per-frame properties), so
 //! their native importers (phase 5) fill the same shape.
@@ -20,6 +23,7 @@
 pub mod animator;
 mod catalog;
 pub mod effect;
+pub mod font;
 pub mod sidecar;
 
 pub use animator::{
@@ -31,6 +35,7 @@ pub use argus_material::MaterialSpec;
 use argus_os::time::Instant;
 pub use catalog::{PackedSprites, CATALOG, TEXTURES};
 pub use effect::{Area, ColorCurve, Curve, EmitterSpec, Space};
+pub use font::{BakedGlyph, FontAsset};
 use serde_json::{json, Value as Json};
 pub use sidecar::{AutoMode, AutoTileSpec};
 use sidecar::{Direction, Shape, SidecarKind};
@@ -171,6 +176,8 @@ pub enum Asset {
     Emitter(EmitterSpec),
     /// A material: a shader and its parameters.
     Material(MaterialSpec),
+    /// A font: its distance-field atlas and bytes.
+    Font(FontAsset),
 }
 
 /// A warning about an import: a sentence and where.
@@ -208,6 +215,7 @@ impl Entry {
             Asset::Animator(_) => "animator",
             Asset::Emitter(_) => "emitter",
             Asset::Material(_) => "material",
+            Asset::Font(_) => "font",
         }
     }
 
@@ -227,6 +235,16 @@ impl Entry {
         });
         match &self.asset {
             Asset::Material(m) => material_json(m, &mut o),
+            Asset::Font(f) => {
+                o["source"] = json!(f.source);
+                o["family"] = json!(f.family);
+                o["size"] = json!(f.size);
+                o["spread"] = json!(f.spread);
+                o["glyphs"] = json!(f.glyphs.len());
+                o["atlas"] = json!(f.atlas);
+                o["units_per_em"] = json!(f.units_per_em);
+                o["missing"] = json!(f.missing.iter().collect::<String>());
+            }
             Asset::Emitter(f) => {
                 o["sprite"] = json!(f.sprite);
                 o["particle"] = json!(f.particle);
@@ -399,6 +417,7 @@ struct Group {
     png: Option<String>,
     wav: Option<String>,
     wgsl: Option<String>,
+    font: Option<String>,
     sidecar: Option<String>,
 }
 
@@ -523,6 +542,14 @@ impl Importer {
         out
     }
 
+    /// Fonts.
+    pub fn fonts(&self) -> impl Iterator<Item = (&String, &FontAsset)> {
+        self.entries.iter().filter_map(|(n, e)| match &e.asset {
+            Asset::Font(f) => Some((n, f)),
+            _ => None,
+        })
+    }
+
     /// Particle effects.
     pub fn emitters(&self) -> impl Iterator<Item = (&String, &EmitterSpec)> {
         self.entries.iter().filter_map(|(n, e)| match &e.asset {
@@ -581,6 +608,11 @@ impl Importer {
                 (rel[..n.len()].to_string(), 1)
             } else if let Some(n) = lower.strip_suffix(".wgsl") {
                 (rel[..n.len()].to_string(), 3)
+            } else if let Some(n) = lower
+                .strip_suffix(".ttf")
+                .or_else(|| lower.strip_suffix(".otf"))
+            {
+                (rel[..n.len()].to_string(), 4)
             } else {
                 continue;
             };
@@ -589,6 +621,7 @@ impl Importer {
                 0 => g.png = Some(rel.clone()),
                 1 => g.wav = Some(rel.clone()),
                 3 => g.wgsl = Some(rel.clone()),
+                4 => g.font = Some(rel.clone()),
                 _ => g.sidecar = Some(rel.clone()),
             }
         }
@@ -616,7 +649,7 @@ impl Importer {
             }
             // The files this asset reads: its own, plus a sound's variations
             // (added after the sidecar is parsed, below).
-            let mut files: Vec<&String> = [&g.png, &g.wav, &g.wgsl, &g.sidecar]
+            let mut files: Vec<&String> = [&g.png, &g.wav, &g.wgsl, &g.font, &g.sidecar]
                 .into_iter()
                 .flatten()
                 .collect();
@@ -696,7 +729,10 @@ impl Importer {
             None => None,
         };
         let side_file = g.sidecar.as_ref().map(|s| format!("assets/{s}"));
-        let sources: Vec<&String> = [&g.png, &g.wav, &g.wgsl].into_iter().flatten().collect();
+        let sources: Vec<&String> = [&g.png, &g.wav, &g.wgsl, &g.font]
+            .into_iter()
+            .flatten()
+            .collect();
         if sources.len() > 1 {
             return Err(ArgusError::new(
                 codes::AMBIGUOUS,
@@ -717,6 +753,9 @@ impl Importer {
             )
             .hint("Rename one of them (asset.move keeps references right).")
             .at(Some(format!("assets/{}", sources[0]))));
+        }
+        if let Some(f) = &g.font {
+            return self.import_font(name, g, f, side_text.as_deref(), side_file.as_deref(), hash);
         }
         let kind = match (&g.png, &g.wav, &g.wgsl, &side_text) {
             (Some(_), _, _, _) => SidecarKind::Sprite,
@@ -767,6 +806,12 @@ impl Importer {
                     Vec::new(),
                 ))
             }
+            SidecarKind::Font => Err(ArgusError::new(
+                codes::AMBIGUOUS,
+                format!("{name}: a font's settings, with no {name}.ttf or {name}.otf beside them"),
+            )
+            .hint("Put the font file beside its sidecar, with the same name.")
+            .at(side_file.clone())),
             SidecarKind::Unknown => Err(ArgusError::new(
                 codes::AMBIGUOUS,
                 format!("{name}: the sidecar describes no sprite, sound, animator, emitter, or material"),
@@ -774,6 +819,51 @@ impl Importer {
             .hint("Give it type = \"sprite\" (with grid, [[frames]], or kind/size/color), type = \"sound\" (with variations, tone, or file), type = \"animator\" (with [states.<name>]), type = \"emitter\", or type = \"material\" (beside a .wgsl, or with shader = a built-in).")
             .at(side_file.clone())),
         }
+    }
+
+    /// A font: its atlas baked (phase 3 item 1).
+    fn import_font(
+        &self,
+        name: &str,
+        g: &Group,
+        file: &str,
+        side_text: Option<&str>,
+        side_file: Option<&str>,
+        mut hash: u64,
+    ) -> Result<(Entry, Vec<String>)> {
+        let bytes = self.read(file)?;
+        fnv(&mut hash, &bytes);
+        let mut notes = Vec::new();
+        let asset = font::import(file, bytes, side_file.zip(side_text), hash, &mut notes)?;
+        let sf = side_file.unwrap_or("");
+        let mut warnings: Vec<Warning> = notes
+            .into_iter()
+            .map(|(message, line)| Warning {
+                message,
+                at: format!("{sf}:{line}"),
+            })
+            .collect();
+        if !asset.missing.is_empty() {
+            warnings.push(Warning {
+                message: format!(
+                    "the font has no glyph for {} of the characters baked: {}",
+                    asset.missing.len(),
+                    asset.missing.iter().take(24).collect::<String>()
+                ),
+                at: format!("assets/{file}"),
+            });
+        }
+        Ok((
+            Entry {
+                name: name.to_string(),
+                sidecar: g.sidecar.clone(),
+                hash,
+                warnings,
+                asset: Asset::Font(asset),
+                ms: 0.0,
+            },
+            Vec::new(),
+        ))
     }
 
     /// A material: its shader and sidecar read, then composed and checked

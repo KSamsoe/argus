@@ -279,6 +279,17 @@ impl WindowHost {
         self.app.destroyed
     }
 
+    /// Fill the screen (borderless, on the window's monitor) or not; nothing
+    /// when it already is as asked. The game's settings screen asks for it
+    /// (`UiSettings.fullscreen`, phase 3 item 1).
+    pub fn set_fullscreen(&self, on: bool) {
+        if let Some(w) = &self.app.window {
+            if w.fullscreen().is_some() != on {
+                w.set_fullscreen(on.then_some(winit::window::Fullscreen::Borderless(None)));
+            }
+        }
+    }
+
     /// Ask the window to redraw (the renderer presents on its own; this
     /// keeps the OS happy about a live window).
     pub fn request_redraw(&self) {

@@ -1,0 +1,12 @@
+# The menu: Escape (or Start) opens it and no turn passes while it is open
+# (systems/menu.luau); its buttons are pressed with the UI's actions.
+[UiRoot]
+layer = 10
+
+[UiNode]
+justify = "center"
+align = "center"
+visible = false
+
+[UiPanel]
+color = "#05070AB0"

@@ -38,7 +38,7 @@ impl ActionValue {
         match kind {
             ActionKind::Button => ActionValue::Button(false),
             ActionKind::Axis => ActionValue::Axis(0.0),
-            ActionKind::Axis2 => ActionValue::Axis2(0.0, 0.0),
+            ActionKind::Axis2 | ActionKind::Pointer => ActionValue::Axis2(0.0, 0.0),
         }
     }
 
@@ -49,6 +49,7 @@ impl ActionValue {
             ActionKind::Button => ActionValue::Button(true),
             ActionKind::Axis => ActionValue::Axis(1.0),
             ActionKind::Axis2 => ActionValue::Axis2(1.0, 0.0),
+            ActionKind::Pointer => ActionValue::Axis2(0.0, 0.0),
         }
     }
 
@@ -64,6 +65,7 @@ impl ActionValue {
                         ActionKind::Button => "true or false",
                         ActionKind::Axis => "a number in [-1, 1]",
                         ActionKind::Axis2 => "[x, y] with each in [-1, 1]",
+                        ActionKind::Pointer => "[x, y] in canvas pixels",
                     }
                 ),
             )
@@ -81,6 +83,11 @@ impl ActionValue {
             }
             (ActionKind::Axis, Json::Number(n)) => {
                 ActionValue::Axis(clamp(n.as_f64().unwrap_or(0.0))?)
+            }
+            (ActionKind::Pointer, Json::Array(a)) if a.len() == 2 => {
+                let x = a[0].as_f64().ok_or_else(|| bad("a non-number"))?;
+                let y = a[1].as_f64().ok_or_else(|| bad("a non-number"))?;
+                ActionValue::Axis2(x as f32, y as f32)
             }
             (ActionKind::Axis2, Json::Array(a)) if a.len() == 2 => {
                 let x = a[0].as_f64().ok_or_else(|| bad("a non-number"))?;
@@ -109,12 +116,18 @@ impl ActionValue {
         }
     }
 
-    fn kind(self) -> ActionKind {
-        match self {
-            ActionValue::Button(_) => ActionKind::Button,
-            ActionValue::Axis(_) => ActionKind::Axis,
-            ActionValue::Axis2(..) => ActionKind::Axis2,
-        }
+    /// Whether this value is one an action of `kind` takes (a pointer's is
+    /// two numbers, like a stick's).
+    fn fits(self, kind: ActionKind) -> bool {
+        matches!(
+            (self, kind),
+            (ActionValue::Button(_), ActionKind::Button)
+                | (ActionValue::Axis(_), ActionKind::Axis)
+                | (
+                    ActionValue::Axis2(..),
+                    ActionKind::Axis2 | ActionKind::Pointer
+                )
+        )
     }
 }
 
@@ -269,6 +282,36 @@ pub struct InputState {
     branched: Option<u64>,
     /// A live command came since the last `take_live`.
     live: bool,
+    /// Waiting for a key (or a button) to bind to an action (phase 3 item
+    /// 1): the next press on the device is taken for it.
+    listening: Option<Listen>,
+    /// What listening came to, until `take_rebound`.
+    rebound: Vec<Rebound>,
+}
+
+/// An action waiting for a key.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Listen {
+    /// The action.
+    pub action: String,
+    /// The device whose next press it takes: keyboard, mouse, gamepad.
+    pub device: String,
+    /// Who asked (the button of a controls menu).
+    pub entity: argus_ecs::Entity,
+}
+
+/// What listening came to.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Rebound {
+    /// Bound to the press.
+    Bound {
+        /// What was listening.
+        listen: Listen,
+        /// The name bound.
+        binding: String,
+    },
+    /// Escape: nothing changed.
+    Cancelled(Listen),
 }
 
 impl InputState {
@@ -284,6 +327,8 @@ impl InputState {
             log_through: None,
             branched: None,
             live: false,
+            listening: None,
+            rebound: Vec::new(),
             current: BTreeMap::new(),
             pressed: Vec::new(),
             released: Vec::new(),
@@ -369,6 +414,93 @@ impl InputState {
         &self.map
     }
 
+    /// Bind `action` on `device` to `names` from now on (§12: "Rebinding
+    /// at runtime is a UI over the same table"). The log records actions,
+    /// not keys, so a replay survives a rebind.
+    pub fn rebind(&mut self, action: &str, device: &str, names: Vec<String>) -> Result<()> {
+        self.map.set_bindings(action, device, names)?;
+        // A wait for this action on this device is answered.
+        if self
+            .listening
+            .as_ref()
+            .is_some_and(|l| l.action == action && l.device == device)
+        {
+            self.listening = None;
+        }
+        Ok(())
+    }
+
+    /// Take the next press on `device` for `action` (a controls menu's
+    /// button asked, `entity`); Escape cancels.
+    pub fn listen(&mut self, action: &str, device: &str, entity: argus_ecs::Entity) -> Result<()> {
+        self.map.action(action)?;
+        self.listening = Some(Listen {
+            action: action.to_string(),
+            device: device.to_string(),
+            entity,
+        });
+        Ok(())
+    }
+
+    /// What is waiting for a key, if anything.
+    pub fn listening(&self) -> Option<&Listen> {
+        self.listening.as_ref()
+    }
+
+    /// A device event while listening: a press on the device binds it (and
+    /// is taken, so the game does not hear it); Escape cancels. True when
+    /// the event was taken.
+    pub fn capture(&mut self, ev: &crate::devices::DeviceInput) -> bool {
+        use crate::devices::{key_name, DeviceInput};
+        let Some(l) = self.listening.clone() else {
+            return false;
+        };
+        let pressed = match ev {
+            DeviceInput::Key {
+                name,
+                pressed: true,
+            } => {
+                let k = key_name(name);
+                if k == "escape" {
+                    self.listening = None;
+                    self.rebound.push(Rebound::Cancelled(l));
+                    return true;
+                }
+                (l.device == "keyboard").then_some(k)
+            }
+            DeviceInput::Mouse {
+                button,
+                pressed: true,
+            } => (l.device == "mouse").then(|| button.to_ascii_lowercase()),
+            DeviceInput::PadButton {
+                button,
+                pressed: true,
+                ..
+            } => (l.device == "gamepad").then(|| button.clone()),
+            _ => None,
+        };
+        let Some(name) = pressed else {
+            return false;
+        };
+        match self
+            .map
+            .set_bindings(&l.action, &l.device, vec![name.clone()])
+        {
+            Ok(()) => self.rebound.push(Rebound::Bound {
+                listen: l,
+                binding: name,
+            }),
+            Err(_) => self.rebound.push(Rebound::Cancelled(l)),
+        }
+        self.listening = None;
+        true
+    }
+
+    /// What listening came to since the last call.
+    pub fn take_rebound(&mut self) -> Vec<Rebound> {
+        std::mem::take(&mut self.rebound)
+    }
+
     /// Schedule a value change at an absolute tick.
     fn schedule(&mut self, tick: u64, slot: u8, action: &str, value: ActionValue) {
         self.scheduled
@@ -419,7 +551,7 @@ impl InputState {
             Some(j) => ActionValue::from_json(a.kind, j, action)?,
             None => ActionValue::active_for(a.kind),
         };
-        if v.kind() != a.kind {
+        if !v.fits(a.kind) {
             return Err(ArgusError::new(
                 codes::BAD_VALUE,
                 format!("{action} is a {}", a.kind.name()),
@@ -454,7 +586,8 @@ impl InputState {
             rs.retain(|r| r.1 > now);
         }
         self.schedule(now, slot, action, v);
-        let until = if a.toggle || hold || !v.is_active() {
+        // A pointer stays where it was put.
+        let until = if a.toggle || hold || !v.is_active() || a.kind == ActionKind::Pointer {
             None
         } else {
             let n = if self.discrete {
@@ -516,7 +649,7 @@ impl InputState {
         for e in entries {
             let a = self.map.action(&e.action)?;
             self.map.slot(e.slot)?;
-            if e.value.kind() != a.kind {
+            if !e.value.fits(a.kind) {
                 return Err(ArgusError::new(
                     codes::BAD_LOG,
                     format!(
@@ -691,6 +824,8 @@ impl InputState {
             log_through: self.log_through,
             branched: None,
             live: false,
+            listening: None,
+            rebound: Vec::new(),
         }
     }
 
