@@ -1,5 +1,6 @@
-//! Help text, generated from `METHODS` (§16: one schema generates the
-//! protocol, the CLI help, and the tool descriptions).
+//! Help text, generated from the one schema (`argus_daemon::docs`: §16,
+//! one schema generates the protocol, the CLI help, and the MCP tool
+//! descriptions).
 
 use crate::params;
 use crate::Command;
@@ -22,6 +23,16 @@ pub fn overview() -> String {
         let _ = writeln!(out, "    {:<22} {}", m.name, first_sentence(m.doc));
     }
     out.push_str("\n  test\n    test [name]            run the scenarios in tests/*.luau (test.run); --seeds 1..50, --file tests/x.luau, --update goldens\n");
+    out.push_str(
+        "\n  tools (what `argus mcp` serves an agent; each is `argus <tool> key=value ...`)\n",
+    );
+    for t in docs::TOOLS {
+        let _ = writeln!(out, "    {:<22} {}", t.name, first_sentence(t.doc));
+    }
+    out.push_str(
+        "    mcp                    serve the tools over MCP on stdio (for an agent host)\n",
+    );
+    out.push_str("    docs --for-agent       write the project's ARGUS.md from the live daemon\n");
     out.push_str("\n  build\n    build                  a release: the executable and its packs, or the web page (--target, --release)\n");
     out.push_str("\n  daemon\n    daemon start           start the project's daemon in the background (a method does this too when needed)\n    daemon stop            session.shutdown on the running daemon\n    daemon status          is a daemon running for this project, and which\n    daemon run             run the daemon in the foreground (what argusd --project does)\n");
     out
@@ -41,6 +52,15 @@ pub fn topic(words: &[String]) -> String {
     }
     if joined == "build" {
         return build();
+    }
+    if docs::tool(&joined).is_some() {
+        return tool_topic(&joined);
+    }
+    if joined == "mcp" {
+        return mcp();
+    }
+    if joined == "docs" {
+        return docs_help();
     }
     if joined == "test" {
         return test();
@@ -75,7 +95,7 @@ pub fn method(m: &MethodDoc) -> String {
     out.push_str(&usage_line(m.name));
     let _ = writeln!(out, "\n{}", m.doc);
     if !m.params.is_empty() {
-        let _ = writeln!(out, "\nparams:  {}", m.params);
+        let _ = writeln!(out, "\nparams:  {}", docs::params_text(m.params));
         let names = params::names(m.name);
         if let Some(first) = names.first() {
             let _ = writeln!(out, "         one bare value is {first}=");
@@ -106,6 +126,38 @@ pub fn daemon() -> String {
     "usage: argus daemon start [--scene s] [--seed n]   start the project's daemon in the background\n       argus daemon stop                          ask it to exit (session.shutdown)\n       argus daemon status                        running or not, pid, socket\n       argus daemon run [--scene s] [--seed n]     serve in the foreground until stopped\n\nThe daemon is found through <project>/.argus/daemon.json. A method call starts one when none answers,\nunless --no-start is given.\n".to_string()
 }
 
+/// Help for an agent tool: its description (the same text the MCP server
+/// gives), its parameters, and, for a tool that shares a namespace's name,
+/// that namespace's methods.
+pub fn tool_topic(name: &str) -> String {
+    let Some(t) = docs::tool(name) else {
+        return overview();
+    };
+    let mut out = format!("usage: argus {name} [key=value ...] [--params '<json>'] [--json]\n\n");
+    out.push_str(&docs::tool_description(t));
+    out.push('\n');
+    if !t.params.is_empty() {
+        let _ = writeln!(out, "\nparams:  {}", docs::params_text(t.params));
+    }
+    if METHODS
+        .iter()
+        .any(|m| m.name.split('.').next() == Some(name))
+    {
+        let _ = write!(out, "\n{}", namespace(name));
+    }
+    out
+}
+
+/// Help for `argus mcp`.
+pub fn mcp() -> String {
+    "usage: argus mcp [--project <dir>]\n\nServe the agent tools over the Model Context Protocol on stdin and stdout (section 16),\nfor an agent host: {\"command\": \"argus\", \"args\": [\"mcp\", \"--project\", \"<dir>\"]}. It finds or starts the\nproject's daemon, and on connect runs world.summary into its instructions. Tool descriptions and\ninput schemas come from the same table as this help; `argus help` lists the tools.\n".to_string()
+}
+
+/// Help for `argus docs`.
+pub fn docs_help() -> String {
+    "usage: argus docs --for-agent [--out <file>]   the project's ARGUS.md, from the live daemon\n       argus docs                                 the engine's reference: the tools and every method\n\nARGUS.md (section 16) holds the component schemas with their docs, the systems with their stages\nand write sets, the prefab catalog, and each scene's summary, regenerated on demand so it never\ndrifts; a coding agent's project instructions point at it. --out defaults to <project>/ARGUS.md.\n".to_string()
+}
+
 /// Help for `argus build`.
 pub fn build() -> String {
     "usage: argus build [--target windows|linux|macos|web] [--release] [--out dir] [--since dir] [--json]\n\nA release of the project (section 15): one directory with the executable, named for the game,\nand data/ with the game's pack and a pack per language (lang/<code>/ in the project). The web\ntarget writes the page and the wasm module instead of an executable. Packs are built from the\nimport cache with the scripts compiled; a failed import or a script error stops the build.\n\n--target: default this machine's; a desktop build is made on its own platform. web needs wasi-sdk\n          (WASI_SDK) and wasm-bindgen-cli.\n--release: optimised. --out: default <project>/dist/<target>.\n--since: a previous build's directory; the game goes into a patch with only what changed.\n\nThe build checks itself: the game from its packs, and the executable run headless, reach the\nsame world as the project after the same ticks. build.json in the directory says what was made.\nA player's report key saves a replay file; `argus mark import path=<file>` makes it a mark.\n".to_string()
@@ -116,7 +168,7 @@ pub fn test() -> String {
     let m = docs::find("test.run").expect("test.run is a method");
     format!(
         "usage: argus test [name] [--seeds 1..50] [--file tests/x.luau] [--update] [--software] [--no-replays] [--json]\n\n{}\n\nname: exact or substring of a scenario name; none runs every scenario.\n--seeds: override the scenario's seed or range: 7, 1..50, or 1,2,9.\n--file: only that file's scenarios. --update: rewrite state goldens under tests/goldens/.\n--software: draw failing runs' clips with the software rasteriser, as CI does. --no-replays: save none.\nA failing run's replay opens with `argus replay open path=<its dir>`.\n--json: the test.run report as one line. Exit 0 when every run passed, 1 otherwise.\n\nsame as: test.run {{{}}}\n",
-        m.doc, m.params
+        m.doc, docs::params_text(m.params)
     )
 }
 
@@ -128,6 +180,9 @@ pub fn for_command(cmd: &Command) -> String {
         Command::Daemon(_) => daemon(),
         Command::Test(_) => test(),
         Command::Build => build(),
+        Command::Tool(name, _) => tool_topic(name),
+        Command::Mcp => mcp(),
+        Command::Docs => docs_help(),
         Command::Help(t) => topic(t),
         Command::Unknown(_) => overview(),
     }

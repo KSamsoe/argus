@@ -155,12 +155,20 @@ Decisions taken while building it:
 
 ## 8. argus docs --for-agent and argus mcp
 
-**Status: not started.** Constraints:
+**Status: done** (2026-09-25) in the daemon (`docs.rs`: the one schema, structured; `world.prefabs`) and `argus-cli` (`tools.rs`, `mcp.rs`, `agentdoc.rs`, `argus <tool>`). The method table's parameters are structured now: each is a name, a JSON type, whether a call without it is refused, and a doc. A one-time conversion turned the prose into structure, the handlers' own reads set which parameters are required, and a test holds the table to the truth by calling every method with nothing. The twelve tools of section 16 (summary, query, describe, edit, run, seek, observe, events, test, reload, marks, propose) are rows in the same table, each naming the methods it calls. `argus mcp` serves them over MCP on stdio: it finds or starts the project's daemon, runs `world.summary` on connect into its instructions, lists the tools with descriptions and JSON Schemas made from the table, and answers each call with the command line that reruns it (`argus <tool> --params '...'`), which gives the same answer from a shell. `observe` with a PNG returns the picture. `argus docs --for-agent` writes the project's ARGUS.md from the live daemon: how to work with the project and the tools, each scene's summary, the systems in run order with their stages and write sets, the prefab catalog, and the game's and the engine's components with their fields and docs; Hollow's is about 500 lines. `argus docs` prints the engine's reference (the tools and every method) from the same table. Found while building it: the prose never mentioned `sim.seek`'s and `sim.fork`'s `turn`, and three methods' required parameters were wrong; there was no way to list prefabs, so `world.prefabs` is new. Traces: rows in `argus-cli`'s and the daemon's. Constraints:
 
 - §16: `argus mcp` starts a stdio MCP server exposing about a dozen tools: summary, query, describe, edit, run, seek, observe, events, test, reload, marks, propose. Each tool's description comes from the same schema the CLI help uses; the CLI mirrors the tool set.
 - §16: `argus docs --for-agent` emits an ARGUS.md from the live daemon: component schemas with doc strings, the system list with stages and write sets, the prefab catalog, and the current scene summaries. Regenerated on demand, so it never drifts.
 - §16 decision: one schema generates the protocol, the CLI help, the MCP tool descriptions, and the agent-facing docs. The phase-0 CLI trace notes that `params` is prose today; this item makes it structured.
 - §5: the MCP shim runs `world.summary` on connect.
+
+Decisions taken while building it:
+
+- **The tools run in the CLI crate, over the protocol.** `argus mcp` and `argus <tool>` share one implementation (`tools.rs`), which composes protocol calls; the daemon's method set stays the protocol, and a tool is a projection of it, as section 16 describes. An edit's ops go into one transaction, so all are kept or none.
+- **A method still wins over a tool of the same name.** `argus edit begin` is the method; `argus edit ops=...` is the tool; `argus edit` alone shows the tool's help and the namespace's methods.
+- **"Required" means a call without it is refused**, not only a parameter error: a transaction id that defaults to 0 is required, since no transaction 0 exists. A "one of" group (frame or turn) is written in the parameter docs and counted by the test.
+- **ARGUS.md is written, not committed.** It is regenerated on demand (`argus docs --for-agent`) and a project's instructions point at it; a copy in the repository would drift, which is what section 16 rules out.
+- **Five tools say they only read** (summary, query, describe, observe, events), so an agent host may run them without asking.
 
 ## Gate
 

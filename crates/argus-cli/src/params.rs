@@ -1,53 +1,44 @@
-//! `key=value` words to the method's params object, guided by the
-//! method's own params text from `METHODS`.
+//! `key=value` words to a method's (or a tool's) params object, guided by
+//! its declared parameters in the one schema (`argus_daemon::docs`).
 
 use argus_daemon::{docs, METHODS};
 use serde_json::{Map, Value as Json};
 
-/// Parameter names of a method in declared order, read from its docs
-/// `params` string (`name: type (note); name; ...`). Alternatives written
-/// `a: t | b: t` yield the first.
+/// Parameter names of a method in declared order: the order bare values
+/// fill them.
 pub fn names(method: &str) -> Vec<String> {
-    let Some(m) = docs::find(method) else {
-        return Vec::new();
-    };
-    split_top(m.params, ';')
-        .into_iter()
-        .filter_map(|item| {
-            let item = item.trim();
-            let head = item.split([':', ' ', '(']).next()?.trim();
-            if head.is_empty() || !head.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
-                None
-            } else {
-                Some(head.to_string())
-            }
-        })
-        .collect()
+    docs::find(method)
+        .map(|m| m.params.iter().map(|p| p.name.to_string()).collect())
+        .unwrap_or_default()
 }
 
-/// Split on `sep` outside brackets, braces, and quotes.
-fn split_top(s: &str, sep: char) -> Vec<&str> {
-    let mut out = Vec::new();
-    let (mut depth, mut quoted, mut start) = (0i32, false, 0usize);
-    for (i, c) in s.char_indices() {
-        match c {
-            '"' => quoted = !quoted,
-            '[' | '{' | '(' if !quoted => depth += 1,
-            ']' | '}' | ')' if !quoted => depth -= 1,
-            c if c == sep && depth == 0 && !quoted => {
-                out.push(&s[start..i]);
-                start = i + c.len_utf8();
-            }
-            _ => {}
-        }
-    }
-    out.push(&s[start..]);
-    out
+/// A tool's parameter names in declared order.
+pub fn tool_names(tool: &str) -> Vec<String> {
+    docs::tool(tool)
+        .map(|t| t.params.iter().map(|p| p.name.to_string()).collect())
+        .unwrap_or_default()
 }
 
 /// Build the params object: `--params` JSON first, then `key=value`
 /// words, then bare words assigned to the method's leading parameters.
 pub fn build(method: &str, args: &[String], params_json: &[String]) -> Result<Json, String> {
+    if !METHODS.iter().any(|m| m.name == method) {
+        return Err(format!("no method {method}"));
+    }
+    build_with(method, &names(method), args, params_json)
+}
+
+/// [`build`] for a tool (`argus query entity=@player`).
+pub fn build_tool(tool: &str, args: &[String], params_json: &[String]) -> Result<Json, String> {
+    build_with(tool, &tool_names(tool), args, params_json)
+}
+
+fn build_with(
+    method: &str,
+    declared: &[String],
+    args: &[String],
+    params_json: &[String],
+) -> Result<Json, String> {
     let mut obj = Map::new();
     for text in params_json {
         let text = if let Some(path) = text.strip_prefix('@') {
@@ -62,7 +53,6 @@ pub fn build(method: &str, args: &[String], params_json: &[String]) -> Result<Js
             _ => return Err("--params must be a JSON object".to_string()),
         }
     }
-    let declared = names(method);
     let mut next_bare = 0usize;
     let mut by_word: std::collections::HashSet<String> = std::collections::HashSet::new();
     for a in args {
@@ -79,11 +69,8 @@ pub fn build(method: &str, args: &[String], params_json: &[String]) -> Result<Js
             if obj.contains_key(name) {
                 return Err(format!("{name} given twice (bare {a:?} and {name}=...)"));
             }
-            obj.insert(name.clone(), value(a)?);
+            obj.insert(name.to_string(), value(a)?);
         }
-    }
-    if !METHODS.iter().any(|m| m.name == method) {
-        return Err(format!("no method {method}"));
     }
     Ok(Json::Object(obj))
 }

@@ -6,10 +6,13 @@
 //! [`argus_daemon::METHODS`]: `argus world query` is `world.query`,
 //! `argus input log get` is `input.log.get`, and the help for each is the
 //! same doc, params, and returns text the daemon serves as
-//! `session.docs`. The only commands that are not methods are `help`,
-//! `daemon` (start, stop, status, run), which exist so a method has a
-//! process to reach, and `build` (phase 2 item 7), which makes a release
-//! and needs no running game.
+//! `session.docs`. Beside the methods: the agent tools (§16, phase 2 item
+//! 8), `argus summary`, `argus query`, `argus edit` and the rest, which are
+//! what `argus mcp` serves, so an agent's tool call reruns as a command
+//! line; `help`; `daemon` (start, stop, status, run), which exists so a
+//! method has a process to reach; `build` (phase 2 item 7), which makes a
+//! release; `mcp`, the MCP server; and `docs --for-agent`, which writes
+//! ARGUS.md from the live daemon.
 //!
 //! Parameters are `key=value` words (values parsed as JSON when they are
 //! JSON, strings otherwise, with `[a, b]` and `{k: v}` accepted with bare
@@ -19,12 +22,15 @@
 
 #![warn(missing_docs)]
 
+pub mod agentdoc;
 pub mod build;
 pub mod client;
 pub mod help;
+pub mod mcp;
 pub mod params;
 pub mod project;
 pub mod render;
+pub mod tools;
 
 use argus_daemon::METHODS;
 use serde_json::{json, Value as Json};
@@ -87,6 +93,8 @@ pub struct Invocation {
     pub out: Option<PathBuf>,
     /// `--since <dir>`: the build `argus build` patches.
     pub since: Option<PathBuf>,
+    /// `--for-agent`: `argus docs` writes the project's ARGUS.md.
+    pub for_agent: bool,
 }
 
 /// Parse a command line (without the program name).
@@ -116,6 +124,7 @@ pub fn parse(argv: &[String]) -> Result<Invocation, String> {
             "--no-replays" => inv.no_replays = true,
             "--play" => inv.play = true,
             "--release" => inv.release = true,
+            "--for-agent" => inv.for_agent = true,
             "--target" => inv.target = Some(need(&mut it)?),
             "--out" => inv.out = Some(PathBuf::from(need(&mut it)?)),
             "--since" => inv.since = Some(PathBuf::from(need(&mut it)?)),
@@ -179,6 +188,12 @@ pub enum Command {
     Test(Vec<String>),
     /// `argus build`: a release of the project (§15).
     Build,
+    /// An agent tool (`argus query ...`), plus bare words (§16).
+    Tool(&'static str, Vec<String>),
+    /// `argus mcp`: the MCP server on stdio (§16).
+    Mcp,
+    /// `argus docs [--for-agent]`: the reference, or the project's ARGUS.md.
+    Docs,
     /// Nothing recognisable.
     Unknown(Vec<String>),
 }
@@ -194,6 +209,8 @@ pub fn resolve(words: &[String]) -> Command {
         "help" => return Command::Help(words[1..].to_vec()),
         "daemon" => return Command::Daemon(words[1..].to_vec()),
         "build" => return Command::Build,
+        "mcp" => return Command::Mcp,
+        "docs" => return Command::Docs,
         "test" if words.len() == 1 || !METHODS.iter().any(|m| m.name == words[..2].join(".")) => {
             return Command::Test(words[1..].to_vec())
         }
@@ -208,6 +225,9 @@ pub fn resolve(words: &[String]) -> Command {
     }
     if let Some((name, k)) = best {
         return Command::Method(name, words[k..].to_vec());
+    }
+    if let Some(t) = argus_daemon::docs::tool(&words[0]) {
+        return Command::Tool(t.name, words[1..].to_vec());
     }
     let ns = words[0].split('.').next().unwrap_or("").to_string();
     if words.len() == 1
@@ -255,6 +275,9 @@ pub fn run(argv: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
         Command::Daemon(words) => project::daemon_command(&inv, &words, out, err),
         Command::Test(words) => test_command(&inv, &words, out, err),
         Command::Build => build::build_command(&inv, out, err),
+        Command::Tool(name, bare) => tool_command(&inv, name, bare, out, err),
+        Command::Mcp => mcp::serve(&inv, err),
+        Command::Docs => agentdoc::command(&inv, out, err),
         Command::Method(method, bare) => {
             let mut args = bare;
             args.extend(inv.args.iter().cloned());
@@ -282,6 +305,57 @@ pub fn run(argv: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
                 }
             }
             code
+        }
+    }
+}
+
+/// `argus <tool> [value] [key=value ...]`: an agent tool, as `argus mcp`
+/// runs it. A tool that needs something (edit, propose, seek) run bare
+/// shows its help.
+fn tool_command(
+    inv: &Invocation,
+    name: &'static str,
+    bare: Vec<String>,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> i32 {
+    let mut args = bare;
+    args.extend(inv.args.iter().cloned());
+    if args.is_empty() && inv.params_json.is_empty() && ["edit", "propose", "seek"].contains(&name)
+    {
+        let _ = write!(out, "{}", help::tool_topic(name));
+        return EXIT_OK;
+    }
+    let params = match params::build_tool(name, &args, &inv.params_json) {
+        Ok(p) => p,
+        Err(e) => {
+            let _ = writeln!(err, "argus: {e}");
+            return EXIT_USAGE;
+        }
+    };
+    let mut client = match project::connect(inv, err) {
+        Ok(c) => c,
+        Err(e) => {
+            let _ = writeln!(err, "argus: {e}");
+            return EXIT_CONNECT;
+        }
+    };
+    match tools::run(&mut client, name, &params) {
+        Ok(result) => {
+            if inv.json {
+                let _ = writeln!(out, "{result}");
+            } else {
+                let _ = write!(out, "{}", render::result(&result));
+            }
+            EXIT_OK
+        }
+        Err(e) => {
+            if inv.json {
+                let _ = writeln!(out, "{}", json!({ "error": e }));
+            } else {
+                let _ = write!(err, "{}", render::error(&e));
+            }
+            EXIT_RPC
         }
     }
 }

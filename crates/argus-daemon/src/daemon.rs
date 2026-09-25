@@ -342,6 +342,7 @@ impl Daemon {
                 let text = json::str_param(params, "text")?;
                 self.index()?.search(text, params)
             }
+            "world.prefabs" => self.index()?.prefabs(params),
             "world.instances" => {
                 let prefab = json::str_param(params, "prefab")?;
                 let rows: Vec<Json> = self
@@ -961,7 +962,16 @@ impl Daemon {
             "phase": 0,
             "transports": ["stdio", "local-socket"],
             "methods": docs::METHODS.iter().map(|m| json!({
-                "name": m.name, "doc": m.doc, "params": m.params, "returns": m.returns
+                "name": m.name,
+                "doc": m.doc,
+                "params": m.params.iter().map(docs::Param::to_json).collect::<Vec<_>>(),
+                "returns": m.returns,
+            })).collect::<Vec<_>>(),
+            "tools": docs::TOOLS.iter().map(|t| json!({
+                "name": t.name,
+                "doc": t.doc,
+                "params": t.params.iter().map(docs::Param::to_json).collect::<Vec<_>>(),
+                "calls": t.calls,
             })).collect::<Vec<_>>(),
         })
     }

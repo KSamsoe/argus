@@ -1114,6 +1114,38 @@ impl Index {
         Ok(out)
     }
 
+    /// The prefab catalog (phase 2 item 8, `world.prefabs`): each prefab
+    /// with the prefab it extends, its chain, components, tags, and how many
+    /// entities are instances of it.
+    pub fn prefabs(&self, params: &Json) -> Result<Json> {
+        let mut st = self
+            .conn
+            .prepare("SELECT path, base, chain, components, tags FROM prefabs ORDER BY path")
+            .map_err(sql_err)?;
+        let rows: Vec<(String, Option<String>, String, String, String)> = st
+            .query_map([], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
+            })
+            .map_err(sql_err)?
+            .collect::<std::result::Result<_, _>>()
+            .map_err(sql_err)?;
+        let parse = |s: &str| serde_json::from_str::<Json>(s).unwrap_or(Json::Null);
+        let mut out = Vec::new();
+        for (path, base, chain, comps, tags) in rows {
+            let instances = self.instances_of(&path)?.len();
+            out.push(json!({
+                "path": path,
+                "base": base,
+                "chain": parse(&chain),
+                "components": parse(&comps),
+                "tags": parse(&tags),
+                "instances": instances,
+            }));
+        }
+        let (limit, offset) = query::page(params)?;
+        Ok(query::paged(out, limit, offset))
+    }
+
     /// Everything that references `target` (an entity id, prefab path, def
     /// ref, or file path): rows of `[scene, from_kind, from, path, kind, at]`.
     pub fn references_to(&self, target: &str, params: &Json) -> Result<Json> {

@@ -83,8 +83,34 @@ fn every_method_is_a_subcommand_and_help_comes_from_the_same_table() {
     let doc = argus_daemon::docs::find("world.get").unwrap();
     assert!(text.starts_with("usage: argus world get [entity] [key=value ...]"));
     assert!(text.contains(doc.doc));
-    assert!(text.contains(doc.params));
+    assert!(text.contains(&argus_daemon::docs::params_text(doc.params)));
     assert!(text.contains(doc.returns));
+
+    // The tools (section 16) are commands too, with the MCP server's text.
+    for t in argus_daemon::docs::TOOLS {
+        if t.name == "test" {
+            continue; // `argus test` runs test.run, which is the tool
+        }
+        assert_eq!(
+            resolve(&args(&[t.name])),
+            Command::Tool(t.name, vec![]),
+            "{}",
+            t.name
+        );
+        let (mut out, mut err) = (Vec::new(), Vec::new());
+        run(&args(&[t.name, "--help"]), &mut out, &mut err);
+        let text = String::from_utf8(out).unwrap();
+        assert!(
+            text.contains(&argus_daemon::docs::tool_description(t)),
+            "{}: {text}",
+            t.name
+        );
+    }
+    assert_eq!(
+        resolve(&args(&["edit", "begin"])),
+        Command::Method("edit.begin", vec![]),
+        "a method still wins over a tool of the same name"
+    );
     let (mut out, mut err) = (Vec::new(), Vec::new());
     run(&args(&["help", "prof.alloc"]), &mut out, &mut err);
     assert!(String::from_utf8(out).unwrap().contains("counted"));
@@ -134,7 +160,8 @@ fn key_values_become_the_params_object() {
     );
     assert_eq!(
         params::names("sim.run_until"),
-        args(&["event", "max_ticks"])
+        args(&["event", "time", "ticks", "max_ticks"]),
+        "each of the alternatives is a parameter of its own"
     );
     assert_eq!(
         params::names("edit.spawn"),
