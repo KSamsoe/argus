@@ -35,6 +35,7 @@ pub(crate) fn install(
     world: &mut World,
     sched: &mut Scheduler,
     tiles: Rc<RefCell<MapStore>>,
+    contacts: Rc<RefCell<crate::Contacts>>,
 ) -> Result<()> {
     let col = world.component_id_of::<Collider>().expect("registered");
     let kb = world
@@ -81,7 +82,10 @@ pub(crate) fn install(
         Box::new(move |ctx| step(ctx, &store, col, kb, cc, tm, tr, gt)),
     )?;
 
-    let mut state = OverlapState::default();
+    let mut state = OverlapState {
+        contacts,
+        slots: Vec::new(),
+    };
     sched.add_system(
         SystemDesc::new(OVERLAP, Stage::Sim)
             .last()
@@ -552,7 +556,7 @@ fn step(
 #[derive(Default)]
 struct OverlapState {
     /// Pairs overlapping at the end of last tick, sorted.
-    prev: Vec<(Entity, Entity)>,
+    contacts: Rc<RefCell<crate::Contacts>>,
     /// Slot of each collider this tick, by entity index (u32::MAX: none).
     slots: Vec<u32>,
 }
@@ -603,7 +607,7 @@ fn overlap(
     col: ComponentId,
     gt: ComponentId,
 ) -> Result<()> {
-    if st.prev.is_empty() && !any_with(ctx, col) {
+    if st.contacts.borrow().pairs.is_empty() && !any_with(ctx, col) {
         return Ok(());
     }
     let mut shapes: Vec<Shape> = Vec::new();
@@ -636,7 +640,7 @@ fn overlap(
     ctx.query()
         .has(col)
         .each::<(&Collider, &GlobalTransform)>(|e, (c, g)| add(e, g.pos, c))?;
-    if shapes.is_empty() && st.prev.is_empty() {
+    if shapes.is_empty() && st.contacts.borrow().pairs.is_empty() {
         return Ok(());
     }
     shapes.sort_by_key(|s| s.e);
@@ -677,7 +681,7 @@ fn overlap(
     // Begin and end, by merging with last tick's sorted pairs.
     let mut events: Events = Vec::new();
     let (mut i, mut j) = (0, 0);
-    let prev = std::mem::take(&mut st.prev);
+    let prev = std::mem::take(&mut st.contacts.borrow_mut().pairs);
     while i < pairs.len() || j < prev.len() {
         match (pairs.get(i), prev.get(j)) {
             (Some(a), Some(b)) if a == b => {
@@ -709,7 +713,7 @@ fn overlap(
             _ => unreachable!(),
         }
     }
-    st.prev = pairs;
+    st.contacts.borrow_mut().pairs = pairs;
     for (n, f) in events {
         ctx.emit(n, f);
     }

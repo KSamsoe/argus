@@ -58,3 +58,30 @@ next = "dialogue:hermit.ask"
 speaker = "hermit.name"
 line = "hermit.thanks"
 sound = "sfx/voice"
+
+# Called after the hero at the way out, from the outro timeline
+# (defs/timeline.toml): he knows whether he has the gem, or they do.
+["outro.start"]
+next = "dialogue:outro.bye"
+
+["outro.start.thanks"]
+from = "dialogue:outro.start"
+when = "@hermit:Hermit.has_gem"
+next = "dialogue:outro.thanks"
+
+["outro.start.kept"]
+from = "dialogue:outro.start"
+when = "@hud:Run.gems >= 1"
+next = "dialogue:outro.kept"
+
+["outro.bye"]
+speaker = "hermit.name"
+line = "outro.bye"
+
+["outro.thanks"]
+speaker = "hermit.name"
+line = "outro.thanks"
+
+["outro.kept"]
+speaker = "hermit.name"
+line = "outro.kept"

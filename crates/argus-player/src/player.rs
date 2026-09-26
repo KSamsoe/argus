@@ -95,6 +95,7 @@ impl Player {
             input: a.input.clone(),
             particles: a.particles.clone(),
             rooms: Rc::new(RefCell::new(Some(a.scene.stream_state()))),
+            contacts: a.contacts.clone(),
         };
         let mut p = Player {
             world: a.world,

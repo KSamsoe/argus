@@ -40,7 +40,7 @@ Every statement in the design document (v0.3) that constrains the Luau binding, 
 | Spec | Status | Where | Test |
 |---|---|---|---|
 | Randomness from named streams. | Done | `rng = "name"` in the declaration; `q:rng()` exposes `next`, `below`, `range`, `chance`; undeclared use is a structured error. | `systems::script_systems_are_deterministic_under_the_same_seed` |
-| Snapshot includes the Luau heap (open question §19). | Decided | The strict way, as the design leans: the heap is not in keyframes, and a Luau system keeps no state of its own (globals are read-only; a file-level local is the one place left, and it is unsupported). Sequencing state moves to timelines (§13). A system that keeps state anyway replays differently, and `sim.seek` reports it as `diverged`, naming the first event that differs, instead of handing back a wrong world quietly (phase 2 item 0). | `argus-daemon/tests/seek.rs::a_system_that_keeps_state_outside_the_world_shows_as_a_divergence` |
+| Snapshot includes the Luau heap (open question §19). | Decided | The strict way, as the design leans: the heap is not in keyframes, and a Luau system keeps no state of its own (globals are read-only; a file-level local is the one place left, and it is unsupported). Sequencing state moves to timelines (§13), built in phase 3 item 5 (`argus-timeline`: a timeline playing is a `Timeline` entity a script spawns, and all it is doing is in the world). A system that keeps state anyway replays differently, and `sim.seek` reports it as `diverged`, naming the first event that differs, instead of handing back a wrong world quietly (phase 2 item 0). | `argus-daemon/tests/seek.rs::a_system_that_keeps_state_outside_the_world_shows_as_a_divergence` |
 
 ## §7 Scripting and hot reload
 

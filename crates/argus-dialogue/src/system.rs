@@ -3,7 +3,7 @@
 //! started, a choice taken or a line gone on from, is walked to its next
 //! line, its edits made, and its box of UI nodes made again.
 
-use crate::graph::{holds, subject, value_like, Effect, Graph, Lit, Node, Parties};
+use crate::graph::{holds, make_edits, Graph, Node, LISTENER, SPEAKER};
 use crate::{Talk, TalkPart, GO_ON, NOT_A_BUTTON};
 use argus_ecs::{Entity, Parent, Result, StrId, Value, Vec2};
 use argus_sim::{Scheduler, Stage, SystemCtx, SystemDesc};
@@ -23,7 +23,11 @@ enum Step {
     Start,
     Pick(i32),
     GoOn,
+    Quit,
 }
+
+/// A conversation's parties, in the order of `graph::ROLES`.
+type Parties = [Entity; 2];
 
 /// Where a walk stopped.
 enum Stop {
@@ -71,13 +75,36 @@ pub(crate) fn install(
             let Some(tid) = ctx.world().component_id_of::<Talk>() else {
                 return Ok(());
             };
+            let pid = part;
+            let (any_talk, any_part) =
+                ctx.world()
+                    .archetypes()
+                    .iter()
+                    .fold((false, false), |(t, p), a| {
+                        (
+                            t || (!a.is_empty() && a.has(tid)),
+                            p || (!a.is_empty() && a.has(pid)),
+                        )
+                    });
+            // The box of a conversation someone else ended (a timeline
+            // skipped, a despawn) goes with it.
+            if any_part {
+                let mut orphans = Vec::new();
+                for e in ctx.query().has(pid).entities() {
+                    let t = ctx.get::<TalkPart>(e)?.talk;
+                    if !ctx.is_alive(t) || !ctx.has(t, tid) {
+                        orphans.push(e);
+                    }
+                }
+                orphans.sort();
+                for e in orphans {
+                    if ctx.is_alive(e) {
+                        ctx.despawn(e)?;
+                    }
+                }
+            }
             // A world without conversations pays nothing, not even a query.
-            if !ctx
-                .world()
-                .archetypes()
-                .iter()
-                .any(|a| !a.is_empty() && a.has(tid))
-            {
+            if !any_talk {
                 return Ok(());
             }
             let mut talks: Vec<(Entity, Talk)> = Vec::new();
@@ -103,7 +130,9 @@ pub(crate) fn install(
             let graph = graph.borrow();
             let ui = ui.borrow();
             for (e, mut t) in talks {
-                let step = if t.steps == 0 && t.node == StrId::EMPTY {
+                let step = if t.stop {
+                    Step::Quit
+                } else if t.steps == 0 && t.node == StrId::EMPTY {
                     Step::Start
                 } else if t.pick >= 0 {
                     Step::Pick(t.pick)
@@ -118,10 +147,9 @@ pub(crate) fn install(
                 } else {
                     continue;
                 };
-                let who = Parties {
-                    speaker: t.speaker,
-                    listener: t.listener,
-                };
+                let mut who: Parties = [Entity::NULL; 2];
+                who[LISTENER] = t.listener;
+                who[SPEAKER] = t.speaker;
                 let name =
                     |id: StrId, ctx: &SystemCtx<'_>| ctx.world().strings().resolve(id).to_string();
                 let stop = match step {
@@ -190,6 +218,7 @@ pub(crate) fn install(
                             None => Stop::End(at),
                         }
                     }
+                    Step::Quit => Stop::End(name(t.node, ctx)),
                 };
                 // The box goes; a shown node makes it again.
                 clear(ctx, e)?;
@@ -265,7 +294,7 @@ fn walk(
             return Stop::End(last);
         };
         last = n.key.clone();
-        if !holds(ctx.world(), n.when.as_ref(), who) {
+        if !holds(ctx.world(), n.when.as_ref(), &who) {
             key = n.next.clone();
             continue;
         }
@@ -274,7 +303,7 @@ fn walk(
             ctx.emit(
                 "sound.play",
                 vec![
-                    ("entity".into(), Value::Entity(who.speaker)),
+                    ("entity".into(), Value::Entity(who[SPEAKER])),
                     ("sound".into(), Value::Str(n.sound.clone())),
                 ],
             );
@@ -285,9 +314,9 @@ fn walk(
             .enumerate()
             .take(32)
             .filter(|(_, c)| {
-                graph
-                    .node(c)
-                    .is_some_and(|c| !c.line.is_empty() && holds(ctx.world(), c.when.as_ref(), who))
+                graph.node(c).is_some_and(|c| {
+                    !c.line.is_empty() && holds(ctx.world(), c.when.as_ref(), &who)
+                })
             })
             .map(|(i, _)| i)
             .collect();
@@ -326,7 +355,7 @@ fn branch(
 ) -> Option<String> {
     for c in graph.children(&n.key) {
         let Some(b) = graph.node(c) else { continue };
-        if b.line.is_empty() && holds(ctx.world(), b.when.as_ref(), who) {
+        if b.line.is_empty() && holds(ctx.world(), b.when.as_ref(), &who) {
             effects(ctx, b, talk, who);
             return b.next.clone();
         }
@@ -334,77 +363,22 @@ fn branch(
     n.next.clone()
 }
 
-/// A row's edits: fields set or added to, events emitted. The system grows
-/// its declared writes by what it edits (as the tweens do), so who_writes
-/// stays true.
+/// A row's edits: fields set or added to, events emitted
+/// (`graph::make_edits`); one that cannot be made is a `dialogue.problem`.
 fn effects(ctx: &mut SystemCtx<'_>, n: &Node, talk: Entity, who: Parties) {
-    for eff in &n.effects {
-        let (path, lit) = match eff {
-            Effect::Emit(name) => {
-                ctx.emit(
-                    name.clone(),
-                    vec![
-                        ("talk".into(), Value::Entity(talk)),
-                        ("node".into(), Value::Str(n.key.clone())),
-                        ("speaker".into(), Value::Entity(who.speaker)),
-                        ("listener".into(), Value::Entity(who.listener)),
-                    ],
-                );
-                continue;
-            }
-            Effect::Set(p, l) => (p, l.clone()),
-            Effect::Add(p, d) => (p, Lit::Num(*d)),
-        };
-        let Some(e) = subject(ctx.world(), path, who) else {
-            problem(
-                ctx,
-                talk,
-                &n.key,
-                &format!("no one to edit for {}", path.path),
-            );
-            continue;
-        };
-        let old = match ctx.world().get_field(e, &path.path) {
-            Ok(v) => v,
-            Err(err) => {
-                problem(ctx, talk, &n.key, &err.message);
-                continue;
-            }
-        };
-        let lit = match (eff, &old) {
-            (Effect::Add(_, d), v) => match v {
-                Value::Int(i) => Lit::Num(*i as f64 + d),
-                Value::UInt(u) => Lit::Num((*u as f64 + d).max(0.0)),
-                Value::Float(f) => Lit::Num(f + d),
-                _ => {
-                    problem(
-                        ctx,
-                        talk,
-                        &n.key,
-                        &format!("{} is not a number to add to", path.path),
-                    );
-                    continue;
-                }
-            },
-            _ => lit,
-        };
-        let Some(v) = value_like(&old, &lit) else {
-            problem(
-                ctx,
-                talk,
-                &n.key,
-                &format!("{} cannot take {lit:?}", path.path),
-            );
-            continue;
-        };
-        // Declared now, joining the system's writes after this run (as a
-        // tween's target does), and written through the world.
-        if let Ok((c, _)) = ctx.world().registry().resolve_path(&path.path) {
-            ctx.declare(c, true);
-        }
-        if let Err(err) = ctx.world().set_field(e, &path.path, v) {
-            problem(ctx, talk, &n.key, &err.message);
-        }
+    if n.effects.is_empty() {
+        return;
+    }
+    let fields = [
+        ("talk".to_string(), Value::Entity(talk)),
+        ("node".to_string(), Value::Str(n.key.clone())),
+        ("speaker".to_string(), Value::Entity(who[SPEAKER])),
+        ("listener".to_string(), Value::Entity(who[LISTENER])),
+    ];
+    let mut problems = Vec::new();
+    make_edits(ctx, &n.effects, &who, &fields, &mut problems);
+    for why in problems {
+        problem(ctx, talk, &n.key, &why);
     }
 }
 

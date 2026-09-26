@@ -36,7 +36,7 @@ pub const GO_ON: i32 = -2;
 #[derive(Component, Clone, Copy, Debug, PartialEq)]
 #[repr(C)]
 #[argus(
-    doc = "A conversation (section 12's dialogue): from a node of the dialogue table between a speaker and a listener. dialogue.update shows each line in a box of UI nodes with a button a choice (or one to go on), makes the table's edits, and when it ends emits dialogue.ended and despawns it. A script, the protocol, or a test may take a choice by setting pick, or go on by setting advance"
+    doc = "A conversation (section 12's dialogue): from a node of the dialogue table between a speaker and a listener. dialogue.update shows each line in a box of UI nodes with a button a choice (or one to go on), makes the table's edits, and when it ends emits dialogue.ended and despawns it. A script, the protocol, or a test may take a choice by setting pick, go on by setting advance, or end it by setting stop"
 )]
 pub struct Talk {
     /// Where it starts.
@@ -76,6 +76,11 @@ pub struct Talk {
     /// Go on.
     #[argus(doc = "Set to go on from a line without choices")]
     pub advance: bool,
+    /// End it.
+    #[argus(
+        doc = "Set to end the conversation where it is (a skipped cutscene, a game that closes it): dialogue.ended, and the box goes"
+    )]
+    pub stop: bool,
     /// Nodes shown.
     #[argus(doc = "Nodes shown so far (written by dialogue.update)")]
     pub steps: u32,
@@ -95,6 +100,7 @@ impl Default for Talk {
             offered: 0,
             pick: -1,
             advance: false,
+            stop: false,
             steps: 0,
         }
     }

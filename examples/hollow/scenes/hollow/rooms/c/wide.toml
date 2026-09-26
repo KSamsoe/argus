@@ -1,0 +1,12 @@
+# The outro's camera (phase 3 item 5): off until the outro timeline cuts to
+# it when the run finishes (defs/timeline.toml). It outranks the hero's
+# camera while it is on; the hero's blends back when it goes off.
+[Transform]
+pos = [61.3, 7.0]
+
+[Camera]
+active = false
+priority = 5
+height = 12.0
+bounded = false
+blend = 1.0

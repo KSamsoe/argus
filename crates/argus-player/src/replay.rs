@@ -8,12 +8,14 @@
 //! Layout: the tag `ARGR` and a version; the run's identity as JSON (scene,
 //! seed, code, clock, `from`, `to`); the keyframe (the world as
 //! `World::encode_state` writes it, the sim state, the input state, the
-//! particle pools, the rooms); the journal of input commands from `from`
-//! to `to`; and the world at `to`, which a reader compares a replay with.
+//! particle pools, the rooms, and from version 2 the colliders overlapping
+//! at the keyframe); the journal of input commands from `from` to `to`;
+//! and the world at `to`, which a reader compares a replay with. A version
+//! 1 file reads with no overlaps remembered.
 
 use crate::keyframe::Keyframe;
 use argus_ecs::codec::{Reader, Writer};
-use argus_ecs::{ArgusError, Result, Snapshot, StateReport, World};
+use argus_ecs::{ArgusError, Entity, Result, Snapshot, StateReport, World};
 use argus_input::{InputSnapshot, JournalEntry};
 use argus_particles::ParticleStore;
 use argus_scene::StreamState;
@@ -22,7 +24,7 @@ use serde_json::Value as Json;
 use std::path::Path;
 
 const TAG: &[u8; 4] = b"ARGR";
-const VERSION: u32 = 1;
+const VERSION: u32 = 2;
 
 /// A replay file, read back. The two worlds stay bytes until a live world
 /// (with the components registered) reads them.
@@ -40,6 +42,7 @@ pub struct ReplayFile {
     input: Option<InputSnapshot>,
     pools: Vec<u8>,
     rooms: Option<StreamState>,
+    contacts: Vec<(Entity, Entity)>,
     /// The input commands from the keyframe on.
     pub journal: Vec<JournalEntry>,
     end: Option<Vec<u8>>,
@@ -93,6 +96,11 @@ pub fn encode(
     ParticleStore::encode_pools(&k.pools, &mut pools);
     w.bytes(&pools.into_bytes());
     w.opt(k.rooms.as_ref(), |w, r| r.encode(w));
+    w.count(k.contacts.len());
+    for (a, b) in &k.contacts {
+        w.u64(a.to_bits());
+        w.u64(b.to_bits());
+    }
     w.count(journal.len());
     for e in journal {
         e.encode(&mut w);
@@ -117,7 +125,7 @@ pub fn read(path: &Path) -> Result<ReplayFile> {
 /// A replay file from its bytes.
 pub fn decode(bytes: &[u8]) -> Result<ReplayFile> {
     let mut r = Reader::new(bytes, "replay file");
-    r.magic(TAG, VERSION)?;
+    let version = r.magic(TAG, VERSION)?;
     let meta: Json =
         serde_json::from_str(&r.str()?).map_err(|e| r.bad(format!("its identity: {e}")))?;
     let from = r.u64()?;
@@ -127,6 +135,13 @@ pub fn decode(bytes: &[u8]) -> Result<ReplayFile> {
     let input = r.opt(|r| InputSnapshot::decode(r))?;
     let pools = r.bytes()?.to_vec();
     let rooms = r.opt(|r| StreamState::decode(r))?;
+    let mut contacts = Vec::new();
+    if version >= 2 {
+        for _ in 0..r.count()? {
+            let a = Entity::from_bits(r.u64()?);
+            contacts.push((a, Entity::from_bits(r.u64()?)));
+        }
+    }
     let mut journal = Vec::new();
     for _ in 0..r.count()? {
         journal.push(JournalEntry::decode(&mut r)?);
@@ -146,6 +161,7 @@ pub fn decode(bytes: &[u8]) -> Result<ReplayFile> {
         input,
         pools,
         rooms,
+        contacts,
         journal,
         end,
     })
@@ -169,6 +185,7 @@ impl ReplayFile {
             self.input.clone(),
             pools,
             self.rooms.clone(),
+            self.contacts.clone(),
         );
         Ok(ReadBack {
             keyframe,

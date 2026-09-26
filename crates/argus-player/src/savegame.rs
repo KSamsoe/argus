@@ -146,6 +146,8 @@ impl SaveFile {
             None,
             pools,
             self.rooms.clone(),
+            // A loaded game starts afresh: what touches is met again.
+            Vec::new(),
         );
         Ok(Loaded {
             keyframe,

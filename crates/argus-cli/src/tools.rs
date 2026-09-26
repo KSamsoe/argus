@@ -92,6 +92,11 @@ pub fn run(c: &mut dyn Caller, name: &str, args: &Json) -> Result<Json, Json> {
                     p["lang"] = json!(l);
                 }
                 c.call("strings.list", p)
+            } else if let Some(t) = args.get("timelines").filter(|v| !v.is_null()) {
+                match t.as_str() {
+                    Some(name) => c.call("timeline.list", json!({ "name": name })),
+                    None => c.call("timeline.list", json!({})),
+                }
             } else if let Some(p) = args.get("path") {
                 c.call("nav.path", p.clone())
             } else if args.get("entity").is_some() {
@@ -180,8 +185,24 @@ pub fn run(c: &mut dyn Caller, name: &str, args: &Json) -> Result<Json, Json> {
             Ok(json!({ "did": did, "result": result, "status": status }))
         }
         "seek" => {
+            if let Some(time) = args.get("time").filter(|v| !v.is_null()) {
+                let Some(t) = args.get("timeline").and_then(Json::as_str) else {
+                    return Err(bad(
+                        "seek with time needs timeline: a timeline's name or entity",
+                    ));
+                };
+                let mut p = json!({ "time": time });
+                if t.starts_with("e:") || t.starts_with('@') {
+                    p["timeline"] = json!(t);
+                } else {
+                    p["name"] = json!(t);
+                }
+                return c.call("timeline.seek", p);
+            }
             if args.get("frame").is_none() && args.get("turn").is_none() {
-                return Err(bad("seek needs frame (or turn, on a discrete clock)"));
+                return Err(bad(
+                    "seek needs frame (or turn, on a discrete clock), or timeline and time",
+                ));
             }
             match args.get("fork").and_then(Json::as_str) {
                 Some(name) => {

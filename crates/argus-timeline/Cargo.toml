@@ -1,0 +1,18 @@
+[package]
+name = "argus-timeline"
+description = "Argus Engine timelines: a def table of cues on tracks against time (tweens, animator states, camera cuts, dialogue lines, events), played by a Timeline entity"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+argus-ecs = { path = "../argus-ecs", version = "0.0.1" }
+argus-sim = { path = "../argus-sim", version = "0.0.1" }
+argus-scene = { path = "../argus-scene", version = "0.0.1" }
+argus-dialogue = { path = "../argus-dialogue", version = "0.0.1" }
+argus-tween = { path = "../argus-tween", version = "0.0.1" }
+argus-anim = { path = "../argus-anim", version = "0.0.1" }
+argus-camera = { path = "../argus-camera", version = "0.0.1" }
+
+[dev-dependencies]
+argus-ui = { path = "../argus-ui", version = "0.0.1" }

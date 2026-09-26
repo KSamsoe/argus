@@ -7,9 +7,9 @@
 return system "sim.colony.needs" {
   stage = "sim",
   after = { "sim.colony.work" },
-  reads = { "Colony", "Stockpile", "Colonist", "Job" },
+  reads = { "Colony", "Stockpile", "Colonist", "Job", "Transform" },
   writes = { "Needs", "Worker", "Job" },
-  doc = "Hunger (Colony.hunger_per_day) and rest (Colony.rest_per_day, back by morning asleep); Worker.rate is 40 to 100 percent by rest. Posts an eat job below Colony.eat_below and a sleep job at dusk (Colony.dusk), ended when the day turns. One at zero fed dies: colonist.died, cause starvation.",
+  doc = "Hunger (Colony.hunger_per_day) and rest (Colony.rest_per_day, back by morning asleep); Worker.rate is 40 to 100 percent by rest. Posts an eat job below Colony.eat_below and a sleep job at dusk (Colony.dusk), ended when the day turns. One at zero fed dies: colonist.died {entity, name, cause: starvation, at}.",
   run = function(q)
     local rules = q:entity("@colony"):get("Colony")
     local dl = q.day_length
@@ -63,7 +63,7 @@ return system "sim.colony.needs" {
       end
       if needs.fed <= 0 then
         table.insert(dead, e:id())
-        q:emit("colonist.died", { entity = e, name = who.name, cause = "starvation" })
+        q:emit("colonist.died", { entity = e, name = who.name, cause = "starvation", at = e:get("Transform").pos })
       end
     end
     for _, id in ipairs(dead) do q:entity(id):despawn() end

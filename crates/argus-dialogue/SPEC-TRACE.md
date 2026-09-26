@@ -19,7 +19,7 @@ Every statement in the design document (v0.3) that constrains dialogue (§12 "Di
 | Spec | Status | Where | Test |
 |---|---|---|---|
 | §13: "dialogue ducks music by 6 dB over 200 ms" is a ducking rule. | Done | A row's `sound` plays when its line shows (`sound.play`, from the speaker); the sound's bus is the project's to say, and a ducking rule on a dialogue bus lowers the music. Hollow's `audio.toml` has the rule as §13 writes it. | Hollow's `tests/hermit.luau` (the music bus ducked while he speaks) |
-| §13: timelines have dialogue-line tracks. | Deferred | Item 5: a timeline track will start a `Talk`. | |
+| §13: timelines have dialogue-line tracks. | Done | Item 5: a timeline's `line` cue starts a `Talk` (argus-timeline); a cue that waits holds the timeline until it ends; a skipped timeline ends one it started with `Talk.stop`, which ends a conversation where it is (`dialogue.ended` at that node) and takes its box with it. A box whose conversation was despawned goes too. The conditions and effects are one language with the timelines': `graph::parse_cond_with` and `parse_effects_with` read it against a list of parties, and `graph::make_edits` makes a list of effects from any system. | `dialogue::rows_that_do_not_read_are_said_and_a_missing_node_ends_the_talk` (stopped, and despawned); `argus-timeline` `a_cue_that_waits_holds_the_timeline`, `a_skip_jumps_to_the_end` |
 | §4: dialogue lines are data tables. | Done | The graph, and every word of it in the string tables. | |
 | §6: the same inputs give the same world. | Done | Everything a conversation is, is in its `Talk` and the box's entities; the graph is content. A seek or a load plays on from the node it was at. | Hollow's tests (replayed on failure like any) |
 
@@ -27,5 +27,5 @@ Every statement in the design document (v0.3) that constrains dialogue (§12 "Di
 
 - A node offers at most 32 choices, and a walk passes at most 64 nodes without a line before it stops and says so (a loop of branches).
 - Conditions have no parentheses: `and` binds before `or`.
-- The box's look is the engine's (the theme's colours, a bottom panel); a game that wants its own draws the `Talk`'s fields in its own UI and sets `pick` and `advance`.
+- The box's look is the engine's (the theme's colours, a panel along the top); a game that wants its own draws the `Talk`'s fields in its own UI and sets `pick` and `advance`.
 - A conversation does not stop the game; a game freezes it while a `Talk` exists if it wants to (Hollow's hermit does, as its pause menu does).

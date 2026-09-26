@@ -73,6 +73,13 @@ Every statement in the design document (v0.3) that constrains a game as players 
 | (§12) String tables and dialogue in every scene, the same in the daemon, the executable, and the page. | Done | `assemble.rs` reads the string tables into the UI's shared state, installs `argus-dialogue` after the UI, hands scripts `q:text` (`UiTexts`) and the rebind its prompt, adds the engine's `dialogue` def table to the project's (`with_engine_defs`), and builds the graph from its rows. | Hollow's, Delve's, and Outpost's tests |
 | (§15) "Localization packs are separate so a language can be added without a rebuild." | Done | `pack.rs`: a string table other than the base language's (`strings/<code>.toml`) goes into `lang-<code>.pack`; every language pack's tables are mounted whichever language the files are laid out in, so a player switches in the game; of two builds' packs of a language, the newest is the language (the first build's was taken before). | `packs::hollow_from_its_packs_plays_as_hollow_from_its_folder`, `packs::a_patch_carries_only_what_changed_and_a_language_lays_over_the_game` |
 
+## Phase 3, item 5: timelines in the one assembly, and overlaps in keyframes
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§13) Timelines in every scene, the same in the daemon, the executable, and the page. | Done | `assemble.rs` installs `argus-timeline` after the dialogue (first in the late stage), adds the engine's `timeline` def table to the project's (`with_engine_defs`), and reads the timelines with their fields checked against the world's components (`read_timelines`). | Hollow's and Outpost's tests |
+| (§6) Everything the sim needs that the world does not hold is in a keyframe. | Done | `keyframe.rs`: the colliders overlapping at the end of the tick before (`Keyframe.contacts`, `Sources.contacts`) beside the particle pools and rooms. Replay files are version 2 and carry them; a version 1 file reads with none. A save starts with none. | Hollow's outro scrubs; the daemon's ring and seek tests |
+
 ## §18 Build plan
 
 | Spec | Status | Where | Test |

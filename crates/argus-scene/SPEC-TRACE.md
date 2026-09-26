@@ -74,6 +74,12 @@ Phase 0 item 5, "TOML scenes, rooms, defs, and prefab overrides": this crate.
 |---|---|---|---|
 | (§12) A game is written in one language. | Done | `ProjectConfig::strings_base`, argus.toml `[strings] base` ("en" when it says nothing): the string table every other language falls back to, and the one a release build keeps in the game's pack. | The games' string tables; `argus-player` `packs::hollow_from_its_packs_plays_as_hollow_from_its_folder` |
 
+## Phase 3, item 5
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§4) A table's reader can tell a field left out from one written as its default. | Done | `DefRow.given` and `DefTable::given`: which fields the row wrote. A timeline's tween cue without `from` starts from where the field is. | `argus-timeline` `a_timeline_fires_its_cues_at_their_times_and_ends` |
+
 ## Known limitations, stated so they are decisions
 
 - A child entity that exists only because a prefab declares it is not an "instance" of that prefab (`instances_of`), but it is counted among the entities a prefab change touched (`reapply_prefab`).

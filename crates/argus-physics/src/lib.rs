@@ -345,6 +345,33 @@ pub fn install(
     sched: &mut Scheduler,
     tiles: Rc<RefCell<MapStore>>,
 ) -> Result<()> {
+    install_with(
+        world,
+        sched,
+        tiles,
+        Rc::new(RefCell::new(Contacts::default())),
+    )
+}
+
+/// [`install`], with the pairs `physics.overlap` remembers between ticks
+/// held where a keyframe can take and put them back.
+pub fn install_with(
+    world: &mut World,
+    sched: &mut Scheduler,
+    tiles: Rc<RefCell<MapStore>>,
+    contacts: Rc<RefCell<Contacts>>,
+) -> Result<()> {
     register(world)?;
-    systems::install(world, sched, tiles)
+    systems::install(world, sched, tiles, contacts)
+}
+
+/// The pairs of colliders that overlapped at the end of the last tick,
+/// which the next tick's `overlap.begin` and `overlap.end` are measured
+/// against. They are not the world's, so a keyframe keeps them (phase 3
+/// item 5: a seek back from a hero standing in a doorway said the doorway
+/// was left on the first tick it replayed).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Contacts {
+    /// Sorted pairs, the lower entity first.
+    pub pairs: Vec<(Entity, Entity)>,
 }

@@ -94,6 +94,16 @@ component "Hud" {
   kind = field.str { doc = "line: the day, the food, the colonists; notice: the colony's news" },
 }
 
+component "Grave" {
+  doc = "Where a colonist was lost (systems/vignette.luau)",
+  name = field.str { doc = "Whose" },
+  day = field.u32 { default = 0, doc = "The day they were lost" },
+}
+
+component "Vignette" {
+  doc = "The camera a vignette cuts to: it follows what the vignette is about (systems/vignette.luau)",
+}
+
 return component "Bed" {
   doc = "A bed",
   owner = field.entity { doc = "Whose it is" },

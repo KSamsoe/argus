@@ -27,7 +27,7 @@ pub mod savegame;
 pub mod sha256;
 
 pub use assemble::{
-    assemble, set_fonts, with_engine_defs, Assembly, Options, ProjectDefs, UiTexts,
+    assemble, read_timelines, set_fonts, with_engine_defs, Assembly, Options, ProjectDefs, UiTexts,
 };
 pub use pack::{pack, unpack};
 #[cfg(all(feature = "render", feature = "audio"))]

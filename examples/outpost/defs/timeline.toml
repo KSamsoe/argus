@@ -1,0 +1,26 @@
+# Outpost's timelines (phase 3 item 5): its event vignettes. A row without
+# timeline is a timeline; the rest are its cues. systems/vignette.luau plays
+# "lost" when a colonist dies, its actor their grave and its other the
+# vignette camera, which follows the grave.
+
+# A colonist lost: the view glides to the grave and closes in, holds, then
+# glides back to where the player left it. The colony goes on beneath.
+["lost"]
+length = 4.0
+
+["lost.cut"]
+timeline = "timeline:lost"
+kind = "camera"
+who = "other"
+duration = 3.2
+
+["lost.close"]
+timeline = "timeline:lost"
+track = "zoom"
+kind = "tween"
+who = "other"
+path = "Camera.height"
+from = [18.0, 0.0]
+to = [9.0, 0.0]
+duration = 2.5
+easing = "out_cubic"

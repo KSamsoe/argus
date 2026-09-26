@@ -4,14 +4,15 @@
 -- fell; R (or Start) plays it again from the cave mouth. "Player is still
 -- movable after beating the level, can even still fall off": through the
 -- door, the hero is held there out of sight until R. "Put something up here
--- like a collectible": a gem, taken on touch and counted.
+-- like a collectible": a gem, taken on touch and counted. Finishing plays
+-- the outro timeline (defs/timeline.toml, phase 3 item 5); R skips it.
 return system "sim.run" {
   stage = "sim",
   -- After the overlaps are known, so a touch is seen on its tick.
   after = { "physics.overlap" },
   reads = { "Actions", "Run", "Gem" },
-  writes = { "Run", "Gem", "UiText", "Transform", "KinematicBody", "Sprite" },
-  doc = "Counts the hero's falls and gems, finishes the run at the exit (run.finished {time, falls, gems}) and holds the hero there out of sight, restarts it on the restart action (or the pause menu's), and writes the HUD line.",
+  writes = { "Run", "Gem", "UiText", "Transform", "KinematicBody", "Sprite", "Timeline" },
+  doc = "Counts the hero's falls and gems, finishes the run at the exit (run.finished {time, falls, gems}), plays the outro timeline and holds the hero there out of sight, restarts it on the restart action (or the pause menu's, skipping the outro), and writes the HUD line.",
   run = function(q)
     local hero = q:entity("@player")
     local exit = q:entity("@exit")
@@ -30,6 +31,10 @@ return system "sim.run" {
       for _, g in q:each("Gem") do
         g.taken = false
       end
+      -- A new run skips what is left of the outro.
+      for _, tl in q:each("Timeline") do
+        tl.skip = true
+      end
       q:emit("run.restarted", {})
     end
     if not run.done then
@@ -46,6 +51,9 @@ return system "sim.run" {
           run.time = q.time - run.started
           q:emit("run.finished", { time = run.time, falls = run.falls, gems = run.gems })
           q:play("sfx/out")
+          local outro = q:spawn({ "Timeline" }):get("Timeline")
+          outro.name = "timeline:outro"
+          outro.actor = hero
         elseif other ~= nil and other:has("Gem") then
           local g = other:get("Gem")
           if g.active and not g.taken then

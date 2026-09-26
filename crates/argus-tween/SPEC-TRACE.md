@@ -11,7 +11,7 @@ Every statement in the design document (v0.3) that constrains tweens as phase 1 
 | Squash-and-stretch, UI slides, and camera nudges are all tweens. | Done | `Transform.scale` (the renderer scales the sprite), `Transform.pos` or one axis of it, `Camera.offset.y` (the camera aims there). Integer fields round. | `argus-daemon/tests/tween.rs::a_landing_squashes_the_player_and_nudges_the_camera` |
 | Because they are data the agent can query what is currently animating. | Done | Every running tween is an entity with a `Tween`: `world.query {select: ["Tween.target", "Tween.path", "Tween.time"], where: {has: ["Tween"]}}`. `time`, `value`, `plays`, `started`, and `done` say where each one is. | `argus-daemon/tests/tween.rs` |
 | And the replay reproduces them exactly. | Done | Tweens advance by sim time in the tick, in entity order; delays, repeats, and yoyo are fields; the same run twice gives the same values to the bit. | `the_same_run_twice_is_the_same` |
-| Above tweens sits a timeline: a def table of tracks, playable from Luau, scrubbable in the editor. | Deferred | Phase 3, as the plan lists (with cutscenes and camera cuts on a timeline). | |
+| Above tweens sits a timeline: a def table of tracks, playable from Luau, scrubbable in the editor. | Done | Phase 3 item 5, `argus-timeline`: a timeline's tween cue starts a `Tween` like any other. A play ends within 1e-4 s of its end (sixty steps of 1/60 in f32 add up to just under 1), so a tween of a second ends on its sixtieth tick, before a timeline's cue at its end time. | `argus-timeline` trace; `argus-daemon` `timeline::a_timeline_is_listed_played_and_scrubbed` |
 
 ## §3, §10 Write sets and tuning
 

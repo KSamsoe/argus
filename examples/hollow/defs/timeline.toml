@@ -1,0 +1,48 @@
+# Hollow's timelines (phase 3 item 5): cues on tracks against time. A row
+# without timeline is a timeline; the rest are its cues. systems/run.luau
+# plays the outro when the run finishes (a Timeline with the hero as its
+# actor); R skips it.
+
+# The way out: the view pulls back over the hall the hero crossed, the
+# hermit calls after them (the game waits for the line to be read), and
+# the view glides home.
+["outro"]
+length = 5.0
+
+["outro.wide"]
+timeline = "timeline:outro"
+kind = "camera"
+who = "@wide"
+# No duration: it draws until the outro ends; @wide's blend glides in, and
+# the hero's camera's blend glides back.
+
+["outro.pull"]
+timeline = "timeline:outro"
+track = "wide"
+kind = "tween"
+who = "@wide"
+path = "Transform.pos"
+from = [61.3, 7.0]
+to = [58.0, 7.0]
+duration = 2.5
+easing = "in_out_sine"
+
+["outro.zoom"]
+timeline = "timeline:outro"
+track = "wide"
+kind = "tween"
+who = "@wide"
+path = "Camera.height"
+from = [12.0, 0.0]
+to = [14.0, 0.0]
+duration = 2.5
+easing = "in_out_sine"
+
+["outro.call"]
+timeline = "timeline:outro"
+track = "hermit"
+at = 3.0
+kind = "line"
+who = "@hermit"
+line = "dialogue:outro.start"
+wait = true

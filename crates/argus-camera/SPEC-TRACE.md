@@ -34,11 +34,17 @@ Every statement in the design document (v0.3) that constrains cameras as phase 1
 | (Phase 2 item 6.) A hit-stop holds the view, and the shake plays on. | Done | `camera.update` is `unfrozen`: on a frozen tick it does not follow, pan, or zoom, so the moment of the hit stays in view, and its `CameraShake` goes on moving and decaying rather than hanging still. | `a_hit_stop_holds_the_view_and_the_shake_plays_on` |
 | Gate: a three-room slice of Hollow with a following camera. | Partial | A camera follows a physics player across two rooms of a room scene through the protocol, keeping to each room's bounds; the slice itself is the gate's work. | `argus-daemon/tests/camera.rs` |
 
+## Phase 3, item 5: blends
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§12, §13) Cutting between two cameras is an event; blends and camera moves on a curve were left for tweens and timelines. | Done | `Camera.blend` (a tune field, seconds): when a camera starts drawing, its view moves from what the camera before showed (the centre and height of its last rect, blend included, so a blend into a blend has no jump) towards its own, eased in and out; `camera.cut` carries `blend`. What drew last is `Camera.drew`, world state, so a seek or a load blends as the run did (the cut event reads it too, and so no longer depends on the system's own memory). `view()`, the rect the renderer, the semantic frame, and UI hung from the world use, is the blended one, and so are `view_min` and `view_max`. A hit-stop holds a blend where it is. A move on a curve is a tween with an easing, from a timeline or a script. | `a_camera_with_a_blend_glides_from_the_view_before`; `argus-timeline` `a_timeline_fires_its_cues_at_their_times_and_ends`; Hollow's outro |
+
 ## Known limitations, stated so they are decisions
 
 - Room bounds clamp a following or panned camera's position. A camera on another entity (the player itself) is not moved, so it is not clamped either; give the game a camera entity with a target for that.
 - Bounds are rectangles, one per room, found by the target's position. Rooms that overlap take the first listed; there are no camera zones inside a room yet, and no per-camera bounds.
 - `aspect` is the game's design aspect, used for the bounds and `view_min`/`view_max`. A window of a different shape draws the same height and shows more or less at the sides, which can show past a room's side walls on a wider window.
 - A parented target is read through its `GlobalTransform`, which is propagated after the late stage, so the camera sees it one tick late.
-- A cut is instant. Blends between cameras, and camera moves on a curve, are the tweens and timelines of items 9 and phase 3 ("camera nudges are tweens").
+- A cut glides when the camera cut to has a `blend` (phase 3 item 5); the blend's length is that camera's, whichever camera it comes from, and its curve is a fixed ease in and out. A camera move on a curve is a tween.
 - Screen-space shake in the post stack is phase 2; this is the camera's shake in world space.

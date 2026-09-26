@@ -38,8 +38,9 @@ fn session_open_gives_the_one_screen_summary() {
     // The physics, navigation, jobs, camera, and post systems are in every
     // scene and cost nothing without bodies, agents, workers, or cameras;
     // the hit-stop check runs first in input, physics control first in sim,
-    // move and overlap last with the nav agents after them, and the camera,
-    // the post effects, then the particles last in late.
+    // move and overlap last with the nav agents after them, the timelines
+    // first in late, and the camera, the post effects, then the particles
+    // last.
     assert_eq!(
         systems,
         [
@@ -55,6 +56,7 @@ fn session_open_gives_the_one_screen_summary() {
             "physics.move",
             "physics.overlap",
             "nav.agents",
+            "timeline.update",
             "anim.update",
             "tween.update",
             "camera.update",
@@ -688,7 +690,7 @@ fn scripts_reload_in_place_and_errors_are_data() {
     project(t.path());
     let mut d = open(t.path());
     let sys = ok(&mut d, "script.systems", json!({}));
-    assert_eq!(sys["total"], 19);
+    assert_eq!(sys["total"], 20);
     let dmg = &sys["rows"][7];
     assert_eq!(dmg["name"], "sim.damage");
     assert_eq!(dmg["stage"], "sim");

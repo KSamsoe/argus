@@ -1,4 +1,6 @@
 # Follows the hero, a little above it, and keeps to the room it is in.
+# When a cutscene's camera lets go (the outro), the view glides back here
+# over blend seconds.
 [Transform]
 pos = [3.0, 6.0]
 
@@ -7,6 +9,7 @@ height = 12.0
 target = "@player"
 offset = [0.0, 1.5]
 dead_zone = [1.5, 1.0]
+blend = 0.8
 
 [CameraShake]
 

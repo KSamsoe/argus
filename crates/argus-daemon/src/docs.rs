@@ -142,6 +142,7 @@ pub const TOOLS: &[ToolDoc] = &[
             opt("entity", STRING, "\"@id\" or \"e:n\": one entity in full"),
             opt("path", OBJECT, "{from, to, grid?}: from and to an entity (\"@player\") or [x, y]; the waypoints, steps, and cost, or why there is no way"),
             opt("strings", ANY, "a language's code, or {lang, prefix, missing}: the game's player-facing strings in that language beside the base's (strings.list)"),
+            opt("timelines", ANY, "true, or a timeline's name: the timelines with their tracks and cues in time order, and those playing with where they are (timeline.list)"),
             opt("select", ARRAY, "[\"id\" | \"Component.field\" | \"Component\" | \"count()\" | \"sum(Component.field)\" | mean | min | max]; default [\"id\"]"),
             opt("where", OBJECT, "{has: [Component], not: [Component], within: {of: entity, r: number}, \"Component.field\": value | {eq|ne|lt|lte|gt|gte: value}}"),
             opt("group_by", ARRAY, "[\"Component.field\"]: one row a distinct value, with the aggregates in select"),
@@ -149,7 +150,7 @@ pub const TOOLS: &[ToolDoc] = &[
             opt("limit", INTEGER, "default 50"),
             opt("scene", STRING, "another scene, from the index"),
         ],
-        calls: &["world.get", "world.query", "nav.path", "strings.list"],
+        calls: &["world.get", "world.query", "nav.path", "strings.list", "timeline.list"],
     },
     ToolDoc {
         name: "describe",
@@ -189,13 +190,15 @@ pub const TOOLS: &[ToolDoc] = &[
     },
     ToolDoc {
         name: "seek",
-        doc: "Go to any frame of this run, rebuilt from keyframes and the recorded input; stepping on replays what happened next until a new input branches the run. fork: instead build a second world at that frame, named, to try something beside this one (every method then takes fork: name).",
+        doc: "Go to any frame of this run, rebuilt from keyframes and the recorded input; stepping on replays what happened next until a new input branches the run. fork: instead build a second world at that frame, named, to try something beside this one (every method then takes fork: name). timeline and time: scrub a timeline, to the first frame at which it had reached that many seconds.",
         params: &[
-            opt("frame", INTEGER, "one of frame, turn; the tick"),
-            opt("turn", INTEGER, "one of frame, turn; the turn, on a discrete clock"),
+            opt("frame", INTEGER, "one of frame, turn, time; the tick"),
+            opt("turn", INTEGER, "one of frame, turn, time; the turn, on a discrete clock"),
+            opt("time", NUMBER, "one of frame, turn, time; seconds into the timeline named by timeline"),
+            opt("timeline", STRING, "with time: a timeline's name (its latest play) or its entity (\"e:40\")"),
             opt("fork", STRING, "a name: fork there instead of seeking"),
         ],
-        calls: &["sim.seek", "sim.fork"],
+        calls: &["sim.seek", "sim.fork", "timeline.seek"],
     },
     ToolDoc {
         name: "observe",
@@ -545,6 +548,22 @@ pub const METHODS: &[MethodDoc] = &[
             opt("cursor", STRING, ""),
         ],
         returns: "{worker, job, why?, columns: [job, kind, priority, stage, distance, verdict], total, rows, truncated, next}",
+    },
+    MethodDoc {
+        name: "timeline.list",
+        doc: "The game's timelines (section 13): each row of the timeline table without a timeline field, its length, and its cues by track in time order (a tween, an animator state, a camera cut, a conversation, or edits and events, about the actor, the other, the drawing camera, or an @id; whether it waits), and the Timeline entities playing, with their time, next cue, and what they wait for. Rows that do not read are in problems (and script.errors, phase timeline). A timeline plays when a script spawns a Timeline {name, actor, other}.",
+        params: &[opt("name", STRING, "only this timeline")],
+        returns: "{timelines: [{name, length, ref, cue_columns: [n, cue, at, end, kind, who, what, wait, ref], tracks: [{track, cues}]}], playing: [{timeline, name, time, length, next, held, waiting, began, actor, other}], problems: [{ref, message}]}",
+    },
+    MethodDoc {
+        name: "timeline.seek",
+        doc: "Scrub a timeline (section 13, \"scrubbable in the editor\"): go to the first frame of this run at which it had reached time seconds, replayed from the keyframe before it began, as sim.seek goes to a frame. A time past its end is the frame it ended; one it has not reached yet in this run is the run's last frame (reached false). Stepping on replays what happened next. The timeline is named by its entity, or by name for its latest play in the log.",
+        params: &[
+            req("time", NUMBER, "seconds into the timeline"),
+            opt("timeline", STRING, "one of timeline, name; its entity (\"e:40\")"),
+            opt("name", STRING, "one of timeline, name; its latest play"),
+        ],
+        returns: "sim.status plus {from, replayed, ms, checked, diverged, reached, timeline, time, next, held, ended}",
     },
     MethodDoc {
         name: "asset.list",

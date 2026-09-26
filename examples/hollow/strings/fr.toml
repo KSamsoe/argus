@@ -59,3 +59,8 @@ lead_answer = "En haut du puits, à travers la salle, puis dehors. Attention au 
 give = "Donner la gemme"
 thanks = "Elle éclairera mes soirées. Merci."
 bye = "Au revoir"
+
+[outro]
+bye = "Tu as trouvé la sortie. Va en paix, et reviens un jour."
+thanks = "Tu as trouvé la sortie. Va en paix ; ta gemme éclairera mes soirées."
+kept = "Tu as trouvé la sortie, et une gemme en plus. Va en paix."

@@ -58,6 +58,9 @@ pub struct Assembly {
     pub anims: Rc<RefCell<argus_anim::AnimStore>>,
     /// Particle pools.
     pub particles: Rc<RefCell<argus_particles::ParticleStore>>,
+    /// The colliders overlapping at the end of the last tick, which a
+    /// keyframe keeps.
+    pub contacts: Rc<RefCell<argus_physics::Contacts>>,
     /// The Luau host (scripts, defs).
     pub host: ScriptHost,
     /// The project.
@@ -74,6 +77,8 @@ pub struct Assembly {
     pub ui: Rc<RefCell<argus_ui::Shared>>,
     /// The dialogue graph, the project's `dialogue` table (phase 3 item 4).
     pub dialogue: Rc<RefCell<argus_dialogue::Graph>>,
+    /// The project's timelines, its `timeline` table (phase 3 item 5).
+    pub timelines: Rc<RefCell<argus_timeline::Timelines>>,
     /// The imported assets.
     pub assets: argus_assets::Importer,
     /// The import's report.
@@ -123,7 +128,8 @@ pub fn assemble(
     #[cfg(feature = "audio")]
     argus_audio::register(&mut world)?;
     let tiles = Rc::new(RefCell::new(argus_tiles::MapStore::new(root)));
-    argus_physics::install(&mut world, &mut sched, tiles.clone())?;
+    let contacts = Rc::new(RefCell::new(argus_physics::Contacts::default()));
+    argus_physics::install_with(&mut world, &mut sched, tiles.clone(), contacts.clone())?;
     // Navigation over the tilemaps; its agents move after the physics.
     let nav = Rc::new(RefCell::new(argus_nav::NavStore::new(
         root,
@@ -155,6 +161,10 @@ pub fn assemble(
     ui.borrow_mut().strings = argus_ui::Strings::load(root, &cfg.strings_base);
     let dialogue = Rc::new(RefCell::new(argus_dialogue::Graph::default()));
     argus_dialogue::install(&mut world, &mut sched, dialogue.clone(), ui.clone())?;
+    // Timelines over the tweens, animators, cameras, and conversations
+    // (phase 3 item 5): first in the late stage.
+    let timelines = Rc::new(RefCell::new(argus_timeline::Timelines::default()));
+    argus_timeline::install(&mut world, &mut sched, timelines.clone())?;
     // Rebinding, a UI over the action map (after the UI's input).
     if let Some(st) = &input {
         let tables = ui.clone();
@@ -183,6 +193,7 @@ pub fn assemble(
     let project = Project::open(root, with_engine_defs(defs))?;
     host.set_defs(Rc::new(ProjectDefs(project.defs.clone())));
     *dialogue.borrow_mut() = argus_dialogue::Graph::from_defs(&project.defs);
+    *timelines.borrow_mut() = read_timelines(&project.defs, &world);
     let mut scene = Scene::open(&project, scene_name, world.registry())?;
     zones.borrow_mut().rects = scene
         .rooms()
@@ -237,12 +248,14 @@ pub fn assemble(
         zones,
         anims,
         particles,
+        contacts,
         host,
         project,
         scene,
         issues,
         ui,
         dialogue,
+        timelines,
         load,
         assets,
         asset_report,
@@ -306,12 +319,24 @@ impl argus_luau::Paths for NavPaths {
 }
 
 /// The def tables the engine declares, beside a project's own: `dialogue`
-/// (phase 3 item 4), so every project has one and `world.defs` answers it.
+/// (phase 3 item 4) and `timeline` (item 5), so every project has them and
+/// `world.defs` answers them.
 pub fn with_engine_defs(mut defs: Vec<DefSchema>) -> Vec<DefSchema> {
     if !defs.iter().any(|d| d.schema.name == argus_dialogue::TABLE) {
         defs.push(argus_dialogue::schema());
     }
+    if !defs.iter().any(|d| d.schema.name == argus_timeline::TABLE) {
+        defs.push(argus_timeline::schema());
+    }
     defs
+}
+
+/// A project's timelines, their cues' fields checked against the world's
+/// components (every script's declared by now).
+pub fn read_timelines(defs: &argus_scene::Defs, world: &World) -> argus_timeline::Timelines {
+    let mut t = argus_timeline::Timelines::from_defs(defs);
+    t.check(world.registry());
+    t
 }
 
 /// Scripts' player-facing strings (`q:text`, `q:languages`, phase 3 item 4):

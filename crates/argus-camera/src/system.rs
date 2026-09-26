@@ -163,6 +163,24 @@ fn run(
     let mut events: Events = Vec::new();
     let mut cams = ctx.query().has(cam).entities();
     cams.sort();
+    // The camera that drew last tick, and what it showed: a blend into a
+    // new one starts there. It is the world's (Camera.drew), so a seek or a
+    // load blends as the run did.
+    let mut drew: Option<(Entity, [f32; 2], f32)> = None;
+    for &e in &cams {
+        let c: Camera = ctx.get(e)?;
+        if c.drew && drew.is_none() {
+            drew = Some((
+                e,
+                [
+                    (c.view_min.x + c.view_max.x) * 0.5,
+                    (c.view_min.y + c.view_max.y) * 0.5,
+                ],
+                c.view_max.y - c.view_min.y,
+            ));
+        }
+    }
+    let mut blend_into: Option<f32> = None;
     for e in cams {
         let mut c: Camera = ctx.get(e)?;
         let has_actions = actions.is_some_and(|a| ctx.has(e, a));
@@ -313,18 +331,44 @@ fn run(
             off = [s.offset.x, s.offset.y];
             ctx.update::<CameraShake, _>(e, |x| *x = s)?;
         }
-        c.view_min = Vec2::new(pos[0] + off[0] - half[0], pos[1] + off[1] - half[1]);
-        c.view_max = Vec2::new(pos[0] + off[0] + half[0], pos[1] + off[1] + half[1]);
+        // A blend: when it starts drawing, from what the last camera showed
+        // towards its own view; a hit-stop holds it where it is.
+        let draws = drawing_before == Some(e);
+        if draws && !c.drew {
+            c.blend_left = 0.0;
+            if let Some((_, p, h)) = drew.filter(|d| d.0 != e && c.blend > 0.0) {
+                c.blend_pos = Vec2::new(p[0], p[1]);
+                c.blend_height = h;
+                c.blend_left = c.blend;
+                blend_into = Some(c.blend);
+            }
+        } else if !draws {
+            c.blend_left = 0.0;
+        } else if moving && c.blend_left > 0.0 {
+            c.blend_left = (c.blend_left - dt).max(0.0);
+        }
+        c.drew = draws;
+        let (center, height) = crate::blended(&c, [pos[0] + off[0], pos[1] + off[1]], c.height);
+        let hh = [height.max(0.01) * 0.5 * c.aspect, height.max(0.01) * 0.5];
+        c.view_min = Vec2::new(center[0] - hh[0], center[1] - hh[1]);
+        c.view_max = Vec2::new(center[0] + hh[0], center[1] + hh[1]);
         ctx.update::<Camera, _>(e, |x| *x = c)?;
     }
     drop(zones);
 
     let now = current(ctx.world());
-    if let Some(from) = st.drawing {
+    // Which camera drew before: the world's record, or one despawned since.
+    let from = drew
+        .map(|d| d.0)
+        .or(st.drawing.filter(|d| !ctx.is_alive(*d)));
+    if let Some(from) = from {
         if now != Some(from) {
             let mut f = vec![("from".to_string(), Value::Entity(from))];
             if let Some(to) = now {
                 f.push(("to".to_string(), Value::Entity(to)));
+            }
+            if let Some(b) = blend_into {
+                f.push(("blend".to_string(), Value::Float(b as f64)));
             }
             events.push(("camera.cut".into(), f));
         }

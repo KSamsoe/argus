@@ -429,4 +429,34 @@ effects = "Hero.gems *= 2"
         n.contains(&"dialogue.problem".to_string()) && n.contains(&"dialogue.ended".to_string()),
         "{n:?}"
     );
+
+    // Stopped where it is (a skipped cutscene): it ends there, box and all;
+    // a box whose conversation was despawned goes too.
+    let mut g = game("stopped");
+    let t = g.talk();
+    g.step();
+    g.step();
+    let part = g.w.component_id_of::<TalkPart>().unwrap();
+    assert!(g.w.query().has(part).count() > 0);
+    let _ = g.events();
+    g.w.update::<Talk, _>(t, |k| k.stop = true).unwrap();
+    g.step();
+    assert!(!g.w.is_alive(t));
+    assert_eq!(g.w.query().has(part).count(), 0);
+    let ended: Vec<_> = g
+        .events()
+        .into_iter()
+        .filter(|e| e.0 == "dialogue.ended")
+        .collect();
+    assert_eq!(ended.len(), 1);
+    assert!(ended[0]
+        .1
+        .contains(&("node".to_string(), Value::Str("hermit.hello".into()))));
+    let t = g.talk();
+    g.step();
+    g.step();
+    assert!(g.w.query().has(part).count() > 0);
+    g.w.despawn(t).unwrap();
+    g.step();
+    assert_eq!(g.w.query().has(part).count(), 0);
 }

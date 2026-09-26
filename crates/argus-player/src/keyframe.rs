@@ -4,8 +4,10 @@
 //! release build's recorder keeps two (phase 2 item 7).
 //!
 //! A keyframe is the world, the scheduler's clocks and RNG streams and which
-//! systems are off, the input state, the particle pools, and which rooms
-//! are loaded.
+//! systems are off, the input state, the particle pools, which rooms are
+//! loaded, and the colliders overlapping at the end of the tick before
+//! (phase 3 item 5), which the next tick's overlap events are measured
+//! against.
 
 use argus_ecs::{Entity, World};
 use argus_input::{InputSnapshot, InputState};
@@ -31,6 +33,8 @@ pub struct Keyframe {
     pub pools: BTreeMap<Entity, Pool>,
     /// The rooms loaded, for a scene with rooms.
     pub rooms: Option<StreamState>,
+    /// The pairs of colliders overlapping at the end of the tick before.
+    pub contacts: Vec<(Entity, Entity)>,
     /// Taken at a load or after a change between ticks: never thinned.
     pub barrier: bool,
     /// Approximate bytes held.
@@ -49,6 +53,7 @@ impl Keyframe {
         input: Option<InputSnapshot>,
         pools: BTreeMap<Entity, Pool>,
         rooms: Option<StreamState>,
+        contacts: Vec<(Entity, Entity)>,
     ) -> Keyframe {
         let pool_bytes: usize = pools.values().map(|p| p.len() * 24).sum();
         Keyframe {
@@ -59,6 +64,7 @@ impl Keyframe {
             input,
             pools,
             rooms,
+            contacts,
             barrier: true,
             seq: 0,
         }
@@ -75,6 +81,8 @@ pub struct Sources {
     /// The rooms loaded, kept current by the owner (they change only
     /// between ticks).
     pub rooms: Rc<RefCell<Option<StreamState>>>,
+    /// The colliders `physics.overlap` saw overlapping last tick.
+    pub contacts: Rc<RefCell<argus_physics::Contacts>>,
 }
 
 impl Sources {
@@ -88,6 +96,7 @@ impl Sources {
             time: sched.driving().time(),
             input: self.input.as_ref().map(|i| i.borrow().snapshot()),
             rooms: self.rooms.borrow().clone(),
+            contacts: self.contacts.borrow().pairs.clone(),
             bytes: sim.world.bytes() + pool_bytes + 1024,
             sim,
             pools,
@@ -109,5 +118,6 @@ impl Sources {
         }
         self.particles.borrow_mut().pools = k.pools.clone();
         *self.rooms.borrow_mut() = k.rooms.clone();
+        self.contacts.borrow_mut().pairs = k.contacts.clone();
     }
 }

@@ -56,6 +56,12 @@ Test: `perf_a_thousand_characters_and_twenty_thousand_contacts` (ignored; `cargo
 | Phase 1: a kinematic character controller. | Done | This crate. | |
 | Gate: a three-room slice of Hollow with tiles, a kinematic player, and one-way platforms. | Partial | The pieces exist and meet through the protocol (a map carved with `edit.tiles`, a player driven by actions, events a script reads); the slice itself is the gate's work, with the camera of item 7. | `argus-daemon/tests/physics.rs` |
 
+## Phase 3, item 5: overlaps across a seek
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§6) A seek replays the run exactly. | Done | `physics.overlap` measures this tick's pairs against last tick's; those pairs are not the world's, so they are `Contacts`, shared with whatever keeps keyframes (`install_with`), and a keyframe takes and puts them back. Found scrubbing Hollow's outro: from a hero standing in the doorway, a seek back said the doorway was left (`overlap.end`) on the first tick it replayed, and the replay was reported as diverged. A loaded save starts with none: what touches is met again. | Hollow's `tests/outro.luau` (scrubs with `diverged` null); `argus-daemon` `timeline::a_timeline_is_listed_played_and_scrubbed` |
+
 ## Known limitations, stated so they are decisions
 
 - A kinematic body is a box, unrotated and unscaled; circles are overlap-only. A parented collider is placed by its `GlobalTransform` as last propagated, one tick behind a parent that moved this tick; kinematic bodies should not have parents.

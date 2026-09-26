@@ -181,8 +181,9 @@ fn a_camera_follows_the_player_through_two_rooms_and_keeps_to_each() {
     for n in ["decay", "curve", "max_offset", "frequency"] {
         assert!(tuned.contains(&n), "{n}: {tuned:?}");
     }
+    // The timelines write it too: a camera cut makes a camera active.
     let w = ok(&mut d, "world.who_writes", json!({ "component": "Camera" }));
-    assert_eq!(w["systems"], json!(["camera.update"]));
+    assert_eq!(w["systems"], json!(["timeline.update", "camera.update"]));
 
     // The picture: which camera drew, and the rect it showed.
     if let Some(fr) = frame(&mut d, json!({ "width": 640, "height": 360 })) {

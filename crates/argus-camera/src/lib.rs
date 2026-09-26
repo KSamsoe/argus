@@ -13,10 +13,13 @@
 //!
 //! The drawing camera is the active one with the highest `priority` (ties
 //! go to the older entity). When that changes, `camera.cut {from, to}` is
-//! an event. `camera.update` runs last in the late stage, after gameplay
-//! and physics, and writes each camera's `view_min` and `view_max`, the
-//! rect it shows, which the semantic frame reports. Rendering (present)
-//! only reads and interpolates.
+//! an event, and the new camera's `blend` says how many seconds its view
+//! takes to move there from what the last one showed (phase 3 item 5: a
+//! timeline's camera cut glides when the cameras say so; 0 cuts at once).
+//! `camera.update` runs last in the late stage, after gameplay and
+//! physics, and writes each camera's `view_min` and `view_max`, the rect
+//! it shows, blend included, which the semantic frame reports. Rendering
+//! (present) only reads and interpolates.
 
 #![warn(missing_docs)]
 
@@ -148,6 +151,25 @@ pub struct Camera {
     /// Following since the last tick.
     #[argus(doc = "Following the target since last tick; false snaps to it on the next tick")]
     pub tracking: bool,
+    /// Seconds a blend into this camera takes.
+    #[argus(
+        doc = "Seconds the view takes to move from what the camera before showed when this one starts drawing (an ease in and out); 0 cuts",
+        range(0, 60),
+        tune
+    )]
+    pub blend: f32,
+    /// Seconds of blend left.
+    #[argus(doc = "Seconds of blend left (written by camera.update)")]
+    pub blend_left: f32,
+    /// Where the blend comes from.
+    #[argus(doc = "Centre of the view the blend comes from (written by camera.update)")]
+    pub blend_pos: Vec2,
+    /// How tall the view the blend comes from was.
+    #[argus(doc = "Height of the view the blend comes from (written by camera.update)")]
+    pub blend_height: f32,
+    /// It drew last tick.
+    #[argus(doc = "It drew last tick (written by camera.update)")]
+    pub drew: bool,
 }
 
 impl Default for Camera {
@@ -177,6 +199,11 @@ impl Default for Camera {
             ahead: Vec2::ZERO,
             target_last: Vec2::ZERO,
             tracking: false,
+            blend: 0.0,
+            blend_left: 0.0,
+            blend_pos: Vec2::ZERO,
+            blend_height: 0.0,
+            drew: false,
         }
     }
 }
@@ -311,13 +338,41 @@ pub fn view(world: &World, aspect: f32) -> Option<View> {
     let c = world.get::<Camera>(e).ok()?;
     let p = position(world, e).unwrap_or([0.0, 0.0]);
     let (o, angle) = shake(world, e);
-    let h = c.height.max(0.01) * 0.5;
+    let (center, height) = blended(&c, [p[0] + o[0], p[1] + o[1]], c.height);
+    let h = height.max(0.01) * 0.5;
     Some(View {
         camera: e,
-        center: [p[0] + o[0], p[1] + o[1]],
+        center,
         half: [h * aspect, h],
         angle,
     })
+}
+
+/// How far a blend has come, 0 to 1, eased in and out; 1 when there is
+/// none.
+pub fn blend_progress(c: &Camera) -> f32 {
+    if c.blend <= 0.0 || c.blend_left <= 0.0 {
+        return 1.0;
+    }
+    let k = (1.0 - c.blend_left / c.blend).clamp(0.0, 1.0);
+    k * k * (3.0 - 2.0 * k)
+}
+
+/// A camera's view centre and height with its blend: from where the blend
+/// began towards its own.
+pub fn blended(c: &Camera, center: [f32; 2], height: f32) -> ([f32; 2], f32) {
+    let k = blend_progress(c);
+    if k >= 1.0 {
+        return (center, height);
+    }
+    let lerp = |a: f32, b: f32| a + (b - a) * k;
+    (
+        [
+            lerp(c.blend_pos.x, center[0]),
+            lerp(c.blend_pos.y, center[1]),
+        ],
+        lerp(c.blend_height, height),
+    )
 }
 
 /// Register `Camera` and `CameraShake`.

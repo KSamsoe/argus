@@ -15,9 +15,15 @@
 //! `speaker`, or an authored entity, `@id`; a bare path is true when the
 //! field is. An effect is `path = value`, `path += n`, `path -= n`, or
 //! `emit event.name`, several separated by `;`.
+//!
+//! The same small language serves timelines (phase 3 item 5) with their
+//! own parties: [`parse_cond_with`] and [`parse_effects_with`] read it
+//! against a list of role names, the first the default subject, and
+//! [`make_edits`] makes a list of effects in a system.
 
 use argus_ecs::{Entity, Value, World};
 use argus_scene::{DefSchema, Defs};
+use argus_sim::SystemCtx;
 use std::collections::HashMap;
 
 /// The table's name and reference prefix.
@@ -82,13 +88,21 @@ pub fn schema() -> DefSchema {
 /// Who a path is about.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Subject {
-    /// The one being spoken to (the default).
-    Listener,
-    /// The one speaking.
-    Speaker,
+    /// One of the parties the text was read with, by its place in the
+    /// roles: in a conversation the listener (0, the default) or the
+    /// speaker (1).
+    Role(usize),
     /// An authored entity (`@id`).
     Id(String),
 }
+
+/// A conversation's parties as its conditions and effects name them: the
+/// listener, the default subject, and the speaker.
+pub const ROLES: &[&str] = &["listener", "speaker"];
+/// The listener's place in [`ROLES`].
+pub const LISTENER: usize = 0;
+/// The speaker's place in [`ROLES`].
+pub const SPEAKER: usize = 1;
 
 /// A field of someone.
 #[derive(Clone, Debug, PartialEq)]
@@ -226,7 +240,7 @@ impl Graph {
             };
             let when = get("when");
             if !when.trim().is_empty() {
-                match parse_cond(&when) {
+                match parse_cond_with(&when, ROLES) {
                     Ok(c) => node.when = Some(c),
                     Err(e) => g
                         .problems
@@ -235,7 +249,7 @@ impl Graph {
             }
             let effects = get("effects");
             if !effects.trim().is_empty() {
-                match parse_effects(&effects) {
+                match parse_effects_with(&effects, ROLES) {
                     Ok(e) => node.effects = e,
                     Err(e) => g
                         .problems
@@ -344,17 +358,19 @@ fn tokens(s: &str) -> Result<Vec<Tok>, String> {
     Ok(out)
 }
 
-fn path_of(w: &str) -> Result<Path, String> {
+fn path_of(w: &str, roles: &[&str]) -> Result<Path, String> {
     let (subject, path) = match w.split_once(':') {
-        Some(("speaker", p)) => (Subject::Speaker, p),
-        Some(("listener", p)) => (Subject::Listener, p),
         Some((id, p)) if id.starts_with('@') => (Subject::Id(id[1..].to_string()), p),
-        Some((other, _)) => {
-            return Err(format!(
-                "{other:?} is not someone: speaker, listener, or @id"
-            ))
-        }
-        None => (Subject::Listener, w),
+        Some((who, p)) => match roles.iter().position(|r| *r == who) {
+            Some(i) => (Subject::Role(i), p),
+            None => {
+                return Err(format!(
+                    "{who:?} is not someone: {}, or @id",
+                    roles.join(", ")
+                ))
+            }
+        },
+        None => (Subject::Role(0), w),
     };
     let ok = path.split_once('.').is_some_and(|(c, f)| {
         !c.is_empty() && !f.is_empty() && c.chars().all(|x| x.is_alphanumeric() || x == '_')
@@ -382,8 +398,14 @@ fn lit_of(t: &Tok) -> Lit {
     }
 }
 
-/// Parse a condition.
+/// Parse a conversation's condition.
 pub fn parse_cond(s: &str) -> Result<Cond, String> {
+    parse_cond_with(s, ROLES)
+}
+
+/// Parse a condition whose subjects are `roles` (the first the default)
+/// or an authored `@id`.
+pub fn parse_cond_with(s: &str, roles: &[&str]) -> Result<Cond, String> {
     let toks = tokens(s)?;
     let mut any = vec![Vec::new()];
     let mut i = 0;
@@ -407,7 +429,7 @@ pub fn parse_cond(s: &str) -> Result<Cond, String> {
                 } else {
                     (false, w.clone())
                 };
-                let path = path_of(&w)?;
+                let path = path_of(&w, roles)?;
                 i += 1;
                 let mut cmp = None;
                 if let Some(Tok::Op(o)) = toks.get(i) {
@@ -449,8 +471,14 @@ pub fn parse_cond(s: &str) -> Result<Cond, String> {
     Ok(Cond(any))
 }
 
-/// Parse effects.
+/// Parse a conversation's effects.
 pub fn parse_effects(s: &str) -> Result<Vec<Effect>, String> {
+    parse_effects_with(s, ROLES)
+}
+
+/// Parse effects whose subjects are `roles` (the first the default) or an
+/// authored `@id`.
+pub fn parse_effects_with(s: &str, roles: &[&str]) -> Result<Vec<Effect>, String> {
     let mut out = Vec::new();
     for part in s.split(';') {
         let part = part.trim();
@@ -471,7 +499,7 @@ pub fn parse_effects(s: &str) -> Result<Vec<Effect>, String> {
                 "{part:?}: an effect is [who:]Component.field = value, += n, -= n, or emit name"
             ));
         };
-        let path = path_of(w)?;
+        let path = path_of(w, roles)?;
         let lit = lit_of(v);
         out.push(match (o.as_str(), lit) {
             ("=", l) => Effect::Set(path, l),
@@ -485,20 +513,11 @@ pub fn parse_effects(s: &str) -> Result<Vec<Effect>, String> {
 
 // ----- evaluating -----------------------------------------------------------
 
-/// Who is who in a conversation.
-#[derive(Clone, Copy, Debug)]
-pub struct Parties {
-    /// The one speaking.
-    pub speaker: Entity,
-    /// The one spoken to.
-    pub listener: Entity,
-}
-
-/// The entity a path is about, if there is one.
-pub fn subject(world: &World, p: &Path, who: Parties) -> Option<Entity> {
+/// The entity a path is about, if there is one: `who` holds the parties
+/// in the order of the roles the text was read with.
+pub fn subject(world: &World, p: &Path, who: &[Entity]) -> Option<Entity> {
     let e = match &p.subject {
-        Subject::Listener => who.listener,
-        Subject::Speaker => who.speaker,
+        Subject::Role(i) => *who.get(*i)?,
         Subject::Id(id) => world.entity(&format!("@{id}")).ok()?,
     };
     (!e.is_null() && world.is_alive(e)).then_some(e)
@@ -522,7 +541,7 @@ fn truthy(v: &Value) -> bool {
     }
 }
 
-fn test(world: &World, t: &Test, who: Parties) -> bool {
+fn test(world: &World, t: &Test, who: &[Entity]) -> bool {
     let v = subject(world, &t.path, who).and_then(|e| world.get_field(e, &t.path.path).ok());
     let r = match (&v, &t.cmp) {
         (None, _) => false,
@@ -551,7 +570,7 @@ fn test(world: &World, t: &Test, who: Parties) -> bool {
 }
 
 /// Whether a condition holds (none always does).
-pub fn holds(world: &World, c: Option<&Cond>, who: Parties) -> bool {
+pub fn holds(world: &World, c: Option<&Cond>, who: &[Entity]) -> bool {
     match c {
         None => true,
         Some(Cond(any)) => any
@@ -572,4 +591,60 @@ pub fn value_like(old: &Value, lit: &Lit) -> Option<Value> {
         (Value::Ref(_), Lit::Str(s)) => Value::Ref(s.clone()),
         _ => return None,
     })
+}
+
+/// Make `effects` from a system: each field edit is a write of the world
+/// like any system's, declared as it happens (as a tween's target is), so
+/// `who_writes` stays true; each `emit` is an event with `fields`. An edit
+/// that cannot be made is said in `problems` and the rest go on.
+pub fn make_edits(
+    ctx: &mut SystemCtx<'_>,
+    effects: &[Effect],
+    who: &[Entity],
+    fields: &[(String, Value)],
+    problems: &mut Vec<String>,
+) {
+    for eff in effects {
+        let (path, lit) = match eff {
+            Effect::Emit(name) => {
+                ctx.emit(name.clone(), fields.to_vec());
+                continue;
+            }
+            Effect::Set(p, l) => (p, l.clone()),
+            Effect::Add(p, d) => (p, Lit::Num(*d)),
+        };
+        let Some(e) = subject(ctx.world(), path, who) else {
+            problems.push(format!("no one to edit for {}", path.path));
+            continue;
+        };
+        let old = match ctx.world().get_field(e, &path.path) {
+            Ok(v) => v,
+            Err(err) => {
+                problems.push(err.message);
+                continue;
+            }
+        };
+        let lit = match (eff, &old) {
+            (Effect::Add(_, d), v) => match v {
+                Value::Int(i) => Lit::Num(*i as f64 + d),
+                Value::UInt(u) => Lit::Num((*u as f64 + d).max(0.0)),
+                Value::Float(f) => Lit::Num(f + d),
+                _ => {
+                    problems.push(format!("{} is not a number to add to", path.path));
+                    continue;
+                }
+            },
+            _ => lit,
+        };
+        let Some(v) = value_like(&old, &lit) else {
+            problems.push(format!("{} cannot take {lit:?}", path.path));
+            continue;
+        };
+        if let Ok((c, _)) = ctx.world().registry().resolve_path(&path.path) {
+            ctx.declare(c, true);
+        }
+        if let Err(err) = ctx.world().set_field(e, &path.path, v) {
+            problems.push(err.message);
+        }
+    }
 }

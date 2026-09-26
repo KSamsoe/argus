@@ -57,3 +57,9 @@ lead_answer = "Up the shaft, across the hall, and out. Mind the pit."
 give = "Give the gem"
 thanks = "It will light my evenings. Thank you."
 bye = "Goodbye"
+
+# The hermit calls after the hero at the way out (the outro timeline).
+[outro]
+bye = "You found the way out. Go well, and come back some time."
+thanks = "You found the way out. Go well; your gem will light my evenings."
+kept = "You found the way out, and a gem besides. Go well."

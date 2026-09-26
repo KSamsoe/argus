@@ -9,6 +9,9 @@ use std::collections::{HashMap, HashSet};
 /// The tween system's name.
 pub const SYSTEM: &str = "tween.update";
 
+/// Seconds short of its end at which a play counts as ended.
+const END_EPS: f32 = 1e-4;
+
 /// A resolved `Component.field[.x|.y]`.
 #[derive(Clone)]
 struct Target {
@@ -233,7 +236,10 @@ fn run(ctx: &mut SystemCtx<'_>, st: &mut State, tw: ComponentId) -> Result<()> {
         let d = t.duration.max(0.0);
         let mut finished = d <= 0.0;
         if d > 0.0 {
-            while t.time >= d {
+            // Within a hair of the end is the end: sixty steps of 1/60 in
+            // f32 add up to just under 1, and a tween of a second ends on
+            // its sixtieth tick, before a timeline's cue at its end time.
+            while t.time >= d - END_EPS {
                 if t.repeats < 0 || t.plays < t.repeats {
                     t.time -= d;
                     t.plays += 1;
@@ -244,7 +250,11 @@ fn run(ctx: &mut SystemCtx<'_>, st: &mut State, tw: ComponentId) -> Result<()> {
                 }
             }
         }
-        let p = if d > 0.0 { t.time / d } else { 1.0 };
+        let p = if d > 0.0 {
+            (t.time / d).clamp(0.0, 1.0)
+        } else {
+            1.0
+        };
         let p = if t.yoyo && t.plays % 2 == 1 {
             1.0 - p
         } else {

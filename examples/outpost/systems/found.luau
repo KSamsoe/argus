@@ -148,6 +148,8 @@ return system "sim.colony.found" {
       cc.zoom_action = "zoom"
       cc.zoom_min = 8
       cc.zoom_max = 40
+      -- Back from a vignette, the view glides home to where it was left.
+      cc.blend = 0.8
     end
     -- The HUD: its line, and the notice under it (systems/hud.luau).
     if q:count("Hud") == 0 then

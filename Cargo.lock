@@ -186,6 +186,7 @@ dependencies = [
  "argus-sim",
  "argus-test",
  "argus-tiles",
+ "argus-timeline",
  "argus-tween",
  "argus-ui",
  "interprocess",
@@ -348,6 +349,7 @@ dependencies = [
  "argus-scene",
  "argus-sim",
  "argus-tiles",
+ "argus-timeline",
  "argus-tween",
  "argus-ui",
  "gilrs",
@@ -423,6 +425,20 @@ dependencies = [
  "argus-os",
  "serde_json",
  "toml_edit 0.22.27",
+]
+
+[[package]]
+name = "argus-timeline"
+version = "0.0.1"
+dependencies = [
+ "argus-anim",
+ "argus-camera",
+ "argus-dialogue",
+ "argus-ecs",
+ "argus-scene",
+ "argus-sim",
+ "argus-tween",
+ "argus-ui",
 ]
 
 [[package]]

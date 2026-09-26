@@ -60,6 +60,10 @@ pub struct DefRow {
     pub key: String,
     /// Values in schema field order.
     pub values: Vec<Value>,
+    /// Beside each value: whether the row wrote it (the others are the
+    /// schema's defaults), for a table whose reader treats a field left
+    /// out differently from one written as its default.
+    pub given: Vec<bool>,
     /// `file:line` of the row.
     pub at: String,
 }
@@ -100,6 +104,13 @@ impl DefTable {
     /// One value of a row by field name.
     pub fn value<'a>(&self, row: &'a DefRow, field: &str) -> Option<&'a Value> {
         self.field_index(field).and_then(|i| row.values.get(i))
+    }
+
+    /// Whether a row wrote a field rather than taking its default.
+    pub fn given(&self, row: &DefRow, field: &str) -> bool {
+        self.field_index(field)
+            .and_then(|i| row.given.get(i).copied())
+            .unwrap_or(false)
     }
 
     /// Rows where every `(field, value)` pair matches (values are coerced to
@@ -347,6 +358,7 @@ fn parse_row(
             _ => values[i] = Some(Value::Str(key.to_string())),
         }
     }
+    let given = values.iter().map(Option::is_some).collect();
     let values = values
         .into_iter()
         .zip(&schema.fields)
@@ -355,6 +367,7 @@ fn parse_row(
     Ok(DefRow {
         key: key.to_string(),
         values,
+        given,
         at: at.to_string(),
     })
 }

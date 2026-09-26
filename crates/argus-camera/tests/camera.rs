@@ -487,3 +487,62 @@ fn the_highest_priority_active_camera_draws_and_a_change_is_a_cut() {
         .unwrap();
     assert_eq!(current(&r.world), Some(a));
 }
+
+#[test]
+fn a_camera_with_a_blend_glides_from_the_view_before() {
+    let mut r = rig();
+    let a = r.camera(0.0, 0.0, Camera::default());
+    let b = r.camera(
+        30.0,
+        0.0,
+        Camera {
+            active: false,
+            priority: 2,
+            height: 20.0,
+            blend: 0.5,
+            ..Default::default()
+        },
+    );
+    r.tick(1);
+    assert!(r.cam(a).drew && !r.cam(b).drew);
+    r.world.update::<Camera, _>(b, |c| c.active = true).unwrap();
+    r.tick(1);
+    let cuts = r.named("camera.cut");
+    assert_eq!(cuts.len(), 1);
+    assert!(cuts[0].contains(&("blend".to_string(), Value::Float(0.5))));
+    // It starts from where a was looking and gets there in half a second,
+    // easing in and out: slow at first, then all the way.
+    let mid = |r: &Rig| {
+        let c = r.cam(b);
+        (
+            (c.view_min.x + c.view_max.x) * 0.5,
+            c.view_max.y - c.view_min.y,
+        )
+    };
+    let (x0, h0) = mid(&r);
+    assert!(x0 < 1.0 && h0 > 39.0, "from a's view: {x0}, {h0}");
+    let v = argus_camera::view(&r.world, 16.0 / 9.0).unwrap();
+    assert!((v.center[0] - x0).abs() < 1e-3, "what draws is the blend");
+    r.tick(14);
+    let (x1, h1) = mid(&r);
+    assert!(
+        x1 > 10.0 && x1 < 20.0 && h1 < 40.0 && h1 > 20.0,
+        "half way: {x1}, {h1}"
+    );
+    r.tick(16);
+    let (x2, h2) = mid(&r);
+    assert!(close(x2, 30.0) && close(h2, 20.0), "there: {x2}, {h2}");
+    assert_eq!(r.cam(b).blend_left, 0.0);
+    // Back to a: its blend is 0, so that is a cut.
+    r.world
+        .update::<Camera, _>(b, |c| c.active = false)
+        .unwrap();
+    r.tick(1);
+    let (xa, _) = {
+        let c = r.cam(a);
+        ((c.view_min.x + c.view_max.x) * 0.5, 0.0)
+    };
+    assert!(close(xa, 0.0));
+    assert_eq!(r.named("camera.cut").len(), 2);
+    assert!(!r.named("camera.cut")[1].iter().any(|f| f.0 == "blend"));
+}

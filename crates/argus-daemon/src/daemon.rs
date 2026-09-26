@@ -33,6 +33,8 @@ mod proposals;
 mod saves;
 #[path = "strings.rs"]
 mod strings;
+#[path = "timeline.rs"]
+mod timeline;
 #[path = "tuning.rs"]
 mod tuning;
 
@@ -89,6 +91,8 @@ struct Session {
     ui: Rc<RefCell<argus_ui::Shared>>,
     /// The dialogue graph (phase 3 item 4).
     dialogue: Rc<RefCell<argus_dialogue::Graph>>,
+    /// The timelines (phase 3 item 5).
+    timelines: Rc<RefCell<argus_timeline::Timelines>>,
 }
 
 #[derive(Default)]
@@ -528,6 +532,8 @@ impl Daemon {
             "nav.bake" => self.nav_bake(params),
             "jobs.why" => self.jobs_why(params),
             "strings.list" => self.strings_list(params),
+            "timeline.list" => self.timeline_list(params),
+            "timeline.seek" => self.timeline_seek(params),
             "sim.save" => self.sim_save(params),
             "sim.load" => self.sim_load(params),
             "mark.drop" => self.mark_drop(params),
@@ -864,6 +870,7 @@ impl Daemon {
             nav,
             anims,
             particles,
+            contacts,
             host,
             project,
             scene,
@@ -873,6 +880,7 @@ impl Daemon {
             asset_report,
             ui,
             dialogue,
+            timelines,
             #[cfg(feature = "audio")]
             audio,
             ..
@@ -919,6 +927,7 @@ impl Daemon {
             input: input.clone(),
             particles: particles.clone(),
             rooms: Rc::new(RefCell::new(Some(scene.stream_state()))),
+            contacts: contacts.clone(),
         };
         self.session = Some(Session {
             ring: Rc::new(RefCell::new(crate::ring::Ring::new(
@@ -931,6 +940,7 @@ impl Daemon {
             saves: Rc::new(RefCell::new(Vec::new())),
             ui,
             dialogue,
+            timelines,
             root,
             project,
             scene,
@@ -1466,6 +1476,7 @@ impl Daemon {
         ses.host
             .set_defs(Rc::new(argus_player::ProjectDefs(ses.project.defs.clone())));
         *ses.dialogue.borrow_mut() = argus_dialogue::Graph::from_defs(&ses.project.defs);
+        *ses.timelines.borrow_mut() = argus_player::read_timelines(&ses.project.defs, &self.world);
         ses.scene.reload_files(&ses.project.ctx(&registry));
         let entity_move = report.record.kind == argus_scene::MoveKind::Entity;
         self.sync_index(true);
@@ -3022,6 +3033,20 @@ impl Daemon {
             (None, None) => return Err(bad_params("give frame (or turn, on a discrete clock)")),
         };
         let verify = json::bool_param(params, "verify", false)?;
+        self.seek_to(target, None, verify)
+    }
+
+    /// Go to frame `target`: the keyframe at or before it restored and the
+    /// run replayed forward. With `until`, go on from there a tick at a
+    /// time to the first frame at which it holds (or the end of the run),
+    /// so a seek can land on a moment rather than a number (a timeline's
+    /// time, phase 3 item 5).
+    pub(super) fn seek_to(
+        &mut self,
+        target: u64,
+        mut until: Option<&mut dyn FnMut(&World) -> bool>,
+        verify: bool,
+    ) -> Result<Json> {
         // A seek ends an A/B trial: its worlds keep step going forward only.
         self.end_trial(true);
         self.before_ticks();
@@ -3075,12 +3100,28 @@ impl Daemon {
         let _ = self.world.drain_events();
         let n = target - from;
         self.sched.set_quiet(true);
-        let run = match self.sched.driving().kind {
+        let kind = self.sched.driving().kind;
+        let mut run = match kind {
             ClockKind::Continuous => self.sched.step(&mut self.world, n),
             ClockKind::Discrete => self.sched.advance(&mut self.world, n),
         };
+        let mut reached = true;
+        if let Some(f) = until.as_mut() {
+            while run.is_ok() && !f(&self.world) {
+                if self.sched.tick() >= end {
+                    reached = false;
+                    break;
+                }
+                run = match kind {
+                    ClockKind::Continuous => self.sched.step(&mut self.world, 1),
+                    ClockKind::Discrete => self.sched.advance(&mut self.world, 1),
+                };
+            }
+        }
         self.sched.set_quiet(false);
         run?;
+        let target = self.sched.tick();
+        let n = target - from;
         let replayed = self.world.drain_events();
         let (checked, diverged) = self.check_replay(from, target, &replayed);
         self.cut_log(target);
@@ -3103,6 +3144,9 @@ impl Daemon {
         out["diverged"] = diverged.unwrap_or(Json::Null);
         if let Some(v) = verified {
             out["verified"] = v;
+        }
+        if until.is_some() {
+            out["reached"] = json!(reached);
         }
         Ok(out)
     }
@@ -3284,9 +3328,11 @@ impl Daemon {
         let registry = self.world.registry().clone();
         ses.scene.reresolve(&ses.project.ctx(&registry));
         self.sched.validate()?;
-        // Words and conversations are read again with the scripts.
+        // Words, conversations, and timelines are read again with the
+        // scripts.
         self.reload_strings();
         self.reload_dialogue();
+        self.reload_timelines();
         self.sync_index(true);
         Ok(json!({
             "reloaded": report.reloaded,
@@ -3346,6 +3392,7 @@ impl Daemon {
         // Dialogue rows and string tables that do not read (phase 3 item 4):
         // content, but code-like enough to be listed with the scripts.
         rows.extend(self.text_errors());
+        rows.extend(self.timeline_errors());
         // A system a fault disabled, while it stays disabled: its last fault,
         // with the file and line (found building Hollow: a script that
         // failed on its first tick was off, and this list said nothing).
