@@ -22,6 +22,7 @@ pub mod prefab;
 pub mod project;
 pub mod resolve;
 pub mod scene;
+pub mod stream;
 pub mod tomlv;
 
 pub use bulk::{Bulk, BulkIndex, Rect};
@@ -32,7 +33,8 @@ pub use prefab::PrefabLibrary;
 pub use project::{Project, ProjectConfig};
 pub use resolve::{Provenance, ResolvedComponent, ResolvedEntity, ResolvedField};
 pub use scene::{
-    EntityFile, LoadReport, Room, RoomDoc, RoomGraph, Scene, SceneDoc, SeedPolicy, StreamState,
+    EntityFile, LoadReport, Memory, Room, RoomDoc, RoomGraph, Scene, SceneDoc, SeedPolicy,
+    StreamState,
 };
 
 /// Error codes this crate adds to the 4xxx block.

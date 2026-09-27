@@ -105,6 +105,11 @@ pub trait Source {
     fn entity_ref(&self, id: u64) -> Json;
     /// Resolve a protocol reference to an id.
     fn lookup(&self, r: &str) -> Result<u64>;
+    /// The room an entity is authored in, in a scene with rooms (phase 3
+    /// item 6: `where.room` and the `room` column).
+    fn room(&self, _id: u64) -> Option<String> {
+        None
+    }
     /// Ids within `r` of a point from a broadphase, when the source has
     /// one (the live world does; the index scans). The evaluator still
     /// measures the distance itself.
@@ -219,7 +224,7 @@ pub fn run(src: &dyn Source, params: &Json) -> Result<Json> {
     for s in &select {
         let sel = parse_sel(s)?;
         match &sel {
-            Sel::Plain(p) if p == "id" || p == "entity" => {}
+            Sel::Plain(p) if p == "id" || p == "entity" || p == "room" => {}
             Sel::Plain(p) if p.contains('.') => src.require_path(p)?,
             Sel::Plain(p) => src.require_component(p)?,
             Sel::Agg(_, Some(p)) => src.require_path(p)?,
@@ -235,6 +240,12 @@ pub fn run(src: &dyn Source, params: &Json) -> Result<Json> {
     };
     let mut has = str_list(where_, "has")?;
     let not = str_list(where_, "not")?;
+    // The rooms the entities are authored in: a name or a list.
+    let rooms: Option<Vec<String>> = match where_.get("room") {
+        None | Some(Json::Null) => None,
+        Some(Json::String(s)) => Some(vec![s.clone()]),
+        Some(_) => Some(str_list(where_, "room")?),
+    };
     // Grouping by a field is about the entities that have it: group_by
     // Job.kind counts jobs, not every entity with a blank kind.
     for g in &group_by {
@@ -262,7 +273,7 @@ pub fn run(src: &dyn Source, params: &Json) -> Result<Json> {
     };
     let mut preds = Vec::new();
     for (k, v) in wobj {
-        if matches!(k.as_str(), "has" | "not" | "within") {
+        if matches!(k.as_str(), "has" | "not" | "within" | "room") {
             continue;
         }
         src.require_path(k)?;
@@ -306,6 +317,9 @@ pub fn run(src: &dyn Source, params: &Json) -> Result<Json> {
             let near: std::collections::HashSet<u64> = near.into_iter().collect();
             candidates.retain(|id| near.contains(id));
         }
+    }
+    if let Some(rooms) = &rooms {
+        candidates.retain(|id| src.room(*id).is_some_and(|r| rooms.contains(&r)));
     }
     'ent: for id in candidates {
         for p in &preds {
@@ -650,6 +664,9 @@ fn aggregate(
 pub fn project(src: &dyn Source, id: u64, sel: &str) -> Json {
     if sel == "id" || sel == "entity" {
         return src.entity_ref(id);
+    }
+    if sel == "room" {
+        return src.room(id).map(Json::String).unwrap_or(Json::Null);
     }
     if sel.contains('.') {
         return src.field(id, sel).unwrap_or(Json::Null);

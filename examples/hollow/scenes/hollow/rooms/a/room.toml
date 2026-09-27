@@ -1,2 +1,2 @@
 bounds = [0.0, 0.0, 24.0, 14.0]
-neighbors = ["b"]
+neighbors = ["b", "deep-0-0"]

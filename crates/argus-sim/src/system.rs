@@ -137,6 +137,10 @@ pub struct SystemDesc {
     /// effects that play during the stop. Every other system skips a
     /// frozen tick.
     pub unfrozen: bool,
+    /// May change the world in any way through [`SystemCtx::world_mut`]:
+    /// a loader that spawns and despawns whole rooms (phase 3 item 6). It
+    /// declares what it wrote as it goes ([`SystemCtx::declare`]).
+    pub exclusive: bool,
 }
 
 impl SystemDesc {
@@ -155,7 +159,14 @@ impl SystemDesc {
             on_load: false,
             first: false,
             unfrozen: false,
+            exclusive: false,
         }
+    }
+
+    /// May change the world in any way ([`SystemCtx::world_mut`]).
+    pub fn exclusive(mut self) -> Self {
+        self.exclusive = true;
+        self
     }
 
     /// Run first in the stage.
@@ -251,6 +262,8 @@ pub struct SystemCtx<'a> {
     pub frozen: bool,
     /// Set by [`SystemCtx::freeze`].
     pub(crate) freeze: bool,
+    /// The system is exclusive ([`SystemDesc::exclusive`]).
+    pub(crate) exclusive: bool,
 }
 
 impl<'a> SystemCtx<'a> {
@@ -280,6 +293,19 @@ impl<'a> SystemCtx<'a> {
     /// Read-only world access (no declared-access check; use `query` for iteration).
     pub fn world(&self) -> &World {
         self.world
+    }
+
+    /// The whole world, to change as it must: only for a system declared
+    /// [`SystemDesc::exclusive`] (a loader). It declares what it writes.
+    pub fn world_mut(&mut self) -> Result<&mut World> {
+        if !self.exclusive {
+            return Err(ArgusError::new(
+                crate::codes::NOT_EXCLUSIVE,
+                format!("system {} is not exclusive; world_mut is for loaders", self.name),
+            )
+            .hint("Declare the system with SystemDesc::exclusive(), or write through the declared components."));
+        }
+        Ok(self.world)
     }
 
     /// The declared access set.

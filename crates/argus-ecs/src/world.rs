@@ -164,6 +164,36 @@ impl World {
     /// component at its schema defaults: one archetype placement instead
     /// of one move per component (§19 batch spawn). Duplicates are fine.
     pub fn spawn_with(&mut self, comps: &[ComponentId]) -> Result<Entity> {
+        let ids = self.component_set(comps)?;
+        let e = self.entities.alloc(false);
+        self.place_with(e, &ids);
+        self.emit(Event::Spawned {
+            entity: e,
+            id: None,
+        });
+        self.emit_added(e, &ids);
+        Ok(e)
+    }
+
+    /// Spawn an authored entity straight into the archetype of `comps`, as
+    /// [`World::spawn_with`] does for a runtime one: what a room load does
+    /// for each of its entities (phase 3 item 6, stream-in under 4 ms).
+    pub fn spawn_authored_with(&mut self, id: &str, comps: &[ComponentId]) -> Result<Entity> {
+        let id = self.check_new_id(id)?.to_string();
+        let ids = self.component_set(comps)?;
+        let e = self.entities.alloc(true);
+        self.place_with(e, &ids);
+        self.name(e, &id);
+        self.emit(Event::Spawned {
+            entity: e,
+            id: Some(id),
+        });
+        self.emit_added(e, &ids);
+        Ok(e)
+    }
+
+    /// `comps` sorted and deduplicated, each registered.
+    fn component_set(&self, comps: &[ComponentId]) -> Result<Vec<ComponentId>> {
         let mut ids: Vec<ComponentId> = comps.to_vec();
         ids.sort_unstable();
         ids.dedup();
@@ -175,13 +205,18 @@ impl World {
                 ));
             }
         }
+        Ok(ids)
+    }
+
+    /// Put a new entity in the archetype of `ids` (sorted), every component
+    /// at its schema defaults.
+    fn place_with(&mut self, e: Entity, ids: &[ComponentId]) {
         let rows: Vec<Vec<u8>> = ids
             .iter()
             .map(|&c| self.registry.schema(c).default_row(&self.strings))
             .collect();
-        let e = self.entities.alloc(false);
         self.structure = next_structure();
-        let dst = self.archetype_for(ids.clone());
+        let dst = self.archetype_for(ids.to_vec());
         let ptrs: Vec<*const u8> = rows.iter().map(|r| r.as_ptr()).collect();
         // SAFETY: each row is exactly its schema's size, in `ids` order,
         // which is the archetype's component order.
@@ -189,22 +224,19 @@ impl World {
         let slot = self.entities.slot_mut(e).expect("just allocated");
         slot.archetype = dst.0;
         slot.row = row as u32;
-        self.emit(Event::Spawned {
-            entity: e,
-            id: None,
-        });
-        for &c in &ids {
+    }
+
+    fn emit_added(&mut self, e: Entity, ids: &[ComponentId]) {
+        for &c in ids {
             self.emit(Event::ComponentAdded {
                 entity: e,
                 component: c,
             });
         }
-        Ok(e)
     }
 
-    /// Spawn an authored entity with a stable string id such as `player` or
-    /// `door.east`. Ids are unique within a world.
-    pub fn spawn_authored(&mut self, id: &str) -> Result<Entity> {
+    /// A string id a new authored entity may take.
+    fn check_new_id<'i>(&self, id: &'i str) -> Result<&'i str> {
         let id = id.strip_prefix('@').unwrap_or(id);
         if id.is_empty()
             || id.contains(char::is_whitespace)
@@ -221,13 +253,26 @@ impl World {
             )
             .hint("Authored ids are unique within a scene; pick another id or despawn the existing entity."));
         }
-        let e = self.entities.alloc(true);
-        self.place_in_empty(e);
+        Ok(id)
+    }
+
+    /// Give an entity its string id.
+    fn name(&mut self, e: Entity, id: &str) {
         self.names.insert(id.to_string(), e);
         self.ids.insert(e.index(), id.to_string());
         if let Some((_, last)) = id.rsplit_once('/') {
             self.short.entry(last.to_string()).or_default().push(e);
         }
+    }
+
+    /// Spawn an authored entity with a stable string id such as `player` or
+    /// `door.east`. Ids are unique within a world.
+    pub fn spawn_authored(&mut self, id: &str) -> Result<Entity> {
+        let id = self.check_new_id(id)?.to_string();
+        let e = self.entities.alloc(true);
+        self.place_in_empty(e);
+        self.name(e, &id);
+        let id = id.as_str();
         self.emit(Event::Spawned {
             entity: e,
             id: Some(id.to_string()),

@@ -1,8 +1,8 @@
 # argus tilemap chunks: layer	cx	cy	fnv1a64
-back	0	0	5c16a56b80126a24
+back	0	0	2020dae6d64e4c24
 back	1	0	ec6ccd03251568cc
 back	2	0	2534f1ea5fc30d25
-ground	0	0	6cd71b882bcbbc64
+ground	0	0	eb597f882af1c1b4
 ground	1	0	b0ead4802f19a80c
 ground	2	0	174593aa8d9f35a5
 planks	0	0	b635c602a017128c

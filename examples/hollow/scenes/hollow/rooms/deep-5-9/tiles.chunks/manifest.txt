@@ -1,0 +1,3 @@
+# argus tilemap chunks: layer	cx	cy	fnv1a64
+back	0	0	6fdd4a7a51ecbde5
+ground	0	0	dd32ca5df2f82aa5

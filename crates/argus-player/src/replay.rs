@@ -11,7 +11,8 @@
 //! particle pools, the rooms, and from version 2 the colliders overlapping
 //! at the keyframe); the journal of input commands from `from` to `to`;
 //! and the world at `to`, which a reader compares a replay with. A version
-//! 1 file reads with no overlaps remembered.
+//! 1 file reads with no overlaps remembered; before version 3 the rooms
+//! carry no memory of what happened in the unloaded ones.
 
 use crate::keyframe::Keyframe;
 use argus_ecs::codec::{Reader, Writer};
@@ -24,7 +25,7 @@ use serde_json::Value as Json;
 use std::path::Path;
 
 const TAG: &[u8; 4] = b"ARGR";
-const VERSION: u32 = 2;
+const VERSION: u32 = 3;
 
 /// A replay file, read back. The two worlds stay bytes until a live world
 /// (with the components registered) reads them.
@@ -134,7 +135,7 @@ pub fn decode(bytes: &[u8]) -> Result<ReplayFile> {
     let sim = SimState::decode(&mut r)?;
     let input = r.opt(|r| InputSnapshot::decode(r))?;
     let pools = r.bytes()?.to_vec();
-    let rooms = r.opt(|r| StreamState::decode(r))?;
+    let rooms = r.opt(|r| StreamState::decode_as(r, version >= 3))?;
     let mut contacts = Vec::new();
     if version >= 2 {
         for _ in 0..r.count()? {

@@ -62,4 +62,11 @@ paint back 56 23 4 1
 paint ground 0 0 24 10
 paint ground 44 0 28 10
 $A edit commit tx="$TX"
+
+# Phase 3 item 6: a doorway in the cave's left wall, at floor level, into
+# the deep (tools/deep.py writes those rooms, each with its own tiles).
+TX=$($A edit begin agent:claude note="A doorway from the cave into the deep (phase 3 item 6)" --json | sed 's/.*"tx":\([0-9]*\).*/\1/')
+$A edit tiles tx="$TX" file="$MAP" layer=ground rect="{x: 0, y: 19, w: 1, h: 4}" erase=true > /dev/null
+paint back 0 19 1 4
+$A edit commit tx="$TX"
 $A scene tiles info "$MAP"

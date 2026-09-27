@@ -252,7 +252,6 @@ impl Daemon {
         let (lead, clip_len, every, fps) = spans(driving.kind, driving.hz());
         let (root, scene, seed, ring, sources, input) = {
             let s = self.session.as_ref().expect("session");
-            *s.sources.rooms.borrow_mut() = Some(s.scene.stream_state());
             (
                 s.root.clone(),
                 s.scene_name.clone(),
@@ -507,9 +506,6 @@ impl Daemon {
     /// input, the pools, the rooms; its queued events are the log's already.
     pub(super) fn put_back(&mut self, sources: &crate::ring::Sources, k: &crate::ring::Keyframe) {
         sources.restore(k, &mut self.world, &mut self.sched);
-        if let (Some(rooms), Some(s)) = (&k.rooms, self.session.as_mut()) {
-            s.scene.set_stream_state(rooms);
-        }
         let _ = self.world.drain_events();
     }
 

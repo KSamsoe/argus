@@ -13,6 +13,7 @@ pub struct SceneSource<'a> {
     conn: &'a Connection,
     scene: String,
     ids: Vec<String>,
+    rooms: Vec<Option<String>>,
     comps: Vec<BTreeSet<String>>,
     by_id: BTreeMap<String, u64>,
     schemas: BTreeMap<String, Vec<String>>,
@@ -23,13 +24,14 @@ impl<'a> SceneSource<'a> {
     /// fields are read on demand.
     pub fn new(conn: &'a Connection, scene: &str) -> Result<SceneSource<'a>> {
         let mut st = conn
-            .prepare_cached("SELECT id FROM entities WHERE scene = ?1 ORDER BY id")
+            .prepare_cached("SELECT id, room FROM entities WHERE scene = ?1 ORDER BY id")
             .map_err(sql_err)?;
-        let ids: Vec<String> = st
-            .query_map(params![scene], |r| r.get(0))
+        let rows: Vec<(String, Option<String>)> = st
+            .query_map(params![scene], |r| Ok((r.get(0)?, r.get(1)?)))
             .map_err(sql_err)?
             .collect::<std::result::Result<_, _>>()
             .map_err(sql_err)?;
+        let (ids, rooms): (Vec<String>, Vec<Option<String>>) = rows.into_iter().unzip();
         let mut comps: Vec<BTreeSet<String>> = vec![BTreeSet::new(); ids.len()];
         let by_id: BTreeMap<String, u64> = ids
             .iter()
@@ -70,6 +72,7 @@ impl<'a> SceneSource<'a> {
             conn,
             scene: scene.to_string(),
             ids,
+            rooms,
             comps,
             by_id,
             schemas,
@@ -115,6 +118,10 @@ impl<'a> SceneSource<'a> {
 impl Source for SceneSource<'_> {
     fn frame(&self) -> u64 {
         0
+    }
+
+    fn room(&self, id: u64) -> Option<String> {
+        self.rooms.get(id as usize).cloned().flatten()
     }
 
     fn require_component(&self, name: &str) -> Result<()> {

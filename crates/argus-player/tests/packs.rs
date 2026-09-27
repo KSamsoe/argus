@@ -189,7 +189,18 @@ fn a_patch_carries_only_what_changed_and_a_language_lays_over_the_game() {
     assert_eq!(r["blobs_new"], 1, "only the changed sign: {r}");
     assert_eq!(second.packs[0].file_name(), "patch-2.pack");
     assert_eq!(second.packs[1].file_name(), "lang-fr.pack");
-    assert!(second.packs[0].encode().len() < first.packs[0].encode().len() / 10);
+    // Only what changed, manifest included (phase 3 item 6: at Hollow's
+    // 10,000 files a whole manifest was most of a one-file patch).
+    assert_eq!(
+        second.packs[0]
+            .files
+            .iter()
+            .map(|f| f.0.as_str())
+            .collect::<Vec<_>>(),
+        ["scenes/hollow/rooms/b/sign.toml"]
+    );
+    assert!(second.packs[0].removed.is_empty());
+    assert!(second.packs[0].encode().len() < first.packs[0].encode().len() / 100);
 
     // The patch alone is not a game.
     let e = pack::resolve(&second.packs[..1], None).unwrap_err();

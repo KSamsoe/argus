@@ -102,15 +102,20 @@ pub fn address(bytes: &[u8]) -> Hash {
 }
 
 const TAG: &[u8; 4] = b"ARGP";
-const VERSION: u32 = 2;
+/// Version 3 (phase 3 item 6): a patch's manifest is what changed since
+/// the build before, with the paths it removed; at Hollow's 10,000 files a
+/// whole manifest was most of a one-file patch. A version 2 patch carries
+/// the whole manifest and still reads.
+const VERSION: u32 = 3;
 
 /// What a pack is for.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Kind {
     /// The game: every file's address and every blob.
     Base,
-    /// A later build of the game: every file's address, and only the blobs
-    /// the packs before it lack.
+    /// A later build of the game: the files added or changed since the
+    /// build before and the paths it removed, and only the blobs the packs
+    /// before it lack.
     Patch,
     /// A language (`lang/<code>/` in the project): files laid over the
     /// game's, their paths as the game's.
@@ -127,10 +132,16 @@ pub struct Pack {
     pub code: String,
     /// Base, patch, or language.
     pub kind: Kind,
-    /// Builds count up: the newest base or patch's manifest is the game.
+    /// Builds count up: the base's manifest, then each patch's changes in
+    /// order, is the game.
     pub seq: u32,
-    /// Path, address, size; sorted by path.
+    /// Path, address, size; sorted by path. A base's (or a version 2
+    /// patch's) is every file; a patch's, the files added or changed.
     pub files: Vec<(String, Hash, u64)>,
+    /// A patch's: the paths the build before had that this one does not.
+    pub removed: Vec<String>,
+    /// A patch whose manifest is only what changed (version 3).
+    pub delta: bool,
     /// The blobs this pack carries.
     pub blobs: BTreeMap<Hash, Vec<u8>>,
 }
@@ -169,6 +180,11 @@ impl Pack {
             w.bytes(h);
             w.u64(*n);
         }
+        w.bool(self.delta);
+        w.count(self.removed.len());
+        for p in &self.removed {
+            w.str(p);
+        }
         w.count(self.blobs.len());
         for (h, b) in &self.blobs {
             w.bytes(h);
@@ -180,7 +196,7 @@ impl Pack {
     /// A pack from its bytes; every blob must match its address.
     pub fn decode(bytes: &[u8]) -> Result<Pack> {
         let mut r = Reader::new(bytes, "pack");
-        r.magic(TAG, VERSION).map_err(|e| bad_pack(e.message))?;
+        let version = r.magic(TAG, VERSION).map_err(|e| bad_pack(e.message))?;
         let meta: Json = serde_json::from_str(&r.str()?).map_err(bad_pack)?;
         let kind = match (meta["kind"].as_str(), meta["lang"].as_str()) {
             (Some("base"), _) => Kind::Base,
@@ -197,6 +213,13 @@ impl Pack {
             let p = r.str()?;
             let h = hash(r.bytes()?)?;
             files.push((p, h, r.u64()?));
+        }
+        let (mut delta, mut removed) = (false, Vec::new());
+        if version >= 3 {
+            delta = r.bool()?;
+            for _ in 0..r.count()? {
+                removed.push(r.str()?);
+            }
         }
         let mut blobs = BTreeMap::new();
         for _ in 0..r.count()? {
@@ -216,14 +239,57 @@ impl Pack {
             kind,
             seq: meta["seq"].as_u64().unwrap_or(1) as u32,
             files,
+            removed,
+            delta,
             blobs,
         })
     }
 }
 
-/// The files a set of packs makes, in a language: the newest base or
-/// patch's manifest, each file from whichever of them holds its blob, then
-/// the language pack's files over them. Also says what it used.
+/// The game's manifest a set of base and patch packs makes: the newest
+/// whole manifest, then each later patch's changes in order. A patch
+/// without the base before it, or with one of the patches between them
+/// missing, is not a game.
+fn manifest(game: &[&Pack]) -> Result<BTreeMap<String, (Hash, u64)>> {
+    let mut ordered: Vec<&Pack> = game.to_vec();
+    ordered.sort_by_key(|p| p.seq);
+    let mut out = BTreeMap::new();
+    let Some(start) = ordered.iter().rposition(|p| !p.delta) else {
+        if ordered.is_empty() {
+            return Ok(out);
+        }
+        return Err(bad_pack(format!(
+            "patch-{}.pack lists what changed since the build before; a patch needs the packs before it",
+            ordered[0].seq
+        )));
+    };
+    let mut seq = ordered[start].seq;
+    for p in &ordered[start..] {
+        if p.delta && p.seq != seq + 1 {
+            return Err(bad_pack(format!(
+                "patch-{}.pack follows build {seq}, but patch-{}.pack is missing; a patch needs the packs before it",
+                p.seq,
+                seq + 1
+            )));
+        }
+        seq = p.seq;
+        if !p.delta {
+            out.clear();
+        }
+        for r in &p.removed {
+            out.remove(r);
+        }
+        for (path, h, n) in &p.files {
+            out.insert(path.clone(), (*h, *n));
+        }
+    }
+    Ok(out)
+}
+
+/// The files a set of packs makes, in a language: the base's manifest and
+/// each patch's changes in order, each file from whichever of them holds
+/// its blob, then the language pack's files over them. Also says what it
+/// used.
 pub fn resolve(packs: &[Pack], lang: Option<&str>) -> Result<(Files, Json)> {
     let game: Vec<&Pack> = packs
         .iter()
@@ -235,7 +301,7 @@ pub fn resolve(packs: &[Pack], lang: Option<&str>) -> Result<(Files, Json)> {
         .ok_or_else(|| bad_pack("there is no game.pack"))?;
     let blob = |h: &Hash, pool: &[&Pack]| pool.iter().find_map(|p| p.blobs.get(h)).cloned();
     let mut files: BTreeMap<String, Vec<u8>> = BTreeMap::new();
-    for (path, h, _) in &newest.files {
+    for (path, (h, _)) in &manifest(&game)? {
         let b = blob(h, &game).ok_or_else(|| {
             bad_pack(format!(
                 "{path} is in the manifest of build {} but in none of the packs; a patch needs the packs before it",
@@ -458,25 +524,43 @@ pub fn build(root: &Path, opts: &BuildOptions) -> Result<Built> {
         .flat_map(|p| p.blobs.keys().copied())
         .collect();
     let seq = old_game.iter().map(|p| p.seq).max().unwrap_or(0) + 1;
+    // A patch's manifest is what changed since the build before.
+    let before = manifest(&old_game)?;
     let make = |kind: Kind,
                 seq: u32,
                 files: &[(String, Vec<u8>)],
                 skip: &std::collections::BTreeSet<Hash>| {
-        let mut manifest = Vec::new();
+        let delta = kind == Kind::Patch;
+        let mut listed = Vec::new();
         let mut blobs = BTreeMap::new();
         for (p, b) in files {
             let h = address(b);
-            manifest.push((p.clone(), h, b.len() as u64));
+            if !delta || before.get(p).map(|x| x.0) != Some(h) {
+                listed.push((p.clone(), h, b.len() as u64));
+            }
             if !skip.contains(&h) {
                 blobs.insert(h, b.clone());
             }
         }
+        let removed = if delta {
+            let now: std::collections::BTreeSet<&str> =
+                files.iter().map(|(p, _)| p.as_str()).collect();
+            before
+                .keys()
+                .filter(|p| !now.contains(p.as_str()))
+                .cloned()
+                .collect()
+        } else {
+            Vec::new()
+        };
         Pack {
             game: cfg.name.clone(),
             code: opts.code.clone(),
             kind,
             seq,
-            files: manifest,
+            files: listed,
+            removed,
+            delta,
             blobs,
         }
     };

@@ -1,0 +1,10 @@
+tags = ["drip"]
+
+[Transform]
+pos = [-368.2, 12.5]
+
+[Sprite]
+kind = "rect"
+size = [0.18, 1.0]
+color = "#5A6478"
+z = -1.5

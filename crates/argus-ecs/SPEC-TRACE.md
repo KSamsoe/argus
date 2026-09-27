@@ -142,6 +142,12 @@ Phase 0 item 1, "ECS core with SoA columns, archetypes, and hierarchy": this cra
 - Whether the snapshot includes the Luau heap: the ECS snapshot is data-only, so either answer composes with it.
 - TOML versus KDL: the ECS is format-agnostic; `Value` is what any loader produces.
 
+## Phase 3, item 6
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§17) Room stream-in under 4 ms. | Done | `World::spawn_authored_with`: an authored entity placed straight into the archetype of all its components, as `spawn_with` places a runtime one, instead of one archetype move per component. | `argus-scene` streaming tests; Hollow's `tests/deep.luau` |
+
 ## Known limitations, stated so they are decisions
 
 - Column borrow flags are `Cell`s, so `World` is not `Sync`. Parallel stage scheduling (phase 5) replaces runtime flags with static per-stage checks from `Access`.

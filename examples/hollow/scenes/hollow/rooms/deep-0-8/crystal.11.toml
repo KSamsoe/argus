@@ -1,0 +1,10 @@
+tags = ["crystal"]
+
+[Transform]
+pos = [-6.04, -100.8]
+
+[Sprite]
+kind = "circle"
+size = [0.38, 0.38]
+color = "#FFC8A8"
+z = -1.5

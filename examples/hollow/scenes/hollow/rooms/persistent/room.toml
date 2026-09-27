@@ -1,0 +1,4 @@
+# Always loaded (scene.toml: rooms.always), and nowhere: no bounds, so the
+# hero is never "in" it. What must not stream out lives here: the hero, the
+# camera that follows them, the HUD and the menus, and the tilemap of the
+# first three rooms (phase 3 item 6).

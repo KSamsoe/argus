@@ -1005,6 +1005,7 @@ impl Scheduler {
                 learned: Vec::new(),
                 frozen,
                 freeze: false,
+                exclusive: slot.desc.exclusive,
             };
             // What the system emits says it did (obs.why).
             ctx.world.set_emitter(Some(slot.name.clone()));

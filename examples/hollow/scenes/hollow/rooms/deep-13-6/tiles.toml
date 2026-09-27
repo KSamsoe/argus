@@ -1,0 +1,6 @@
+# The room's tiles; tile (0, 0) at its top-left corner.
+[Transform]
+pos = [-336.0, -70.0]
+
+[Tilemap]
+map = "scenes/hollow/rooms/deep-13-6/tiles.tilemap.toml"

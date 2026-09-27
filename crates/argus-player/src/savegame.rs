@@ -26,7 +26,7 @@ use argus_sim::{SimSnapshot, SimState};
 use serde_json::Value as Json;
 
 const TAG: &[u8; 4] = b"ARGS";
-const VERSION: u32 = 1;
+const VERSION: u32 = 2;
 
 /// A save file's bytes: `meta` (the identity) and the keyframe `k`.
 pub fn encode(meta: &Json, k: &Keyframe) -> Vec<u8> {
@@ -73,7 +73,7 @@ pub struct Loaded {
 /// A save file from its bytes.
 pub fn decode(bytes: &[u8]) -> Result<SaveFile> {
     let mut r = Reader::new(bytes, "save file");
-    r.magic(TAG, VERSION)?;
+    let version = r.magic(TAG, VERSION)?;
     let meta: Json =
         serde_json::from_str(&r.str()?).map_err(|e| r.bad(format!("its identity: {e}")))?;
     let tick = r.u64()?;
@@ -81,7 +81,8 @@ pub fn decode(bytes: &[u8]) -> Result<SaveFile> {
     let world = r.bytes()?.to_vec();
     let sim = SimState::decode(&mut r)?;
     let pools = r.bytes()?.to_vec();
-    let rooms = r.opt(|r| StreamState::decode(r))?;
+    // Rooms remember what happened in them from version 2 (phase 3 item 6).
+    let rooms = r.opt(|r| StreamState::decode_as(r, version >= 2))?;
     if r.remaining() != 0 {
         return Err(r.bad(format!("{} bytes after the end", r.remaining())));
     }

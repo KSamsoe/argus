@@ -80,6 +80,14 @@ Every statement in the design document (v0.3) that constrains a game as players 
 | (§13) Timelines in every scene, the same in the daemon, the executable, and the page. | Done | `assemble.rs` installs `argus-timeline` after the dialogue (first in the late stage), adds the engine's `timeline` def table to the project's (`with_engine_defs`), and reads the timelines with their fields checked against the world's components (`read_timelines`). | Hollow's and Outpost's tests |
 | (§6) Everything the sim needs that the world does not hold is in a keyframe. | Done | `keyframe.rs`: the colliders overlapping at the end of the tick before (`Keyframe.contacts`, `Sources.contacts`) beside the particle pools and rooms. Replay files are version 2 and carry them; a version 1 file reads with none. A save starts with none. | Hollow's outro scrubs; the daemon's ring and seek tests |
 
+## Phase 3, item 6: rooms stream in the one assembly
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§4) Rooms stream around the player in the daemon, the executable, and the page alike. | Done | `assemble.rs` shares the scene (`Rc<RefCell<Scene>>`) and installs `rooms.stream` (argus-scene) last in the late stage. `keyframe.rs`: `Sources.scene` takes and puts back the scene's stream state, what unloaded rooms remember included. Replay files are version 3 and saves version 2 for it; older files read with no memory. | Hollow's tests; the daemon's ring, seek, and save tests |
+| (§15, §17) "Content-addressed packs; only changed chunks rebuild." | Done | Found at Hollow's 10,000 files: every pack carried every file's path, address, and size, so a one-file patch was mostly manifest (it failed the patch test's size check). Packs are version 3: a patch lists only the files added or changed since the build before and the paths it removed; resolving applies the patches in order on the base's manifest, and a patch without the base, or with a patch between missing, is refused. A version 2 patch, whose manifest is whole, still reads. | `packs::a_patch_carries_only_what_changed_and_a_language_lays_over_the_game` (the patch lists the one sign; under a hundredth of the base) |
+| A report stays small as the game grows. | Done | A report is two keyframes and the world at the end, so it follows the live world, which streaming keeps to a handful of rooms: Hollow's is 85 KB with the two deep rooms live at the start (the test's bound went from 64 to 128 KB). | `recorder::the_recorder_stays_bounded_and_a_report_replays_to_the_same_world` |
+
 ## §18 Build plan
 
 | Spec | Status | Where | Test |

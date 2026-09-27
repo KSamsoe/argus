@@ -65,8 +65,9 @@ pub struct Assembly {
     pub host: ScriptHost,
     /// The project.
     pub project: Project,
-    /// The scene (rooms, streaming).
-    pub scene: Scene,
+    /// The scene (rooms, streaming), shared with `rooms.stream`, which
+    /// streams its rooms around the followed entity inside the tick.
+    pub scene: Rc<RefCell<Scene>>,
     /// Problems in the project or the scene; when there are any, nothing
     /// was spawned.
     pub issues: Vec<ArgusError>,
@@ -209,6 +210,10 @@ pub fn assemble(
             scene.spawn_all(&mut world)?
         });
     }
+    // Rooms stream around the followed entity (phase 3 item 6): last in the
+    // late stage, after every other system has seen the tick.
+    let scene = Rc::new(RefCell::new(scene));
+    argus_scene::stream::install(&mut sched, scene.clone())?;
     apply_system_groups(
         &mut sched,
         &scene_doc.enable,

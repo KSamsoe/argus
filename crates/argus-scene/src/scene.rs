@@ -16,10 +16,18 @@
 //! [rooms]
 //! start  = "cavern-03"
 //! radius = 1                        # rooms within this graph distance stay loaded
+//! follow = "@player"                # rooms stream around this entity as it moves
+//! always = ["persistent"]           # rooms that never stream out (the player, the HUD)
+//! transition = "timeline:rooms.fade" # played at every room change (the game's hook)
 //!
 //! [rooms.graph]
 //! "cavern-03" = ["cavern-04"]
 //! ```
+//!
+//! A room remembers what happened in it (phase 3 item 6): when it streams
+//! out, each of its entities' fields that differ from its file, components
+//! added or taken away, and entities despawned are kept, and put back when
+//! it streams in again, so a taken gem stays taken.
 //!
 //! Opening a scene parses and resolves every entity and records every
 //! problem as an issue; instantiating into a world requires a clean scene,
@@ -55,6 +63,14 @@ pub struct RoomGraph {
     pub radius: u32,
     /// Undirected edges.
     pub edges: Vec<(String, String)>,
+    /// The authored entity rooms stream around (`@player`): the current
+    /// room is the one whose bounds hold it (`rooms.stream`).
+    pub follow: Option<String>,
+    /// Rooms that are always loaded, whatever the current room.
+    pub always: Vec<String>,
+    /// A timeline played at every room change (`timeline:rooms.fade`),
+    /// its actor the followed entity: the game's transition hook.
+    pub transition: Option<String>,
 }
 
 /// `scene.toml`.
@@ -137,15 +153,132 @@ pub struct LoadReport {
     pub pending: Vec<(String, String, String)>,
     /// Wall-clock milliseconds the load took (loader cost, not sim time).
     pub ms: f64,
+    /// Components the load put on entities, by name (what a loading
+    /// system declares it wrote).
+    pub components: BTreeSet<String>,
 }
 
 /// A scene's streaming state at a moment: see `Scene::stream_state`.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct StreamState {
     loaded: BTreeSet<String>,
     current: Option<String>,
     spawned: BTreeMap<String, Entity>,
     pending: Vec<PendingRef>,
+    memory: BTreeMap<String, Memory>,
+}
+
+/// What an authored entity of an unloaded room was left as, against its
+/// file: the fields that differ, components added or taken away, or that
+/// it is gone.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Memory {
+    /// Despawned while its room was loaded: it does not come back.
+    pub gone: bool,
+    /// Components it had that its file does not give it.
+    pub added: Vec<String>,
+    /// Components its file gives it that it no longer had.
+    pub removed: Vec<String>,
+    /// `Component.field` values that differed from the file. An entity
+    /// field is kept as the target's id (`@room/id`), or `""` for none.
+    pub set: Vec<(String, Value)>,
+}
+
+impl Memory {
+    fn encode(&self, w: &mut Writer) {
+        w.bool(self.gone);
+        w.count(self.added.len());
+        for c in &self.added {
+            w.str(c);
+        }
+        w.count(self.removed.len());
+        for c in &self.removed {
+            w.str(c);
+        }
+        w.count(self.set.len());
+        for (p, v) in &self.set {
+            w.str(p);
+            encode_value(w, v);
+        }
+    }
+
+    fn decode(r: &mut Reader) -> Result<Memory> {
+        let gone = r.bool()?;
+        let mut added = Vec::new();
+        for _ in 0..r.count()? {
+            added.push(r.str()?);
+        }
+        let mut removed = Vec::new();
+        for _ in 0..r.count()? {
+            removed.push(r.str()?);
+        }
+        let mut set = Vec::new();
+        for _ in 0..r.count()? {
+            let p = r.str()?;
+            set.push((p, decode_value(r)?));
+        }
+        Ok(Memory {
+            gone,
+            added,
+            removed,
+            set,
+        })
+    }
+}
+
+fn encode_value(w: &mut Writer, v: &Value) {
+    match v {
+        Value::Bool(b) => {
+            w.u8(0);
+            w.bool(*b);
+        }
+        Value::Int(i) => {
+            w.u8(1);
+            w.i64(*i);
+        }
+        Value::UInt(u) => {
+            w.u8(2);
+            w.u64(*u);
+        }
+        Value::Float(f) => {
+            w.u8(3);
+            w.f64(*f);
+        }
+        Value::Vec2(v) => {
+            w.u8(4);
+            w.f32(v.x);
+            w.f32(v.y);
+        }
+        Value::Str(s) => {
+            w.u8(5);
+            w.str(s);
+        }
+        Value::Ref(s) => {
+            w.u8(6);
+            w.str(s);
+        }
+        Value::Entity(e) => {
+            w.u8(7);
+            w.u64(e.to_bits());
+        }
+    }
+}
+
+fn decode_value(r: &mut Reader) -> Result<Value> {
+    Ok(match r.u8()? {
+        0 => Value::Bool(r.bool()?),
+        1 => Value::Int(r.i64()?),
+        2 => Value::UInt(r.u64()?),
+        3 => Value::Float(r.f64()?),
+        4 => {
+            let x = r.f32()?;
+            Value::Vec2(argus_ecs::Vec2::new(x, r.f32()?))
+        }
+        5 => Value::Str(r.str()?),
+        6 => Value::Ref(r.str()?),
+        7 => Value::Entity(Entity::from_bits(r.u64()?)),
+        t => return Err(r.bad(format!("a remembered value of kind {t}"))),
+    })
 }
 
 impl StreamState {
@@ -167,10 +300,21 @@ impl StreamState {
             w.str(&p.path);
             w.str(&p.target);
         }
+        w.count(self.memory.len());
+        for (id, m) in &self.memory {
+            w.str(id);
+            m.encode(w);
+        }
     }
 
     /// Read what [`StreamState::encode`] wrote.
     pub fn decode(r: &mut Reader) -> Result<StreamState> {
+        StreamState::decode_as(r, true)
+    }
+
+    /// Read a stream state written before rooms remembered (a replay file
+    /// before version 3, a save before version 2) when `memory` is false.
+    pub fn decode_as(r: &mut Reader, memory: bool) -> Result<StreamState> {
         let mut loaded = BTreeSet::new();
         for _ in 0..r.count()? {
             loaded.insert(r.str()?);
@@ -189,11 +333,19 @@ impl StreamState {
                 target: r.str()?,
             });
         }
+        let mut remembered = BTreeMap::new();
+        if memory {
+            for _ in 0..r.count()? {
+                let id = r.str()?;
+                remembered.insert(id, Memory::decode(r)?);
+            }
+        }
         Ok(StreamState {
             loaded,
             current,
             spawned,
             pending,
+            memory: remembered,
         })
     }
 }
@@ -222,11 +374,21 @@ pub struct Scene {
     current: Option<String>,
     spawned: BTreeMap<String, Entity>,
     pending: Vec<PendingRef>,
+    /// What the entities of unloaded rooms were left as, by id.
+    memory: BTreeMap<String, Memory>,
     /// Every entity id in the scene, children included (kept by `check_entity_refs`).
     all_ids: BTreeSet<String>,
+    /// Neighbours by room, from the graph.
+    adjacent: BTreeMap<String, Vec<String>>,
 }
 
 const FLAT: &str = "";
+
+/// Components and fields the engine derives from others every tick (a
+/// parent link is the file's; a global transform, a UI node's laid-out
+/// rect, and the words a UI text shows are computed): a room does not
+/// remember them, since the next tick would.
+pub const DERIVED: &[&str] = &["Parent", "GlobalTransform", "UiRect", "UiText.shown"];
 
 /// One entity file to read: room, file stem, absolute path, project-relative path.
 type Listed = (Option<String>, String, PathBuf, String);
@@ -259,7 +421,9 @@ impl Scene {
             current: None,
             spawned: BTreeMap::new(),
             pending: Vec::new(),
+            memory: BTreeMap::new(),
             all_ids: BTreeSet::new(),
+            adjacent: BTreeMap::new(),
         };
 
         let mut all_todo = Vec::new();
@@ -340,10 +504,87 @@ impl Scene {
             );
         }
         scene.ingest(all_todo);
+        scene.check_follow();
 
         let ctx = project.ctx(registry);
         scene.resolve_all(&ctx);
         Ok(scene)
+    }
+
+    /// `rooms.follow` names an entity of an always-loaded room (one that
+    /// streamed itself out would stop the streaming), and the rooms it can
+    /// be found in have bounds.
+    fn check_follow(&mut self) {
+        let Some(g) = self.doc.rooms.clone() else {
+            return;
+        };
+        let file = self.doc.file.clone();
+        let Some(f) = &g.follow else {
+            return;
+        };
+        let id = f.strip_prefix('@').unwrap_or(f);
+        let found: Vec<&EntityFile> = self
+            .entities
+            .values()
+            .filter(|e| e.id == id || e.local == id)
+            .collect();
+        match found.as_slice() {
+            [one] => {
+                let room = one.room.clone().unwrap_or_default();
+                if !g.always.contains(&room) {
+                    self.issues.push(
+                        ArgusError::new(
+                            codes::BAD_SCENE,
+                            format!(
+                                "rooms.follow = {f:?} is in room {room:?}, which is not always loaded; it would stream itself out"
+                            ),
+                        )
+                        .hint("Put the followed entity (and the camera and HUD) in a room listed in rooms.always.")
+                        .at(Some(format!("{file}:1"))),
+                    );
+                }
+            }
+            [] => self.issues.push(
+                ArgusError::new(
+                    codes::BAD_SCENE,
+                    format!("rooms.follow = {f:?} names no entity of this scene"),
+                )
+                .at(Some(format!("{file}:1"))),
+            ),
+            many => self.issues.push(
+                ArgusError::new(
+                    codes::BAD_SCENE,
+                    format!(
+                        "rooms.follow = {f:?} could be any of {}",
+                        many.iter()
+                            .map(|e| format!("@{}", e.id))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
+                )
+                .hint("Name it with its room: @room/id.")
+                .at(Some(format!("{file}:1"))),
+            ),
+        }
+        let unbounded: Vec<String> = self
+            .rooms
+            .values()
+            .filter(|r| r.doc.bounds.is_none() && !g.always.contains(&r.name))
+            .map(|r| r.name.clone())
+            .collect();
+        if !unbounded.is_empty() {
+            self.issues.push(
+                ArgusError::new(
+                    codes::BAD_SCENE,
+                    format!(
+                        "rooms without bounds can never be the followed entity's room: {}",
+                        unbounded.join(", ")
+                    ),
+                )
+                .hint("Give each room bounds = [x0, y0, x1, y1] in its room.toml, or list it in rooms.always.")
+                .at(Some(format!("{file}:1"))),
+            );
+        }
     }
 
     /// List a directory's entity files (`stem`, path, project-relative
@@ -454,6 +695,22 @@ impl Scene {
                     .at(Some(format!("{file}:1"))),
                 );
             }
+        }
+        for a in &g.always {
+            if !self.rooms.contains_key(a) {
+                self.issues.push(
+                    ArgusError::new(
+                        codes::UNKNOWN_ROOM,
+                        format!("rooms.always names {a:?}, which has no rooms/{a}/ directory"),
+                    )
+                    .at(Some(format!("{file}:1"))),
+                );
+            }
+        }
+        self.adjacent.clear();
+        for (a, b) in &g.edges {
+            self.adjacent.entry(a.clone()).or_default().push(b.clone());
+            self.adjacent.entry(b.clone()).or_default().push(a.clone());
         }
         // room.toml neighbours must agree with the scene's graph.
         let mut extra = Vec::new();
@@ -602,6 +859,61 @@ impl Scene {
         self.current.as_deref()
     }
 
+    /// The entity rooms stream around (`rooms.follow`), as written.
+    pub fn follow(&self) -> Option<&str> {
+        self.doc.rooms.as_ref()?.follow.as_deref()
+    }
+
+    /// The timeline played at a room change (`rooms.transition`).
+    pub fn transition_timeline(&self) -> Option<&str> {
+        self.doc.rooms.as_ref()?.transition.as_deref()
+    }
+
+    /// Whether `room`'s bounds hold the point.
+    pub fn room_holds(&self, room: &str, x: f32, y: f32) -> bool {
+        self.rooms
+            .get(room)
+            .and_then(|r| r.doc.bounds)
+            .is_some_and(|b| x >= b[0] && x <= b[2] && y >= b[1] && y <= b[3])
+    }
+
+    /// The room whose bounds hold the point (the first by name where rooms
+    /// overlap), always-loaded rooms left out unless they have bounds.
+    pub fn room_at(&self, x: f32, y: f32) -> Option<&str> {
+        self.rooms
+            .keys()
+            .find(|r| self.room_holds(r, x, y))
+            .map(String::as_str)
+    }
+
+    /// How many of a room's entities it remembers as left, while it is
+    /// not loaded.
+    pub fn remembered_in(&self, room: &str) -> usize {
+        let prefix = format!("{room}/");
+        self.memory
+            .keys()
+            .filter(|k| k.starts_with(&prefix))
+            .count()
+    }
+
+    /// What an unloaded room's entities were left as (`None`: as their
+    /// files say).
+    pub fn memory_of(&self, id: &str) -> Option<&Memory> {
+        self.memory.get(id.strip_prefix('@').unwrap_or(id))
+    }
+
+    /// The rooms that should be loaded around `center`: those within the
+    /// radius, and the always-loaded ones.
+    fn wanted(&self, center: &str) -> BTreeSet<String> {
+        let g = self.doc.rooms.clone().unwrap_or_default();
+        let dist = self.distances(center);
+        self.rooms
+            .keys()
+            .filter(|r| dist.get(*r).is_some_and(|d| *d <= g.radius) || g.always.contains(r))
+            .cloned()
+            .collect()
+    }
+
     /// Which rooms are loaded and what was spawned for them: what a keyframe
     /// keeps, so a seek back across a room transition restores the rooms
     /// with the world (phase 2).
@@ -611,6 +923,7 @@ impl Scene {
             current: self.current.clone(),
             spawned: self.spawned.clone(),
             pending: self.pending.clone(),
+            memory: self.memory.clone(),
         }
     }
 
@@ -621,6 +934,7 @@ impl Scene {
         self.current = s.current.clone();
         self.spawned = s.spawned.clone();
         self.pending = s.pending.clone();
+        self.memory = s.memory.clone();
     }
 
     /// Graph distance between two rooms, if connected.
@@ -634,19 +948,13 @@ impl Scene {
             dist.insert(from.to_string(), 0);
             return dist;
         };
+        let _ = g;
         let mut queue = VecDeque::new();
         dist.insert(from.to_string(), 0);
         queue.push_back(from.to_string());
         while let Some(cur) = queue.pop_front() {
             let d = dist[&cur];
-            for (a, b) in &g.edges {
-                let next = if a == &cur {
-                    b
-                } else if b == &cur {
-                    a
-                } else {
-                    continue;
-                };
+            for next in self.adjacent.get(&cur).map(Vec::as_slice).unwrap_or(&[]) {
                 if !dist.contains_key(next) {
                     dist.insert(next.clone(), d + 1);
                     queue.push_back(next.clone());
@@ -790,13 +1098,7 @@ impl Scene {
                 self.rooms.keys().cloned().collect::<Vec<_>>().join(", ")
             )));
         }
-        let dist = self.distances(&start);
-        let names: Vec<String> = self
-            .rooms
-            .keys()
-            .filter(|r| dist.get(*r).map(|d| *d <= g.radius).unwrap_or(false))
-            .cloned()
-            .collect();
+        let names: Vec<String> = self.wanted(&start).into_iter().collect();
         let report = self.load_rooms(world, &names)?;
         self.current = Some(start);
         Ok(report)
@@ -817,14 +1119,7 @@ impl Scene {
                 self.rooms.keys().cloned().collect::<Vec<_>>().join(", ")
             )));
         }
-        let radius = self.doc.rooms.as_ref().map(|g| g.radius).unwrap_or(0);
-        let dist = self.distances(to);
-        let want: BTreeSet<String> = self
-            .rooms
-            .keys()
-            .filter(|r| dist.get(*r).map(|d| *d <= radius).unwrap_or(false))
-            .cloned()
-            .collect();
+        let want = self.wanted(to);
         let from = self.current.clone();
         let out: Vec<String> = self.loaded.difference(&want).cloned().collect();
         for r in &out {
@@ -861,24 +1156,22 @@ impl Scene {
                 )
             })?;
             let ids = room.entities.clone();
-            let trees: Vec<ResolvedEntity> =
-                ids.iter().map(|id| self.resolved[id].clone()).collect();
             let room_name = room.name.clone();
-            let mut placed: Vec<(Entity, ResolvedEntity)> = Vec::new();
-            for tree in &trees {
-                self.spawn_tree(world, tree, None, &mut placed, &mut report)?;
+            // The room's trees taken out while they are placed (no copies:
+            // stream-in must fit inside a frame, section 17), put back
+            // after, whatever happens.
+            let trees: Vec<(String, ResolvedEntity)> = ids
+                .iter()
+                .filter(|id| !self.memory.get(*id).is_some_and(|m| m.gone))
+                .filter_map(|id| self.resolved.remove(id).map(|t| (id.clone(), t)))
+                .collect();
+            let placed = self.place_room(world, &trees, &room_name, &mut report);
+            for (id, t) in trees {
+                self.resolved.insert(id, t);
             }
-            let room_opt = if room_name == FLAT {
-                None
-            } else {
-                Some(room_name.as_str())
-            };
-            for (e, re) in &placed {
-                self.set_fields(world, *e, re, room_opt, &mut report, false)?;
-            }
+            let n = placed?;
             self.loaded.insert(room_name.clone());
             report.rooms.push(room_name.clone());
-            let n = placed.len();
             world.emit(Event::Game {
                 name: "room.loaded".to_string(),
                 fields: vec![
@@ -892,35 +1185,84 @@ impl Scene {
         Ok(report)
     }
 
-    fn spawn_tree(
+    /// Spawn a room's trees, set their fields, and put back what the room
+    /// remembers; the entities placed.
+    fn place_room(
         &mut self,
         world: &mut World,
-        re: &ResolvedEntity,
+        trees: &[(String, ResolvedEntity)],
+        room_name: &str,
+        report: &mut LoadReport,
+    ) -> Result<usize> {
+        let mut placed: Vec<(Entity, &ResolvedEntity)> = Vec::new();
+        for (_, tree) in trees {
+            self.spawn_tree(world, tree, None, &mut placed, report)?;
+        }
+        let room_opt = if room_name == FLAT {
+            None
+        } else {
+            Some(room_name)
+        };
+        for (e, re) in &placed {
+            self.set_fields(world, *e, re, room_opt, report, false)?;
+        }
+        // What happened in the room before it streamed out.
+        for (e, re) in &placed {
+            if let Some(m) = self.memory.remove(&re.id) {
+                self.recall(world, *e, &re.id, room_opt, &m, report)?;
+            }
+        }
+        Ok(placed.len())
+    }
+
+    fn spawn_tree<'t>(
+        &mut self,
+        world: &mut World,
+        re: &'t ResolvedEntity,
         parent: Option<Entity>,
-        placed: &mut Vec<(Entity, ResolvedEntity)>,
+        placed: &mut Vec<(Entity, &'t ResolvedEntity)>,
         report: &mut LoadReport,
     ) -> Result<()> {
-        let e = world.spawn_authored(&re.id)?;
-        self.spawned.insert(re.id.clone(), e);
-        report.entities += 1;
-        if let Some(p) = parent {
-            world.insert(e, argus_ecs::Parent { entity: p })?;
+        if self.memory.get(&re.id).is_some_and(|m| m.gone) {
+            return Ok(());
         }
+        // Every component at once: one archetype placement, not one move
+        // per component.
+        let mut comps = Vec::with_capacity(re.tags.len() + re.components.len() + 1);
         for (tag, _) in &re.tags {
-            if world.component_id(tag).is_none() {
-                let schema = SchemaBuilder::new(tag.as_str())
-                    .doc("Tag declared by use in a scene file.")
-                    .source(re.file.clone())
-                    .build()?;
-                world.register_schema(schema)?;
-                report.tags_registered.push(tag.clone());
-            }
-            world.insert_by_name(e, tag)?;
+            let id = match world.component_id(tag) {
+                Some(id) => id,
+                None => {
+                    let schema = SchemaBuilder::new(tag.as_str())
+                        .doc("Tag declared by use in a scene file.")
+                        .source(re.file.clone())
+                        .build()?;
+                    report.tags_registered.push(tag.clone());
+                    world.register_schema(schema)?
+                }
+            };
+            comps.push(id);
         }
         for c in &re.components {
-            world.insert_by_name(e, &c.name)?;
+            comps.push(world.registry().require(&c.name)?);
+            if !report.components.contains(&c.name) {
+                report.components.insert(c.name.clone());
+            }
         }
-        placed.push((e, re.clone()));
+        let parent_id = world.component_id_of::<argus_ecs::Parent>();
+        if let (Some(_), Some(pid)) = (parent, parent_id) {
+            comps.push(pid);
+            if !report.components.contains("Parent") {
+                report.components.insert("Parent".to_string());
+            }
+        }
+        let e = world.spawn_authored_with(&re.id, &comps)?;
+        if let Some(p) = parent {
+            world.update::<argus_ecs::Parent, _>(e, |x| x.entity = p)?;
+        }
+        self.spawned.insert(re.id.clone(), e);
+        report.entities += 1;
+        placed.push((e, re));
         for child in &re.children {
             self.spawn_tree(world, child, Some(e), placed, report)?;
         }
@@ -989,6 +1331,139 @@ impl Scene {
             }
         }
         self.pending = still;
+        Ok(())
+    }
+
+    /// How a live authored entity differs from its file: fields changed,
+    /// components added or taken away. What the engine derives from other
+    /// components every tick ([`DERIVED`]) is not kept.
+    fn remember(&self, world: &World, e: Entity, id: &str) -> Memory {
+        let mut m = Memory::default();
+        let Some(re) = self.resolved(id) else {
+            return m;
+        };
+        let room = self.room_of(id).map(str::to_string);
+        let derived_field = |c: &str, f: &str| {
+            DERIVED
+                .iter()
+                .any(|d| d.split_once('.').is_some_and(|(dc, df)| dc == c && df == f))
+        };
+        let reg = world.registry();
+        let live: &[argus_ecs::ComponentId] = world.components_of(e).unwrap_or(&[]);
+        let has = |n: &str| live.iter().any(|c| reg.schema(*c).name == n);
+        let tag = |n: &str| re.tags.iter().any(|(t, _)| t == n);
+        for c in &re.components {
+            if !has(&c.name) {
+                m.removed.push(c.name.clone());
+            }
+        }
+        for (t, _) in &re.tags {
+            if !has(t) {
+                m.removed.push(t.clone());
+            }
+        }
+        for &cid in live {
+            let schema = reg.schema(cid);
+            let name = schema.name.as_str();
+            if DERIVED.contains(&name) || tag(name) {
+                continue;
+            }
+            let filed = re.component(name);
+            if filed.is_none() {
+                m.added.push(name.to_string());
+            }
+            for f in &schema.fields {
+                if derived_field(name, &f.name) {
+                    continue;
+                }
+                let Ok(now) = world.get_field_by(e, cid, f) else {
+                    continue;
+                };
+                let was = filed.and_then(|c| c.fields.iter().find(|x| x.name == f.name));
+                let now = match now {
+                    Value::Entity(t) => {
+                        // Kept as the target's id; a runtime entity has none.
+                        let tid = if t.is_null() || !world.is_alive(t) {
+                            String::new()
+                        } else {
+                            match world.string_id(t) {
+                                Some(s) => format!("@{s}"),
+                                None => continue,
+                            }
+                        };
+                        let filed_id = match was.map(|x| &x.value) {
+                            Some(Value::Str(s)) if !is_null_ref(s) => self
+                                .target_in(&self.all_ids, room.as_deref(), s)
+                                .map(|t| format!("@{t}"))
+                                .unwrap_or_default(),
+                            _ => String::new(),
+                        };
+                        if filed.is_some() && tid == filed_id {
+                            continue;
+                        }
+                        Value::Str(tid)
+                    }
+                    v => {
+                        let same = match was {
+                            Some(x) => x.value == v,
+                            None => filed.is_some() && f.default == v,
+                        };
+                        if same {
+                            continue;
+                        }
+                        v
+                    }
+                };
+                m.set.push((format!("{name}.{}", f.name), now));
+            }
+        }
+        m
+    }
+
+    /// Put back what a room's entity was left as.
+    fn recall(
+        &mut self,
+        world: &mut World,
+        e: Entity,
+        id: &str,
+        room: Option<&str>,
+        m: &Memory,
+        report: &mut LoadReport,
+    ) -> Result<()> {
+        for c in &m.removed {
+            if let Some(cid) = world.component_id(c) {
+                if world.has(e, cid) {
+                    world.remove(e, cid)?;
+                }
+            }
+        }
+        for c in &m.added {
+            world.insert_by_name(e, c)?;
+            report.components.insert(c.clone());
+        }
+        for (path, v) in &m.set {
+            let v = match (world.registry().resolve_path(path).map(|(_, f)| f.ty), v) {
+                (Ok(FieldType::Entity), Value::Str(s)) => {
+                    if is_null_ref(s) {
+                        Value::Entity(Entity::NULL)
+                    } else {
+                        match self.target_spawned(room, s) {
+                            Some(t) => Value::Entity(self.spawned[&t]),
+                            None => {
+                                self.pending.push(PendingRef {
+                                    from: id.to_string(),
+                                    path: path.clone(),
+                                    target: s.trim_start_matches('@').to_string(),
+                                });
+                                Value::Entity(Entity::NULL)
+                            }
+                        }
+                    }
+                }
+                (_, v) => v.clone(),
+            };
+            world.set_field(e, path, v)?;
+        }
         Ok(())
     }
 
@@ -1078,6 +1553,23 @@ impl Scene {
         for (live, from, path, target) in nulls {
             world.set_field(live, &path, Value::Entity(Entity::NULL))?;
             self.pending.push(PendingRef { from, path, target });
+        }
+        // What happened in the room, kept for when it streams back in.
+        for id in &leaving {
+            let Some(&e) = self.spawned.get(id) else {
+                continue;
+            };
+            let m = if world.is_alive(e) {
+                self.remember(world, e, id)
+            } else {
+                Memory {
+                    gone: true,
+                    ..Memory::default()
+                }
+            };
+            if m != Memory::default() {
+                self.memory.insert(id.clone(), m);
+            }
         }
         let mut n = 0;
         for id in leaving.iter().rev() {
@@ -1582,10 +2074,25 @@ fn parse_scene_doc(rel: &str, text: &str) -> Result<SceneDoc> {
                     }
                 }
             }
+            let follow = rt
+                .get("follow")
+                .and_then(|i| i.as_str())
+                .map(str::to_string);
+            let always = match rt.get("always") {
+                Some(i) => tomlv::string_list(i, "rooms.always", &at("rooms"))?,
+                None => Vec::new(),
+            };
+            let transition = rt
+                .get("transition")
+                .and_then(|i| i.as_str())
+                .map(str::to_string);
             Some(RoomGraph {
                 start,
                 radius,
                 edges,
+                follow,
+                always,
+                transition,
             })
         }
     };

@@ -47,4 +47,6 @@ pub mod codes {
     pub const NO_RNG_STREAM: u32 = 4406;
     /// Bad clock spec string.
     pub const BAD_CLOCK_SPEC: u32 = 4407;
+    /// `world_mut` from a system not declared exclusive.
+    pub const NOT_EXCLUSIVE: u32 = 4408;
 }

@@ -114,7 +114,8 @@ return scenario "R skips the outro, and the farewell knows about the gem" {
     t:step(3)
     t.expect:events("timeline.ended", { name = "outro", skipped = true }):count():eq(1)
     t.expect:field("@wide", "Camera.active"):eq(false)
-    t.expect:count({ has = { "Timeline" } }):eq(0)
+    -- (Back in the cave, the room change's fade plays; the outro is over.)
+    t.expect:count({ has = { "Timeline" }, ["Timeline.name"] = "timeline:outro" }):eq(0)
     t.expect:count({ has = { "Talk" } }):eq(0)
     t.expect:field("@player", "Transform.pos.x"):near(3, 0.5)
     -- A skipped outro's tweens are at their ends.

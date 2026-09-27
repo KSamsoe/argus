@@ -12,7 +12,7 @@
 use argus_ecs::{Entity, World};
 use argus_input::{InputSnapshot, InputState};
 use argus_particles::{ParticleStore, Pool};
-use argus_scene::StreamState;
+use argus_scene::{Scene, StreamState};
 use argus_sim::{Scheduler, SimSnapshot};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -78,9 +78,9 @@ pub struct Sources {
     pub input: Option<Rc<RefCell<InputState>>>,
     /// The particle pools.
     pub particles: Rc<RefCell<ParticleStore>>,
-    /// The rooms loaded, kept current by the owner (they change only
-    /// between ticks).
-    pub rooms: Rc<RefCell<Option<StreamState>>>,
+    /// The scene, whose rooms loaded (and what unloaded rooms remember) a
+    /// keyframe keeps: rooms stream inside a tick (phase 3 item 6).
+    pub scene: Option<Rc<RefCell<Scene>>>,
     /// The colliders `physics.overlap` saw overlapping last tick.
     pub contacts: Rc<RefCell<argus_physics::Contacts>>,
 }
@@ -95,7 +95,7 @@ impl Sources {
             tick: sched.tick(),
             time: sched.driving().time(),
             input: self.input.as_ref().map(|i| i.borrow().snapshot()),
-            rooms: self.rooms.borrow().clone(),
+            rooms: self.scene.as_ref().map(|s| s.borrow().stream_state()),
             contacts: self.contacts.borrow().pairs.clone(),
             bytes: sim.world.bytes() + pool_bytes + 1024,
             sim,
@@ -117,7 +117,9 @@ impl Sources {
             i.borrow_mut().restore(s);
         }
         self.particles.borrow_mut().pools = k.pools.clone();
-        *self.rooms.borrow_mut() = k.rooms.clone();
+        if let (Some(s), Some(r)) = (&self.scene, &k.rooms) {
+            s.borrow_mut().set_stream_state(r);
+        }
         self.contacts.borrow_mut().pairs = k.contacts.clone();
     }
 }

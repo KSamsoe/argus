@@ -124,6 +124,12 @@ Phase 0 item 2, "scheduler with stages, declared write sets, and both clock driv
 - Mixed clocks: "is a system group binds to a clock enough?" The binding exists; the tactics prototype after phase 0 decides whether an explicit hand-off is also needed.
 - Snapshot and the Luau heap: `SimState` carries no script state, compatible with either answer.
 
+## Phase 3, item 6
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§4, §6) Rooms stream inside the tick, so replays reproduce them. | Done | `SystemDesc::exclusive` and `SystemCtx::world_mut`: a loader that spawns and despawns whole rooms gets the world to change as it must (anything else is refused, `NOT_EXCLUSIVE`), and declares what it wrote as it goes (`SystemCtx::declare`), so `who_writes` stays true. | `argus-scene` `stream::rooms_stream_around_the_followed_entity_and_remember` |
+
 ## Known limitations, stated so they are decisions
 
 - One scheduler per world; forks need their own scheduler built from the same system list. The daemon piece owns that pairing.

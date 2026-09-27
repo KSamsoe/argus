@@ -206,6 +206,15 @@ Phase 0 item 4, "JSON-RPC daemon with session, world, edit, sim (play, pause, st
 | (§13) Timelines are data the agent reads. | Done | `timeline.rs`: `timeline.list {name?}` answers every timeline with its length and its cues by track in time order (at, end, kind, who, what it does, whether it waits, its row), the `Timeline` entities playing with their time, next cue, and what they wait for, and the rows that do not read, which are also `script.errors` rows (phase `timeline`). `script.reload` and `asset.move` read the table again. | `timeline::a_timeline_is_listed_played_and_scrubbed` |
 | (§13) "Scrubbable in the editor." | Done | `timeline.seek {timeline or name, time}`: the frame found by replaying, not by arithmetic, so holds, speed changes, and loops are what they were: `seek_to` restores the keyframe before the timeline began and steps a tick at a time to the first frame at which it had reached the time (or ended), then does what `sim.seek` does after a replay (the events checked against the log, the log and history cut there). Its result is `sim.status` with `reached`, `diverged`, and where the timeline is. A timeline is named by its entity, or by name for its latest play in the log. | `timeline::a_timeline_is_listed_played_and_scrubbed` (back and forth, and past its end); Hollow's `tests/outro.luau` |
 
+## Phase 3, item 6: rooms at scale through the protocol
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§4) The index answers about rooms that aren't loaded. | Done | `world.query` in a scene with rooms knows each entity's room (`where.room`, the `room` column); a query naming a room that is not loaded is answered by the index from the files (`source: "index"`), and a live answer says how many rooms it could not see (`unloaded_rooms`). | Hollow's `tests/deep.luau` |
+| Rooms and what they remember, read. | Done | `scene.rooms` gives each room's `always` and `remembered`, the followed entity, and how many are live; `scene.rooms {room}` is what one room remembers of its entities while it is out. | Hollow's `tests/deep.luau` |
+| (§17) Cold scene open, the index warm, under 300 ms. | Done | `session.open` answers with its `ms` and `index_ms`. Hollow at 201 rooms, release, a new daemon after another built the index: 223–260 ms (index 51–68 ms, the six live rooms spawned in 0.5–1.4 ms; the slower runs beside another test suite). | `perf_rooms::hollow_at_two_hundred_rooms_opens_cold_under_300_ms` (release, ignored) |
+| (§6) A seek across room changes. | Done | The scene is shared with `rooms.stream` and the keyframe sources (`Sources.scene`), so a keyframe takes the rooms and what they remember and a seek puts them back; the daemon no longer copies them by hand between ticks. | Hollow's `tests/deep.luau` (a walk through a doorway replayed: 31 ticks, 228 events checked, none different) |
+
 ## Known limitations, stated so they are decisions
 
 - A mark's clip is drawn while the game waits: 0.37 s in a debug build on Hollow with the window open, most of it the clip's 61 pictures. Released builds are faster; drawing the clip after the note is typed is the next step if it is felt.

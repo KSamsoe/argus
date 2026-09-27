@@ -217,7 +217,8 @@ fn a_player_runs_jumps_and_lands_on_carved_tiles() {
             "camera.update",
             "post.update",
             "particles.update",
-            "ui.layout"
+            "ui.layout",
+            "rooms.stream"
         ]
     );
     let w = ok(

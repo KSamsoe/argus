@@ -62,9 +62,12 @@ fn the_recorder_stays_bounded_and_a_report_replays_to_the_same_world() {
     let log = p.sources.input.as_ref().unwrap().borrow().log().len();
     assert!(log < 4 * 70, "the value log is bounded too: {log}");
 
+    // Two keyframes and the world at the end: its size follows the live
+    // world, which streaming keeps to a handful of rooms however large the
+    // game (Hollow at 201 rooms keeps six live at the start, phase 3 item 6).
     let bytes = p.report("the jump felt floaty", "report", "test").unwrap();
     assert!(
-        bytes.len() < 64 * 1024,
+        bytes.len() < 128 * 1024,
         "a report is small: {} bytes",
         bytes.len()
     );

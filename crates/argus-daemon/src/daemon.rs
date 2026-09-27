@@ -47,7 +47,8 @@ pub const VERSION: &str = "0.0.1";
 struct Session {
     root: PathBuf,
     project: Project,
-    scene: Scene,
+    /// The scene, shared with `rooms.stream` (phase 3 item 6).
+    scene: Rc<RefCell<Scene>>,
     scene_name: String,
     host: ScriptHost,
     seed: u64,
@@ -312,20 +313,8 @@ impl Daemon {
                 None => self.world_summary(),
             },
             "world.query" => match self.index_target(params)? {
-                None if params
-                    .get("where")
-                    .and_then(|w| w.get("within"))
-                    .is_some() =>
-                {
-                    self.require_session()?;
-                    self.ensure_broadphase();
-                    query::run(&self.world, params)
-                }
                 Some(s) => self.index()?.query(&s, params),
-                None => {
-                    self.require_session()?;
-                    query::run(&self.world, params)
-                }
+                None => self.world_query(params),
             },
             "world.get" => match self.index_target(params)? {
                 Some(s) => {
@@ -439,7 +428,7 @@ impl Daemon {
             "scene.issues" => self.scene_issues(),
             "scene.rooms" => match self.index_target(params)? {
                 Some(s) => self.index()?.rooms(&s),
-                None => self.scene_rooms(),
+                None => self.scene_rooms(params),
             },
             "scene.transition" => {
                 self.mutations += 1;
@@ -505,9 +494,6 @@ impl Daemon {
                     let r = ring.borrow();
                     if let Some(k) = r.at_or_before(t) {
                         s.sources.restore(k, &mut self.world, &mut self.sched);
-                        if let Some(rooms) = &k.rooms {
-                            s.scene.set_stream_state(rooms);
-                        }
                     }
                     drop(r);
                     let _ = self.world.drain_events();
@@ -836,6 +822,8 @@ impl Daemon {
         scene_name: &str,
         seed: Option<u64>,
     ) -> Result<Json> {
+        // Section 17: a cold scene open, the index warm, under 300 ms.
+        let started = std::time::Instant::now();
         // A new world: the log's records refer to the old one's component ids.
         // Sequence numbers keep counting so a client's `since` cursor stays valid.
         self.events.records.clear();
@@ -926,7 +914,7 @@ impl Daemon {
         let sources = crate::ring::Sources {
             input: input.clone(),
             particles: particles.clone(),
-            rooms: Rc::new(RefCell::new(Some(scene.stream_state()))),
+            scene: Some(scene.clone()),
             contacts: contacts.clone(),
         };
         self.session = Some(Session {
@@ -969,11 +957,15 @@ impl Daemon {
         self.sched.run_load(&mut self.world)?;
         self.pump_events();
         self.start_ring();
+        let index_started = std::time::Instant::now();
         if !self.building_fork {
             self.sync_index(false);
         }
+        let index_ms = index_started.elapsed().as_secs_f64() * 1000.0;
         let mut out = self.world_summary()?;
         out["run_from"] = json!(run_from);
+        out["ms"] = json!((started.elapsed().as_secs_f64() * 1e4).round() / 10.0);
+        out["index_ms"] = json!((index_ms * 10.0).round() / 10.0);
         if !issues.is_empty() {
             out["issues"] = Json::Array(issues.iter().map(json::error_json).collect());
         }
@@ -1048,6 +1040,7 @@ impl Daemon {
             Some(ses) => (
                 Some(ses.scene_name.clone()),
                 ses.scene
+                    .borrow()
                     .loaded_rooms()
                     .into_iter()
                     .map(str::to_string)
@@ -1164,7 +1157,8 @@ impl Daemon {
         let registry = self.world.registry().clone();
         let ses = self.session.as_mut()?;
         let idx = ses.index.as_mut()?;
-        match idx.sync_project(&ses.project, &registry, &systems, Some(&ses.scene), force) {
+        let scene = ses.scene.borrow();
+        match idx.sync_project(&ses.project, &registry, &systems, Some(&scene), force) {
             Ok(r) => Some(r),
             Err(e) => {
                 ses.index_error = Some(e.message);
@@ -1423,11 +1417,12 @@ impl Daemon {
             let Some(id) = t.strip_prefix('@') else {
                 continue;
             };
-            let (fid, _) = split_child(&ses.scene, id);
-            if ses.scene.resolved(&fid).is_some() {
-                let _ = idx.sync_entities(&ses.scene, &[&fid]);
+            let scene = ses.scene.borrow();
+            let (fid, _) = split_child(&scene, id);
+            if scene.resolved(&fid).is_some() {
+                let _ = idx.sync_entities(&scene, &[&fid]);
             } else {
-                let _ = idx.remove_entity(&ses.scene.name, &fid, None);
+                let _ = idx.remove_entity(&scene.name, &fid, None);
             }
         }
     }
@@ -1477,7 +1472,9 @@ impl Daemon {
             .set_defs(Rc::new(argus_player::ProjectDefs(ses.project.defs.clone())));
         *ses.dialogue.borrow_mut() = argus_dialogue::Graph::from_defs(&ses.project.defs);
         *ses.timelines.borrow_mut() = argus_player::read_timelines(&ses.project.defs, &self.world);
-        ses.scene.reload_files(&ses.project.ctx(&registry));
+        ses.scene
+            .borrow_mut()
+            .reload_files(&ses.project.ctx(&registry));
         let entity_move = report.record.kind == argus_scene::MoveKind::Entity;
         self.sync_index(true);
         self.refresh_assets();
@@ -1515,14 +1512,15 @@ impl Daemon {
             "source": "live",
         });
         if let (Some(id), Some(ses)) = (&id, &self.session) {
-            if let Some(room) = ses.scene.room_of(id) {
+            let scene = ses.scene.borrow();
+            if let Some(room) = scene.room_of(id) {
                 out["room"] = json!(room);
             }
             if resolved {
-                if let Some(re) = ses.scene.resolved(id) {
+                if let Some(re) = scene.resolved(id) {
                     out["resolved"] = resolved_json(re);
                 }
-            } else if let Some(doc) = ses.scene.overrides(id) {
+            } else if let Some(doc) = scene.overrides(id) {
                 out["overrides"] = overrides_json(doc);
             }
         }
@@ -1667,19 +1665,113 @@ impl Daemon {
 
     fn scene_issues(&self) -> Result<Json> {
         let ses = self.require_session()?;
+        let scene = ses.scene.borrow();
         let rows: Vec<Json> = ses
             .project
             .issues()
             .iter()
-            .chain(ses.scene.issues())
+            .chain(scene.issues())
             .map(json::error_json)
             .collect();
         Ok(json!({ "total": rows.len(), "rows": rows }))
     }
 
-    fn scene_rooms(&self) -> Result<Json> {
+    /// `world.query` over the live world. In a scene with rooms the answer
+    /// knows each entity's room (`where.room`, the `room` column); a query
+    /// about a room that is not loaded is answered by the index, from the
+    /// files (§4: "the index still answers queries about rooms that aren't
+    /// loaded"), and a live answer says how many rooms it could not see.
+    fn world_query(&mut self, params: &Json) -> Result<Json> {
         let ses = self.require_session()?;
-        let s = &ses.scene;
+        let (names, loaded) = {
+            let sc = ses.scene.borrow();
+            if sc.has_rooms() {
+                let names: BTreeSet<String> = sc.rooms().map(|r| r.name.clone()).collect();
+                let loaded: BTreeSet<String> =
+                    sc.loaded_rooms().into_iter().map(str::to_string).collect();
+                (Some(names), loaded)
+            } else {
+                (None, BTreeSet::new())
+            }
+        };
+        let scene_name = ses.scene_name.clone();
+        if let Some(names) = &names {
+            let asked: Vec<String> = match params.get("where").and_then(|w| w.get("room")) {
+                Some(Json::String(s)) => vec![s.clone()],
+                Some(Json::Array(a)) => a
+                    .iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect(),
+                _ => Vec::new(),
+            };
+            if asked
+                .iter()
+                .any(|r| names.contains(r) && !loaded.contains(r))
+            {
+                let mut out = self.index()?.query(&scene_name, params)?;
+                out["source"] = json!("index");
+                return Ok(out);
+            }
+        }
+        if params.get("where").and_then(|w| w.get("within")).is_some() {
+            self.ensure_broadphase();
+        }
+        let mut out = query::run(&self.world, names.as_ref(), params)?;
+        if let Some(names) = &names {
+            let unloaded = names.difference(&loaded).count();
+            if unloaded > 0 {
+                out["unloaded_rooms"] = json!(unloaded);
+            }
+        }
+        Ok(out)
+    }
+
+    fn scene_rooms(&self, params: &Json) -> Result<Json> {
+        let ses = self.require_session()?;
+        let s = ses.scene.borrow();
+        // One room: what it remembers of its entities while it is out.
+        if let Some(room) = json::opt_str(params, "room")? {
+            let r = s.room(room).ok_or_else(|| {
+                ArgusError::new(
+                    argus_scene::codes::UNKNOWN_ROOM,
+                    format!("{room:?} is not a room of this scene"),
+                )
+            })?;
+            let mut rows = Vec::new();
+            for id in &r.entities {
+                let ids = s
+                    .resolved(id)
+                    .map(|re| {
+                        re.flatten()
+                            .into_iter()
+                            .map(|(e, _)| e.id.clone())
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default();
+                for id in ids {
+                    if let Some(m) = s.memory_of(&id) {
+                        let set: Vec<Json> = m
+                            .set
+                            .iter()
+                            .map(|(p, v)| json!([p, json::to_json(&self.world, v)]))
+                            .collect();
+                        rows.push(json!({
+                            "entity": format!("@{id}"),
+                            "gone": m.gone,
+                            "added": m.added,
+                            "removed": m.removed,
+                            "set": set,
+                        }));
+                    }
+                }
+            }
+            return Ok(json!({
+                "room": room,
+                "loaded": s.loaded_rooms().contains(&room),
+                "entities": r.entities.len(),
+                "remembered": rows,
+            }));
+        }
         let loaded: BTreeSet<&str> = s.loaded_rooms().into_iter().collect();
         let graph = s.doc.rooms.clone().unwrap_or_default();
         let rows: Vec<Json> = s
@@ -1701,6 +1793,8 @@ impl Daemon {
                 json!({
                     "name": r.name,
                     "loaded": loaded.contains(r.name.as_str()),
+                    "always": graph.always.contains(&r.name),
+                    "remembered": s.remembered_in(&r.name),
                     "entities": r.entities.len(),
                     "neighbors": neighbors,
                     "bounds": r.doc.bounds,
@@ -1709,9 +1803,14 @@ impl Daemon {
                 })
             })
             .collect();
-        Ok(
-            json!({ "rooms": rows, "current": s.current_room(), "radius": graph.radius, "start": graph.start }),
-        )
+        Ok(json!({
+            "rooms": rows,
+            "current": s.current_room(),
+            "radius": graph.radius,
+            "start": graph.start,
+            "follow": graph.follow,
+            "live": loaded.len(),
+        }))
     }
 
     fn scene_transition(&mut self, params: &Json) -> Result<Json> {
@@ -1720,15 +1819,14 @@ impl Daemon {
             .session
             .as_mut()
             .ok_or_else(|| ArgusError::new(codes::NO_PROJECT, "no project is open"))?;
-        let before: BTreeSet<String> = ses
-            .scene
+        let mut scene = ses.scene.borrow_mut();
+        let before: BTreeSet<String> = scene
             .loaded_rooms()
             .into_iter()
             .map(str::to_string)
             .collect();
-        ses.scene.transition(&mut self.world, &room)?;
-        let after: BTreeSet<String> = ses
-            .scene
+        scene.transition(&mut self.world, &room)?;
+        let after: BTreeSet<String> = scene
             .loaded_rooms()
             .into_iter()
             .map(str::to_string)
@@ -1736,7 +1834,7 @@ impl Daemon {
         Ok(json!({
             "loaded": after.difference(&before).collect::<Vec<_>>(),
             "unloaded": before.difference(&after).collect::<Vec<_>>(),
-            "current": ses.scene.current_room(),
+            "current": scene.current_room(),
         }))
     }
 
@@ -2314,11 +2412,12 @@ impl Daemon {
                     };
                     let registry = self.world.registry().clone();
                     let ctx = ses.project.ctx(&registry);
-                    if ses.scene.is_authored(&id) && !self.live_edits {
-                        ses.scene.set_override(&ctx, &id, path, &file_value)?;
-                        if let Some(f) = ses.scene.entity_file(&id).or_else(|| {
-                            let (fid, _) = split_child(&ses.scene, &id);
-                            ses.scene.entity_file(&fid)
+                    let mut scene = ses.scene.borrow_mut();
+                    if scene.is_authored(&id) && !self.live_edits {
+                        scene.set_override(&ctx, &id, path, &file_value)?;
+                        if let Some(f) = scene.entity_file(&id).or_else(|| {
+                            let (fid, _) = split_child(&scene, &id);
+                            scene.entity_file(&fid)
                         }) {
                             files.insert(f.rel.clone());
                         }
@@ -2487,7 +2586,8 @@ impl Daemon {
                 };
                 if let Some(id) = authored {
                     let ses = self.session.as_mut().expect("session");
-                    let f = ses.scene.entity_file(&id).ok_or_else(|| {
+                    let mut scene = ses.scene.borrow_mut();
+                    let f = scene.entity_file(&id).ok_or_else(|| {
                         ArgusError::new(
                             argus_scene::codes::BAD_SCENE,
                             format!("@{id} is a child entity; remove it from its parent's file with -children"),
@@ -2499,7 +2599,7 @@ impl Daemon {
                         f.doc.clone(),
                         f.rel.clone(),
                     );
-                    ses.scene.delete_entity(&mut self.world, &id)?;
+                    scene.delete_entity(&mut self.world, &id)?;
                     files.insert(rel);
                     Ok(Some(Op::SpawnDoc { local, room, doc }))
                 } else {
@@ -2565,16 +2665,17 @@ impl Daemon {
         let ses = self.session.as_mut().expect("session");
         let registry = self.world.registry().clone();
         let ctx = ses.project.ctx(&registry);
-        let full = ses.scene.create_entity(&ctx, local, room, doc)?;
-        if let Some(issue) = ses.scene.issues().first() {
+        let mut scene = ses.scene.borrow_mut();
+        let full = scene.create_entity(&ctx, local, room, doc)?;
+        if let Some(issue) = scene.issues().first() {
             let issue = issue.clone();
-            let _ = ses.scene.delete_entity(&mut self.world, &full);
+            let _ = scene.delete_entity(&mut self.world, &full);
             return Err(issue);
         }
-        if let Some(f) = ses.scene.entity_file(&full) {
+        if let Some(f) = scene.entity_file(&full) {
             files.insert(f.rel.clone());
         }
-        ses.scene.spawn_entity(&mut self.world, &full)
+        scene.spawn_entity(&mut self.world, &full)
     }
 
     /// Run a scene file edit for an authored entity, if `e` is one.
@@ -2591,14 +2692,15 @@ impl Daemon {
             return Ok(());
         }
         let ses = self.session.as_mut().expect("session");
-        if !ses.scene.is_authored(&id) {
+        let mut scene = ses.scene.borrow_mut();
+        if !scene.is_authored(&id) {
             return Ok(());
         }
         let registry = self.world.registry().clone();
         let ctx = ses.project.ctx(&registry);
-        f(&mut ses.scene, &ctx, &id)?;
-        let (fid, _) = split_child(&ses.scene, &id);
-        if let Some(file) = ses.scene.entity_file(&fid) {
+        f(&mut scene, &ctx, &id)?;
+        let (fid, _) = split_child(&scene, &id);
+        if let Some(file) = scene.entity_file(&fid) {
             files.insert(file.rel.clone());
         }
         Ok(())
@@ -2984,9 +3086,6 @@ impl Daemon {
                 *fi.borrow_mut() = copy;
             }
             s.sources.restore(&key, &mut self.world, &mut self.sched);
-            if let Some(rooms) = &key.rooms {
-                s.scene.set_stream_state(rooms);
-            }
             let _ = self.world.drain_events();
             let n = frame - key.tick;
             self.sched.set_quiet(true);
@@ -3089,11 +3188,6 @@ impl Daemon {
                 )
             })?;
             sources.restore(k, &mut self.world, &mut self.sched);
-            if let Some(rooms) = &k.rooms {
-                if let Some(s) = self.session.as_mut() {
-                    s.scene.set_stream_state(rooms);
-                }
-            }
             k.tick
         };
         // The keyframe's queue held events the log already has.
@@ -3266,7 +3360,6 @@ impl Daemon {
         self.require_session()?;
         self.before_ticks();
         let s = self.session.as_ref().expect("session");
-        *s.sources.rooms.borrow_mut() = Some(s.scene.stream_state());
         let k = s.sources.capture(&self.world, &self.sched, true);
         s.ring.borrow_mut().push(k);
         let mut out = s.ring.borrow().status();
@@ -3326,7 +3419,9 @@ impl Daemon {
         ses.host
             .set_defs(Rc::new(argus_player::ProjectDefs(ses.project.defs.clone())));
         let registry = self.world.registry().clone();
-        ses.scene.reresolve(&ses.project.ctx(&registry));
+        ses.scene
+            .borrow_mut()
+            .reresolve(&ses.project.ctx(&registry));
         self.sched.validate()?;
         // Words, conversations, and timelines are read again with the
         // scripts.
@@ -3501,7 +3596,6 @@ impl Daemon {
         if let Some(i) = &ses.input {
             i.borrow_mut().branch(now);
         }
-        *ses.sources.rooms.borrow_mut() = Some(ses.scene.stream_state());
         let k = ses.sources.capture(&self.world, &self.sched, true);
         let mut r = ses.ring.borrow_mut();
         r.prune_after(now);

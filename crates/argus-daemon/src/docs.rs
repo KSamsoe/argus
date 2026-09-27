@@ -352,10 +352,10 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "world.query",
-        doc: "Select field paths from entities matching a filter. Rows are compact arrays in select order; total is always present; next is a cursor for the rest. With aggregates in select (count(), sum(F), mean(F), min(F), max(F)) or a group_by, the answer is one row a group instead of one an entity: select [\"sum(Stockpile.food)\"] is the colony's food; group_by \"Job.kind\" with select [\"count()\"] is the job queue by kind.",
+        doc: "Select field paths from entities matching a filter. Rows are compact arrays in select order; total is always present; next is a cursor for the rest. With aggregates in select (count(), sum(F), mean(F), min(F), max(F)) or a group_by, the answer is one row a group instead of one an entity: select [\"sum(Stockpile.food)\"] is the colony's food; group_by \"Job.kind\" with select [\"count()\"] is the job queue by kind. In a scene with rooms the live world holds only the rooms loaded around the followed entity: the answer says how many it could not see (unloaded_rooms), where.room names rooms, and a query naming a room that is not loaded is answered by the index from the files (source \"index\").",
         params: &[
-            opt("select", ARRAY, "[\"id\" | \"Component.field\" | \"Component\" | \"count()\" | \"sum(Component.field)\" | mean | min | max]; default [\"id\"], or [\"count()\"] with group_by"),
-            opt("where", OBJECT, "{has: [Component], not: [Component], within: {of: entity, r: number}, \"Component.field\": value | {eq|ne|lt|lte|gt|gte: value}}"),
+            opt("select", ARRAY, "[\"id\" | \"room\" | \"Component.field\" | \"Component\" | \"count()\" | \"sum(Component.field)\" | mean | min | max]; default [\"id\"], or [\"count()\"] with group_by"),
+            opt("where", OBJECT, "{has: [Component], not: [Component], room: name | [names], within: {of: entity, r: number}, \"Component.field\": value | {eq|ne|lt|lte|gt|gte: value}}"),
             opt("group_by", ARRAY, "[\"Component.field\"] (or one as a string): one row a distinct value, the value leading the row; only entities with those components"),
             opt("order", STRING, "\"Component.field\" | \"-Component.field\" | \"dist(entity)\"; grouped, a column of the answer: \"-sum(Stockpile.food)\""),
             opt("limit", INTEGER, "default 50"),
@@ -363,7 +363,7 @@ pub const METHODS: &[MethodDoc] = &[
             opt("scene", STRING, "optional: another scene, from the index"),
             opt("source", STRING, "\"index\""),
         ],
-        returns: "{frame, total, rows: [[...]], truncated, next}; grouped, also {matched: entities, columns: [...]}",
+        returns: "{frame, total, rows: [[...]], truncated, next, unloaded_rooms?, source?}; grouped, also {matched: entities, columns: [...]}",
     },
     MethodDoc {
         name: "world.get",
@@ -467,12 +467,13 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "scene.rooms",
-        doc: "Rooms of the current scene with graph neighbours, bounds, entity counts, loaded state, and which is current.",
+        doc: "Rooms of the current scene with graph neighbours, bounds, entity counts, loaded state, and which is current. Rooms stream around the scene's followed entity ([rooms] follow) as it moves; always-loaded rooms ([rooms] always) never stream out. room: one room, and what it remembers of its entities while it is not loaded (fields changed from their files, components added or taken away, entities gone), which it puts back when it streams in.",
         params: &[
+            opt("room", STRING, "one room: what it remembers"),
             opt("scene", STRING, "optional: another scene, from the index"),
             opt("source", STRING, "\"index\""),
         ],
-        returns: "{rooms: [{name, loaded, entities, neighbors, bounds, bulk}], current, radius}",
+        returns: "{rooms: [{name, loaded, always, remembered, entities, neighbors, bounds, bulk}], current, radius, follow, live}; with room, {room, loaded, entities, remembered: [{entity, gone, added, removed, set: [[path, value]]}]}",
     },
     MethodDoc {
         name: "scene.index",
@@ -602,7 +603,7 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "scene.transition",
-        doc: "Move the player to a room: rooms within the streaming radius load, the rest unload, and a room.transition event is emitted.",
+        doc: "Stream the rooms around a room now, between ticks: rooms within the streaming radius (and the always-loaded ones) load, the rest unload remembering what happened in them, and a room.transition event is emitted. In play, rooms.stream does this when the followed entity crosses into another room.",
         params: &[
             req("room", STRING, ""),
         ],

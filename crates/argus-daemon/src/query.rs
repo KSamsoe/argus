@@ -7,12 +7,14 @@ use crate::json;
 use argus_ecs::{Entity, Result, World};
 use argus_index::query::Source;
 use serde_json::{Map, Value as Json};
+use std::collections::BTreeSet;
 
 pub use argus_index::query::{page, paged, DEFAULT_LIMIT};
 
 /// The live world as a query source. Ids are entity handles packed as
-/// `generation << 32 | index`.
-pub struct WorldSource<'a>(pub &'a World);
+/// `generation << 32 | index`. In a scene with rooms, the rooms' names:
+/// an authored entity's room is the first part of its id.
+pub struct WorldSource<'a>(pub &'a World, pub Option<&'a BTreeSet<String>>);
 
 fn pack(e: Entity) -> u64 {
     ((e.generation() as u64) << 32) | e.index() as u64
@@ -25,6 +27,13 @@ fn unpack(id: u64) -> Entity {
 impl Source for WorldSource<'_> {
     fn frame(&self) -> u64 {
         self.0.frame()
+    }
+
+    fn room(&self, id: u64) -> Option<String> {
+        let rooms = self.1?;
+        let sid = self.0.string_id(unpack(id))?;
+        let head = sid.split('/').next()?;
+        rooms.contains(head).then(|| head.to_string())
     }
 
     fn require_component(&self, name: &str) -> Result<()> {
@@ -88,11 +97,11 @@ impl Source for WorldSource<'_> {
 }
 
 /// Run a query against the live world.
-pub fn run(world: &World, params: &Json) -> Result<Json> {
-    argus_index::query::run(&WorldSource(world), params)
+pub fn run(world: &World, rooms: Option<&BTreeSet<String>>, params: &Json) -> Result<Json> {
+    argus_index::query::run(&WorldSource(world, rooms), params)
 }
 
 /// One selected column of one entity (used by `world.get`).
 pub fn project(world: &World, e: Entity, sel: &str) -> Json {
-    argus_index::query::project(&WorldSource(world), pack(e), sel)
+    argus_index::query::project(&WorldSource(world, None), pack(e), sel)
 }

@@ -1,0 +1,14 @@
+tags = ["crystal", "glow"]
+
+[Transform]
+pos = [-41.21, -107.35]
+
+[Sprite]
+kind = "circle"
+size = [0.9, 0.9]
+color = "#FFC8A8"
+z = -1.4
+
+[Describe]
+name = "glowing crystal"
+text = "A crystal glows red in the dark, 8 rooms down."

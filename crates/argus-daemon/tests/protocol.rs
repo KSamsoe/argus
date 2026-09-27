@@ -39,8 +39,8 @@ fn session_open_gives_the_one_screen_summary() {
     // scene and cost nothing without bodies, agents, workers, or cameras;
     // the hit-stop check runs first in input, physics control first in sim,
     // move and overlap last with the nav agents after them, the timelines
-    // first in late, and the camera, the post effects, then the particles
-    // last.
+    // first in late, and the camera, the post effects, the particles, and
+    // the UI's layout last, then the rooms streamed.
     assert_eq!(
         systems,
         [
@@ -63,6 +63,7 @@ fn session_open_gives_the_one_screen_summary() {
             "post.update",
             "particles.update",
             "ui.layout",
+            "rooms.stream",
             "present.hud"
         ]
     );
@@ -690,7 +691,7 @@ fn scripts_reload_in_place_and_errors_are_data() {
     project(t.path());
     let mut d = open(t.path());
     let sys = ok(&mut d, "script.systems", json!({}));
-    assert_eq!(sys["total"], 20);
+    assert_eq!(sys["total"], 21);
     let dmg = &sys["rows"][7];
     assert_eq!(dmg["name"], "sim.damage");
     assert_eq!(dmg["stage"], "sim");

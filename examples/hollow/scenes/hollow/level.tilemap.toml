@@ -6,7 +6,7 @@ tile_size = 1.0
 chunk = 32
 cell = 2
 chunks = "level.chunks"
-hash = "fnv1a64:3a416ac2eececf41"
+hash = "fnv1a64:7e29f529974c05d1"
 
 [[layers]]
 name = "back"

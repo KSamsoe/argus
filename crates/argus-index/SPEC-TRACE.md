@@ -50,6 +50,12 @@ Every statement in the design document (v0.3) that constrains the index (§4 "Th
 |---|---|---|---|
 | L1: "world.query with selection, filters, spatial predicates, aggregates." For Outpost, "world.query with group_by and sum over stockpiles, job queues, and colonist needs, because the question is 'is the economy drifting', not 'where is entity 4011'." | Done | `query.rs`: `select` takes `count()`, `sum(F)`, `mean(F)`, `min(F)`, `max(F)`, and `group_by` one or more fields; the answer is one row a group, its keys first (`columns` says what each is), groups in key order or by `order` naming a column (`"-sum(Stockpile.food)"`), with `matched` the entities counted. Without `group_by`, the matched entities are one group and there is one row even when nothing matched. A number sums as a number, an integer field as an integer, a bool as 0 or 1, a vec2 axis by axis (a mean of positions is a group's centre). `group_by` keeps to the entities that have its components. The evaluator is the shared one, so the index answers the same. | `index::aggregates_answer_one_row_a_group`; Outpost's `tests/colony.luau` |
 
+## Phase 3, item 6
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§4) "The index still answers queries about rooms that aren't loaded." | Done | The evaluator takes `where.room` (a name or a list) and a `room` column; a `Source` says an entity's room (`Source::room`): the index from its `room` column, the live world from the scene's rooms. | Hollow's `tests/deep.luau` (7,486 crystals counted from the index, a room's glowing crystals read from it) |
+
 ## Known limitations, stated so they are decisions
 
 - File change detection is by size and mtime from a periodic scan (10 s idle) plus the daemon's own writes; a file watcher is a later refinement. An outside edit to the *loaded* scene updates the index when its scene is re-indexed from disk, but the live world keeps its state until `scene.load`.
