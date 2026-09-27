@@ -88,6 +88,12 @@ Every statement in the design document (v0.3) that constrains a game as players 
 | (§15, §17) "Content-addressed packs; only changed chunks rebuild." | Done | Found at Hollow's 10,000 files: every pack carried every file's path, address, and size, so a one-file patch was mostly manifest (it failed the patch test's size check). Packs are version 3: a patch lists only the files added or changed since the build before and the paths it removed; resolving applies the patches in order on the base's manifest, and a patch without the base, or with a patch between missing, is refused. A version 2 patch, whose manifest is whole, still reads. | `packs::a_patch_carries_only_what_changed_and_a_language_lays_over_the_game` (the patch lists the one sign; under a hundredth of the base) |
 | A report stays small as the game grows. | Done | A report is two keyframes and the world at the end, so it follows the live world, which streaming keeps to a handful of rooms: Hollow's is 85 KB with the two deep rooms live at the start (the test's bound went from 64 to 128 KB). | `recorder::the_recorder_stays_bounded_and_a_report_replays_to_the_same_world` |
 
+## Phase 3, item 7
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§13) Music on the grid in every build. | Done | The player advances the mixer to the sim's time before it reads `Music`, as the daemon does; `assemble.rs` registers `InRoom` before scripts load and installs `rooms.stream` first in the input stage. | Hollow's and Outpost's tests |
+
 ## §18 Build plan
 
 | Spec | Status | Where | Test |

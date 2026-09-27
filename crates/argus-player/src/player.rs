@@ -405,8 +405,10 @@ impl Player {
             }
         }
         if let Some(a) = self.audio.as_mut() {
-            let _ = a.update(&self.world);
+            // The mixer reaches the sim's time first, so a music change is
+            // measured from where the music is now (phase 3 item 7).
             a.advance_to(self.sched.driving().time());
+            let _ = a.update(&self.world);
         }
     }
 

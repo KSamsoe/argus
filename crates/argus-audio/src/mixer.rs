@@ -50,6 +50,13 @@ pub struct Voice {
     looping: bool,
     stopping: bool,
     done: bool,
+    /// Frames before it starts sounding (a music change waiting for its
+    /// bar, phase 3 item 7): it starts on that very frame.
+    delay: u64,
+    /// Frames until it starts to stop, and over how long.
+    stop_in: Option<(u64, f32)>,
+    /// Frames it has sounded.
+    played: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -204,6 +211,23 @@ impl Mixer {
         looping: bool,
         fade_in_s: f32,
     ) -> u64 {
+        self.play_at(clip, bus, gain, pan, pitch, looping, fade_in_s, 0)
+    }
+
+    /// Start a voice `delay` frames from now, on that very frame (a music
+    /// change on the next bar).
+    #[allow(clippy::too_many_arguments)]
+    pub fn play_at(
+        &mut self,
+        clip: Clip,
+        bus: usize,
+        gain: f32,
+        pan: f32,
+        pitch: f32,
+        looping: bool,
+        fade_in_s: f32,
+        delay: u64,
+    ) -> u64 {
         let id = self.next_id;
         self.next_id += 1;
         let (start, ramp) = if fade_in_s > 0.0 {
@@ -225,8 +249,40 @@ impl Mixer {
             looping,
             stopping: false,
             done: false,
+            delay,
+            stop_in: None,
+            played: 0,
         });
         id
+    }
+
+    /// Start stopping a voice `frames` from now, fading over `fade_s` (the
+    /// track a music change leaves, on the bar).
+    pub fn stop_at(&mut self, id: u64, frames: u64, fade_s: f32) {
+        if let Some(v) = self.voices.iter_mut().find(|v| v.id == id) {
+            if !v.stopping {
+                v.stop_in = Some((frames, fade_s));
+            }
+        }
+    }
+
+    /// Take back a stop that has not begun (a music change undone before
+    /// its bar).
+    pub fn cancel_stop(&mut self, id: u64) {
+        if let Some(v) = self.voices.iter_mut().find(|v| v.id == id) {
+            v.stop_in = None;
+        }
+    }
+
+    /// Frames a voice has sounded (`None` once it is gone); 0 while it
+    /// waits for its start.
+    pub fn played(&self, id: u64) -> Option<u64> {
+        self.voices.iter().find(|v| v.id == id).map(|v| v.played)
+    }
+
+    /// Frames before a voice starts sounding.
+    pub fn delay(&self, id: u64) -> Option<u64> {
+        self.voices.iter().find(|v| v.id == id).map(|v| v.delay)
     }
 
     /// Move a voice's gain and pan (spatial updates, music layers).
@@ -250,7 +306,11 @@ impl Mixer {
     /// A voice that has not sounded yet is simply dropped, so a burst of
     /// requests in one tick never plays the voices it steals.
     pub fn stop(&mut self, id: u64, fade_s: f32) -> bool {
-        if let Some(i) = self.voices.iter().position(|v| v.id == id && v.pos == 0.0) {
+        if let Some(i) = self
+            .voices
+            .iter()
+            .position(|v| v.id == id && v.pos == 0.0 && v.played == 0)
+        {
             self.voices.remove(i);
             return true;
         }
@@ -364,10 +424,9 @@ impl Mixer {
         // Ducking: a rule is active while any voice under `when` is audible.
         for i in 0..self.ducks.len() {
             let (when, lin) = (self.ducks[i].when, self.ducks[i].lin);
-            let active = self
-                .voices
-                .iter()
-                .any(|v| !v.done && v.target_gain > 1e-3 && self.under(v.bus, when));
+            let active = self.voices.iter().any(|v| {
+                !v.done && v.delay == 0 && v.target_gain > 1e-3 && self.under(v.bus, when)
+            });
             let d = &mut self.ducks[i];
             let target = if active { lin } else { 1.0 };
             let span = (1.0 - d.lin).max(1e-6);
@@ -396,6 +455,28 @@ impl Mixer {
             if v.done {
                 continue;
             }
+            // Waiting for its start: silent until that frame of this block.
+            let mut i0 = 0;
+            if v.delay > 0 {
+                if v.delay >= n as u64 {
+                    v.delay -= n as u64;
+                    continue;
+                }
+                i0 = v.delay as usize;
+                v.delay = 0;
+            }
+            // A stop that begins in this block.
+            if let Some((k, fade)) = v.stop_in {
+                if k < n as u64 {
+                    v.stop_in = None;
+                    v.stopping = true;
+                    v.target_gain = 0.0;
+                    v.ramp = 1.0 / fade.max(0.005);
+                } else {
+                    v.stop_in = Some((k - n as u64, fade));
+                }
+            }
+            v.played += (n - i0) as u64;
             let g0 = v.gain;
             let max_step = v.ramp * secs;
             let g1 = if v.target_gain > g0 {
@@ -406,7 +487,7 @@ impl Mixer {
             let (p0, p1) = (v.pan, v.target_pan);
             let base = v.bus * n * 2;
             let len = v.clip.len() as f64;
-            for i in 0..n {
+            for i in i0..n {
                 if v.pos >= len {
                     if v.looping && len > 0.0 {
                         v.pos -= len;

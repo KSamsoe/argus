@@ -1,0 +1,4 @@
+# The music playing (phase 3 item 7): systems/music.luau picks the track for
+# the hero's room and how intense it is; the mixer changes track on a bar.
+[Music]
+track = "cave"

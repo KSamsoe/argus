@@ -44,3 +44,44 @@ variations = [ { wave = "square", freq = 988, slide = 500, ms = 140, release_ms 
 spatial = false
 gain = 0.4
 variations = [ { wave = "square", freq = 520, slide = -900, ms = 220, release_ms = 80 } ]
+
+# Music (phase 3 item 7): each part of the hollow has its own track, chosen
+# by the hero's room (systems/music.luau), and a change waits for the next
+# bar of the track playing. Placeholder loops of tones, two bars each.
+
+# The cave and the shaft: slow and low. Climbing the shaft brings in a
+# high line (intensity follows the hero up).
+[sounds."music/cave.low"]
+tone = { wave = "triangle", notes = [110, 110, 131, 110, 98, 98, 110, 131], note_ms = 750, attack_ms = 30, release_ms = 200, gain = 0.5 }
+
+[sounds."music/cave.high"]
+tone = { wave = "sine", notes = [440, 523, 659, 523, 392, 440, 523, 587], note_ms = 750, attack_ms = 40, release_ms = 300, gain = 0.22 }
+
+[music.cave]
+bpm = 80
+fade_ms = 400
+layers = [ { sound = "music/cave.low" }, { sound = "music/cave.high", from = 0.3, to = 0.8 } ]
+
+# The hall: quicker, a bass and a plucked line over it.
+[sounds."music/hall.bass"]
+tone = { wave = "triangle", notes = [82, 82, 98, 82, 73, 73, 82, 110], note_ms = 600, attack_ms = 10, release_ms = 150, gain = 0.5 }
+
+[sounds."music/hall.pluck"]
+tone = { wave = "triangle", notes = [330, 392, 494, 392, 294, 330, 392, 440], note_ms = 600, attack_ms = 5, release_ms = 450, gain = 0.25 }
+
+[music.hall]
+bpm = 100
+fade_ms = 150
+layers = [ { sound = "music/hall.bass" }, { sound = "music/hall.pluck" } ]
+
+# The deep: a drone, and a line that comes in the deeper the hero goes.
+[sounds."music/deep.drone"]
+tone = { wave = "sine", notes = [55, 55, 55, 55, 49, 49, 52, 52], note_ms = 800, attack_ms = 200, release_ms = 200, gain = 0.6 }
+
+[sounds."music/deep.line"]
+tone = { wave = "triangle", notes = [220, 0, 208, 0, 196, 0, 185, 0], note_ms = 800, attack_ms = 60, release_ms = 500, gain = 0.2 }
+
+[music.deep]
+bpm = 75
+fade_ms = 600
+layers = [ { sound = "music/deep.drone" }, { sound = "music/deep.line", from = 0.2, to = 0.9 } ]

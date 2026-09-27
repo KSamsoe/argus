@@ -180,7 +180,7 @@ Decisions taken while building it:
 
 Decisions taken while building it:
 
-- **Streaming is a system in the tick, not a daemon step between ticks.** `rooms.stream` runs last in the late stage, so a replay, a seek, and every build stream at the same tick. It needed a new kind of system: an exclusive one may change the world as it must (a loader), and declares what it wrote.
+- **Streaming is a system in the tick, not a daemon step between ticks.** `rooms.stream` runs in the tick (last in the late stage at first; since item 7 first in the input stage, before the physics, so an entity moved into a far room finds its floor), so a replay, a seek, and every build stream at the same tick. It needed a new kind of system: an exclusive one may change the world as it must (a loader), and declares what it wrote.
 - **Rooms stream around an entity the scene names.** `[rooms] follow = "@player"`: the current room is the one whose bounds hold it; it stays current until the entity has left it, so rooms overlapping at a doorway do not flicker.
 - **What must not stream out lives in an always-loaded room.** `[rooms] always = ["persistent"]`, a room without bounds. The followed entity must live in one; the scene says so if it does not.
 - **A room remembers what happened in it.** On the way out, each authored entity's fields that differ from its file, components added or taken away, and whether it is gone; on the way back in, put back. It lives in the stream state, so keyframes, replays, and saves carry it. Runtime entities are not kept.
@@ -190,12 +190,20 @@ Decisions taken while building it:
 
 ## 7. Adaptive music, and the buses and ducking around it
 
-**Status: to do.**
+**Status: done** (2026-09-27) in `argus-audio` (a track's tempo and meter; changes that wait for the next bar or beat of the track playing and start on that very frame; the mixer's scheduled starts and stops; `music.queued`, `music.started`, `music.stopped`, `music.cancelled`; where the music is), `argus-scene` (`InRoom`, the room the followed entity is in, as data; `rooms.stream` moved to the start of the tick), `argus-player` and the daemon (the mixer advanced to the sim's time before the music is read; `audio.status` says the track, tempo, bar, beat, and a change waiting). Hollow has music: the cave and the shaft share a slow track at 80 beats a minute whose high line comes in as the hero climbs the shaft, the hall has its own at 100, and the deep a drone at 75 whose line swells the deeper the hero goes; crossing into another part waits for the bar. The hermit's lines duck it now that there is something to duck. Outpost has a day-and-night ambience on its own bus: wind and birds by day, the birds loudest at dawn and gone by late afternoon, wind and crickets by night, the change at dusk and dawn on the bar. All placeholder loops of tones. Found while building it: a waiting track reported its layers coming in before it sounded. The birds first followed how much of the colony worked; the colony is idle for most of its first morning while crops grow, so the birds were rarely heard, and a component registered earlier (below) changed the order jobs are claimed in, which moved when anyone worked at all; they follow the time of day now. The daemon measured a change from where the music was at the last step, so a 10-tick step put the logged time 167 ms off; it advances the mixer first now. `run_until` cannot wait for the mixer's events, which reach the log when a step ends; the tests step in short runs. Hollow's music script named `InRoom` before the engine registered it, so it did not load. The hero set down in a far room sank through its floor: rooms streamed at the end of the tick, and the physics ran a tick before the tiles came; streaming is first in the tick now. Moving the web page's mixer into an AudioWorklet, on the web spike's list for phase 2 item 7, was never done or carried; it is recorded in the audio trace and left open. Traces: rows in `argus-audio`'s, `argus-scene`'s, `argus-player`'s, and the daemon's. Constraints:
 
 - §13: the mixer has named buses (music, sfx, ui, ambience) with a routing tree and ducking rules declared as data (built in phase 1).
 - §13: the music system is adaptive: a track is a set of layers with a tempo, transitions between tracks happen on beat or bar boundaries, and intensity is a parameter a system writes (`Music.intensity = enemies_near / 10`). Phase 1 built layers and intensity; tempo and synchronised transitions are this item.
 - §13: Hollow's room-to-room music and Outpost's day-night ambience are both this.
 - §8: all of it is observable as the event log; the human hears it, the agent reads it.
+
+Decisions taken while building it:
+
+- **The track being left decides where the change lands.** `change_on` (`bar`, the default with a tempo; `beat`; `now`) is the outgoing track's: a track knows where it can end. The new one starts on that frame and the old fades from it over its `fade_ms`, so a short fade is a cut on the bar.
+- **The mixer keeps the grid, not the sim.** A track's position is the frames it has sounded; the change is scheduled to the frame, so it lands on the bar however the frame rate or the device's buffer falls. Headless, the mixer follows sim time, so tests see the same thing every run; with a device, the device's clock. The events are the mixer's answers, like `sound.played`.
+- **A change can be taken back.** Asked back to the track still sounding before the bar, the waiting track never sounds; asked for a third, it replaces the waiting one.
+- **No event per bar.** `audio.status` says the bar and beat; a log with an entry every two seconds would drown the rest.
+- **The room is data on the player.** `InRoom`, written as the rooms stream, is what a room's music reads, and what a condition in a conversation or a timeline can read.
 
 ## 8. Mod pack loading
 

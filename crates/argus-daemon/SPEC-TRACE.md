@@ -215,6 +215,12 @@ Phase 0 item 4, "JSON-RPC daemon with session, world, edit, sim (play, pause, st
 | (§17) Cold scene open, the index warm, under 300 ms. | Done | `session.open` answers with its `ms` and `index_ms`. Hollow at 201 rooms, release, a new daemon after another built the index: 223–260 ms (index 51–68 ms, the six live rooms spawned in 0.5–1.4 ms; the slower runs beside another test suite). | `perf_rooms::hollow_at_two_hundred_rooms_opens_cold_under_300_ms` (release, ignored) |
 | (§6) A seek across room changes. | Done | The scene is shared with `rooms.stream` and the keyframe sources (`Sources.scene`), so a keyframe takes the rooms and what they remember and a seek puts them back; the daemon no longer copies them by hand between ticks. | Hollow's `tests/deep.luau` (a walk through a doorway replayed: 31 ticks, 228 events checked, none different) |
 
+## Phase 3, item 7: music on the grid through the protocol
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§8) The agent reads the music. | Done | `audio.status`'s `music`: the track asked for, the one `sounding`, its `bpm`, `bar`, and `beat`, and a change `queued` with `in_ms`; the log has `music.queued`, `music.started`, `music.stopped`, `music.cancelled`, `music.layer`, as the mixer's answers. The pump advances the mixer to the sim's time before it reads `Music`, so a change is measured from where the music is. | Hollow's `tests/music.luau`, Outpost's `tests/ambience.luau` |
+
 ## Known limitations, stated so they are decisions
 
 - A mark's clip is drawn while the game waits: 0.37 s in a debug build on Hollow with the window open, most of it the clip's 61 pictures. Released builds are faster; drawing the clip after the note is typed is the next step if it is felt.

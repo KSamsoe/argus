@@ -3706,6 +3706,10 @@ impl Daemon {
                 }));
             }
             if let Some(a) = self.audio.as_mut().filter(|_| !self.backstage) {
+                // The mixer reaches the sim's time first, so a music change
+                // is measured from where the music is now, and its event's
+                // frame and its in_ms agree (phase 3 item 7).
+                a.advance_to(self.sched.driving().time());
                 let frame = self.world.frame();
                 records.extend(a.update(&self.world).into_iter().map(|(name, fields)| {
                     EventRecord {
@@ -3714,7 +3718,6 @@ impl Daemon {
                         by: None,
                     }
                 }));
-                a.advance_to(self.sched.driving().time());
             }
         }
         for rec in records {
@@ -4714,10 +4717,18 @@ impl Daemon {
             "master": { "peak_db": r1(peak), "rms_db": r1(rms), "limiter_db": r1(limiter) },
             "columns": ["bus", "parent", "gain_db", "mute", "duck_db", "peak_db", "rms_db", "voices"],
             "rows": rows,
-            "music": a.music().map(|(t, l)| json!({
-                "track": t,
-                "layers": l.iter().map(|(n, on)| json!([n, on])).collect::<Vec<_>>(),
-            })),
+            "music": a.music().map(|(t, l)| {
+                let pos = a.music_position();
+                json!({
+                    "track": t,
+                    "layers": l.iter().map(|(n, on)| json!([n, on])).collect::<Vec<_>>(),
+                    "sounding": pos.as_ref().and_then(|p| p.track.clone()),
+                    "bpm": pos.as_ref().and_then(|p| p.bpm),
+                    "bar": pos.as_ref().and_then(|p| p.bar),
+                    "beat": pos.as_ref().and_then(|p| p.beat),
+                    "queued": pos.as_ref().and_then(|p| p.queued.as_ref()).map(|(t, ms)| json!({ "track": t, "in_ms": (ms * 10.0).round() / 10.0 })),
+                })
+            }),
             "sounds": a.sound_names(),
             "missing": a.missing(),
             "warnings": a.warnings,

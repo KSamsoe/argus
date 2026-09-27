@@ -201,6 +201,7 @@ fn a_player_runs_jumps_and_lands_on_carved_tiles() {
         names,
         [
             "post.hitstop",
+            "rooms.stream",
             "input.actions",
             "ui.input",
             "physics.control",
@@ -217,8 +218,7 @@ fn a_player_runs_jumps_and_lands_on_carved_tiles() {
             "camera.update",
             "post.update",
             "particles.update",
-            "ui.layout",
-            "rooms.stream"
+            "ui.layout"
         ]
     );
     let w = ok(

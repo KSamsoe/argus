@@ -526,3 +526,149 @@ fn silence_mixes_to_the_same_state_by_the_short_path() {
     assert_eq!(short.2.len(), long.2.len());
     assert!(short.2 == long.2, "the history differs");
 }
+
+/// Two tracks at 120 beats a minute, four to the bar: a bar is 2 s, 96,000
+/// frames at 48 kHz. Each loops two bars of eight half-second notes.
+const TEMPO: &str = r#"
+[buses]
+master = { gain_db = 0 }
+music  = { parent = "master" }
+
+[sounds."music/calm"]
+tone = { wave = "sine", notes = [220, 262, 330, 262, 220, 196, 220, 262], note_ms = 500 }
+
+[sounds."music/fight"]
+tone = { wave = "square", notes = [110, 110, 131, 110, 147, 110, 131, 98], note_ms = 500, gain = 0.2 }
+
+[sounds."music/odd"]
+tone = { wave = "sine", freq = 440, ms = 3100 }
+
+[music.calm]
+layers = [ { sound = "music/calm" } ]
+bpm = 120
+fade_ms = 20
+
+[music.fight]
+layers = [ { sound = "music/fight" } ]
+bpm = 120
+change_on = "beat"
+fade_ms = 20
+"#;
+
+#[test]
+fn a_change_waits_for_the_bar_and_starts_on_it() {
+    let dir = project("tempo", TEMPO);
+    let (mut w, _) = world_with_listener();
+    let jukebox = w.spawn_authored("jukebox").unwrap();
+    let calm = w.strings().intern("calm");
+    w.insert(
+        jukebox,
+        Music {
+            track: calm,
+            intensity: 0.0,
+        },
+    )
+    .unwrap();
+    let mut e = AudioEngine::load(&dir, 1).unwrap();
+    assert!(e.warnings.is_empty(), "{:?}", e.warnings);
+    let names =
+        |evs: &[argus_audio::AudioEvent]| evs.iter().map(|x| x.0.clone()).collect::<Vec<_>>();
+    // From silence, at once.
+    let ev = e.update(&w);
+    assert_eq!(names(&ev)[0], "music.started");
+    assert_eq!(f(&ev[0].1, "bpm"), &Value::Float(120.0));
+    e.advance_to(0.0);
+    e.advance_to(0.5);
+    let p = e.music_position().unwrap();
+    assert_eq!(
+        (p.bar, p.beat),
+        (Some(1), Some(2)),
+        "half a second in: the second beat"
+    );
+
+    // Asked for in the first bar, the fight waits for the second.
+    w.set_field(jukebox, "Music.track", Value::Str("fight".into()))
+        .unwrap();
+    let ev = e.update(&w);
+    assert_eq!(names(&ev), ["music.queued"], "{ev:?}");
+    assert_eq!(f(&ev[0].1, "from"), &Value::Str("calm".into()));
+    assert_eq!(f(&ev[0].1, "on"), &Value::Str("bar".into()));
+    assert_eq!(f(&ev[0].1, "in_ms"), &Value::Float(1500.0));
+    let p = e.music_position().unwrap();
+    assert_eq!(
+        p.track.as_deref(),
+        Some("calm"),
+        "calm plays on until the bar"
+    );
+    assert_eq!(p.queued, Some(("fight".to_string(), 1500.0)));
+    e.advance_to(1.75);
+    assert!(
+        !names(&e.update(&w)).contains(&"music.started".to_string()),
+        "not yet"
+    );
+    // Past the bar: the calm stops, the fight sounds, and it started on the
+    // bar's very frame: a quarter of a second in, exactly.
+    e.advance_to(2.25);
+    let ev = e.update(&w);
+    assert_eq!(
+        names(&ev)[..2],
+        ["music.stopped", "music.started"],
+        "{ev:?}"
+    );
+    assert_eq!(f(&ev[0].1, "track"), &Value::Str("calm".into()));
+    let p = e.music_position().unwrap();
+    assert_eq!(p.track.as_deref(), Some("fight"));
+    assert_eq!(p.seconds, 0.25);
+    assert_eq!((p.bar, p.beat), (Some(1), Some(1)));
+
+    // The fight changes on the beat: asked for a quarter of a second into
+    // a beat, the calm waits a quarter of a second. Asked back before it,
+    // the change is undone and the fight plays on.
+    w.set_field(jukebox, "Music.track", Value::Str("calm".into()))
+        .unwrap();
+    let ev = e.update(&w);
+    assert_eq!(names(&ev), ["music.queued"]);
+    assert_eq!(f(&ev[0].1, "on"), &Value::Str("beat".into()));
+    assert_eq!(f(&ev[0].1, "in_ms"), &Value::Float(250.0));
+    w.set_field(jukebox, "Music.track", Value::Str("fight".into()))
+        .unwrap();
+    let ev = e.update(&w);
+    assert_eq!(names(&ev), ["music.cancelled"]);
+    assert_eq!(f(&ev[0].1, "track"), &Value::Str("calm".into()));
+    e.advance_to(2.75);
+    assert!(e.update(&w).is_empty(), "nothing waits");
+    let p = e.music_position().unwrap();
+    assert_eq!(p.track.as_deref(), Some("fight"));
+    assert_eq!(p.seconds, 0.75, "the fight never stopped");
+
+    // Silence waits for the grid too.
+    w.set_field(jukebox, "Music.track", Value::Str(String::new()))
+        .unwrap();
+    assert_eq!(names(&e.update(&w)), ["music.queued"]);
+    e.advance_to(3.25);
+    assert_eq!(names(&e.update(&w)), ["music.stopped"]);
+    assert!(e.music().is_none());
+    std::fs::remove_dir_all(&dir).ok();
+
+    // A loop that is not a whole number of bars is said at load.
+    let dir = project(
+        "tempo-odd",
+        &(TEMPO.to_string() + "\n[music.odd]\nlayers = [ { sound = \"music/odd\" } ]\nbpm = 120\n"),
+    );
+    let e = AudioEngine::load(&dir, 1).unwrap();
+    assert!(
+        e.warnings
+            .iter()
+            .any(|w| w.contains("music.odd") && w.contains("not a whole number")),
+        "{:?}",
+        e.warnings
+    );
+    std::fs::remove_dir_all(&dir).ok();
+    // And a grid without a tempo is an error.
+    let bad = AudioConfig::parse(
+        "audio.toml",
+        "[sounds.\"a\"]\ntone = { wave = \"sine\", ms = 100 }\n[music.x]\nlayers = [ { sound = \"a\" } ]\nchange_on = \"bar\"\n",
+    )
+    .unwrap_err();
+    assert!(bad.message.contains("needs a bpm"), "{bad:?}");
+}

@@ -110,6 +110,9 @@ pub fn assemble(
     .seed(seed);
     let mut world = World::new();
     argus_ecs::hierarchy::register(&mut world)?;
+    // The room the followed entity is in, which scripts may read (phase 3
+    // item 7: a room's music); its system comes once the scene is open.
+    argus_scene::stream::register(&mut world)?;
     let mut sched = Scheduler::new(sched_cfg);
     // The action map's components exist before scripts load, so a system
     // may declare reads = {"Actions"}.
@@ -210,10 +213,10 @@ pub fn assemble(
             scene.spawn_all(&mut world)?
         });
     }
-    // Rooms stream around the followed entity (phase 3 item 6): last in the
-    // late stage, after every other system has seen the tick.
+    // Rooms stream around the followed entity (phase 3 item 6): first in
+    // the input stage, before the physics moves anything.
     let scene = Rc::new(RefCell::new(scene));
-    argus_scene::stream::install(&mut sched, scene.clone())?;
+    argus_scene::stream::install(&mut world, &mut sched, scene.clone())?;
     apply_system_groups(
         &mut sched,
         &scene_doc.enable,

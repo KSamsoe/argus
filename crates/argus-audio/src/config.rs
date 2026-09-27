@@ -28,6 +28,10 @@
 //!
 //! [music.explore]
 //! layers = [ { sound = "music/pad" }, { sound = "music/drums", from = 0.5, to = 0.8 } ]   # on at from, fully in by to
+//! bpm = 96                       # a tempo: changes wait for the grid
+//! beats_per_bar = 4
+//! change_on = "bar"              # leaving this track: on the next "bar", "beat", or "now"
+//! fade_ms = 60                   # in and out; on the bar, a short one is a cut
 //! ```
 //!
 //! A variation is a file under `assets/` or a described tone, so sound
@@ -146,7 +150,31 @@ pub struct LayerDef {
     pub to: f32,
 }
 
-/// A music track: layers played in lockstep (§13 adaptive music).
+/// Where a change away from a track may happen (§13 "transitions between
+/// tracks happen on beat or bar boundaries").
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ChangeOn {
+    /// The next bar line.
+    Bar,
+    /// The next beat.
+    Beat,
+    /// At once.
+    Now,
+}
+
+impl ChangeOn {
+    /// Its name in `audio.toml`.
+    pub fn name(self) -> &'static str {
+        match self {
+            ChangeOn::Bar => "bar",
+            ChangeOn::Beat => "beat",
+            ChangeOn::Now => "now",
+        }
+    }
+}
+
+/// A music track: layers played in lockstep (§13 adaptive music), with a
+/// tempo that changes wait for (phase 3 item 7).
 #[derive(Clone, Debug, PartialEq)]
 pub struct TrackDef {
     /// Name.
@@ -157,6 +185,23 @@ pub struct TrackDef {
     pub layers: Vec<LayerDef>,
     /// Crossfade when the track starts or stops, ms.
     pub fade_ms: f32,
+    /// Beats a minute; `None` has no grid, and changes happen at once.
+    pub bpm: Option<f32>,
+    /// Beats a bar.
+    pub beats_per_bar: u32,
+    /// Where a change away from it waits for.
+    pub change_on: ChangeOn,
+}
+
+impl TrackDef {
+    /// Seconds a beat, when it has a tempo.
+    pub fn beat_s(&self) -> Option<f32> {
+        self.bpm.map(|b| 60.0 / b)
+    }
+    /// Seconds a bar, when it has a tempo.
+    pub fn bar_s(&self) -> Option<f32> {
+        self.beat_s().map(|b| b * self.beats_per_bar as f32)
+    }
 }
 
 /// Distance model.
@@ -557,6 +602,56 @@ impl AudioConfig {
                 if layers.is_empty() {
                     return Err(err(file, ml, format!("music.{name} has no layers")));
                 }
+                let bpm = get_num(mt, "bpm");
+                if let Some(b) = bpm {
+                    if !(20.0..=400.0).contains(&b) {
+                        return Err(err(
+                            file,
+                            ml,
+                            format!(
+                                "music.{name}.bpm = {b} is not a tempo; 20 to 400 beats a minute"
+                            ),
+                        ));
+                    }
+                }
+                let beats_per_bar = match get_num(mt, "beats_per_bar") {
+                    None => 4,
+                    Some(n) if (1.0..=16.0).contains(&n) && n.fract() == 0.0 => n as u32,
+                    Some(n) => {
+                        return Err(err(
+                            file,
+                            ml,
+                            format!("music.{name}.beats_per_bar = {n}: a whole number, 1 to 16"),
+                        ))
+                    }
+                };
+                let change_on = match get_str(mt, "change_on").as_deref() {
+                    None if bpm.is_some() => ChangeOn::Bar,
+                    None => ChangeOn::Now,
+                    Some("bar") => ChangeOn::Bar,
+                    Some("beat") => ChangeOn::Beat,
+                    Some("now") => ChangeOn::Now,
+                    Some(other) => {
+                        return Err(err(
+                            file,
+                            ml,
+                            format!(
+                                "music.{name}.change_on = {other:?}: \"bar\", \"beat\", or \"now\""
+                            ),
+                        ))
+                    }
+                };
+                if bpm.is_none() && change_on != ChangeOn::Now {
+                    return Err(err(
+                        file,
+                        ml,
+                        format!(
+                            "music.{name}.change_on = {:?} needs a bpm to find the {} by",
+                            change_on.name(),
+                            change_on.name()
+                        ),
+                    ));
+                }
                 cfg.tracks.insert(
                     name.to_string(),
                     TrackDef {
@@ -564,6 +659,9 @@ impl AudioConfig {
                         bus,
                         layers,
                         fade_ms: get_num(mt, "fade_ms").unwrap_or(1000.0).max(1.0),
+                        bpm,
+                        beats_per_bar,
+                        change_on,
                     },
                 );
             }

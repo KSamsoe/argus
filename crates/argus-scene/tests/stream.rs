@@ -81,7 +81,7 @@ fn rig(t: &Temp) -> Rig {
     scene.spawn_around(&mut w, None).unwrap();
     let scene = Rc::new(RefCell::new(scene));
     let mut s = Scheduler::new(SchedulerConfig::default());
-    argus_scene::stream::install(&mut s, scene.clone()).unwrap();
+    argus_scene::stream::install(&mut w, &mut s, scene.clone()).unwrap();
     let hero = w.entity("@hero").unwrap();
     Rig { w, s, scene, hero }
 }
@@ -131,8 +131,15 @@ fn rooms_stream_around_the_followed_entity_and_remember() {
     let crate_ = r.w.entity("@r1/crate").unwrap();
     r.w.despawn(crate_).unwrap();
 
+    // The room it is in is data on it.
+    let room = |r: &Rig| {
+        let id = r.w.get::<argus_scene::stream::InRoom>(r.hero).unwrap().room;
+        r.w.strings().resolve(id).to_string()
+    };
+    assert_eq!(room(&r), "r0");
     // Into r2: r0 goes, r3 comes; the hook's timeline starts.
     let ev = r.go(25.0);
+    assert_eq!(room(&r), "r2");
     assert_eq!(r.loaded(), ["persistent", "r1", "r2", "r3"]);
     let tr = ev
         .iter()

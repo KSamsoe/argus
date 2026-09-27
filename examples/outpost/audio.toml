@@ -1,0 +1,35 @@
+# Outpost's sound (phase 3 item 7): the valley's day-and-night ambience on
+# its own bus. Day and night are two tracks; the change at dusk and at dawn
+# waits for the bar. By day the birds are loudest at dawn and fade through
+# the afternoon (systems/ambience.luau writes the intensity). Placeholder loops of tones,
+# two bars of 60 beats a minute each.
+[buses]
+master   = { gain_db = 0 }
+ambience = { parent = "master", gain_db = -8 }
+music    = { parent = "master", gain_db = -10 }
+sfx      = { parent = "master" }
+ui       = { parent = "master" }
+
+# Wind, day and night: soft noise that swells and falls each loop.
+[sounds."amb/wind"]
+tone = { wave = "noise", ms = 8000, attack_ms = 2500, release_ms = 2500, gain = 0.06 }
+
+# Birds by day: rising chirps between rests.
+[sounds."amb/birds"]
+tone = { wave = "sine", notes = [2400, 0, 2800, 0, 0, 2600, 0, 0, 3000, 0, 2500, 0, 0, 0, 2700, 0], note_ms = 500, slide = 1800, attack_ms = 10, release_ms = 180, gain = 0.05 }
+
+# Crickets by night: quick high pulses.
+[sounds."amb/crickets"]
+tone = { wave = "triangle", notes = [4200, 0, 4200, 0, 4200, 0, 0, 0, 4400, 0, 4400, 0, 0, 0, 0, 0, 4200, 0, 4200, 0, 4200, 0, 0, 0, 4400, 0, 0, 0, 0, 0, 0, 0], note_ms = 250, attack_ms = 5, release_ms = 60, gain = 0.03 }
+
+[music.day]
+bus = "ambience"
+bpm = 60
+fade_ms = 2000
+layers = [ { sound = "amb/wind" }, { sound = "amb/birds", from = 0.2, to = 0.7 } ]
+
+[music.night]
+bus = "ambience"
+bpm = 60
+fade_ms = 2000
+layers = [ { sound = "amb/wind" }, { sound = "amb/crickets" } ]

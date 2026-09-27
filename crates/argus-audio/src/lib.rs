@@ -24,8 +24,8 @@ pub mod mixer;
 pub mod sound;
 
 pub use config::{
-    parse_sound_sidecar, AudioConfig, BusDef, DuckDef, LayerDef, SoundDef, Source, Tone, TrackDef,
-    Wave,
+    parse_sound_sidecar, AudioConfig, BusDef, ChangeOn, DuckDef, LayerDef, SoundDef, Source, Tone,
+    TrackDef, Wave,
 };
 pub use mixer::{db_to_lin, lin_to_db, BusMeter, Mixer};
 
@@ -126,7 +126,38 @@ struct Layer {
 
 struct Playing {
     track: String,
+    def: TrackDef,
     layers: Vec<Layer>,
+    /// Sounding (not waiting for a bar).
+    started: bool,
+}
+
+fn started_event(p: &Playing) -> AudioEvent {
+    let mut f = vec![
+        ("track".to_string(), Value::Str(p.track.clone())),
+        ("layers".to_string(), Value::Int(p.layers.len() as i64)),
+    ];
+    if let Some(b) = p.def.bpm {
+        f.push(("bpm".to_string(), Value::Float(b as f64)));
+    }
+    ("music.started".to_string(), f)
+}
+
+/// Where the music is (`AudioEngine::music_position`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct MusicPosition {
+    /// The track sounding.
+    pub track: Option<String>,
+    /// Its tempo.
+    pub bpm: Option<f32>,
+    /// Bar, from 1, when it has a tempo.
+    pub bar: Option<u64>,
+    /// Beat in the bar, from 1.
+    pub beat: Option<u64>,
+    /// Seconds the track has sounded.
+    pub seconds: f64,
+    /// A change waiting for its bar: the track, and milliseconds to go.
+    pub queued: Option<(String, f32)>,
 }
 
 /// An event the engine wants in the log: a name and its fields.
@@ -145,7 +176,12 @@ pub struct AudioEngine {
     #[cfg(feature = "device")]
     device: Option<device::Output>,
     spatial: Vec<SpatialVoice>,
+    /// The track the world asks for (waiting for its bar while `due`).
     music: Option<Playing>,
+    /// The track that plays until a change's bar.
+    outgoing: Option<Playing>,
+    /// The mixer frame a waiting change happens on.
+    due: Option<u64>,
     missing: BTreeSet<String>,
     /// Sounds from asset sidecars (the importer), below audio.toml and above bare WAVs.
     extra: Vec<SoundDef>,
@@ -218,6 +254,8 @@ impl AudioEngine {
             device: None,
             spatial: Vec::new(),
             music: None,
+            outgoing: None,
+            due: None,
             missing: BTreeSet::new(),
             by_sound: BTreeMap::new(),
             extra: Vec::new(),
@@ -297,11 +335,25 @@ impl AudioEngine {
         }
         for t in self.config.tracks.values() {
             for l in &t.layers {
-                if !self.sounds.contains_key(&l.sound) {
-                    self.warnings.push(format!(
+                match self.sounds.get(&l.sound) {
+                    None => self.warnings.push(format!(
                         "{}: music.{} layer {:?} names no sound",
                         self.config.file, t.name, l.sound
-                    ));
+                    )),
+                    // A layer that is not a whole number of bars drifts off
+                    // the grid its changes wait for, a little every loop.
+                    Some(s) => {
+                        if let Some(bar) = t.bar_s() {
+                            let secs = s.clips[0].len() as f32 / self.rate as f32;
+                            let bars = secs / bar;
+                            if (bars - bars.round()).abs() * bar > 0.005 || bars.round() < 1.0 {
+                                self.warnings.push(format!(
+                                    "{}: music.{} layer {:?} is {secs:.3} s long, not a whole number of {bar:.3} s bars at {} bpm; its loop drifts off the bar",
+                                    self.config.file, t.name, l.sound, t.bpm.unwrap_or(0.0)
+                                ));
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -615,65 +667,21 @@ impl AudioEngine {
                 }
             }
         }
-        let current = self.music.as_ref().map(|p| p.track.clone());
         let want_track = want.as_ref().map(|w| w.0.clone());
-        if current != want_track {
-            if let Some(p) = self.music.take() {
-                let fade = self
-                    .config
-                    .tracks
-                    .get(&p.track)
-                    .map(|t| t.fade_ms / 1000.0)
-                    .unwrap_or(1.0);
-                let mut m = self.lock();
-                for l in &p.layers {
-                    m.stop(l.voice, fade);
+        self.change_music(want_track, &mut events);
+        // A change whose bar has come: the new track sounds, the old fades.
+        if let Some(due) = self.due {
+            if self.lock().rendered_frames() >= due {
+                self.due = None;
+                if let Some(o) = self.outgoing.take() {
+                    events.push((
+                        "music.stopped".to_string(),
+                        vec![("track".to_string(), Value::Str(o.track))],
+                    ));
                 }
-                drop(m);
-                events.push((
-                    "music.stopped".to_string(),
-                    vec![("track".to_string(), Value::Str(p.track))],
-                ));
-            }
-            if let Some(name) = want_track {
-                match self.config.tracks.get(&name).cloned() {
-                    None => {
-                        if self.missing.insert(format!("music:{name}")) {
-                            events.push((
-                                "sound.missing".to_string(),
-                                vec![("track".to_string(), Value::Str(name))],
-                            ));
-                        }
-                    }
-                    Some(t) => {
-                        let mut m = self.lock();
-                        let bus = m.bus(&t.bus).unwrap_or(0);
-                        let mut layers = Vec::new();
-                        // One lock: every layer starts on the same block, so they stay aligned.
-                        for d in &t.layers {
-                            if let Some(s) = self.sounds.get(&d.sound) {
-                                let v = m.play(s.clips[0].clone(), bus, 0.0, 0.0, 1.0, true, 0.0);
-                                m.set_ramp(v, t.fade_ms / 1000.0);
-                                layers.push(Layer {
-                                    voice: v,
-                                    def: d.clone(),
-                                    on: false,
-                                });
-                            }
-                        }
-                        drop(m);
-                        events.push((
-                            "music.started".to_string(),
-                            vec![
-                                ("track".to_string(), Value::Str(name.clone())),
-                                ("layers".to_string(), Value::Int(layers.len() as i64)),
-                            ],
-                        ));
-                        self.music = Some(Playing {
-                            track: name,
-                            layers,
-                        });
-                    }
+                if let Some(p) = &mut self.music {
+                    p.started = true;
+                    events.push(started_event(p));
                 }
             }
         }
@@ -695,8 +703,10 @@ impl AudioEngine {
                     x * x * (3.0 - 2.0 * x)
                 };
                 m.set(l.voice, g, 0.0);
+                // A track waiting for its bar is not heard yet; its layers
+                // come in when it is.
                 let on = g > 0.01;
-                if on != l.on {
+                if p.started && on != l.on {
                     l.on = on;
                     events.push((
                         "music.layer".to_string(),
@@ -710,6 +720,217 @@ impl AudioEngine {
             }
         }
         events
+    }
+
+    /// The music the world asks for, if it is not what plays: the track
+    /// sounding now leaves on its next bar or beat (its `change_on`, when
+    /// it has a tempo) and the new one starts on that very sample; with no
+    /// grid, at once. A change asked for again before its bar replaces the
+    /// waiting track; asked back to the one still sounding, it is undone.
+    fn change_music(&mut self, want: Option<String>, events: &mut Vec<AudioEvent>) {
+        let wanted = self.music.as_ref().map(|p| p.track.clone());
+        if want == wanted {
+            return;
+        }
+        let back = self.due.is_some() && self.outgoing.as_ref().map(|o| &o.track) == want.as_ref();
+        if back {
+            // Undone before its bar: the waiting track never sounds.
+            let pending = self.music.take();
+            let mut m = self.lock();
+            if let Some(p) = &pending {
+                for l in &p.layers {
+                    m.stop(l.voice, 0.0);
+                }
+            }
+            if let Some(o) = &self.outgoing {
+                for l in &o.layers {
+                    m.cancel_stop(l.voice);
+                }
+            }
+            drop(m);
+            events.push((
+                "music.cancelled".to_string(),
+                vec![(
+                    "track".to_string(),
+                    Value::Str(pending.map(|p| p.track).unwrap_or_default()),
+                )],
+            ));
+            self.music = self.outgoing.take();
+            self.due = None;
+            return;
+        }
+        // The track sounding now; a waiting one is replaced.
+        let sounding = if self.due.is_some() {
+            if let Some(p) = self.music.take() {
+                let mut m = self.lock();
+                for l in &p.layers {
+                    m.stop(l.voice, 0.0);
+                }
+                drop(m);
+                events.push((
+                    "music.cancelled".to_string(),
+                    vec![("track".to_string(), Value::Str(p.track))],
+                ));
+            }
+            self.due = None;
+            self.outgoing.take()
+        } else {
+            self.music.take()
+        };
+        let next = match &want {
+            None => None,
+            Some(name) => match self.config.tracks.get(name).cloned() {
+                Some(t) => Some(t),
+                None => {
+                    if self.missing.insert(format!("music:{name}")) {
+                        events.push((
+                            "sound.missing".to_string(),
+                            vec![("track".to_string(), Value::Str(name.clone()))],
+                        ));
+                    }
+                    None
+                }
+            },
+        };
+        let mut m = self.lock();
+        // Frames to the sounding track's next bar or beat.
+        let delay = sounding
+            .as_ref()
+            .and_then(|s| {
+                let unit = match s.def.change_on {
+                    ChangeOn::Bar => s.def.bar_s()?,
+                    ChangeOn::Beat => s.def.beat_s()?,
+                    ChangeOn::Now => return None,
+                };
+                let unit = (unit as f64 * self.rate as f64).round() as u64;
+                let played = m.played(s.layers.first()?.voice)?;
+                Some((unit - played % unit) % unit)
+            })
+            .unwrap_or(0);
+        if let Some(s) = &sounding {
+            for l in &s.layers {
+                m.stop_at(l.voice, delay, s.def.fade_ms / 1000.0);
+            }
+        }
+        let playing = next.map(|t| {
+            let bus = m.bus(&t.bus).unwrap_or(0);
+            let mut layers = Vec::new();
+            // One lock: every layer starts on the same frame, so they stay aligned.
+            for d in &t.layers {
+                if let Some(snd) = self.sounds.get(&d.sound) {
+                    let v = m.play_at(snd.clips[0].clone(), bus, 0.0, 0.0, 1.0, true, 0.0, delay);
+                    m.set_ramp(v, t.fade_ms / 1000.0);
+                    layers.push(Layer {
+                        voice: v,
+                        def: d.clone(),
+                        on: false,
+                    });
+                }
+            }
+            Playing {
+                track: t.name.clone(),
+                def: t,
+                layers,
+                started: delay == 0,
+            }
+        });
+        let now = m.rendered_frames();
+        drop(m);
+        if delay == 0 {
+            if let Some(s) = sounding {
+                events.push((
+                    "music.stopped".to_string(),
+                    vec![("track".to_string(), Value::Str(s.track))],
+                ));
+            }
+            if let Some(p) = &playing {
+                events.push(started_event(p));
+            }
+            self.music = playing;
+        } else {
+            let on = sounding
+                .as_ref()
+                .map(|s| s.def.change_on.name())
+                .unwrap_or("now");
+            events.push((
+                "music.queued".to_string(),
+                vec![
+                    ("track".to_string(), Value::Str(want.unwrap_or_default())),
+                    (
+                        "from".to_string(),
+                        Value::Str(
+                            sounding
+                                .as_ref()
+                                .map(|s| s.track.clone())
+                                .unwrap_or_default(),
+                        ),
+                    ),
+                    ("on".to_string(), Value::Str(on.to_string())),
+                    (
+                        "in_ms".to_string(),
+                        Value::Float(
+                            (delay as f64 * 1000.0 / self.rate as f64 * 10.0).round() / 10.0,
+                        ),
+                    ),
+                ],
+            ));
+            self.music = playing;
+            self.outgoing = sounding;
+            self.due = Some(now + delay);
+        }
+    }
+
+    /// Where the music is: its track, tempo, and bar and beat (from 1),
+    /// and a change waiting for its bar.
+    pub fn music_position(&self) -> Option<MusicPosition> {
+        let sounding = if self.due.is_some() {
+            self.outgoing.as_ref()
+        } else {
+            self.music.as_ref()
+        };
+        let m = self.lock();
+        let mut seconds = 0.0;
+        let (track, bpm, bar, beat) = match sounding {
+            Some(s) => {
+                let played = s
+                    .layers
+                    .first()
+                    .and_then(|l| m.played(l.voice))
+                    .unwrap_or(0);
+                let secs = played as f64 / self.rate as f64;
+                seconds = secs;
+                let (bar, beat) = match s.def.beat_s() {
+                    Some(b) => {
+                        let n = (secs / b as f64).floor() as u64;
+                        let per = s.def.beats_per_bar as u64;
+                        (Some(n / per + 1), Some(n % per + 1))
+                    }
+                    None => (None, None),
+                };
+                (Some(s.track.clone()), s.def.bpm, bar, beat)
+            }
+            None => (None, None, None, None),
+        };
+        let queued = self.due.map(|d| {
+            (
+                self.music
+                    .as_ref()
+                    .map(|p| p.track.clone())
+                    .unwrap_or_default(),
+                (d.saturating_sub(m.rendered_frames()) as f64 * 1000.0 / self.rate as f64) as f32,
+            )
+        });
+        if track.is_none() && queued.is_none() {
+            return None;
+        }
+        Some(MusicPosition {
+            track,
+            bpm,
+            bar,
+            beat,
+            seconds,
+            queued,
+        })
     }
 
     /// Advance the mixer to sim time `t` seconds when no device is pulling
@@ -850,6 +1071,8 @@ impl AudioEngine {
                 *self.lock() = Mixer::new(rate, &self.config);
                 self.spatial.clear();
                 self.music = None;
+                self.outgoing = None;
+                self.due = None;
                 self.load_sounds();
             }
             self.device = Some(device::open(self.mixer.clone(), rate).map_err(e)?);
@@ -870,9 +1093,10 @@ impl AudioEngine {
     pub fn silence(&mut self) {
         let keep: Vec<u64> = self
             .music
-            .as_ref()
-            .map(|p| p.layers.iter().map(|l| l.voice).collect())
-            .unwrap_or_default();
+            .iter()
+            .chain(self.outgoing.iter())
+            .flat_map(|p| p.layers.iter().map(|l| l.voice))
+            .collect();
         self.lock().stop_all_but(&keep, 0.03);
         self.spatial.clear();
     }
