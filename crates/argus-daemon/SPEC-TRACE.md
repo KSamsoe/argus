@@ -221,6 +221,12 @@ Phase 0 item 4, "JSON-RPC daemon with session, world, edit, sim (play, pause, st
 |---|---|---|---|
 | (§8) The agent reads the music. | Done | `audio.status`'s `music`: the track asked for, the one `sounding`, its `bpm`, `bar`, and `beat`, and a change `queued` with `in_ms`; the log has `music.queued`, `music.started`, `music.stopped`, `music.cancelled`, `music.layer`, as the mixer's answers. The pump advances the mixer to the sim's time before it reads `Music`, so a change is measured from where the music is. | Hollow's `tests/music.luau`, Outpost's `tests/ambience.luau` |
 
+## Found after item 7: a person's window plays
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§10) The human plays the build the agent made. | Done | `launch.rs`: a window opened from the command line starts the game playing. Kevin played item 7's build with `argus daemon run --window` (the command he was given left out `--play`): the window drew the game and answered F8, but nothing ticked, so the keys seemed to do nothing. Driving Hollow headless showed the keys reach the hero and move him once the game plays (x 3.0 to 6.05 in half a second of frames). | not with a real window; the frame loop checked headless |
+
 ## Phase 3, item 8: mods in the session
 
 | Spec | Status | Where | Test |

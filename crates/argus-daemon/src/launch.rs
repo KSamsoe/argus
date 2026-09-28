@@ -18,9 +18,11 @@ pub struct Launch {
     pub seed: Option<u64>,
     /// Transport; `None` picks the project's socket, or stdio with no project.
     pub transport: Option<Transport>,
-    /// Open a window of this size after the scene opens.
+    /// Open a window of this size after the scene opens. It is a
+    /// person's: the game plays in it at once, and closing it ends the
+    /// daemon.
     pub window: Option<(u32, u32)>,
-    /// Enter play mode after opening, so a human can play at once.
+    /// Enter play mode after opening, with or without a window.
     pub play: bool,
 }
 
@@ -56,6 +58,14 @@ pub fn launch(l: Launch) -> i32 {
                         Ok(s) => {
                             eprintln!("argusd: window {}x{} on {}", w, h, s["adapter"]);
                             daemon.exit_on_window_close = true;
+                            // A person opened it to play. Without this the
+                            // game stood still while the window drew it and
+                            // answered F8, which looked like the keys doing
+                            // nothing (found by Kevin playing item 7's
+                            // build, launched without --play).
+                            if !l.play {
+                                let _ = daemon.call(0, "sim.play", &json!({}));
+                            }
                         }
                         Err(e) => eprintln!("argusd: no window: {}", e),
                     }

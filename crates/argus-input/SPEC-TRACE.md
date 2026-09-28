@@ -55,7 +55,7 @@ Every statement in the design document (v0.3) that constrains action maps and th
 | Input-hold and toggle alternatives (§12 accessibility). | Done | Unchanged: a toggle action flips on the device press and ignores the release. | `input::toggles_holds_and_scripts` |
 | Recording from real devices. | Done | `input.record` captures the log however the values arrived. | the log tests above |
 
-In the daemon: `Daemon::device_input(events)` is the one entry point; `poll_devices` pumps the window (keys, mouse buttons, focus loss as release-all) and polls gamepads through gilrs (opened with the window, pads already connected announced on the first poll), once per frame before the frame's ticks. `input.devices` reports what is held and connected. `argusd --window --play` and `argus daemon start --window --play` open a window already playing.
+In the daemon: `Daemon::device_input(events)` is the one entry point; `poll_devices` pumps the window (keys, mouse buttons, focus loss as release-all) and polls gamepads through gilrs (opened with the window, pads already connected announced on the first poll), once per frame before the frame's ticks. `input.devices` reports what is held and connected. A window opened from the command line (`argusd --window`, `argus daemon start --window`, `argus daemon run --window`) is a person's and plays at once (since 2026-09-28: without `--play` it had opened stopped, drawing a game the keys could not move); `--play` plays without a window too.
 
 ## Phase 2, item 7: the bounded recorder
 
