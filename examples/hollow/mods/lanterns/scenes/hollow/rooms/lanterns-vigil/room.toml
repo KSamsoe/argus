@@ -1,0 +1,4 @@
+# The vigil (the lanterns mod): a quiet room past the hall. A mod's room is
+# named with its id, and joins the game's room graph by its neighbours.
+bounds = [80.0, 0.0, 104.0, 14.0]
+neighbors = ["c"]

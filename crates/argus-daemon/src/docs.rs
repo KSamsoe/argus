@@ -143,6 +143,7 @@ pub const TOOLS: &[ToolDoc] = &[
             opt("path", OBJECT, "{from, to, grid?}: from and to an entity (\"@player\") or [x, y]; the waypoints, steps, and cost, or why there is no way"),
             opt("strings", ANY, "a language's code, or {lang, prefix, missing}: the game's player-facing strings in that language beside the base's (strings.list)"),
             opt("timelines", ANY, "true, or a timeline's name: the timelines with their tracks and cues in time order, and those playing with where they are (timeline.list)"),
+            opt("mods", BOOLEAN, "true: the mods over the game, what each added and changed, those left out and why, and those in the project's mods/ (mods.list)"),
             opt("select", ARRAY, "[\"id\" | \"Component.field\" | \"Component\" | \"count()\" | \"sum(Component.field)\" | mean | min | max]; default [\"id\"]"),
             opt("where", OBJECT, "{has: [Component], not: [Component], within: {of: entity, r: number}, \"Component.field\": value | {eq|ne|lt|lte|gt|gte: value}}"),
             opt("group_by", ARRAY, "[\"Component.field\"]: one row a distinct value, with the aggregates in select"),
@@ -150,7 +151,7 @@ pub const TOOLS: &[ToolDoc] = &[
             opt("limit", INTEGER, "default 50"),
             opt("scene", STRING, "another scene, from the index"),
         ],
-        calls: &["world.get", "world.query", "nav.path", "strings.list", "timeline.list"],
+        calls: &["world.get", "world.query", "nav.path", "strings.list", "timeline.list", "mods.list"],
     },
     ToolDoc {
         name: "describe",
@@ -237,9 +238,9 @@ pub const TOOLS: &[ToolDoc] = &[
     },
     ToolDoc {
         name: "reload",
-        doc: "Take changes made on disk now: scripts are recompiled and swapped in while the world goes on from the current frame, and assets are reimported. Answers with what changed and every script error.",
-        params: &[],
-        calls: &["script.reload", "asset.import", "script.errors"],
+        doc: "Take changes made on disk now: scripts are recompiled and swapped in while the world goes on from the current frame, and assets are reimported. Answers with what changed and every script error. With mods: the scene loaded again from its start with those mods from the project's mods/ laid over the game, in that order ([] for none), answering with mods.list.",
+        params: &[opt("mods", ARRAY, "mod ids in load order: load the scene again with them (the world starts over)")],
+        calls: &["script.reload", "asset.import", "script.errors", "scene.load", "mods.list"],
     },
     ToolDoc {
         name: "marks",
@@ -306,8 +307,9 @@ pub const METHODS: &[MethodDoc] = &[
             req("project", STRING, "directory with argus.toml"),
             opt("scene", STRING, "default from argus.toml"),
             opt("seed", INTEGER, "default: the scene's seed policy"),
+            opt("mods", ARRAY, "mod ids from the project's mods/, in load order (phase 3 item 8); default none"),
         ],
-        returns: "the world.summary, plus issues: [] when the scene could not be instantiated, and run_from: the seq of the run's first event (after the load's own; what on_load systems emit is the run's)",
+        returns: "the world.summary, plus issues: [] when the scene could not be instantiated, run_from: the seq of the run's first event (after the load's own; what on_load systems emit is the run's), and with mods, mods: {loaded, left_out: [{id, why}], changes}",
     },
     MethodDoc {
         name: "session.status",
@@ -456,8 +458,15 @@ pub const METHODS: &[MethodDoc] = &[
         params: &[
             opt("scene", STRING, "default: current"),
             opt("seed", INTEGER, ""),
+            opt("mods", ARRAY, "mod ids in load order; default: the session's"),
         ],
-        returns: "the world.summary, plus issues when the scene is not clean, and run_from: the seq of the run's first event (after the load's own; what on_load systems emit is the run's)",
+        returns: "the world.summary, plus issues when the scene is not clean, run_from: the seq of the run's first event (after the load's own; what on_load systems emit is the run's), and with mods, mods: {loaded, left_out, changes}",
+    },
+    MethodDoc {
+        name: "mods.list",
+        doc: "The mods laid over the game (phase 3 item 8, section 15), in load order: each one's manifest and what it added; the mods left out and every reason (a name outside the mod's namespace, a row or an entity the game's schemas refuse, a script that does not load, a mod it needs left out); what the mods changed of the game's or an earlier mod's (def rows, strings, assets, sounds, tracks, entities, prefabs), the later winning; and every mod in the project's mods/ directory. Everything a mod adds is named with its id first (lanterns.flicker, lanterns_Lantern, lanterns/lantern, lanterns-vigil).",
+        params: &[],
+        returns: "{enabled, rule, loaded: [{id, name, version, game, requires, doc, kind, from, hash, adds: {scripts, components, def rows, rooms, entities, assets, sounds, strings}}], left_out: [{id, why: [{code, message, hint, at}]}], changes: [{kind, name, by, over, at}], available: [{id, name, version, game, requires, doc, hash}]}",
     },
     MethodDoc {
         name: "scene.issues",

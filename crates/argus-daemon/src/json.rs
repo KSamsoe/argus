@@ -152,10 +152,12 @@ pub fn bool_param(params: &Json, key: &str, default: bool) -> Result<bool> {
     }
 }
 
-/// Optional list of strings (missing means empty).
+/// Optional list of strings (missing means empty; so does `{}`, which is
+/// how a Luau caller's empty table arrives).
 pub fn str_list(params: &Json, key: &str) -> Result<Vec<String>> {
     match params.get(key) {
         None | Some(Json::Null) => Ok(Vec::new()),
+        Some(Json::Object(o)) if o.is_empty() => Ok(Vec::new()),
         Some(Json::Array(a)) => a
             .iter()
             .map(|v| {

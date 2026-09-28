@@ -7,21 +7,30 @@ return system "input.hermit" {
   stage = "input",
   after = { "input.actions", "input.pause" },
   unfrozen = true,
-  reads = { "Actions", "Transform", "Talk", "UiNode" },
+  reads = { "Actions", "Transform", "Talk", "UiNode", "Hermit" },
   writes = { "UiNode", "Talk", "Run" },
   doc = "Shows the hermit's prompt while the hero is within 1.8 units; the talk action there starts a Talk from dialogue:hermit.start. While a Talk is open the rest of each tick is frozen (the UI and the dialogue still run) and the run's clock waits.",
   run = function(q)
-    local hermit = q:entity("@hermit")
-    local hero = q:entity("@player")
     local talking = q:count("Talk") > 0
-    local d = hermit:get("Transform").pos - hero:get("Transform").pos
-    local near = d.x * d.x + d.y * d.y < 1.8 * 1.8
-    hermit:get("UiNode").visible = near and not talking
+    -- Any conversation stands the game still, his or another's (a mod's
+    -- keeper, phase 3 item 8).
     if talking then
       q:entity("@hud"):get("Run").started += q.dt
       q:freeze()
-      return
     end
+    -- His room streams out when the hero is two rooms from it (phase 3
+    -- item 6): then there is no one here to talk to. Found by his
+    -- component, not his id, which would fail and stop this system.
+    local hermit = nil
+    for e in q:each("Hermit") do
+      hermit = q:entity(e:id())
+    end
+    if hermit == nil then return end
+    local hero = q:entity("@player")
+    local d = hermit:get("Transform").pos - hero:get("Transform").pos
+    local near = d.x * d.x + d.y * d.y < 1.8 * 1.8
+    hermit:get("UiNode").visible = near and not talking
+    if talking then return end
     local paused = q:entity("@pause"):get("UiNode").visible
     if near and not paused and hero:get("Actions").talk_pressed then
       local t = q:spawn({ "Talk" }):get("Talk")

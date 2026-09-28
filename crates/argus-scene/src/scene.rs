@@ -40,6 +40,7 @@ use crate::project::Project;
 use crate::resolve::{resolve, Provenance, ResolveCtx, ResolvedEntity};
 use crate::tomlv;
 use argus_ecs::codec::{Reader, Writer};
+use argus_ecs::layers::{self, Change};
 use argus_ecs::{ArgusError, Entity, Event, FieldType, Result, SchemaBuilder, Value, World};
 use argus_os::time::Instant;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -380,6 +381,8 @@ pub struct Scene {
     all_ids: BTreeSet<String>,
     /// Neighbours by room, from the graph.
     adjacent: BTreeMap<String, Vec<String>>,
+    /// Entities a mod replaced (phase 3 item 8).
+    changes: Vec<Change>,
 }
 
 const FLAT: &str = "";
@@ -424,7 +427,22 @@ impl Scene {
             memory: BTreeMap::new(),
             all_ids: BTreeSet::new(),
             adjacent: BTreeMap::new(),
+            changes: Vec::new(),
         };
+        // A mod's own scene is named in its namespace (phase 3 item 8).
+        if let Some(id) = project
+            .layers
+            .each()
+            .into_iter()
+            .find(|l| l.root.join("scenes").join(name) == dir)
+            .and_then(|l| l.id)
+        {
+            if !layers::owns(id, name) {
+                scene
+                    .issues
+                    .push(layers::outside(id, "scene", name, scene_rel.clone()));
+            }
+        }
 
         let mut all_todo = Vec::new();
         let rooms_dir = dir.join("rooms");
@@ -472,6 +490,7 @@ impl Scene {
             if scene.doc.rooms.is_none() {
                 scene.doc.rooms = Some(RoomGraph::default());
             }
+            scene.lay_mods(project, true, &mut all_todo);
             scene.check_graph();
         } else {
             if scene.doc.rooms.is_some() {
@@ -487,6 +506,7 @@ impl Scene {
             }
             let (todo, bulk) = scene.scan_entities(project, &dir, None);
             all_todo.extend(todo);
+            scene.lay_mods(project, false, &mut all_todo);
             scene.rooms.insert(
                 FLAT.to_string(),
                 Room {
@@ -509,6 +529,155 @@ impl Scene {
         let ctx = project.ctx(registry);
         scene.resolve_all(&ctx);
         Ok(scene)
+    }
+
+    /// The mods' part of this scene (phase 3 item 8, §15), in load order:
+    /// each mod's `scenes/<name>/` after the scene's own directory. A mod
+    /// adds rooms named in its namespace, with a `room.toml` whose
+    /// `neighbors` join the room graph; it adds entities named in its
+    /// namespace to rooms that are there; and an entity file with the id
+    /// of one before it replaces that one, which is reported. It cannot
+    /// change a scene's `scene.toml` or a room's `room.toml` it did not
+    /// make.
+    fn lay_mods(&mut self, project: &Project, rooms: bool, todo: &mut Vec<Listed>) {
+        let own = self.dir.clone();
+        let mut after = false;
+        for l in project.layers.each() {
+            let md = l.root.join("scenes").join(&self.name);
+            if md == own {
+                after = true;
+                continue;
+            }
+            let Some(id) = l.id else { continue };
+            if !after || !argus_os::fs::is_dir(&md) {
+                continue;
+            }
+            let sf = md.join("scene.toml");
+            if argus_os::fs::is_file(&sf) {
+                let rel = project.rel(&sf);
+                self.issues.push(
+                    ArgusError::new(
+                        layers::codes::NAMESPACE,
+                        format!("mod {id}'s {rel} would change the settings of scene {:?}, which it did not make", self.name),
+                    )
+                    .hint("A mod adds rooms and entities to another's scene; the scene.toml stays its maker's. Take the file out of the mod.")
+                    .at(Some(format!("{rel}:1"))),
+                );
+            }
+            let mut mine: Vec<Listed> = Vec::new();
+            if rooms {
+                let rooms_dir = md.join("rooms");
+                let mut names: Vec<String> = argus_os::fs::read_dir(&rooms_dir)
+                    .map(|rd| {
+                        rd.into_iter()
+                            .filter(|e| e.is_dir)
+                            .filter_map(|e| e.path.file_name()?.to_str().map(str::to_string))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                names.sort();
+                for rn in names {
+                    let rdir = rooms_dir.join(&rn);
+                    let rrel = project.rel(&rdir.join("room.toml"));
+                    if self.rooms.contains_key(&rn) {
+                        if argus_os::fs::is_file(rdir.join("room.toml")) {
+                            self.issues.push(
+                                ArgusError::new(
+                                    layers::codes::NAMESPACE,
+                                    format!("mod {id}'s {rrel} would change room {rn:?}, which it did not make"),
+                                )
+                                .hint("A mod adds entities to another's room; its bounds and neighbours stay its maker's. Take room.toml out of the mod's copy of the room.")
+                                .at(Some(format!("{rrel}:1"))),
+                            );
+                        }
+                        let (t, bulk) = self.scan_entities(project, &rdir, Some(&rn));
+                        mine.extend(t);
+                        if let Some(r) = self.rooms.get_mut(&rn) {
+                            r.bulk.extend(bulk);
+                        }
+                        continue;
+                    }
+                    if !layers::owns(id, &rn) {
+                        self.issues
+                            .push(layers::outside(id, "room", &rn, format!("{rrel}:1")));
+                        continue;
+                    }
+                    let rdoc = match tomlv::read(&rdir.join("room.toml")) {
+                        Ok(t) => match parse_room_doc(&rrel, &t) {
+                            Ok(d) => d,
+                            Err(e) => {
+                                self.issues.push(e);
+                                continue;
+                            }
+                        },
+                        Err(e) => {
+                            self.issues
+                                .push(e.hint("Every room directory needs a room.toml."));
+                            continue;
+                        }
+                    };
+                    // A mod's room joins the graph by its own neighbours.
+                    if let Some(g) = self.doc.rooms.as_mut() {
+                        for n in &rdoc.neighbors {
+                            let there = g
+                                .edges
+                                .iter()
+                                .any(|(a, b)| (a == &rn && b == n) || (b == &rn && a == n));
+                            if !there {
+                                g.edges.push((rn.clone(), n.clone()));
+                            }
+                        }
+                    }
+                    let (t, bulk) = self.scan_entities(project, &rdir, Some(&rn));
+                    // A new room's entities are all its maker's.
+                    todo.extend(t);
+                    self.rooms.insert(
+                        rn.clone(),
+                        Room {
+                            name: rn,
+                            dir: rdir,
+                            doc: rdoc,
+                            entities: Vec::new(),
+                            bulk,
+                        },
+                    );
+                }
+            } else {
+                let (t, _) = self.scan_entities(project, &md, None);
+                mine.extend(t);
+            }
+            for it in mine {
+                let at = todo
+                    .iter()
+                    .position(|(r, s, _, _)| *r == it.0 && *s == it.1);
+                match at {
+                    Some(i) => {
+                        let full = match &it.0 {
+                            Some(r) => format!("{r}/{}", it.1),
+                            None => it.1.clone(),
+                        };
+                        self.changes.push(Change::new(
+                            "entity",
+                            &full,
+                            id,
+                            &todo[i].3,
+                            it.3.clone(),
+                        ));
+                        todo[i] = it;
+                    }
+                    None if layers::owns(id, &it.1) => todo.push(it),
+                    None => self
+                        .issues
+                        .push(layers::outside(id, "entity", &it.1, it.3.clone())),
+                }
+            }
+        }
+    }
+
+    /// Entities a mod replaced of the game's (or an earlier mod's), in
+    /// load order (phase 3 item 8).
+    pub fn changes(&self) -> &[Change] {
+        &self.changes
     }
 
     /// `rooms.follow` names an entity of an always-loaded room (one that
@@ -1985,6 +2154,21 @@ impl SceneDoc {
         let rel = format!("scenes/{name}/scene.toml");
         let text = tomlv::read(&path)?;
         parse_scene_doc(&rel, &text)
+    }
+
+    /// [`load`](SceneDoc::load) where the scene may be a mod's (phase 3
+    /// item 8): the game's `scenes/<name>/scene.toml`, else the first
+    /// mod's in load order that has one.
+    pub fn load_layers(layers: &argus_ecs::Layers, name: &str) -> Result<SceneDoc> {
+        for l in layers.each() {
+            let path = l.root.join("scenes").join(name).join("scene.toml");
+            if argus_os::fs::is_file(&path) {
+                let rel = l.show(&format!("scenes/{name}/scene.toml"));
+                let text = tomlv::read(&path)?;
+                return parse_scene_doc(&rel, &text);
+            }
+        }
+        SceneDoc::load(&layers.game, name)
     }
 }
 

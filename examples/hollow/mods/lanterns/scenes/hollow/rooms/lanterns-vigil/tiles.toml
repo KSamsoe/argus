@@ -1,0 +1,7 @@
+# The vigil's tiles; tile (0, 0) at its top-left corner. Written by
+# tools/vigil.py. A mod's paths are spelled from the game's root.
+[Transform]
+pos = [80.0, 14.0]
+
+[Tilemap]
+map = "mods/lanterns/scenes/hollow/rooms/lanterns-vigil/tiles.tilemap.toml"

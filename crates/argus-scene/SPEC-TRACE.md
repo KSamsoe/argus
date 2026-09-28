@@ -98,6 +98,13 @@ Phase 0 item 5, "TOML scenes, rooms, defs, and prefab overrides": this crate.
 | (§13) "Hollow's room-to-room music": the room the player is in, as data. | Done | `stream::InRoom { room }` on the followed entity, written by `rooms.stream` when the current room changes (registered before scripts load, so a system may declare it). Hollow's music reads it; so can a condition (`@player:InRoom.room == "c"`). | `stream::rooms_stream_around_the_followed_entity_and_remember`; Hollow's `tests/music.luau` |
 | An entity moved into a far room between ticks finds its floor. | Done | Found by Hollow's music test: the hero set down seven rooms deep sank through the floor, since the rooms streamed at the end of the tick and the physics ran a tick before their tiles came. `rooms.stream` runs first in the input stage now, before the physics, reading the entity's own Transform (its global one only with a parent). | Hollow's `tests/music.luau`, `tests/deep.luau` |
 
+## Phase 3, item 8: mods over the project
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§15) Mods add defs and scenes. | Done | `Project::open_with(root, schemas, mods)` keeps the layers. `Defs::load_layers`: a mod's `defs/<table>.toml` rows after the game's; a new key must be the mod's, an existing one has the fields the mod writes changed. `PrefabLibrary::load_layers` the same for prefabs (whole). `Scene::open` lays each mod's `scenes/<name>/` over the scene (`lay_mods`): new rooms named in the mod's namespace join the graph by their `neighbors`; entities named in its namespace join rooms that are there; an entity file with the id of one before it replaces it; a mod's `scene.toml` or `room.toml` for another's scene or room is refused. `SceneDoc::load_layers` and `Project::scenes` find a mod's own scenes. | argus-player's mods tests; Hollow's `tests/mods.luau` |
+| (§15) "Games that don't want mods set one flag." | Done | `ProjectConfig::mods_enabled`, `[mods] enabled` in `argus.toml`, true when not said. | argus-player `mods::games_that_dont_want_mods_set_one_flag` |
+
 ## Known limitations, stated so they are decisions
 
 - A child entity that exists only because a prefab declares it is not an "instance" of that prefab (`instances_of`), but it is counted among the entities a prefab change touched (`reapply_prefab`).

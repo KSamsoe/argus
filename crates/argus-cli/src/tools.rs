@@ -92,6 +92,8 @@ pub fn run(c: &mut dyn Caller, name: &str, args: &Json) -> Result<Json, Json> {
                     p["lang"] = json!(l);
                 }
                 c.call("strings.list", p)
+            } else if args.get("mods").and_then(Json::as_bool) == Some(true) {
+                c.call("mods.list", json!({}))
             } else if let Some(t) = args.get("timelines").filter(|v| !v.is_null()) {
                 match t.as_str() {
                     Some(name) => c.call("timeline.list", json!({ "name": name })),
@@ -240,6 +242,13 @@ pub fn run(c: &mut dyn Caller, name: &str, args: &Json) -> Result<Json, Json> {
         }
         "test" => c.call("test.run", pick(args, &["name", "file", "seeds", "update"])),
         "reload" => {
+            if let Some(m) = args.get("mods").filter(|v| !v.is_null()) {
+                let loaded = c.call("scene.load", json!({ "mods": m }))?;
+                let mods = c.call("mods.list", json!({}))?;
+                return Ok(
+                    json!({ "scene": loaded["issues"].clone(), "run_from": loaded["run_from"].clone(), "mods": mods }),
+                );
+            }
             let scripts = c.call("script.reload", json!({}))?;
             let assets = c.call("asset.import", json!({}))?;
             let errors = c.call("script.errors", json!({}))?;

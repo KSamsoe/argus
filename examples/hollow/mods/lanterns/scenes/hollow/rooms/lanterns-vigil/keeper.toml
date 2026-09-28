@@ -1,0 +1,33 @@
+# The lantern keeper: talk to him with E (systems/keeper.luau,
+# defs/dialogue.toml).
+[Transform]
+pos = [96.0, 1.75]
+
+[Sprite]
+atlas = "lanterns/keeper"
+size = [0.875, 1.5]
+z = 4.0
+
+[lanterns_Keeper]
+
+[Describe]
+name = "keeper"
+text = "The lantern keeper waits by his oil."
+
+# His prompt, over him while the hero is near.
+[UiRoot]
+follow = "@lanterns-vigil/keeper"
+follow_offset = [0.0, 1.1]
+interactive = false
+
+[UiNode]
+pivot = [0.5, 1.0]
+pad = [8.0, 5.0]
+visible = false
+
+[UiPanel]
+color = "panel"
+border = 1.0
+
+[UiText]
+key = "lanterns.keeper.prompt"

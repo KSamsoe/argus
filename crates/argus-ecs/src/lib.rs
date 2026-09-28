@@ -33,6 +33,7 @@ pub mod error;
 pub mod event;
 pub mod hierarchy;
 pub mod intern;
+pub mod layers;
 mod persist;
 pub mod query;
 pub mod schema;
@@ -49,6 +50,7 @@ pub use error::{codes, ArgusError, Result};
 pub use event::{Event, EventRecord};
 pub use hierarchy::{propagate, GlobalTransform, Parent, Transform};
 pub use intern::{Interner, StrId};
+pub use layers::{Layer, Layers, ModLayer};
 pub use persist::{Migrate, Migrated, Row, StateReport};
 pub use query::{Access, ArchetypeView, DynColumn, Fetch, Query};
 pub use schema::{

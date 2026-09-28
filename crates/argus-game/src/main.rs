@@ -14,10 +14,18 @@
 //! save location, and `argus mark import` makes it a mark the agent opens.
 //! A crash saves a report too.
 //!
+//! Mods (§15, phase 3 item 8): mod packs, and mod directories, in the
+//! `mods/` folder of the save location load over the game in the order its
+//! `load-order.toml` declares (by id without one), each at `mods/<id>/`
+//! beside the game's files in memory. A mod that cannot load is left out
+//! and the bottom line says which and why; a game with `[mods] enabled =
+//! false` looks at no folder.
+//!
 //! Flags: `--headless <ticks>` runs that many ticks with no window and
 //! prints the world's digest (how `argus build` checks what it built);
 //! `--lang <code>` plays in a language pack; `--data <dir>` reads packs
-//! from elsewhere; `--scene` and `--seed` as in the daemon.
+//! from elsewhere; `--mods <dir>` reads mods from elsewhere, `--no-mods`
+//! reads none; `--scene` and `--seed` as in the daemon.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -46,6 +54,8 @@ static PANIC: Mutex<Option<String>> = Mutex::new(None);
 #[derive(Default)]
 struct Args {
     data: Option<PathBuf>,
+    mods: Option<PathBuf>,
+    no_mods: bool,
     lang: Option<String>,
     headless: Option<u64>,
     scene: Option<String>,
@@ -59,6 +69,8 @@ fn parse() -> Result<Args, String> {
         let mut need = |f: &str| it.next().ok_or_else(|| format!("{f} needs a value"));
         match w.as_str() {
             "--data" => a.data = Some(PathBuf::from(need("--data")?)),
+            "--mods" => a.mods = Some(PathBuf::from(need("--mods")?)),
+            "--no-mods" => a.no_mods = true,
             "--lang" => a.lang = Some(need("--lang")?),
             "--scene" => a.scene = Some(need("--scene")?),
             "--seed" => {
@@ -138,7 +150,10 @@ fn run(args: Args) -> Result<(), String> {
     let root = dir.join("game");
     let packs = argus_player::pack::mount_dir(&data, &root, args.lang.as_deref())
         .map_err(|e| format!("{} {}", e.message, e.hint))?;
-    let mut p = Player::open(&root, args.scene.as_deref(), args.seed)
+    let cfg = argus_scene::ProjectConfig::load(&root).map_err(|e| e.message)?;
+    // The player's mods, over the game in memory (phase 3 item 8).
+    let (mods, mods_said) = player_mods(&root, &cfg, &args);
+    let mut p = Player::open_with(&root, args.scene.as_deref(), args.seed, mods)
         .map_err(|e| format!("{} {}", e.message, e.hint))?;
     p.record();
     let save = argus_player::save::save_dir(&p.name);
@@ -154,13 +169,17 @@ fn run(args: Args) -> Result<(), String> {
         }
         println!(
             "{}",
-            json!({ "packs": packs, "status": p.status(), "code": CODE, "save": save, "saves": saves })
+            json!({ "packs": packs, "status": p.status(), "code": CODE, "save": save, "saves": saves, "mods": p.mods.to_json() })
         );
         return Ok(());
     }
-    let cfg = argus_scene::ProjectConfig::load(&root).map_err(|e| e.message)?;
     let key = cfg.mark_key.unwrap_or_else(|| "F8".to_string());
+    let left_out = p.mods.left_out_line();
     let mut game = Game::open(p, key, save)?;
+    // Mods that did not load, or a load order that did not read.
+    if let Some(line) = left_out.or(mods_said) {
+        game.toast = Some((line, Instant::now()));
+    }
     loop {
         match catch_unwind(AssertUnwindSafe(|| game.frame())) {
             Ok(Ok(true)) => {}
@@ -406,6 +425,40 @@ impl Game {
         }
         self.r.set_bar(want.as_ref().map(|(t, c)| (t.as_str(), *c)));
         self.bar = key;
+    }
+}
+
+/// The mods to load: the folder `--mods` names, else `mods/` in the save
+/// location; none with `--no-mods`. Their files are mounted under `root`.
+/// Also a line for the player when the folder could not be read.
+fn player_mods(
+    root: &Path,
+    cfg: &argus_scene::ProjectConfig,
+    args: &Args,
+) -> (argus_player::mods::Report, Option<String>) {
+    use argus_player::mods;
+    if args.no_mods {
+        return (mods::Report::default(), None);
+    }
+    let Some(dir) = args
+        .mods
+        .clone()
+        .or_else(|| argus_player::save::save_dir(&cfg.name).map(|d| d.join("mods")))
+    else {
+        return (mods::Report::default(), None);
+    };
+    match mods::choose(cfg, &dir, mods::Order::Folder) {
+        Ok((report, found)) => match mods::mount(root, &found, &report.ids()) {
+            Ok(()) => (report, None),
+            Err(e) => (
+                mods::Report::default(),
+                Some(format!("Mods not loaded: {}", e.message)),
+            ),
+        },
+        Err(e) => (
+            mods::Report::default(),
+            Some(format!("Mods not loaded: {}", e.message)),
+        ),
     }
 }
 

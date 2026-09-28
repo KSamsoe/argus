@@ -1,0 +1,10 @@
+# A mod on a mod (phase 3 item 8): it needs lanterns loaded before it, and
+# changes three of lanterns' things, which the load order lets it do since
+# it loads later: the lantern's art, the keeper's line once they are lit,
+# and how quickly his light swells. It adds nothing of its own.
+id = "brighter"
+name = "Brighter lanterns"
+version = "1.0"
+game = "hollow"
+requires = ["lanterns"]
+doc = "Bigger lanterns, and a keeper proud of them."

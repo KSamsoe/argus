@@ -120,6 +120,9 @@ pub enum Kind {
     /// A language (`lang/<code>/` in the project): files laid over the
     /// game's, their paths as the game's.
     Lang(String),
+    /// A mod (phase 3 item 8): every file of `mods/<id>/`, laid over the
+    /// game at `mods/<id>/` when a player's mods folder has it.
+    Mod(String),
 }
 
 /// A release pack: a manifest (each file's path, address, and size) and the
@@ -158,22 +161,25 @@ impl Pack {
             Kind::Base => "game.pack".to_string(),
             Kind::Patch => format!("patch-{}.pack", self.seq),
             Kind::Lang(l) => format!("lang-{l}.pack"),
+            Kind::Mod(id) => format!("{id}.pack"),
         }
     }
 
     /// Its bytes.
     pub fn encode(&self) -> Vec<u8> {
-        let (kind, lang) = match &self.kind {
-            Kind::Base => ("base", None),
-            Kind::Patch => ("patch", None),
-            Kind::Lang(l) => ("lang", Some(l.as_str())),
+        let (kind, lang, id) = match &self.kind {
+            Kind::Base => ("base", None, None),
+            Kind::Patch => ("patch", None, None),
+            Kind::Lang(l) => ("lang", Some(l.as_str()), None),
+            Kind::Mod(m) => ("mod", None, Some(m.as_str())),
         };
         let mut w = Writer::new();
         w.magic(TAG, VERSION);
-        w.str(
-            &json!({ "game": self.game, "code": self.code, "kind": kind, "lang": lang, "seq": self.seq })
-                .to_string(),
-        );
+        let mut meta = json!({ "game": self.game, "code": self.code, "kind": kind, "lang": lang, "seq": self.seq });
+        if let Some(id) = id {
+            meta["mod"] = json!(id);
+        }
+        w.str(&meta.to_string());
         w.count(self.files.len());
         for (p, h, n) in &self.files {
             w.str(p);
@@ -202,6 +208,10 @@ impl Pack {
             (Some("base"), _) => Kind::Base,
             (Some("patch"), _) => Kind::Patch,
             (Some("lang"), Some(l)) => Kind::Lang(l.to_string()),
+            (Some("mod"), _) => match meta["mod"].as_str() {
+                Some(id) => Kind::Mod(id.to_string()),
+                None => return Err(bad_pack("a mod pack that names no mod")),
+            },
             _ => return Err(bad_pack("it says no kind")),
         };
         let hash = |b: &[u8]| -> Result<Hash> {
@@ -399,10 +409,11 @@ pub struct Built {
     pub report: Json,
 }
 
-/// Top-level directories a build leaves out: the tests, the dev tools, and
-/// the builds themselves. Anything whose name starts with a dot is left out
+/// Top-level directories a build leaves out: the tests, the dev tools, the
+/// builds themselves, and the mods made in the project (each its own pack,
+/// `argus build --mod`). Anything whose name starts with a dot is left out
 /// too (`.argus/`, `.git/`).
-pub const LEFT_OUT: &[&str] = &["tests", "tools", "dist"];
+pub const LEFT_OUT: &[&str] = &["tests", "tools", "dist", "mods"];
 
 fn walk_files(dir: &Path, root: &Path, out: &mut Vec<String>) -> Result<()> {
     let entries = argus_os::fs::read_dir(dir)
@@ -426,6 +437,133 @@ fn is_script(rel: &str) -> bool {
         && ["components/", "defs/", "systems/"]
             .iter()
             .any(|d| rel.starts_with(d))
+}
+
+/// Make mod `id`'s pack (phase 3 item 8) from `mods/<id>/` under the
+/// game's `root`: every file but its tests, scripts compiled to bytecode,
+/// sprites from its own import cache (textures and a catalog, as a game's
+/// pack carries them). Fails on a `mod.toml` that does not read or names
+/// another id, an import failure, or a script syntax error. Whether the
+/// mod plays with the game is the caller's check ([`crate::mods`]).
+pub fn build_mod(root: &Path, id: &str, opts: &BuildOptions) -> Result<Built> {
+    let cfg = argus_scene::ProjectConfig::load(root)?;
+    let mroot = root.join("mods").join(id);
+    let mf = mroot.join(crate::mods::MANIFEST);
+    let shown = format!("mods/{id}/{}", crate::mods::MANIFEST);
+    let text = argus_os::fs::read_to_string(&mf).map_err(|e| {
+        ArgusError::new(argus_ecs::layers::codes::BAD_MOD, format!("{shown}: {e}"))
+            .hint("A mod is a directory mods/<id>/ with a mod.toml saying id = \"<id>\".")
+    })?;
+    let manifest = crate::mods::Manifest::parse(&shown, &text)?;
+    if manifest.id != id {
+        return Err(ArgusError::new(
+            argus_ecs::layers::codes::BAD_MOD,
+            format!("{shown} says id {:?}; its directory is {id:?}", manifest.id),
+        ));
+    }
+    let mut all = Vec::new();
+    walk_files(&mroot, &mroot, &mut all)?;
+    all.sort();
+    let mut importer = argus_assets::Importer::new(&mroot);
+    importer.scan();
+    let mut problems: Vec<String> = importer
+        .failures()
+        .values()
+        .map(|f| format!("mods/{id}/assets/{}: {}", f.name, f.error.message))
+        .collect();
+    let sprites = importer.packed_sprites();
+    let mut files: Vec<(String, Vec<u8>)> = Vec::new();
+    let mut compiled = 0usize;
+    let mut left_out = Vec::new();
+    for rel in &all {
+        if sprites.sources.contains(rel) {
+            left_out.push(format!("mods/{id}/{rel}"));
+            continue;
+        }
+        let bytes = argus_os::fs::read(mroot.join(rel))
+            .map_err(|e| ArgusError::new(1, format!("mods/{id}/{rel}: {e}")))?;
+        let bytes = if is_script(rel) {
+            let src = String::from_utf8_lossy(&bytes);
+            match argus_luau::compile(&format!("mods/{id}/{rel}"), &src) {
+                Ok(b) => {
+                    compiled += 1;
+                    b
+                }
+                Err(e) => {
+                    problems.push(e.to_string());
+                    continue;
+                }
+            }
+        } else {
+            bytes
+        };
+        files.push((rel.clone(), bytes));
+    }
+    if !problems.is_empty() {
+        return Err(ArgusError::new(
+            1,
+            format!("the mod's build stopped: {}", problems.join("; ")),
+        ));
+    }
+    if !sprites.textures.is_empty() {
+        files.push((
+            argus_assets::CATALOG.to_string(),
+            serde_json::to_vec_pretty(&sprites.catalog).unwrap_or_default(),
+        ));
+        for (rel, disk) in &sprites.textures {
+            let bytes = argus_os::fs::read(disk)
+                .map_err(|e| ArgusError::new(1, format!("{}: {e}", disk.display())))?;
+            files.push((rel.clone(), bytes));
+        }
+    }
+    // The directory's hash, so the pack is the same mod to a replay.
+    files.push((
+        crate::mods::SOURCE_HASH.to_string(),
+        crate::mods::source_hash(&mroot)?.into_bytes(),
+    ));
+    files.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut listed = Vec::new();
+    let mut blobs = BTreeMap::new();
+    for (p, b) in &files {
+        let h = address(b);
+        listed.push((p.clone(), h, b.len() as u64));
+        blobs.insert(h, b.clone());
+    }
+    let bytes: u64 = files.iter().map(|(_, b)| b.len() as u64).sum();
+    let seq = opts
+        .since
+        .iter()
+        .filter(|p| p.kind == Kind::Mod(id.to_string()))
+        .map(|p| p.seq)
+        .max()
+        .unwrap_or(0)
+        + 1;
+    let pack = Pack {
+        game: cfg.name.clone(),
+        code: opts.code.clone(),
+        kind: Kind::Mod(id.to_string()),
+        seq,
+        files: listed,
+        removed: Vec::new(),
+        delta: false,
+        blobs,
+    };
+    let report = json!({
+        "game": cfg.name,
+        "mod": id,
+        "name": manifest.name,
+        "version": manifest.version,
+        "build": seq,
+        "files": files.len(),
+        "bytes": bytes,
+        "scripts_compiled": compiled,
+        "sprites": sprites.textures.len(),
+        "sources_left_out": left_out,
+    });
+    Ok(Built {
+        packs: vec![pack],
+        report,
+    })
 }
 
 /// Make a project's packs (§15): scripts compiled to bytecode; sprites from

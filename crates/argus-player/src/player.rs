@@ -59,6 +59,11 @@ pub struct Player {
     pub sounds: u64,
     /// A running digest of every event's frame, name, and fields.
     events_digest: u64,
+    /// The mods laid over the game, those left out, and what they changed
+    /// (phase 3 item 8).
+    pub mods: crate::mods::Report,
+    /// The mods asked for, which a load opens again.
+    mods_asked: crate::mods::Report,
 }
 
 fn fnv(h: &mut u64, bytes: &[u8]) {
@@ -73,6 +78,19 @@ impl Player {
     /// seed (default: the scene's; a random policy gets 1, since the browser
     /// and the desktop must agree).
     pub fn open(root: &Path, scene: Option<&str>, seed: Option<u64>) -> Result<Player> {
+        Player::open_with(root, scene, seed, crate::mods::Report::default())
+    }
+
+    /// [`open`](Player::open) with mods over the game (phase 3 item 8):
+    /// `mods` is what [`crate::mods::choose`] planned, their files already
+    /// at `mods/<id>/` under `root`. A mod with a problem is left out, and
+    /// [`Player::mods`] says why.
+    pub fn open_with(
+        root: &Path,
+        scene: Option<&str>,
+        seed: Option<u64>,
+        mods: crate::mods::Report,
+    ) -> Result<Player> {
         let root = root.to_path_buf();
         let cfg = argus_scene::ProjectConfig::load(&root)?;
         let scene_name = match scene {
@@ -86,7 +104,10 @@ impl Player {
             &cfg,
             &scene_name,
             seed,
-            &crate::assemble::Options::default(),
+            &crate::assemble::Options {
+                mods: mods.clone(),
+                ..crate::assemble::Options::default()
+            },
         )?;
         if let Some(e) = a.issues.first() {
             return Err(e.clone());
@@ -120,6 +141,8 @@ impl Player {
             events: 0,
             sounds: 0,
             events_digest: 0xcbf29ce484222325,
+            mods: a.mods,
+            mods_asked: mods,
         };
         let (saves, sources) = (p.saves.clone(), p.sources.clone());
         p.sched.on_tick_end(Box::new(move |world, sched| {
@@ -139,7 +162,7 @@ impl Player {
         pending
             .into_iter()
             .map(|(name, k)| {
-                let meta = json!({
+                let mut meta = json!({
                     "game": self.name,
                     "scene": self.scene,
                     "seed": self.seed,
@@ -150,6 +173,7 @@ impl Player {
                     "name": name,
                     "saved_at": argus_os::time::unix_secs(),
                 });
+                self.with_mods(&mut meta);
                 let bytes = crate::savegame::encode(&meta, &k);
                 (name, bytes)
             })
@@ -170,7 +194,12 @@ impl Player {
     /// what was migrated.
     pub fn load(&mut self, bytes: &[u8]) -> Result<Json> {
         let file = crate::savegame::decode(bytes)?;
-        let mut next = Player::open(&self.root, Some(file.scene()), file.seed())?;
+        let mut next = Player::open_with(
+            &self.root,
+            Some(file.scene()),
+            file.seed(),
+            self.mods_asked.clone(),
+        )?;
         let back = {
             let store = next.particles.borrow();
             file.read_into(&next.world, &store, Some(&mut next.host))?
@@ -216,7 +245,7 @@ impl Player {
     /// leaves the world at the end out). None without the recorder.
     pub fn report(&self, note: &str, kind: &str, code: &str) -> Option<Vec<u8>> {
         let r = self.recorder.as_ref()?;
-        let meta = json!({
+        let mut meta = json!({
             "game": self.name,
             "scene": self.scene,
             "seed": self.seed,
@@ -225,6 +254,7 @@ impl Player {
             "kind": kind,
             "digest": format!("{:016x}", self.digest()),
         });
+        self.with_mods(&mut meta);
         let end = (kind != "crash").then_some(&self.world);
         Some(r.report(meta, &self.sched, &self.sources, end))
     }
@@ -360,11 +390,20 @@ impl Player {
         Ok(n)
     }
 
+    /// The mods a replay, a save, or a mark needs to reproduce this run
+    /// (phase 3 item 8): id, version, and content hash of each, in load
+    /// order, when there are any.
+    fn with_mods(&self, meta: &mut Json) {
+        if !self.mods.loaded.is_empty() {
+            meta["mods"] = self.mods.identity();
+        }
+    }
+
     /// A mark: what reproduces this moment anywhere the run is
     /// deterministic (§10): the run's identity, the frame, the input log,
     /// the digests to check against, and a note.
     pub fn mark(&self, note: &str, code: &str) -> Json {
-        json!({
+        let mut m = json!({
             "scene": self.scene,
             "seed": self.seed,
             "code": code,
@@ -373,7 +412,9 @@ impl Player {
             "events_digest": format!("{:016x}", self.events_digest),
             "log": self.input_log(),
             "note": note,
-        })
+        });
+        self.with_mods(&mut m);
+        m
     }
 
     /// Answer sound requests and count and digest what happened.

@@ -194,6 +194,12 @@ pub struct AudioEngine {
     pub played: u64,
     /// The frame `rng` was seeded for (`at_frame`).
     rng_frame: Option<u64>,
+    /// The game and its mods (phase 3 item 8).
+    layers: argus_ecs::Layers,
+    /// What the mods changed of the game's sounds and tracks.
+    changes: Vec<argus_ecs::layers::Change>,
+    /// Mods' audio.toml files refused.
+    mod_problems: Vec<ArgusError>,
 }
 
 fn round3(x: f32) -> f64 {
@@ -240,7 +246,33 @@ impl AudioEngine {
     /// Load `audio.toml` and every sound under `assets/`, seeded from the
     /// run seed so variation choices replay.
     pub fn load(root: &Path, seed: u64) -> Result<AudioEngine> {
-        let config = AudioConfig::load(root)?;
+        AudioEngine::load_layers(&argus_ecs::Layers::game(root), seed)
+    }
+
+    /// [`load`](AudioEngine::load) for the game and its mods (phase 3
+    /// item 8): each mod's `audio.toml` over the game's
+    /// ([`AudioConfig::lay_over`]), and each mod's WAVs named in its
+    /// namespace as sounds. A mod whose `audio.toml` is refused adds
+    /// nothing, and the refusal is in [`mod_problems`](Self::mod_problems).
+    pub fn load_layers(layers: &argus_ecs::Layers, seed: u64) -> Result<AudioEngine> {
+        let root = layers.game.as_path();
+        let mut config = AudioConfig::load(root)?;
+        let mut changes = Vec::new();
+        let mut problems = Vec::new();
+        for l in layers.each().into_iter().skip(1) {
+            let id = l.id.unwrap_or_default();
+            let p = l.root.join("audio.toml");
+            let Ok(text) = argus_os::fs::read_to_string(&p) else {
+                continue;
+            };
+            match config.lay_over(id, &l.show("audio.toml"), &text, &l.root.join("assets")) {
+                Ok((c, ch)) => {
+                    config = c;
+                    changes.extend(ch);
+                }
+                Err(e) => problems.push(e),
+            }
+        }
         let mixer = Arc::new(Mutex::new(Mixer::new(RATE, &config)));
         let mut e = AudioEngine {
             root: root.to_path_buf(),
@@ -263,9 +295,26 @@ impl AudioEngine {
             last_time: None,
             played: 0,
             rng_frame: None,
+            layers: argus_ecs::Layers::game(root),
+            changes: Vec::new(),
+            mod_problems: Vec::new(),
         };
+        e.layers = layers.clone();
+        e.changes = changes;
+        e.mod_problems = problems;
         e.load_sounds();
         Ok(e)
+    }
+
+    /// What the mods changed of the game's sounds and tracks (phase 3
+    /// item 8).
+    pub fn changes(&self) -> &[argus_ecs::layers::Change] {
+        &self.changes
+    }
+
+    /// Mods' `audio.toml` files that were refused, each with why.
+    pub fn mod_problems(&self) -> &[ArgusError] {
+        &self.mod_problems
     }
 
     fn load_sounds(&mut self) {
@@ -289,14 +338,35 @@ impl AudioEngine {
             }
             defs.push(d);
         }
-        // Every WAV under assets/ is a sound by its path, unless defined.
+        // Every WAV under assets/ is a sound by its path, unless defined;
+        // a mod's, when named in its namespace, by its whole path.
         let mut files = Vec::new();
         wav_files(&assets, &assets, &mut files);
-        for f in files {
-            let name = f
-                .trim_end_matches(".wav")
-                .trim_end_matches(".WAV")
-                .to_string();
+        let mut named: Vec<(String, String)> = files
+            .into_iter()
+            .map(|f| {
+                let name = f
+                    .trim_end_matches(".wav")
+                    .trim_end_matches(".WAV")
+                    .to_string();
+                (name, f)
+            })
+            .collect();
+        for l in self.layers.each().into_iter().skip(1) {
+            let dir = l.root.join("assets");
+            let mut mine = Vec::new();
+            wav_files(&dir, &dir, &mut mine);
+            for f in mine {
+                let name = f
+                    .trim_end_matches(".wav")
+                    .trim_end_matches(".WAV")
+                    .to_string();
+                if l.id.is_some_and(|id| argus_ecs::layers::owns(id, &name)) {
+                    named.push((name, dir.join(&f).to_string_lossy().into_owned()));
+                }
+            }
+        }
+        for (name, f) in named {
             if !defs.iter().any(|d| d.name == name) {
                 defs.push(SoundDef {
                     bus: if name.starts_with("music/") {

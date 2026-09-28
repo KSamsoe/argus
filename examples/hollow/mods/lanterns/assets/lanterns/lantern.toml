@@ -1,0 +1,5 @@
+# A placeholder (the lanterns mod): white, so the lantern's tint is its
+# colour (systems/flicker.luau). Replace it with lantern.png.
+kind = "rect"
+size = [8, 12]
+color = "#FFFFFF"

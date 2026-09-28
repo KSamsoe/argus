@@ -419,6 +419,33 @@ impl AudioConfig {
 
     /// Parse the text of an `audio.toml`.
     pub fn parse(file: &str, text: &str) -> Result<AudioConfig> {
+        AudioConfig::parse_on(
+            AudioConfig {
+                file: file.to_string(),
+                ..AudioConfig::default()
+            },
+            true,
+            file,
+            text,
+        )
+    }
+
+    /// A mod's `audio.toml` over the game's (phase 3 item 8, §15). Its
+    /// buses, sounds, and tracks named in its namespace (`lanterns/chime`,
+    /// `lanterns.vigil`) are added; a sound or track with the name of one
+    /// before it replaces that one, and is reported; any other name, a
+    /// change to a bus it did not make, or a `[spatial]` table (the
+    /// game's) is refused. Its ducking rules are added. A WAV a mod sound
+    /// names is under the mod's `assets/` (`mod_assets`), and is given by
+    /// its whole path.
+    pub fn lay_over(
+        &self,
+        id: &str,
+        file: &str,
+        text: &str,
+        mod_assets: &std::path::Path,
+    ) -> Result<(AudioConfig, Vec<argus_ecs::layers::Change>)> {
+        use argus_ecs::layers::{self, Change};
         let doc: Doc = Doc::parse(text.to_string()).map_err(|e| {
             let line = e
                 .span()
@@ -426,10 +453,81 @@ impl AudioConfig {
                 .unwrap_or(1);
             err(file, line, format!("not valid TOML: {}", e.message()))
         })?;
-        let mut cfg = AudioConfig {
-            file: file.to_string(),
-            ..AudioConfig::default()
+        if let Some(item) = doc.get("spatial") {
+            return Err(ArgusError::new(
+                layers::codes::NAMESPACE,
+                format!("mod {id}'s {file} sets [spatial], which is the game's"),
+            )
+            .hint("A mod adds buses, sounds, music, and ducking rules; how far sounds carry stays the game's. Take [spatial] out.")
+            .at(Some(format!("{file}:{}", line_of(text, item)))));
+        }
+        let names = |key: &str| -> Vec<(String, u32)> {
+            doc.get(key)
+                .and_then(|i| i.as_table_like())
+                .map(|t| {
+                    t.iter()
+                        .map(|(n, v)| (n.to_string(), line_of(text, v)))
+                        .collect()
+                })
+                .unwrap_or_default()
         };
+        let mut changes = Vec::new();
+        for (n, l) in names("buses") {
+            if layers::owns(id, &n) {
+                continue;
+            }
+            let at = format!("{file}:{l}");
+            return Err(if self.buses.iter().any(|b| b.name == n) {
+                layers::not_changeable(id, "bus", &n, at)
+            } else {
+                layers::outside(id, "bus", &n, at)
+            });
+        }
+        for (kind, key) in [("sound", "sounds"), ("track", "music")] {
+            for (n, l) in names(key) {
+                let at = format!("{file}:{l}");
+                let had = match key {
+                    "sounds" => self.sounds.get(&n).map(|s| s.at.clone()),
+                    _ => self.tracks.get(&n).map(|_| self.file.clone()),
+                };
+                match had {
+                    Some(was) => changes.push(Change::new(kind, &n, id, &was, at)),
+                    None if layers::owns(id, &n) => {}
+                    None => return Err(layers::outside(id, kind, &n, at)),
+                }
+            }
+        }
+        let mine: Vec<String> = names("sounds").into_iter().map(|(n, _)| n).collect();
+        let mut cfg = AudioConfig::parse_on(self.clone(), false, file, text)?;
+        cfg.file = self.file.clone();
+        for n in &mine {
+            if let Some(s) = cfg.sounds.get_mut(n) {
+                for v in &mut s.variations {
+                    if let Source::File(f) = v {
+                        *f = mod_assets.join(&*f).to_string_lossy().into_owned();
+                    }
+                }
+            }
+        }
+        Ok((cfg, changes))
+    }
+
+    /// Parse over `cfg`: the game's defaults for a game's file, whose
+    /// `[buses]` replaces them (`fresh_buses`); the config so far for a
+    /// mod's, whose buses are added to it.
+    fn parse_on(
+        mut cfg: AudioConfig,
+        fresh_buses: bool,
+        file: &str,
+        text: &str,
+    ) -> Result<AudioConfig> {
+        let doc: Doc = Doc::parse(text.to_string()).map_err(|e| {
+            let line = e
+                .span()
+                .map(|s| text[..s.start.min(text.len())].matches('\n').count() as u32 + 1)
+                .unwrap_or(1);
+            err(file, line, format!("not valid TOML: {}", e.message()))
+        })?;
 
         if let Some(item) = doc.get("buses") {
             let line = line_of(text, item);
@@ -440,7 +538,11 @@ impl AudioConfig {
                     "buses must be a table of bus = { parent, gain_db }",
                 )
             })?;
-            let mut buses = Vec::new();
+            let mut buses = if fresh_buses {
+                Vec::new()
+            } else {
+                cfg.buses.clone()
+            };
             for (name, b) in t.iter() {
                 let bl = line_of(text, b);
                 let bt = b.as_table_like().ok_or_else(|| {

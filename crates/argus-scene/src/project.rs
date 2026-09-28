@@ -16,7 +16,8 @@ use crate::moves::{self, MoveRecord, MoveReport};
 use crate::prefab::PrefabLibrary;
 use crate::resolve::ResolveCtx;
 use crate::tomlv;
-use argus_ecs::{ArgusError, Registry, Result};
+use argus_ecs::layers::Change;
+use argus_ecs::{ArgusError, Layers, Registry, Result};
 use argus_sim::Clock;
 use std::path::{Path, PathBuf};
 
@@ -49,6 +50,10 @@ pub struct ProjectConfig {
     /// table (`strings/<base>.toml`) every other falls back to (phase 3
     /// item 4). "en" when the project does not say.
     pub strings_base: String,
+    /// `[mods] enabled`: whether the game takes mods (§15: "games that
+    /// don't want mods set one flag"; phase 3 item 8). True when the
+    /// project does not say: modding is intended.
+    pub mods_enabled: bool,
 }
 
 /// A day, when a project does not say how long its days are.
@@ -163,6 +168,20 @@ impl ProjectConfig {
                 }
             },
         };
+        let mods_enabled = match t
+            .get("mods")
+            .and_then(|i| i.as_table_like())
+            .and_then(|m| m.get("enabled"))
+        {
+            None => true,
+            Some(i) => i.as_bool().ok_or_else(|| {
+                ArgusError::new(
+                    codes::BAD_SCENE,
+                    "argus.toml [mods] enabled must be true or false",
+                )
+                .at(Some(at("mods")))
+            })?,
+        };
         Ok(ProjectConfig {
             name,
             clock,
@@ -173,6 +192,7 @@ impl ProjectConfig {
             mark_key,
             day_seconds,
             strings_base,
+            mods_enabled,
         })
     }
 
@@ -203,8 +223,13 @@ pub struct Project {
     pub defs: Defs,
     /// `.argus/moves.log`.
     pub moves: Vec<MoveRecord>,
+    /// The game and the mods over it, in load order (phase 3 item 8).
+    pub layers: Layers,
     def_schemas: Vec<DefSchema>,
     issues: Vec<ArgusError>,
+    /// What the mods changed of the game's (or an earlier mod's) prefabs
+    /// and def rows.
+    changes: Vec<Change>,
 }
 
 impl Project {
@@ -212,7 +237,16 @@ impl Project {
     /// schemas (from script or Rust); tables without one are reported in
     /// [`Project::issues`].
     pub fn open(root: &Path, def_schemas: Vec<DefSchema>) -> Result<Project> {
+        Project::open_with(root, def_schemas, &[])
+    }
+
+    /// [`open`](Project::open) with mods over the game (phase 3 item 8),
+    /// each at `mods/<id>/` under the root, in load order: their prefabs
+    /// and def rows are read after the game's, and their scenes, rooms,
+    /// and entities join the game's when a scene opens.
+    pub fn open_with(root: &Path, def_schemas: Vec<DefSchema>, mods: &[String]) -> Result<Project> {
         let root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+        let layers = Layers::with_mods(&root, mods);
         let cfg_path = root.join("argus.toml");
         let text = argus_os::fs::read_to_string(&cfg_path).map_err(|e| {
             ArgusError::new(
@@ -223,18 +257,27 @@ impl Project {
         })?;
         let config = ProjectConfig::parse(&text)?;
         let moves_log = moves::read_log(&root);
-        let (prefabs, mut issues) = PrefabLibrary::load(&root);
-        let (defs, def_issues) = Defs::load(&root, &def_schemas, &moves_log);
+        let (prefabs, mut issues, mut changes) = PrefabLibrary::load_layers(&layers);
+        let (defs, def_issues, def_changes) = Defs::load_layers(&layers, &def_schemas, &moves_log);
         issues.extend(def_issues);
+        changes.extend(def_changes);
         Ok(Project {
             root,
             config,
             prefabs,
             defs,
             moves: moves_log,
+            layers,
             def_schemas,
             issues,
+            changes,
         })
+    }
+
+    /// What the mods changed of the game's (or an earlier mod's) prefabs
+    /// and def rows, in load order.
+    pub fn changes(&self) -> &[Change] {
+        &self.changes
     }
 
     /// Create the §4 layout at `root` and open it. Existing files are kept.
@@ -266,6 +309,7 @@ impl Project {
                 mark_key: None,
                 day_seconds: DAY_SECONDS,
                 strings_base: "en".to_string(),
+                mods_enabled: true,
             };
             argus_os::fs::write(&cfg, c.to_toml()).map_err(|e| {
                 ArgusError::new(codes::MISSING_FILE, format!("cannot write argus.toml: {e}"))
@@ -293,22 +337,35 @@ impl Project {
         &self.issues
     }
 
-    /// Scene names: every `scenes/<name>/scene.toml`, sorted.
+    /// Scene names: every `scenes/<name>/scene.toml`, the game's and its
+    /// mods', sorted.
     pub fn scenes(&self) -> Vec<String> {
-        let mut out: Vec<String> = argus_os::fs::read_dir(self.root.join("scenes"))
-            .map(|rd| {
-                rd.into_iter()
-                    .filter(|e| argus_os::fs::is_file(e.path.join("scene.toml")))
-                    .filter_map(|e| e.path.file_name()?.to_str().map(str::to_string))
-                    .collect()
-            })
-            .unwrap_or_default();
+        let mut out: Vec<String> = Vec::new();
+        for l in self.layers.each() {
+            out.extend(
+                argus_os::fs::read_dir(l.root.join("scenes"))
+                    .map(|rd| {
+                        rd.into_iter()
+                            .filter(|e| argus_os::fs::is_file(e.path.join("scene.toml")))
+                            .filter_map(|e| e.path.file_name()?.to_str().map(str::to_string))
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default(),
+            );
+        }
         out.sort();
+        out.dedup();
         out
     }
 
-    /// `scenes/<name>`.
+    /// `scenes/<name>`: the game's, or the mod's that made the scene.
     pub fn scene_dir(&self, name: &str) -> PathBuf {
+        for l in self.layers.each() {
+            let d = l.root.join("scenes").join(name);
+            if argus_os::fs::is_file(d.join("scene.toml")) {
+                return d;
+            }
+        }
         self.root.join("scenes").join(name)
     }
 
@@ -324,7 +381,7 @@ impl Project {
 
     /// Re-read every prefab file.
     pub fn reload_prefabs(&mut self) {
-        let (lib, issues) = PrefabLibrary::load(&self.root);
+        let (lib, issues, _) = PrefabLibrary::load_layers(&self.layers);
         self.prefabs = lib;
         self.issues
             .retain(|e| e.code != codes::BAD_TOML && e.code != codes::BAD_SCENE);
@@ -333,7 +390,7 @@ impl Project {
 
     /// Re-read every def table.
     pub fn reload_defs(&mut self) {
-        let (defs, issues) = Defs::load(&self.root, &self.def_schemas, &self.moves);
+        let (defs, issues, _) = Defs::load_layers(&self.layers, &self.def_schemas, &self.moves);
         self.defs = defs;
         self.issues
             .retain(|e| e.code != codes::BAD_DEF && e.code != codes::MISSING_REFERENCE);

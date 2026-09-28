@@ -1,0 +1,4 @@
+# One field of one of the lanterns mod's timeline cues, changed: the
+# keeper's light swells in half the time.
+["lanterns.kindle.swell"]
+duration = 0.3

@@ -644,11 +644,17 @@ local function run_seed(spec, seed, opts, series)
     return msg
   end
   local ok, err = xpcall(function()
-    local p = { scene = spec.scene }
+    -- A scenario's mods (phase 3 item 8), in load order; none unless it
+    -- names them, whatever the scenario before it loaded.
+    local p = { scene = spec.scene, mods = spec.mods or {} }
     if seed ~= nil then p.seed = seed end
     local loaded = callm("scene.load", p)
     if loaded.issues ~= nil then
       error(string.format("scene %s has %d issue(s); the first: %s", spec.scene, #loaded.issues, show(loaded.issues[1])), 0)
+    end
+    if loaded.mods ~= nil and #loaded.mods.left_out > 0 then
+      local l = loaded.mods.left_out[1]
+      error(string.format("mod %s was left out: %s", l.id, tostring(l.why[1])), 0)
     end
     if seed == nil then
       local st = sim_status()

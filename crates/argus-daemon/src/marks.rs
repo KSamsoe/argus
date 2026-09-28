@@ -278,10 +278,15 @@ impl Daemon {
             .as_ref()
             .map(|i| i.borrow().journal()[base.min(upto)..upto].to_vec())
             .unwrap_or_default();
-        let meta = json!({
+        let mut meta = json!({
             "scene": scene, "seed": seed, "code": code,
             "clock": driving.to_string(), "from": start.tick, "to": frame,
         });
+        // The mods the run had (phase 3 item 8): a replay needs them.
+        let mods = self.mods_identity();
+        if let Some(m) = &mods {
+            meta["mods"] = m.clone();
+        }
         let bytes = replay::write(
             &dir.join("replay.bin"),
             &meta,
@@ -304,6 +309,9 @@ impl Daemon {
             "events": self.events_window(window_from, frame),
             "replay": { "file": "replay.bin", "from": start.tick, "to": frame, "bytes": bytes },
         });
+        if let Some(m) = mods {
+            out["mods"] = m;
+        }
         self.pictures(
             &mut out, dir, &start, frame, clip_len, every, fps, want_clip, software,
         );
@@ -734,6 +742,10 @@ impl Daemon {
             "replay": { "file": "replay.bin", "from": file.from, "to": file.to, "bytes": bytes.len() },
             "imported_from": params.get("from").cloned().unwrap_or(json!(path.to_string_lossy())),
         });
+        let mut mark = mark;
+        if meta["mods"].is_array() {
+            mark["mods"] = meta["mods"].clone();
+        }
         write_mark(root, &mark)?;
         self.emit_mark("mark.dropped", id, file.to, &note);
         Ok(self.mark_summary(root, &mark))
@@ -817,13 +829,19 @@ impl Daemon {
                     .map_err(|e| bad_mark(id, e.message))?,
             )
         };
+        let recorded = mark["mods"].clone();
+        self.ask_mods_of(&recorded);
         self.load_for(&root, &scene, seed)
             .map_err(|e| bad_mark(id, e.message))?;
+        let differ = self.mods_differ(&recorded);
         let mut out = match file {
             None => self.open_web(id, &mark, frame)?,
             Some(file) => self.open_file(file, frame)?,
         };
         out["id"] = json!(id);
+        if let Some(d) = differ {
+            out["mods"] = d;
+        }
         self.after_open();
         let digest = format!("{:016x}", self.world.digest());
         let same = mark["digest"].as_str() == Some(digest.as_str());
@@ -1174,8 +1192,14 @@ impl Daemon {
         let seed = file.meta["seed"].as_u64();
         let code = file.meta["code"].clone();
         let frame = file.to;
+        let recorded = file.meta["mods"].clone();
+        self.ask_mods_of(&recorded);
         self.load_for(&root, &scene, seed)?;
+        let differ = self.mods_differ(&recorded);
         let mut out = self.open_file(file, frame)?;
+        if let Some(d) = differ {
+            out["mods"] = d;
+        }
         self.after_open();
         let digest = format!("{:016x}", self.world.digest());
         let same = info["digest"].as_str().map(|d| d == digest);

@@ -83,6 +83,13 @@ Phase 0 item 9, "CLI": this crate, plus `argus_daemon::launch` (shared with `arg
 |---|---|---|---|
 | (§16) The dozen tools reach timelines. | Done | `query` takes `timelines` (true, or a name) and answers with `timeline.list`; `seek` takes `timeline` and `time` and scrubs with `timeline.seek`. `argus seek timeline=outro time=1.5` from the command line. | `schema::the_tools_call_methods_that_exist` |
 
+## Phase 3, item 8: mods
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§15) Mod packs. | Done | `argus build --mod <id>`: the mod's pack in `dist/mods/` (or `--out`), after checking that it loads with the game (the mods it requires first), nothing left out, and that the game plays the same with the mod from its pack as from its directory. | Hollow's `lanterns` and `brighter` built and checked |
+| (§16) About a dozen tools. | Done | No new tool: `query {mods: true}` reads `mods.list`, `reload {mods: [...]}` loads the scene again with those mods. | `tools.rs` |
+
 ## Known limitations, stated so they are decisions
 
 - A daemon started by the CLI outlives the shell; `argus daemon stop` ends it, and `.argus/daemon.json` is removed on a clean exit. `stop` returns once the daemon is gone (its record removed and its socket silent), not when it agreed to go: a command right after it used to reach the daemon on its way out and fail with "connection lost" (found after the phase-1 gate; `cli::the_binary_finds_starts_and_stops_a_project_daemon`). A daemon killed otherwise leaves a stale record, which `argus daemon status` reports and a method call replaces.

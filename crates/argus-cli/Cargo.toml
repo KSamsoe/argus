@@ -17,6 +17,7 @@ path = "src/main.rs"
 argus-daemon = { path = "../argus-daemon", version = "0.0.1" }
 argus-player = { path = "../argus-player", version = "0.0.1" }
 argus-scene = { path = "../argus-scene", version = "0.0.1" }
+argus-os = { path = "../argus-os", version = "0.0.1" }
 argus-sim = { path = "../argus-sim", version = "0.0.1" }
 serde_json = "1"
 interprocess = "2"

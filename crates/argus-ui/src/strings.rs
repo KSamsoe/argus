@@ -17,7 +17,8 @@
 //! other language in a pack of its own (§15: "a language can be added
 //! without a rebuild"); they are all mounted, so a player can switch.
 
-use argus_ecs::{ArgusError, Result, World};
+use argus_ecs::layers::{self, Change};
+use argus_ecs::{ArgusError, Layers, Result, World};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -34,6 +35,12 @@ pub struct Strings {
     base: String,
     langs: BTreeMap<String, BTreeMap<String, String>>,
     problems: Vec<String>,
+    /// Strings a mod changed (phase 3 item 8).
+    changes: Vec<Change>,
+    /// The mod file each string a mod wrote came from, by (language, key).
+    origins: BTreeMap<(String, String), String>,
+    /// The mod file that first wrote each key a mod added.
+    made: BTreeMap<String, String>,
 }
 
 fn bad(msg: impl Into<String>) -> ArgusError {
@@ -104,6 +111,99 @@ impl Strings {
             }
         }
         s
+    }
+
+    /// [`load`](Strings::load) for the game and its mods (phase 3 item 8):
+    /// each mod's `strings/<code>.toml` after the game's. A key in the
+    /// mod's namespace (`lanterns.keeper.hello`) is added; a key some
+    /// table already has (the game's, in any language) is changed, the
+    /// later mod winning, and reported; any other key is a problem, and
+    /// left out.
+    pub fn load_layers(layers: &Layers, base: &str) -> Strings {
+        let mut s = Strings::load(&layers.game, base);
+        for l in layers.each().into_iter().skip(1) {
+            let Some(id) = l.id else { continue };
+            let dir = l.root.join("strings");
+            let mut files: Vec<PathBuf> = argus_os::fs::read_dir(&dir)
+                .map(|rd| {
+                    rd.into_iter()
+                        .filter(|e| !e.is_dir)
+                        .map(|e| e.path)
+                        .filter(|p| p.extension().and_then(|x| x.to_str()) == Some("toml"))
+                        .collect()
+                })
+                .unwrap_or_default();
+            files.sort();
+            for p in files {
+                let lang = p
+                    .file_stem()
+                    .and_then(|x| x.to_str())
+                    .unwrap_or_default()
+                    .to_string();
+                let rel = l.show(&format!("strings/{lang}.toml"));
+                let text = match argus_os::fs::read_to_string(&p) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        s.problems.push(format!("{rel}: {e}"));
+                        continue;
+                    }
+                };
+                let doc = match text.parse::<toml_edit::ImDocument<String>>() {
+                    Ok(d) => d,
+                    Err(e) => {
+                        s.problems
+                            .push(format!("{rel} does not parse: {}", e.message().trim()));
+                        continue;
+                    }
+                };
+                let mut table = BTreeMap::new();
+                flatten("", doc.as_table(), &mut table, &rel, &mut s.problems);
+                for (k, v) in table {
+                    // Who made the key: this mod (in another language), an
+                    // earlier one, or the game.
+                    let maker = s.made.get(&k).cloned();
+                    let had = s.langs.values().any(|t| t.contains_key(&k));
+                    let theirs = had
+                        && maker
+                            .as_deref()
+                            .is_none_or(|m| layers::owner_of(m).as_deref() != Some(id));
+                    let was = theirs.then(|| s.origin(&lang, &k));
+                    match was {
+                        Some(from) => {
+                            s.changes
+                                .push(Change::new("string", &k, id, &from, rel.clone()))
+                        }
+                        None if had || layers::owns(id, &k) => {
+                            s.made.entry(k.clone()).or_insert_with(|| rel.clone());
+                        }
+                        None => {
+                            s.problems.push(format!(
+                                "{rel}: mod {id}'s string {k:?} is outside its namespace and names no key the game or an earlier mod has; a mod's keys start with its id, like {id}.{k}"
+                            ));
+                            continue;
+                        }
+                    }
+                    s.origins.insert((lang.clone(), k.clone()), rel.clone());
+                    s.langs.entry(lang.clone()).or_default().insert(k, v);
+                }
+            }
+        }
+        s
+    }
+
+    /// Where a key's string in `lang` came from, for a change's report:
+    /// the mod's file that wrote it last, else the game's.
+    fn origin(&self, lang: &str, key: &str) -> String {
+        self.origins
+            .get(&(lang.to_string(), key.to_string()))
+            .or_else(|| self.made.get(key))
+            .cloned()
+            .unwrap_or_else(|| format!("strings/{lang}.toml"))
+    }
+
+    /// What mods changed of the game's (or an earlier mod's) strings.
+    pub fn changes(&self) -> &[Change] {
+        &self.changes
     }
 
     /// A table from text (tests, and a file just written).

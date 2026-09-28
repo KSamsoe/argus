@@ -1,0 +1,21 @@
+# Les mots du mod des lanternes (phase 3, point 8), posés sur ceux du jeu.
+
+[lanterns.keeper]
+name = "Le gardien des lanternes"
+prompt = "E : parler"
+hello = "Tu as trouvé la veille. Je garde les lanternes du creux, quand il y a de l'huile."
+ask = "Je les allume ?"
+light = "Allumer les lanternes"
+bye = "Pas maintenant"
+lit = "Voilà. Toutes les lanternes d'ici à l'entrée de la grotte."
+after = "Elles brûleront jusqu'au matin."
+
+[lanterns.door]
+prompt = "E : passer"
+
+[lanterns.hermit]
+ask = "Qui d'autre vit ici ?"
+told = "Le gardien des lanternes, par la porte basse au bout du hall."
+
+[hermit]
+again = "Encore toi ? Le gardien des lanternes demandait de tes nouvelles."

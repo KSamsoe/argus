@@ -1,0 +1,4 @@
+# A placeholder: a low door, warm light behind it.
+kind = "rect"
+size = [16, 32]
+color = "#7A5230"

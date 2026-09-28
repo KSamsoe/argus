@@ -13,7 +13,8 @@
 use crate::codes;
 use crate::moves::{self, MoveRecord};
 use crate::tomlv;
-use argus_ecs::{ArgusError, ComponentSchema, FieldType, Result, Value};
+use argus_ecs::layers::{self, Change};
+use argus_ecs::{ArgusError, ComponentSchema, FieldType, Layers, Result, Value};
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -158,6 +159,23 @@ impl Defs {
         schemas: &[DefSchema],
         moves_log: &[MoveRecord],
     ) -> (Defs, Vec<ArgusError>) {
+        let (defs, errors, _) = Defs::load_layers(&Layers::game(root), schemas, moves_log);
+        (defs, errors)
+    }
+
+    /// [`load`](Defs::load) for the game and its mods (phase 3 item 8):
+    /// each table's rows from the game's `defs/<table>.toml`, then from each
+    /// mod's in load order. A mod's row whose key is in its namespace
+    /// (`lanterns.oil`) is added; one with the key of a row before it
+    /// changes the fields it writes, the later mod winning, and is
+    /// reported as a change; any other is refused.
+    pub fn load_layers(
+        layers: &Layers,
+        schemas: &[DefSchema],
+        moves_log: &[MoveRecord],
+    ) -> (Defs, Vec<ArgusError>, Vec<Change>) {
+        let root = layers.game.as_path();
+        let mut changes = Vec::new();
         let mut defs = Defs::default();
         let mut errors = Vec::new();
         for s in schemas {
@@ -175,18 +193,22 @@ impl Defs {
                 },
             );
         }
-        let dir = root.join("defs");
-        let mut files: Vec<_> = argus_os::fs::read_dir(&dir)
-            .map(|rd| {
-                rd.into_iter()
-                    .filter(|e| !e.is_dir)
-                    .map(|e| e.path)
-                    .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("toml"))
-                    .collect()
-            })
-            .unwrap_or_default();
-        files.sort();
-        for path in files {
+        let mut files = Vec::new();
+        for layer in layers.each() {
+            let dir = layer.root.join("defs");
+            let mut here: Vec<_> = argus_os::fs::read_dir(&dir)
+                .map(|rd| {
+                    rd.into_iter()
+                        .filter(|e| !e.is_dir)
+                        .map(|e| e.path)
+                        .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("toml"))
+                        .collect()
+                })
+                .unwrap_or_default();
+            here.sort();
+            files.extend(here.into_iter().map(|p| (layer.id.map(str::to_string), p)));
+        }
+        for (owner, path) in files {
             let rel = moves::rel(root, &path);
             let name = path
                 .file_stem()
@@ -203,9 +225,19 @@ impl Defs {
                 );
                 continue;
             };
-            table.file = Some(rel.clone());
+            if owner.is_none() || table.file.is_none() {
+                table.file = Some(rel.clone());
+            }
             match tomlv::read(&path) {
-                Ok(text) => load_rows(table, &rel, &text, &mut errors),
+                Ok(text) => match &owner {
+                    None => load_rows(table, &rel, &text, &mut errors),
+                    Some(id) => {
+                        let mut mine = table.clone();
+                        mine.rows.clear();
+                        load_rows(&mut mine, &rel, &text, &mut errors);
+                        lay_over(table, mine.rows, id, &mut errors, &mut changes);
+                    }
+                },
                 Err(e) => errors.push(e),
             }
         }
@@ -223,7 +255,7 @@ impl Defs {
             }
         }
         errors.extend(ref_errors);
-        (defs, errors)
+        (defs, errors, changes)
     }
 
     /// A table by name.
@@ -261,6 +293,44 @@ impl Defs {
             return Err(moves::missing_reference("def", r, at, moves_log));
         }
         Ok(())
+    }
+}
+
+/// A mod's rows over a table's: a row with a key already there writes the
+/// fields it gives over the old row's; a new key must be the mod's.
+fn lay_over(
+    table: &mut DefTable,
+    rows: Vec<DefRow>,
+    id: &str,
+    errors: &mut Vec<ArgusError>,
+    changes: &mut Vec<Change>,
+) {
+    for r in rows {
+        if let Some(old) = table.rows.iter_mut().find(|o| o.key == r.key) {
+            changes.push(Change::new(
+                "def row",
+                &format!("{}:{}", table.prefix, r.key),
+                id,
+                &old.at,
+                r.at.clone(),
+            ));
+            for (i, g) in r.given.iter().enumerate() {
+                if *g {
+                    old.values[i] = r.values[i].clone();
+                    old.given[i] = true;
+                }
+            }
+            old.at = r.at;
+        } else if layers::owns(id, &r.key) {
+            table.rows.push(r);
+        } else {
+            errors.push(layers::outside(
+                id,
+                &format!("{} row", table.name),
+                &r.key,
+                r.at,
+            ));
+        }
     }
 }
 

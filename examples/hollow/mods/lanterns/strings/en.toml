@@ -1,0 +1,24 @@
+# The lanterns mod's words (phase 3 item 8), laid over the game's tables:
+# its own keys start with lanterns; a key the game has is changed.
+
+[lanterns.keeper]
+name = "The lantern keeper"
+prompt = "E: talk"
+hello = "You found the vigil. I keep the lanterns of the hollow, when there is oil."
+ask = "Shall I light them?"
+light = "Light the lanterns"
+bye = "Not now"
+lit = "There. Every lantern from here to the cave mouth."
+after = "They will burn till morning."
+
+[lanterns.door]
+prompt = "E: go through"
+
+[lanterns.hermit]
+ask = "Who else lives down here?"
+told = "The lantern keeper, through the low door at the near end of the hall."
+
+# One of the game's own strings, changed: met again, the hermit mentions
+# the keeper.
+[hermit]
+again = "Back again? The lantern keeper was asking after you."

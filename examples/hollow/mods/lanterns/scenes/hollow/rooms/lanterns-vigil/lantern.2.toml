@@ -1,0 +1,12 @@
+# A lantern on the vigil's wall: dark until the keeper lights them.
+[Transform]
+pos = [92.0, 4.5]
+
+[Sprite]
+atlas = "lanterns/lantern"
+size = [0.5, 0.8]
+color = "#403828"
+z = 2.0
+
+[lanterns_Lantern]
+phase = 2.3

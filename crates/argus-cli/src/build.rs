@@ -157,6 +157,22 @@ pub fn build_command(inv: &Invocation, out: &mut dyn Write, err: &mut dyn Write)
 }
 
 fn summary(r: &Json) -> String {
+    if let Some(id) = r["mod"].as_str() {
+        return format!(
+            "built mod {id} for {}: {} ({} files, {} bytes, {} scripts compiled)\n  loads with the game; what it adds: {}\n  check: {}",
+            r["game"].as_str().unwrap_or("?"),
+            r["written"]["file"].as_str().unwrap_or("?"),
+            r["pack"]["files"],
+            r["written"]["bytes"],
+            r["pack"]["scripts_compiled"],
+            r["mods"]["loaded"]
+                .as_array()
+                .and_then(|a| a.iter().find(|l| l["id"] == id))
+                .map(|l| l["adds"].clone())
+                .unwrap_or_default(),
+            r["check"]["said"].as_str().unwrap_or("not run"),
+        );
+    }
     let mut s = format!(
         "built {} for {} ({}) in {}\n  packs: {} files, {} bytes; this build ships {} new blobs, {} bytes",
         r["game"].as_str().unwrap_or("?"),
@@ -179,6 +195,9 @@ fn summary(r: &Json) -> String {
 }
 
 fn build(inv: &Invocation, err: &mut dyn Write) -> Result<Json, String> {
+    if let Some(id) = &inv.mod_id {
+        return build_mod(inv, id);
+    }
     let target = match &inv.target {
         Some(t) => Target::parse(t)
             .ok_or_else(|| format!("no target {t:?}: windows, linux, macos, or web"))?,
@@ -299,6 +318,130 @@ fn build(inv: &Invocation, err: &mut dyn Write) -> Result<Json, String> {
             report["check"]["said"].as_str().unwrap_or_default(),
             report["check"]
         ));
+    }
+    Ok(report)
+}
+
+/// Mod `id` with the mods it needs before it, those first, from the
+/// project's `mods/`.
+fn with_requires(root: &Path, id: &str) -> Vec<String> {
+    let (found, _) = argus_player::mods::find(&argus_player::mods::project_dir(root));
+    fn visit(id: &str, found: &[argus_player::mods::Found], out: &mut Vec<String>) {
+        if out.iter().any(|x| x == id) {
+            return;
+        }
+        if let Some(f) = found.iter().find(|f| f.manifest.id == id) {
+            for r in &f.manifest.requires {
+                visit(r, found, out);
+            }
+        }
+        if !out.iter().any(|x| x == id) {
+            out.push(id.to_string());
+        }
+    }
+    let mut out = Vec::new();
+    visit(id, &found, &mut out);
+    out
+}
+
+/// The world's digest after `CHECK_TICKS` of the project's own scene with
+/// mod `id` over it (after the mods it needs), and what became of the
+/// mods; an error when the mod was left out.
+fn digest_with_mod(root: &Path, id: &str) -> Result<(String, Json), String> {
+    let cfg = argus_scene::ProjectConfig::load(root).map_err(|e| e.message)?;
+    let (mods, _) = argus_player::mods::choose(
+        &cfg,
+        &argus_player::mods::project_dir(root),
+        argus_player::mods::Order::Given(with_requires(root, id)),
+    )
+    .map_err(|e| e.message)?;
+    let mut p = argus_player::Player::open_with(root, None, None, mods).map_err(|e| e.message)?;
+    if let Some((_, why)) = p
+        .mods
+        .left_out
+        .iter()
+        .find(|(m, _)| m == id)
+        .or(p.mods.left_out.first())
+    {
+        let said: Vec<String> = why
+            .iter()
+            .map(|e| match &e.r#ref {
+                Some(at) => format!("{at}: {}", e.message),
+                None => e.message.clone(),
+            })
+            .collect();
+        return Err(format!(
+            "mod {id} does not load with the game: {}",
+            said.join("; ")
+        ));
+    }
+    p.step(CHECK_TICKS).map_err(|e| e.message)?;
+    Ok((format!("{:016x}", p.digest()), p.mods.to_json()))
+}
+
+/// `argus build --mod <id>`: the mod's pack, checked (phase 3 item 8).
+fn build_mod(inv: &Invocation, id: &str) -> Result<Json, String> {
+    let root = crate::project::find_project(inv.project.as_deref())?;
+    let root = root.canonicalize().unwrap_or(root);
+    let cfg = argus_scene::ProjectConfig::load(&root).map_err(|e| e.message)?;
+    if !cfg.mods_enabled {
+        return Err(format!(
+            "{} does not take mods ([mods] enabled = false in argus.toml)",
+            cfg.name
+        ));
+    }
+    let code = argus_daemon::daemon::code_version(&root);
+    // The mod as it is: it loads with the game, nothing left out.
+    let (from_dir, mods) = digest_with_mod(&root, id)?;
+    let built = pack::build_mod(
+        &root,
+        id,
+        &BuildOptions {
+            code: code.clone(),
+            since: Vec::new(),
+        },
+    )
+    .map_err(|e| format!("{} {}", e.message, e.hint))?;
+    let out_dir = inv
+        .out
+        .clone()
+        .unwrap_or_else(|| root.join("dist").join("mods"));
+    std::fs::create_dir_all(&out_dir).map_err(|e| format!("{}: {e}", out_dir.display()))?;
+    let p = &built.packs[0];
+    let bytes = p.encode();
+    let file = out_dir.join(p.file_name());
+    std::fs::write(&file, &bytes).map_err(|e| format!("{}: {e}", file.display()))?;
+    // The same game with the mod from its pack: the pack in memory where
+    // the directory was, for the rest of this process.
+    let back = Pack::decode(&bytes).map_err(|e| e.message)?;
+    let files = argus_player::mods::pack_files(&back).map_err(|e| e.message)?;
+    argus_os::fs::mount(root.join("mods").join(id), files);
+    let (from_pack, _) = digest_with_mod(&root, id)?;
+    let same = from_pack == from_dir;
+    let report = json!({
+        "game": cfg.name,
+        "mod": id,
+        "code": code,
+        "pack": built.report,
+        "written": { "file": plain(&file), "bytes": bytes.len() },
+        "mods": mods,
+        "check": {
+            "ticks": CHECK_TICKS,
+            "directory": from_dir,
+            "pack": from_pack,
+            "same": same,
+            "said": if same {
+                format!("the game plays the same with the mod from its pack as from its directory ({CHECK_TICKS} ticks)")
+            } else {
+                format!("the game does NOT play the same with the mod from its pack after {CHECK_TICKS} ticks")
+            },
+        },
+    });
+    if !same {
+        return Err(report["check"]["said"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string());
     }
     Ok(report)
 }

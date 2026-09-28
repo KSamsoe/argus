@@ -9,7 +9,8 @@ use crate::{
     codes, Asset, AutoMode, AutoTileSpec, Clip, Direction, Entry, Frame, Importer, Shape,
     SpriteAsset,
 };
-use argus_ecs::{ArgusError, Result};
+use argus_ecs::layers::{self, Change};
+use argus_ecs::{ArgusError, Layers, Result};
 use serde_json::{json, Map, Value as Json};
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -271,6 +272,63 @@ impl Importer {
             let e = sprite_from(s, root)?;
             imp.packed.insert(e.name.clone());
             imp.entries.insert(e.name.clone(), e);
+        }
+        Ok(imp)
+    }
+
+    /// An importer for the game and its mods (phase 3 item 8) whose
+    /// sprites come from each layer's catalog where it has one: a release
+    /// build's game pack and its mod packs. A layer without one imports
+    /// from its files when [`scan`](Importer::scan) runs. A mod's sprite
+    /// follows the namespace rule: in its namespace it is added, with the
+    /// name of one before it it replaces that one, otherwise it is a
+    /// failed import.
+    pub fn packed_layers(layers: &Layers) -> Result<Importer> {
+        let mut imp = Importer::layered(layers);
+        // Every asset name a layer before has, whether its catalog or its
+        // files (a pack over a mod still a directory) say so.
+        let mut known: std::collections::BTreeSet<String> = Default::default();
+        for li in 0..imp.layers.len() {
+            let mut files = BTreeMap::new();
+            crate::walk(&imp.layers[li].dir, &imp.layers[li].dir, &mut files);
+            let here: Vec<String> = crate::group_files(li, files.keys()).into_keys().collect();
+            let root = imp.layers[li].root.clone();
+            let path = root.join(CATALOG);
+            if !argus_os::fs::is_file(&path) {
+                known.extend(here);
+                continue;
+            }
+            let shown = format!("{}{CATALOG}", layers.each()[li].prefix);
+            let text = argus_os::fs::read_to_string(&path)
+                .map_err(|e| ArgusError::new(codes::CACHE, format!("{shown}: {e}")))?;
+            let j: Json = serde_json::from_str(&text).map_err(|e| bad(&e.to_string()))?;
+            let id = imp.layers[li].id.clone();
+            for s in j["sprites"].as_array().ok_or_else(|| bad("no sprites"))? {
+                let e = sprite_from(s, &root)?;
+                let name = e.name.clone();
+                if let Some(id) = &id {
+                    if known.contains(&name) {
+                        let was = imp
+                            .owners
+                            .get(&name)
+                            .map(|o| layers::dir_of(o))
+                            .unwrap_or_default();
+                        imp.changes
+                            .push(Change::new("asset", &name, id, &was, shown.clone()));
+                    } else if !layers::owns(id, &name) {
+                        imp.packed_failed.push(crate::Failure {
+                            name: name.clone(),
+                            error: layers::outside(id, "asset", &name, shown.clone()),
+                        });
+                        continue;
+                    }
+                    imp.owners.insert(name.clone(), id.clone());
+                }
+                imp.packed.insert(name.clone());
+                known.insert(name.clone());
+                imp.entries.insert(name, e);
+            }
+            known.extend(here);
         }
         Ok(imp)
     }

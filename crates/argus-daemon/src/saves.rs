@@ -50,7 +50,7 @@ impl Daemon {
             (s.root.clone(), s.scene_name.clone(), s.seed)
         };
         let cfg = ProjectConfig::load(&root)?;
-        let meta = json!({
+        let mut meta = json!({
             "game": cfg.name,
             "scene": scene,
             "seed": seed,
@@ -64,6 +64,10 @@ impl Daemon {
                 .map(|d| d.as_secs())
                 .unwrap_or(0),
         });
+        // The mods the game had (phase 3 item 8).
+        if let Some(m) = self.mods_identity() {
+            meta["mods"] = m;
+        }
         let bytes = savegame::encode(&meta, k);
         if let Some(d) = path.parent() {
             std::fs::create_dir_all(d).map_err(|e| save_io(path, e))?;
@@ -154,6 +158,7 @@ impl Daemon {
         t: Instant,
     ) -> Result<Json> {
         let name = name.to_string();
+        self.ask_mods_of(&file.meta["mods"]);
         self.load_for(root, file.scene(), file.seed())
             .map_err(|e| {
                 ArgusError::new(

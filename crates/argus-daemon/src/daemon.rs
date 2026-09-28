@@ -76,6 +76,9 @@ struct Session {
     /// Baselines for obs.diff and traces for obs.trace (item 13), fed by
     /// a scheduler observer at the end of every tick.
     history: Rc<RefCell<crate::history::History>>,
+    /// The mods laid over the game, those left out and why, and what they
+    /// changed (phase 3 item 8).
+    mods: argus_player::mods::Report,
     /// Keyframes for `sim.seek` (phase 2 item 0), fed at the end of ticks.
     ring: Rc<RefCell<crate::ring::Ring>>,
     /// What a keyframe captures besides the world and the scheduler.
@@ -198,6 +201,10 @@ pub struct Daemon {
     tune_committing: bool,
     /// Notifications waiting for the transport, per connection.
     pub outbox: Vec<(ConnId, Json)>,
+    /// The mods the session asked for, in load order (phase 3 item 8):
+    /// `session.open {mods}`, kept by `scene.load` and forks, set by a
+    /// replay, a mark, or a save from the mods it recorded.
+    mods_asked: Vec<String>,
 }
 
 impl Default for Daemon {
@@ -247,6 +254,7 @@ impl Daemon {
             tuning: None,
             tune_committing: false,
             outbox: Vec::new(),
+            mods_asked: Vec::new(),
         }
     }
 
@@ -425,6 +433,7 @@ impl Daemon {
             }
             "scene.list" => self.scene_list(),
             "scene.load" => self.scene_load(params),
+            "mods.list" => self.mods_list(),
             "scene.issues" => self.scene_issues(),
             "scene.rooms" => match self.index_target(params)? {
                 Some(s) => self.index()?.rooms(&s),
@@ -810,9 +819,78 @@ impl Daemon {
             Some(Json::Number(n)) => Some(n.as_u64().unwrap_or(0)),
             _ => None,
         };
+        self.mods_asked = json::str_list(params, "mods")?;
         self.forks.clear();
         self.active = "main".to_string();
         self.open_scene(root, &cfg, &scene_name, seed)
+    }
+
+    /// `mods.list` (phase 3 item 8): the mods laid over the game, in load
+    /// order, with what each added; those left out and why; what the mods
+    /// changed of the game's or each other's; and every mod in the
+    /// project's `mods/`.
+    fn mods_list(&self) -> Result<Json> {
+        let ses = self.require_session()?;
+        let mut out = ses.mods.to_json();
+        let (found, problems) =
+            argus_player::mods::find(&argus_player::mods::project_dir(&ses.root));
+        out["available"] = json!(found
+            .iter()
+            .map(|f| json!({
+                "id": f.manifest.id,
+                "name": f.manifest.name,
+                "version": f.manifest.version,
+                "game": f.manifest.game,
+                "requires": f.manifest.requires,
+                "doc": f.manifest.doc,
+                "hash": f.hash,
+            }))
+            .collect::<Vec<_>>());
+        if !problems.is_empty() {
+            out["unreadable"] = json!(problems
+                .iter()
+                .map(|(id, e)| json!({ "id": id, "why": json::error_json(e) }))
+                .collect::<Vec<_>>());
+        }
+        Ok(out)
+    }
+
+    /// The mods a run recorded (a replay's, a mark's, or a save's
+    /// identity: `[{id, version, hash}]`) asked for again; after the load,
+    /// what differs from them, if anything.
+    pub(crate) fn ask_mods_of(&mut self, recorded: &Json) {
+        self.mods_asked = recorded
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|m| m["id"].as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default();
+    }
+
+    /// How the mods loaded now differ from those a run recorded: `None`
+    /// when they are the same.
+    pub(crate) fn mods_differ(&self, recorded: &Json) -> Option<Json> {
+        let now = self.session.as_ref()?.mods.identity();
+        let then = if recorded.is_array() {
+            recorded.clone()
+        } else {
+            json!([])
+        };
+        (now != then).then(|| {
+            json!({
+                "recorded": then,
+                "now": now,
+                "said": "the mods loaded are not the ones the run was recorded with; it may not replay the same",
+            })
+        })
+    }
+
+    /// The session's mods as a run's identity, when there are any.
+    pub(crate) fn mods_identity(&self) -> Option<Json> {
+        let s = self.session.as_ref()?;
+        (!s.mods.loaded.is_empty()).then(|| s.mods.identity())
     }
 
     fn open_scene(
@@ -838,6 +916,12 @@ impl Daemon {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_nanos() as u64)
             .unwrap_or(1);
+        // The mods asked for, from the project's mods/ (phase 3 item 8).
+        let (mods, _) = argus_player::mods::choose(
+            cfg,
+            &argus_player::mods::project_dir(&root),
+            argus_player::mods::Order::Given(self.mods_asked.clone()),
+        )?;
         let a = argus_player::assemble(
             &root,
             cfg,
@@ -846,6 +930,7 @@ impl Daemon {
             &argus_player::Options {
                 random_seed,
                 audio: !self.building_fork,
+                mods,
             },
         )?;
         let argus_player::Assembly {
@@ -871,6 +956,7 @@ impl Daemon {
             timelines,
             #[cfg(feature = "audio")]
             audio,
+            mods,
             ..
         } = a;
         self.world = world;
@@ -946,6 +1032,7 @@ impl Daemon {
             anims,
             particles,
             history,
+            mods,
         });
         self.asset_events(&asset_report, true);
         self.pump_events();
@@ -979,6 +1066,18 @@ impl Daemon {
             });
         }
         out["script_errors"] = json!(self.script_error_count());
+        if let Some(s) = &self.session {
+            if !self.mods_asked.is_empty() || !s.mods.loaded.is_empty() {
+                out["mods"] = json!({
+                    "loaded": s.mods.ids(),
+                    "left_out": s.mods.left_out.iter().map(|(id, why)| json!({
+                        "id": id,
+                        "why": why.iter().map(|e| e.message.clone()).collect::<Vec<_>>(),
+                    })).collect::<Vec<_>>(),
+                    "changes": s.mods.changes.len(),
+                });
+            }
+        }
         if let Some(e) = &self.audio_error {
             out["audio_error"] = e.clone();
         }
@@ -1659,6 +1758,9 @@ impl Daemon {
             Some(Json::Number(n)) => Some(n.as_u64().unwrap_or(0)),
             _ => None,
         };
+        if params.get("mods").is_some() {
+            self.mods_asked = json::str_list(params, "mods")?;
+        }
         let cfg = ProjectConfig::load(&root)?;
         self.open_scene(root, &cfg, &name, seed)
     }
@@ -4893,6 +4995,7 @@ impl Daemon {
             (ses.scene_name.clone(), ses.seed)
         };
         let day = ProjectConfig::load(&self.require_session()?.root)?.day_seconds;
+        let mods_before = self.mods_asked.clone();
         let opts = argus_test::Options {
             day_seconds: Some(day),
             name: json::opt_str(params, "name")?.map(str::to_string),
@@ -4917,7 +5020,7 @@ impl Daemon {
         let restore = self.call(
             0,
             "scene.load",
-            &json!({ "scene": before.0, "seed": before.1 }),
+            &json!({ "scene": before.0, "seed": before.1, "mods": mods_before }),
         );
         let mut report = report.map_err(|e| ArgusError::new(codes::TEST_RUNNER, e))?;
         if let Err(e) = restore {

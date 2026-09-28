@@ -40,6 +40,12 @@ Every statement in the design document (v0.3) that constrains the asset importer
 |---|---|---|---|
 | (§12) SDF text with shaping: a font is an asset. | Done | `font.rs`: a `.ttf` or `.otf` under `assets/` imports as a signed distance field atlas (32 pixels an em, a 4-pixel reach, by default; a sidecar may set `size`, `spread`, and `chars`), baked from the glyph outlines: printable ASCII, Latin-1, common punctuation, the sidecar's characters, and whatever the font's substitutions make of them (ligatures, alternates). The font's bytes are kept for shaping. A character the font lacks is a warning. A process bakes a font once for the same inputs, so a test run that loads the project 57 times does not bake it 57 times. In a release pack the font file ships as it is and imports at start. | `importer::a_font_imports_as_a_distance_field_atlas_of_the_glyphs_text_needs` |
 
+## Phase 3, item 8: mods' assets
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§15) Mods add assets; retrofitting mods "costs a rewrite of asset loading". | Done | `Importer::layered`: each mod's `assets/` scanned after the game's, a file named from the game's root in errors (`mods/<id>/assets/...`); a mod's asset named in its namespace is added, one with the name of an asset before it replaces it whole (reported in `changes`), any other is a failed import. A mod sound's WAV is given by its whole path. `Importer::packed_layers`: each layer's catalog where it has one (a release's game pack and mod packs), knowing every earlier layer's names, catalog or files. `owner(name)` says which mod an asset came from. | argus-player `mods::a_mod_pack_from_a_players_folder_is_one_more_layer_over_the_games_packs`; `mods::a_mod_adds_under_its_id_and_changes_what_came_before` |
+
 ## Known limitations, stated so they are decisions
 
 - The watcher polls file metadata twice a second rather than using OS notifications. It is deterministic, has no dependency, and costs one metadata read per file.

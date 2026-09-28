@@ -1,0 +1,34 @@
+# The lanterns mod's timeline (phase 3 item 8): the kindling, played once
+# the keeper has lit the lanterns (systems/kindle.luau), the keeper its
+# actor. A chime, and the keeper's light swelling and settling.
+
+["lanterns.kindle"]
+length = 2.0
+
+["lanterns.kindle.chime"]
+timeline = "timeline:lanterns.kindle"
+kind = "event"
+at = 0.0
+sound = "lanterns/kindle"
+effects = "emit lanterns.kindling"
+
+["lanterns.kindle.swell"]
+timeline = "timeline:lanterns.kindle"
+kind = "tween"
+who = "actor"
+path = "Sprite.size"
+from = [0.875, 1.5]
+to = [1.1, 1.8]
+duration = 0.6
+easing = "out_sine"
+
+["lanterns.kindle.settle"]
+timeline = "timeline:lanterns.kindle"
+kind = "tween"
+at = 0.6
+who = "actor"
+path = "Sprite.size"
+from = [1.1, 1.8]
+to = [0.875, 1.5]
+duration = 1.2
+easing = "in_out_sine"

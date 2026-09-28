@@ -154,6 +154,7 @@ version = "0.0.1"
 dependencies = [
  "argus-daemon",
  "argus-ecs",
+ "argus-os",
  "argus-player",
  "argus-scene",
  "argus-sim",
@@ -354,6 +355,7 @@ dependencies = [
  "argus-ui",
  "gilrs",
  "serde_json",
+ "toml_edit 0.22.27",
 ]
 
 [[package]]

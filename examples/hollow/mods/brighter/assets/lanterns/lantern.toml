@@ -1,0 +1,4 @@
+# The lanterns mod's lantern, replaced: a bigger placeholder.
+kind = "rect"
+size = [10, 16]
+color = "#FFFFFF"

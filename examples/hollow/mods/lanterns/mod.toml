@@ -1,0 +1,13 @@
+# A mod for Hollow (phase 3 item 8): lanterns along the hollow, a keeper
+# who lights them, and a quiet room past the hall with its own music.
+#
+# Everything it adds is named with its id first (lanterns.keeper,
+# lanterns_Lantern, lanterns/lantern, lanterns-vigil), and it is laid over
+# the game at mods/lanterns/. It adds a door to the game's hall, a lantern
+# at the cave mouth, a choice to the hermit's conversation, and one thing
+# it changes of the game's own: what the hermit says when met again.
+id = "lanterns"
+name = "Lanterns"
+version = "1.0"
+game = "hollow"
+doc = "Lanterns along the hollow, a keeper past the hall who lights them, and the vigil's own music."

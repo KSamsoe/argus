@@ -15,7 +15,6 @@ return system "sim.run" {
   doc = "Counts the hero's falls and gems, finishes the run at the exit (run.finished {time, falls, gems}), plays the outro timeline and holds the hero there out of sight, restarts it on the restart action (or the pause menu's, skipping the outro), and writes the HUD line.",
   run = function(q)
     local hero = q:entity("@player")
-    local exit = q:entity("@exit")
     local hud = q:entity("@hud")
     local run = hud:get("Run")
     if hero:get("Actions").restart_pressed or run.restart then
@@ -46,7 +45,10 @@ return system "sim.run" {
         elseif ev.other == hero then
           other = ev.entity
         end
-        if other == exit then
+        -- The exit is in the hall, which streams out when the hero is two
+        -- rooms from it (phase 3 item 6): known by its id when touched,
+        -- never looked up while it may not be there.
+        if other ~= nil and other:name() == "c/exit" then
           run.done = true
           run.time = q.time - run.started
           q:emit("run.finished", { time = run.time, falls = run.falls, gems = run.gems })
@@ -67,7 +69,7 @@ return system "sim.run" {
     end
     -- Through the door: held in the doorway, out of sight, until R.
     if run.done then
-      local door = exit:get("Transform").pos
+      local door = q:entity("@exit"):get("Transform").pos
       hero:get("Transform").pos = vector.create(door.x, 1.8, 0)
       hero:get("KinematicBody").velocity = vector.create(0, 0, 0)
       hero:get("Sprite").visible = false

@@ -221,6 +221,13 @@ Phase 0 item 4, "JSON-RPC daemon with session, world, edit, sim (play, pause, st
 |---|---|---|---|
 | (§8) The agent reads the music. | Done | `audio.status`'s `music`: the track asked for, the one `sounding`, its `bpm`, `bar`, and `beat`, and a change `queued` with `in_ms`; the log has `music.queued`, `music.started`, `music.stopped`, `music.cancelled`, `music.layer`, as the mixer's answers. The pump advances the mixer to the sim's time before it reads `Music`, so a change is measured from where the music is. | Hollow's `tests/music.luau`, Outpost's `tests/ambience.luau` |
 
+## Phase 3, item 8: mods in the session
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§15) The agent makes and tests mods. | Done | `session.open` and `scene.load` take `mods` (ids from the project's `mods/`, in load order), kept by later loads and forks and put back after `test.run`; `mods.list` says what loaded, what each added and changed, what was left out and why, and what is in `mods/`. The open's answer has `mods: {loaded, left_out, changes}`. | Hollow's `tests/mods.luau` |
+| A modded run reproduces. | Done | Marks, replay files, and saves record the mods (`mods: [{id, version, hash}]`); `mark.open`, `replay.open`, and `sim.load` load with them and say when the mods differ from those recorded. | Hollow's `tests/mods.luau`; argus-player's mods tests |
+
 ## Known limitations, stated so they are decisions
 
 - A mark's clip is drawn while the game waits: 0.37 s in a debug build on Hollow with the window open, most of it the clip's 61 pictures. Released builds are faster; drawing the clip after the note is typed is the next step if it is felt.

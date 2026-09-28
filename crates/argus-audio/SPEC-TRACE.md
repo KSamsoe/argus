@@ -63,6 +63,12 @@ The first run of Swarm's first wave with sound read `sfx peak +18 dB` in `audio.
 | (§8) "All of it is observable as the event log; the human hears it, the agent reads it." | Done | `music.queued {track, from, on, in_ms}` when a change is asked for and waits; `music.started {track, layers, bpm}` when it sounds; `music.stopped {track}` when the old one starts to fade; `music.cancelled {track}`; `music.layer` as before. `AudioEngine::music_position`: the track sounding, its tempo, bar and beat (from 1), seconds, and a change waiting with the milliseconds to go; `audio.status` reports it. | Hollow's `tests/music.luau` (into the hall, asked for 2,967 ms before the cave's bar, started 2,950 ms later: within a frame); Outpost's `tests/ambience.luau` (dusk: 1,502 ms, started 1,517 ms later) |
 | Headless, the change is measured from where the music is now. | Done | The daemon and the player advance the mixer to the sim's time before they read the world's `Music` (found in Outpost's test: measured from the last step's start, a 10-tick step put the logged time 167 ms off). | Outpost's `tests/ambience.luau` |
 
+## Phase 3, item 8: mods' sounds and music
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§15) A mod carries sounds and music. | Done | `AudioConfig::lay_over`: a mod's `audio.toml` over the game's: buses, sounds, and tracks named in its namespace are added, a sound or track with the name of one before it replaced (reported), ducking rules added; a change to a game's bus, or a `[spatial]` table, is refused. `AudioEngine::load_layers` reads each mod's in load order, and a mod's WAVs named in its namespace are sounds. | Hollow's `tests/mods.luau` (the vigil's track changes on the bar); argus-player `mods::a_mod_adds_under_its_id_and_changes_what_came_before` |
+
 ## Known limitations, stated so they are decisions
 
 - WAV only; OGG and other formats come with the importer.

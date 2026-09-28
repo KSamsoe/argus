@@ -1,0 +1,56 @@
+# The lanterns mod's rows in the game's dialogue table (phase 3 item 8):
+# the keeper's conversation, and a choice added to the hermit's. Every key
+# starts with lanterns. Lines and names are string keys (strings/).
+
+["lanterns.keeper.start"]
+next = "dialogue:lanterns.keeper.hello"
+
+# The lanterns lit already: another greeting.
+["lanterns.keeper.start.after"]
+from = "dialogue:lanterns.keeper.start"
+when = "@lanterns.state:lanterns_Vigil.kindled"
+next = "dialogue:lanterns.keeper.after"
+
+["lanterns.keeper.hello"]
+speaker = "lanterns.keeper.name"
+line = "lanterns.keeper.hello"
+effects = "speaker:lanterns_Keeper.met = true"
+sound = "sfx/voice"
+next = "dialogue:lanterns.keeper.ask"
+
+["lanterns.keeper.ask"]
+speaker = "lanterns.keeper.name"
+line = "lanterns.keeper.ask"
+
+["lanterns.keeper.ask.light"]
+from = "dialogue:lanterns.keeper.ask"
+line = "lanterns.keeper.light"
+effects = "@lanterns.state:lanterns_Vigil.kindled = true; emit lanterns.kindled"
+next = "dialogue:lanterns.keeper.lit"
+
+["lanterns.keeper.ask.bye"]
+from = "dialogue:lanterns.keeper.ask"
+line = "lanterns.keeper.bye"
+
+["lanterns.keeper.lit"]
+speaker = "lanterns.keeper.name"
+line = "lanterns.keeper.lit"
+sound = "sfx/voice"
+
+["lanterns.keeper.after"]
+speaker = "lanterns.keeper.name"
+line = "lanterns.keeper.after"
+sound = "sfx/voice"
+
+# A choice in the hermit's conversation, which is the game's: he tells of
+# the keeper, and the talk goes back to his question.
+["lanterns.hermit.ask"]
+from = "dialogue:hermit.ask"
+line = "lanterns.hermit.ask"
+next = "dialogue:lanterns.hermit.told"
+
+["lanterns.hermit.told"]
+speaker = "hermit.name"
+line = "lanterns.hermit.told"
+sound = "sfx/voice"
+next = "dialogue:hermit.ask"

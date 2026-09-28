@@ -1,0 +1,13 @@
+# A lantern at the cave mouth (the lanterns mod adds it to the game's
+# room): dark until the keeper lights them all.
+[Transform]
+pos = [4.5, 4.0]
+
+[Sprite]
+atlas = "lanterns/lantern"
+size = [0.5, 0.8]
+color = "#403828"
+z = 2.0
+
+[lanterns_Lantern]
+phase = 0.7

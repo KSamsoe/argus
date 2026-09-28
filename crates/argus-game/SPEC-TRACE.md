@@ -18,6 +18,12 @@ The release executable (§15, phase 2 item 7): what a player double-clicks. The 
 |---|---|---|---|
 | (§6) Outpost's 1x/3x/10x in a release build. | Done | A frame owes `dt x hz x speed` ticks (at most five frames' worth at that speed), and the speed is the one a game asked for with `q:speed` (the player sets it after the step). | The daemon's and Outpost's tests; a window by hand |
 
+## Phase 3, item 8: mods
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§15) "A release build can load mod packs ... from a user directory, in a declared load order." | Done | The executable reads the `mods/` folder of the save location (`--mods <dir>` for another, `--no-mods` for none), plans and mounts its mods over the game, and says on the bottom line which mods did not load and why. `--headless` prints the mods report. | Hollow's release run headless: both packs by id, `brighter` after `lanterns`; a load order putting `brighter` first leaves it out; `--no-mods` |
+
 ## Known limitations, stated so they are decisions
 
 - The window opens at 1280x720 and can be resized. It fills the screen (borderless) while the game's `UiSettings.fullscreen` says so, read each frame (phase 3 item 1); a game's settings screen is its own UI (Hollow's pause menu has one). Settings last for the session; keeping them between launches is phase 5's accessibility pass.

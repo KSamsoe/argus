@@ -1,0 +1,33 @@
+# A low door at the near end of the game's hall (the lanterns mod adds it:
+# its id starts with lanterns). E near it goes through to the vigil.
+[Transform]
+pos = [46.5, 2.0]
+
+[Sprite]
+atlas = "lanterns/door"
+size = [1.0, 2.0]
+z = 1.0
+
+[lanterns_Door]
+to = [84.0, 1.8]
+
+[Describe]
+name = "lantern door"
+text = "A low door, warm light behind it."
+
+[UiRoot]
+follow = "@c/lanterns.door"
+follow_offset = [0.0, 1.2]
+interactive = false
+
+[UiNode]
+pivot = [0.5, 1.0]
+pad = [8.0, 5.0]
+visible = false
+
+[UiPanel]
+color = "panel"
+border = 1.0
+
+[UiText]
+key = "lanterns.door.prompt"

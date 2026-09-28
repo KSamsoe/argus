@@ -17,6 +17,7 @@ pub mod assemble;
 #[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
 pub mod desktop;
 pub mod keyframe;
+pub mod mods;
 pub mod pack;
 #[cfg(all(feature = "render", feature = "audio"))]
 mod player;

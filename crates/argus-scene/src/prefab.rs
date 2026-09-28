@@ -8,7 +8,8 @@ use crate::codes;
 use crate::doc::EntityDoc;
 use crate::moves::{self, MoveRecord};
 use crate::tomlv;
-use argus_ecs::{ArgusError, Result};
+use argus_ecs::layers::{self, Change};
+use argus_ecs::{ArgusError, Layers, Result};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -34,29 +35,51 @@ impl PrefabLibrary {
     /// Load `prefabs/` under `root`. Files that do not parse are reported,
     /// not fatal: the rest of the library still loads.
     pub fn load(root: &Path) -> (PrefabLibrary, Vec<ArgusError>) {
+        let (lib, errors, _) = PrefabLibrary::load_layers(&Layers::game(root));
+        (lib, errors)
+    }
+
+    /// [`load`](PrefabLibrary::load) for the game and its mods (phase 3
+    /// item 8): a mod's `prefabs/` after the game's. A prefab path in the
+    /// mod's namespace (`lanterns/lamp`) is added; one the game (or an
+    /// earlier mod) has is replaced, and reported; any other is refused.
+    pub fn load_layers(layers: &Layers) -> (PrefabLibrary, Vec<ArgusError>, Vec<Change>) {
         let mut lib = PrefabLibrary {
-            root: root.to_path_buf(),
+            root: layers.game.clone(),
             prefabs: BTreeMap::new(),
         };
         let mut errors = Vec::new();
-        let mut files = Vec::new();
-        walk(&root.join("prefabs"), &mut files);
-        files.sort();
-        for p in files {
-            if let Err(e) = lib.load_file(&p) {
-                errors.push(e);
+        let mut changes = Vec::new();
+        for layer in layers.each() {
+            let mut files = Vec::new();
+            walk(&layer.root.join("prefabs"), &mut files);
+            files.sort();
+            for p in files {
+                if let Some(id) = layer.id {
+                    let file = moves::rel(&lib.root, &p);
+                    let path = prefab_path(&file);
+                    match lib.prefabs.get(&path) {
+                        Some(old) => {
+                            changes.push(Change::new("prefab", &path, id, &old.file, file.clone()))
+                        }
+                        None if !layers::owns(id, &path) => {
+                            errors.push(layers::outside(id, "prefab", &path, file));
+                            continue;
+                        }
+                        None => {}
+                    }
+                }
+                if let Err(e) = lib.load_file(&p) {
+                    errors.push(e);
+                }
             }
         }
-        (lib, errors)
+        (lib, errors, changes)
     }
 
     fn load_file(&mut self, abs: &Path) -> Result<()> {
         let file = moves::rel(&self.root, abs);
-        let path = file
-            .strip_prefix("prefabs/")
-            .and_then(|r| r.strip_suffix(".toml"))
-            .unwrap_or(&file)
-            .to_string();
+        let path = prefab_path(&file);
         let text = tomlv::read(abs)?;
         let doc = EntityDoc::parse(&file, &text)?;
         self.prefabs
@@ -78,7 +101,11 @@ impl PrefabLibrary {
 
     /// Where a prefab path lives on disk.
     pub fn file_path(&self, path: &str) -> PathBuf {
-        self.root.join("prefabs").join(format!("{path}.toml"))
+        match self.prefabs.get(path) {
+            // A mod's prefab lives in its directory.
+            Some(p) => self.root.join(&p.file),
+            None => self.root.join("prefabs").join(format!("{path}.toml")),
+        }
     }
 
     /// Look one up.
@@ -174,6 +201,23 @@ impl PrefabLibrary {
         })?;
         self.load_file(&abs)
     }
+}
+
+/// A prefab's reference path from its file (spelled from the game's root):
+/// `prefabs/door/locked.toml` and `mods/<id>/prefabs/door/locked.toml` are
+/// both `door/locked`.
+fn prefab_path(file: &str) -> String {
+    let inner = match layers::owner_of(file) {
+        Some(id) => file
+            .strip_prefix(&format!("{}/", layers::dir_of(&id)))
+            .unwrap_or(file),
+        None => file,
+    };
+    inner
+        .strip_prefix("prefabs/")
+        .and_then(|r| r.strip_suffix(".toml"))
+        .unwrap_or(inner)
+        .to_string()
 }
 
 fn walk(dir: &Path, out: &mut Vec<PathBuf>) {

@@ -1,0 +1,32 @@
+# The way back to the hall (systems/doors.luau): E near it.
+[Transform]
+pos = [82.0, 2.0]
+
+[Sprite]
+atlas = "lanterns/door"
+size = [1.0, 2.0]
+z = 1.0
+
+[lanterns_Door]
+to = [48.5, 1.8]
+
+[Describe]
+name = "door"
+text = "A low door back to the hall."
+
+[UiRoot]
+follow = "@lanterns-vigil/door"
+follow_offset = [0.0, 1.2]
+interactive = false
+
+[UiNode]
+pivot = [0.5, 1.0]
+pad = [8.0, 5.0]
+visible = false
+
+[UiPanel]
+color = "panel"
+border = 1.0
+
+[UiText]
+key = "lanterns.door.prompt"

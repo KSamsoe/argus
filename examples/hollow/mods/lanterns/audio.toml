@@ -1,0 +1,22 @@
+# The lanterns mod's sounds and music (phase 3 item 8), laid over the
+# game's audio.toml: its names start with lanterns/. Placeholder tones.
+
+# The kindling's chime.
+[sounds."lanterns/kindle"]
+spatial = false
+gain = 0.3
+variations = [ { wave = "sine", freq = 660, slide = 220, ms = 500, release_ms = 400 } ]
+
+# The vigil: slow, a low hum, and a bell once the lanterns are lit
+# (systems/music.luau writes the intensity). 60 beats a minute, two bars.
+[sounds."lanterns/vigil.low"]
+tone = { wave = "sine", notes = [98, 98, 110, 98, 87, 87, 98, 110], note_ms = 1000, attack_ms = 60, release_ms = 300, gain = 0.45 }
+
+[sounds."lanterns/vigil.bell"]
+tone = { wave = "triangle", notes = [784, 659, 587, 659, 784, 880, 784, 659], note_ms = 1000, attack_ms = 5, release_ms = 700, gain = 0.16 }
+
+[music."lanterns/vigil"]
+bpm = 60
+beats_per_bar = 4
+fade_ms = 800
+layers = [ { sound = "lanterns/vigil.low" }, { sound = "lanterns/vigil.bell", from = 0.5, to = 1.0 } ]

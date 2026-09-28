@@ -161,5 +161,11 @@ return scenario "rooms stream around the hero, remember, and the index knows the
     if not b2.loaded then error("b is two rooms from deep-0-0", 0) end
     t.expect:field("@gem", "Gem.taken"):eq(true)
     t:log("walked from frame " .. walk_from .. " through the doorway at frame " .. crossed .. "; sought to " .. (crossed + 2) .. ": " .. s.replayed .. " ticks replayed from keyframe " .. s.from .. ", " .. s.checked .. " events checked, none different")
+    -- Nothing failed while the cave and the hall were streamed out: the
+    -- hermit's and the run's systems found their entities gone (found by
+    -- phase 3 item 8, whose mod room took the hero three rooms from the
+    -- hermit, whose system stopped for good).
+    local se = t:call("script.errors", {})
+    if se.total ~= 0 then error("script errors: " .. tostring(se.rows[1].message), 0) end
   end,
 }

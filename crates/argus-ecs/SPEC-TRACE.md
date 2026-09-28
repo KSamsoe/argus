@@ -148,6 +148,12 @@ Phase 0 item 1, "ECS core with SoA columns, archetypes, and hierarchy": this cra
 |---|---|---|---|
 | (§17) Room stream-in under 4 ms. | Done | `World::spawn_authored_with`: an authored entity placed straight into the archetype of all its components, as `spawn_with` places a runtime one, instead of one archetype move per component. | `argus-scene` streaming tests; Hollow's `tests/deep.luau` |
 
+## Phase 3, item 8: content layers
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§15) "a load-order rule and a namespace prefix on mod content" | Done | `layers.rs`: `Layers` (the game's root, then each mod at `mods/<id>/`, in load order) for the loaders to walk; `owns(id, name)` (the id, then `.`, `_`, `/`, or `-`); `outside` and `not_changeable`, the refusals; `Change`, a thing a mod changed of an earlier layer's; the 60xx codes. | `layers::tests`; argus-player's mods tests |
+
 ## Known limitations, stated so they are decisions
 
 - Column borrow flags are `Cell`s, so `World` is not `Sync`. Parallel stage scheduling (phase 5) replaces runtime flags with static per-stage checks from `Access`.

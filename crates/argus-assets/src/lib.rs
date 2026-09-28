@@ -30,7 +30,8 @@ pub use animator::{
     AnimatorSpec, Condition, FrameEventSpec, Num, Op, Operand, StateSpec, Term, TransitionSpec,
 };
 use argus_audio::{SoundDef, Source};
-use argus_ecs::{ArgusError, Result};
+use argus_ecs::layers::{self, Change};
+use argus_ecs::{ArgusError, Layers, Result};
 pub use argus_material::MaterialSpec;
 use argus_os::time::Instant;
 pub use catalog::{PackedSprites, CATALOG, TEXTURES};
@@ -411,9 +412,12 @@ fn fnv(h: &mut u64, bytes: &[u8]) {
     }
 }
 
-/// Every file of one asset: its sources and its sidecar.
+/// Every file of one asset: its sources and its sidecar, relative to its
+/// layer's `assets/`.
 #[derive(Clone, Debug, Default, PartialEq)]
 struct Group {
+    /// The layer the files are in (0 is the game's).
+    layer: usize,
     png: Option<String>,
     wav: Option<String>,
     wgsl: Option<String>,
@@ -421,13 +425,76 @@ struct Group {
     sidecar: Option<String>,
 }
 
+/// A layer's files (relative to its `assets/`) grouped into assets by name:
+/// `hero.png` and `hero.toml` are the asset `hero`.
+fn group_files<'a>(
+    layer: usize,
+    rels: impl Iterator<Item = &'a String>,
+) -> BTreeMap<String, Group> {
+    let mut groups: BTreeMap<String, Group> = BTreeMap::new();
+    for rel in rels {
+        let lower = rel.to_ascii_lowercase();
+        let (name, slot) = if let Some(n) = lower.strip_suffix(".atlas.toml") {
+            (rel[..n.len()].to_string(), 2)
+        } else if let Some(n) = lower.strip_suffix(".toml") {
+            (rel[..n.len()].to_string(), 2)
+        } else if let Some(n) = lower.strip_suffix(".png") {
+            (rel[..n.len()].to_string(), 0)
+        } else if let Some(n) = lower.strip_suffix(".wav") {
+            (rel[..n.len()].to_string(), 1)
+        } else if let Some(n) = lower.strip_suffix(".wgsl") {
+            (rel[..n.len()].to_string(), 3)
+        } else if let Some(n) = lower
+            .strip_suffix(".ttf")
+            .or_else(|| lower.strip_suffix(".otf"))
+        {
+            (rel[..n.len()].to_string(), 4)
+        } else {
+            continue;
+        };
+        let g = groups.entry(name).or_insert_with(|| Group {
+            layer,
+            ..Group::default()
+        });
+        match slot {
+            0 => g.png = Some(rel.clone()),
+            1 => g.wav = Some(rel.clone()),
+            3 => g.wgsl = Some(rel.clone()),
+            4 => g.font = Some(rel.clone()),
+            _ => g.sidecar = Some(rel.clone()),
+        }
+    }
+    groups
+}
+
 type Stamp = BTreeMap<String, (SystemTime, u64)>;
+
+/// One `assets/` directory: the game's, or a mod's (phase 3 item 8).
+#[derive(Clone, Debug)]
+struct AssetLayer {
+    /// The mod's id; `None` for the game.
+    id: Option<String>,
+    /// The layer's root.
+    root: PathBuf,
+    /// Its `assets/`.
+    dir: PathBuf,
+    /// Its `assets/` spelled from the game's root: `assets/`, or
+    /// `mods/<id>/assets/`.
+    prefix: String,
+}
 
 /// The importer: the catalog of `assets/` and its cache.
 pub struct Importer {
     root: PathBuf,
-    assets: PathBuf,
     cache: PathBuf,
+    /// The game's `assets/`, then each mod's in load order.
+    layers: Vec<AssetLayer>,
+    /// Assets a mod replaced, from the last scan.
+    changes: Vec<Change>,
+    /// The mod each of a mod's assets came from.
+    owners: BTreeMap<String, String>,
+    /// Sprites a mod pack's catalog named outside its namespace.
+    packed_failed: Vec<Failure>,
     entries: BTreeMap<String, Entry>,
     failed: BTreeMap<String, Failure>,
     /// Stamps of each asset's input files when last imported.
@@ -469,10 +536,32 @@ fn pow2(n: u32) -> u32 {
 impl Importer {
     /// An importer for a project; nothing is read until `scan`.
     pub fn new(root: &Path) -> Importer {
+        Importer::layered(&Layers::game(root))
+    }
+
+    /// An importer for the game and its mods (phase 3 item 8, §15): each
+    /// mod's `assets/` after the game's. A mod's asset named in its
+    /// namespace (`lanterns/lantern`) is added; one with the name of an
+    /// asset before it replaces that one, and is reported; any other is a
+    /// failed import.
+    pub fn layered(layers: &Layers) -> Importer {
+        let root = layers.game.clone();
         Importer {
-            root: root.to_path_buf(),
-            assets: root.join("assets"),
+            layers: layers
+                .each()
+                .iter()
+                .map(|l| AssetLayer {
+                    id: l.id.map(str::to_string),
+                    root: l.root.to_path_buf(),
+                    dir: l.root.join("assets"),
+                    prefix: l.show("assets/"),
+                })
+                .collect(),
+            changes: Vec::new(),
+            owners: BTreeMap::new(),
+            packed_failed: Vec::new(),
             cache: root.join(".argus").join("assets"),
+            root,
             entries: BTreeMap::new(),
             failed: BTreeMap::new(),
             inputs: BTreeMap::new(),
@@ -484,6 +573,27 @@ impl Importer {
     /// The project root.
     pub fn root(&self) -> &Path {
         &self.root
+    }
+
+    /// Assets a mod replaced of the game's (or an earlier mod's), from the
+    /// last scan.
+    pub fn changes(&self) -> &[Change] {
+        &self.changes
+    }
+
+    /// The mod an asset came from, if a mod's.
+    pub fn owner(&self, name: &str) -> Option<&str> {
+        self.owners.get(name).map(String::as_str)
+    }
+
+    /// A layer's `assets/`.
+    fn dir(&self, layer: usize) -> &Path {
+        &self.layers[layer].dir
+    }
+
+    /// A file under a layer's `assets/`, spelled from the game's root.
+    fn shown(&self, layer: usize, rel: &str) -> String {
+        format!("{}{rel}", self.layers[layer].prefix)
     }
 
     /// Imported assets by name.
@@ -581,49 +691,78 @@ impl Importer {
     /// Cheap when nothing changed: one metadata read per file.
     pub fn poll(&mut self) -> Option<Report> {
         let mut now = BTreeMap::new();
-        walk(&self.assets, &self.assets, &mut now);
+        for l in &self.layers {
+            let mut files = BTreeMap::new();
+            walk(&l.dir, &l.dir, &mut files);
+            now.extend(
+                files
+                    .into_iter()
+                    .map(|(r, s)| (format!("{}{r}", l.prefix), s)),
+            );
+        }
         if now == self.tree {
             return None;
         }
         Some(self.scan())
     }
 
-    /// Scan `assets/`: import what is new or changed, drop what went away.
+    /// Scan `assets/` (the game's, then each mod's): import what is new or
+    /// changed, drop what went away.
     pub fn scan(&mut self) -> Report {
         let started = Instant::now();
+        // Every layer's files, spelled from the game's root.
         let mut tree = BTreeMap::new();
-        walk(&self.assets, &self.assets, &mut tree);
-        // Group files into assets by name.
+        // Files grouped into assets by name, layer by layer: a later
+        // layer's asset of a name replaces the earlier one's whole.
         let mut groups: BTreeMap<String, Group> = BTreeMap::new();
         let mut report = Report::default();
-        for rel in tree.keys() {
-            let lower = rel.to_ascii_lowercase();
-            let (name, slot) = if let Some(n) = lower.strip_suffix(".atlas.toml") {
-                (rel[..n.len()].to_string(), 2)
-            } else if let Some(n) = lower.strip_suffix(".toml") {
-                (rel[..n.len()].to_string(), 2)
-            } else if let Some(n) = lower.strip_suffix(".png") {
-                (rel[..n.len()].to_string(), 0)
-            } else if let Some(n) = lower.strip_suffix(".wav") {
-                (rel[..n.len()].to_string(), 1)
-            } else if let Some(n) = lower.strip_suffix(".wgsl") {
-                (rel[..n.len()].to_string(), 3)
-            } else if let Some(n) = lower
-                .strip_suffix(".ttf")
-                .or_else(|| lower.strip_suffix(".otf"))
-            {
-                (rel[..n.len()].to_string(), 4)
-            } else {
-                continue;
-            };
-            let g = groups.entry(name).or_default();
-            match slot {
-                0 => g.png = Some(rel.clone()),
-                1 => g.wav = Some(rel.clone()),
-                3 => g.wgsl = Some(rel.clone()),
-                4 => g.font = Some(rel.clone()),
-                _ => g.sidecar = Some(rel.clone()),
+        let mut refused: Vec<Failure> = Vec::new();
+        let packed = self.packed.clone();
+        self.changes.retain(|c| packed.contains(&c.name));
+        self.owners.retain(|n, _| packed.contains(n));
+        for li in 0..self.layers.len() {
+            let mut files = BTreeMap::new();
+            walk(&self.layers[li].dir, &self.layers[li].dir, &mut files);
+            for (name, g) in group_files(li, files.keys()) {
+                if let Some(id) = self.layers[li].id.clone() {
+                    let first = [&g.png, &g.wav, &g.wgsl, &g.font, &g.sidecar]
+                        .into_iter()
+                        .flatten()
+                        .next()
+                        .cloned()
+                        .unwrap_or_default();
+                    let at = self.shown(li, &first);
+                    if let Some(old) = groups.get(&name) {
+                        let was = self.shown(old.layer, "");
+                        self.changes
+                            .push(Change::new("asset", &name, &id, &was, at));
+                    } else if self.packed.contains(&name) {
+                        // A sprite a pack's catalog supplied, drawn from
+                        // this mod's files instead.
+                        let was = self
+                            .owners
+                            .get(&name)
+                            .map(|o| layers::dir_of(o))
+                            .unwrap_or_default();
+                        self.changes
+                            .push(Change::new("asset", &name, &id, &was, at));
+                        self.packed.remove(&name);
+                        self.entries.remove(&name);
+                    } else if !layers::owns(&id, &name) {
+                        refused.push(Failure {
+                            name: name.clone(),
+                            error: layers::outside(&id, "asset", &name, at),
+                        });
+                        continue;
+                    }
+                    self.owners.insert(name.clone(), id);
+                } else {
+                    self.owners.remove(&name);
+                }
+                groups.insert(name, g);
             }
+            let prefix = self.layers[li].prefix.clone();
+            tree.extend(files.into_iter().map(|(r, s)| (format!("{prefix}{r}"), s)));
         }
         // What went away.
         let gone: Vec<String> = self
@@ -643,20 +782,27 @@ impl Importer {
         }
         report.removed.sort();
         report.removed.dedup();
+        // A mod's asset outside its namespace is a failed import.
+        for f in refused.into_iter().chain(self.packed_failed.clone()) {
+            report.removed.retain(|n| *n != f.name);
+            self.failed.insert(f.name.clone(), f.clone());
+            report.failed.push(f);
+        }
         for (name, g) in groups {
             if self.packed.contains(&name) {
                 continue;
             }
             // The files this asset reads: its own, plus a sound's variations
             // (added after the sidecar is parsed, below).
-            let mut files: Vec<&String> = [&g.png, &g.wav, &g.wgsl, &g.font, &g.sidecar]
+            let mut files: Vec<String> = [&g.png, &g.wav, &g.wgsl, &g.font, &g.sidecar]
                 .into_iter()
                 .flatten()
+                .map(|f| self.shown(g.layer, f))
                 .collect();
             files.sort();
             let stamp: Stamp = files
                 .iter()
-                .filter_map(|f| tree.get(*f).map(|s| ((*f).clone(), *s)))
+                .filter_map(|f| tree.get(f).map(|s| (f.clone(), *s)))
                 .collect();
             let prev = self.inputs.get(&name);
             let unchanged = prev.is_some_and(|p| {
@@ -673,6 +819,7 @@ impl Importer {
                     entry.ms = t0.elapsed().as_secs_f64() * 1e3;
                     let mut st = stamp.clone();
                     for f in inputs {
+                        let f = self.shown(g.layer, &f);
                         if let Some(s) = tree.get(&f) {
                             st.insert(f, *s);
                         }
@@ -708,10 +855,11 @@ impl Importer {
         report
     }
 
-    fn read(&self, rel: &str) -> Result<Vec<u8>> {
-        argus_os::fs::read(self.assets.join(rel)).map_err(|e| {
-            ArgusError::new(codes::BAD_SOURCE, format!("cannot read assets/{rel}: {e}"))
-                .at(Some(format!("assets/{rel}")))
+    /// A file under a layer's `assets/`.
+    fn read_in(&self, layer: usize, rel: &str) -> Result<Vec<u8>> {
+        argus_os::fs::read(self.dir(layer).join(rel)).map_err(|e| {
+            let at = self.shown(layer, rel);
+            ArgusError::new(codes::BAD_SOURCE, format!("cannot read {at}: {e}")).at(Some(at))
         })
     }
 
@@ -722,13 +870,13 @@ impl Importer {
         fnv(&mut hash, IMPORTER_VERSION.as_bytes());
         let side_text = match &g.sidecar {
             Some(s) => {
-                let b = self.read(s)?;
+                let b = self.read_in(g.layer, s)?;
                 fnv(&mut hash, &b);
                 Some(String::from_utf8_lossy(&b).into_owned())
             }
             None => None,
         };
-        let side_file = g.sidecar.as_ref().map(|s| format!("assets/{s}"));
+        let side_file = g.sidecar.as_ref().map(|s| self.shown(g.layer, s));
         let sources: Vec<&String> = [&g.png, &g.wav, &g.wgsl, &g.font]
             .into_iter()
             .flatten()
@@ -752,7 +900,7 @@ impl Importer {
                 ),
             )
             .hint("Rename one of them (asset.move keeps references right).")
-            .at(Some(format!("assets/{}", sources[0]))));
+            .at(Some(self.shown(g.layer, sources[0]))));
         }
         if let Some(f) = &g.font {
             return self.import_font(name, g, f, side_text.as_deref(), side_file.as_deref(), hash);
@@ -831,7 +979,7 @@ impl Importer {
         side_file: Option<&str>,
         mut hash: u64,
     ) -> Result<(Entry, Vec<String>)> {
-        let bytes = self.read(file)?;
+        let bytes = self.read_in(g.layer, file)?;
         fnv(&mut hash, &bytes);
         let mut notes = Vec::new();
         let asset = font::import(file, bytes, side_file.zip(side_text), hash, &mut notes)?;
@@ -850,7 +998,7 @@ impl Importer {
                     asset.missing.len(),
                     asset.missing.iter().take(24).collect::<String>()
                 ),
-                at: format!("assets/{file}"),
+                at: self.shown(g.layer, file),
             });
         }
         Ok((
@@ -879,10 +1027,10 @@ impl Importer {
     ) -> Result<(Entry, Vec<String>)> {
         let shader = match &g.wgsl {
             Some(w) => {
-                let b = self.read(w)?;
+                let b = self.read_in(g.layer, w)?;
                 fnv(&mut hash, &b);
                 Some((
-                    format!("assets/{w}"),
+                    self.shown(g.layer, w),
                     String::from_utf8_lossy(&b).into_owned(),
                 ))
             }
@@ -891,10 +1039,10 @@ impl Importer {
         let mut extra: Vec<String> = Vec::new();
         let mut load = |p: &str| -> Result<(String, String)> {
             let rel = p.trim_start_matches("assets/").to_string();
-            let b = self.read(&rel)?;
+            let b = self.read_in(g.layer, &rel)?;
             extra.push(rel.clone());
             Ok((
-                format!("assets/{rel}"),
+                self.shown(g.layer, &rel),
                 String::from_utf8_lossy(&b).into_owned(),
             ))
         };
@@ -952,14 +1100,17 @@ impl Importer {
         }
         let (w, h, mut rgba, source) = match &g.png {
             Some(p) => {
-                let bytes = self.read(p)?;
+                let bytes = self.read_in(g.layer, p)?;
                 fnv(&mut hash, &bytes);
-                let (w, h, rgba) = decode_png(&self.assets.join(p))
-                    .map_err(|e| e.at(Some(format!("assets/{p}"))))?;
+                let (w, h, rgba) = decode_png(&self.dir(g.layer).join(p))
+                    .map_err(|e| e.at(Some(self.shown(g.layer, p))))?;
                 if sc.shape.is_some() {
                     warn(
                         &mut warnings,
-                        format!("kind, size, and color are ignored: assets/{p} is the art now"),
+                        format!(
+                            "kind, size, and color are ignored: {} is the art now",
+                            self.shown(g.layer, p)
+                        ),
                         sf,
                     );
                 }
@@ -980,7 +1131,7 @@ impl Importer {
         };
         let at_src = source
             .as_ref()
-            .map(|s| format!("assets/{s}"))
+            .map(|s| self.shown(g.layer, s))
             .unwrap_or_else(|| sf.to_string());
         // Frames: explicit rects, a grid, or the whole image.
         let default_pivot = sc.pivot.unwrap_or([0.5, 0.5]);
@@ -1251,7 +1402,7 @@ impl Importer {
                     spatial: true,
                     looping: false,
                     max_voices: 8,
-                    at: format!("assets/{}", g.wav.clone().unwrap_or_default()),
+                    at: self.shown(g.layer, &g.wav.clone().unwrap_or_default()),
                 },
                 false,
             ),
@@ -1268,25 +1419,31 @@ impl Importer {
         for v in &mut def.variations {
             if let Source::File(f) = v {
                 let local = format!("{dir}{f}");
-                let rel = if argus_os::fs::is_file(self.assets.join(&local)) && !f.starts_with(&dir)
+                let rel = if argus_os::fs::is_file(self.dir(g.layer).join(&local))
+                    && !f.starts_with(&dir)
                 {
                     local.clone()
                 } else {
                     f.clone()
                 };
-                let path = self.assets.join(&rel);
+                let path = self.dir(g.layer).join(&rel);
                 if !argus_os::fs::is_file(&path) {
                     return Err(ArgusError::new(
                         codes::BAD_SOURCE,
-                        format!("{name}: variation {f:?} is not a file under assets/ (looked for assets/{local} and assets/{f})"),
+                        format!(
+                            "{name}: variation {f:?} is not a file under {} (looked for {} and {})",
+                            self.shown(g.layer, ""),
+                            self.shown(g.layer, &local),
+                            self.shown(g.layer, f)
+                        ),
                     )
                     .at(side_file.map(str::to_string)));
                 }
-                let bytes = self.read(&rel)?;
+                let bytes = self.read_in(g.layer, &rel)?;
                 fnv(&mut hash, &bytes);
-                let info =
-                    probe_wav(&path, &rel).map_err(|e| e.at(Some(format!("assets/{rel}"))))?;
-                let at = format!("assets/{rel}");
+                let info = probe_wav(&path, &rel, &self.shown(g.layer, &rel))
+                    .map_err(|e| e.at(Some(self.shown(g.layer, &rel))))?;
+                let at = self.shown(g.layer, &rel);
                 if info.channels > 1 {
                     warnings.push(Warning {
                         message: format!(
@@ -1331,7 +1488,13 @@ impl Importer {
                 }
                 extra.push(rel.clone());
                 files.push(info);
-                *f = rel;
+                // A mod's file is under its own assets/, which the mixer
+                // does not look in: it gets the whole path (phase 3 item 8).
+                *f = if g.layer == 0 {
+                    rel
+                } else {
+                    self.dir(g.layer).join(&rel).to_string_lossy().into_owned()
+                };
             }
         }
         Ok((
@@ -1396,8 +1559,8 @@ pub fn rasterise(shape: &Shape) -> Vec<u8> {
     out
 }
 
-fn probe_wav(path: &Path, rel: &str) -> Result<WavInfo> {
-    let e = |m: String| ArgusError::new(codes::BAD_SOURCE, format!("assets/{rel}: {m}"));
+fn probe_wav(path: &Path, rel: &str, shown: &str) -> Result<WavInfo> {
+    let e = |m: String| ArgusError::new(codes::BAD_SOURCE, format!("{shown}: {m}"));
     let mut r = hound::WavReader::open(path).map_err(|x| e(x.to_string()))?;
     let spec = r.spec();
     let frames = r.duration();

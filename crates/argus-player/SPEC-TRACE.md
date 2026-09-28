@@ -94,6 +94,20 @@ Every statement in the design document (v0.3) that constrains a game as players 
 |---|---|---|---|
 | (§13) Music on the grid in every build. | Done | The player advances the mixer to the sim's time before it reads `Music`, as the daemon does; `assemble.rs` registers `InRoom` before scripts load and installs `rooms.stream` first in the input stage. | Hollow's and Outpost's tests |
 
+## Phase 3, item 8: mod packs
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§15) "A release build can load mod packs ... from a user directory" | Done | `mods.rs`: `find` reads a folder's mod directories (each with a `mod.toml`) and mod packs, `choose` plans them, `mount` puts each at `mods/<id>/` under the release's game in memory. argus-game reads the `mods/` folder of the save location (`--mods <dir>`, `--no-mods`). | `mods::a_mod_pack_from_a_players_folder_is_one_more_layer_over_the_games_packs`; Hollow's release executable run headless with `lanterns.pack` and `brighter.pack` |
+| "additional defs, scenes, assets, and Luau systems" | Done | `assemble.rs` hands the layers (the game, then each mod) to every loader: scripts, prefabs, def rows, scenes and rooms, assets, sounds and music, string tables. Conversations and timelines are def tables, so mods carry them too. | `mods::a_mod_adds_under_its_id_and_changes_what_came_before`; Hollow's `tests/mods.luau` |
+| "in a declared load order" | Done | `mods::plan`: a folder's `load-order.toml` (`order = [...]`), else every mod by id, each after the mods it requires. A session's `mods` or a scenario's `mods` is its own declared order. A declared mod not found, a mod not declared (when there is a load order), one for another game, or one before what it requires is left out, with why. | `mods::the_later_mod_wins_and_the_order_is_declared`; `mods::a_mod_for_another_game_or_before_what_it_needs_is_left_out` |
+| "with the same sandbox and instruction budgets as the game's own scripts" | Done | A mod's scripts load into the game's one script host. A runaway mod system is stopped by the same budget and switched off like a game system's, and the game goes on. | `mods::a_mods_runaway_system_is_stopped_by_the_same_budget_as_the_games` |
+| "and the same schema validation" | Done | A mod's rows and entities go through the game's schemas. A mod with any problem is left out whole and the scene assembled again without it; the reason points at the mod's row, with the schema's line as a hint. A mod needing one left out is left out too. | `mods::a_mod_that_breaks_a_rule_is_left_out_whole_and_the_game_runs` |
+| "a load-order rule and a namespace prefix on mod content" | Done | The rules are argus-ecs `layers.rs`: everything a mod adds is named with its id first; a name without it changes something a layer before it has (def rows field by field, strings, assets, sounds, music tracks, entities, prefabs), the later layer winning. Systems, components, and def tables are only ever added. `Report.changes` says who changed what, over whom, and where. | the tests above; `mods.list` in Hollow's test |
+| "Games that don't want mods set one flag." | Done | `[mods] enabled = false` in `argus.toml`: no folder is read, and asking for mods by name is refused (6004). | `mods::games_that_dont_want_mods_set_one_flag` |
+| (§15) Packs are content-addressed; a mod pack is one more layer over the game's. | Done | `pack.rs`: `Kind::Mod(id)`, written as `<id>.pack`. `build_mod` packs `mods/<id>/` with scripts compiled, sprites from the mod's own import cache, and the directory's hash (`argus.cache/mod.hash`), so the pack and its directory are the same mod to a replay. The game's own pack leaves `mods/` out. | `mods::a_mod_pack_from_a_players_folder_is_one_more_layer_over_the_games_packs` |
+| A modded run reproduces. | Done | Reports, saves, and marks record `mods: [{id, version, hash}]`; a save loads with the mods the player asked for. | the same test (the mark says which mods) |
+
 ## §18 Build plan
 
 | Spec | Status | Where | Test |
@@ -110,3 +124,7 @@ Every statement in the design document (v0.3) that constrains a game as players 
 - `mark.pull` speaks plain HTTP: it pulls from the server's tailnet address, or through an SSH tunnel, not the HTTPS link.
 - A Linux release needs the glibc of the machine that built it or newer (2.39 for klab's Ubuntu 24.04). A release for older distributions is built on an older one.
 - Windows and Linux reach the same world for Hollow (§6 promises the same platform only); a game using platform-dependent float functions might not, and nothing yet checks that across platforms routinely.
+- Mods (phase 3 item 8) cannot remove anything the game has (a def row, an entity, a room); an entity a mod replaces is replaced whole, where a def row is changed field by field.
+- A mod cannot change `argus.toml`, `input.toml`, `ui.toml`, a scene's `scene.toml`, or a room's `room.toml` it did not make, nor replace or switch off a game's system.
+- The web page loads no mods: it has no folder of the player's to read. A page that takes mod packs dropped on it could follow.
+- A player edits `load-order.toml` by hand; there is no in-game list of mods to switch on and off.

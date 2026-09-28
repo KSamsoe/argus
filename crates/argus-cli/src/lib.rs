@@ -93,6 +93,8 @@ pub struct Invocation {
     pub out: Option<PathBuf>,
     /// `--since <dir>`: the build `argus build` patches.
     pub since: Option<PathBuf>,
+    /// `--mod <id>`: `argus build` makes that mod's pack (phase 3 item 8).
+    pub mod_id: Option<String>,
     /// `--for-agent`: `argus docs` writes the project's ARGUS.md.
     pub for_agent: bool,
 }
@@ -128,6 +130,7 @@ pub fn parse(argv: &[String]) -> Result<Invocation, String> {
             "--target" => inv.target = Some(need(&mut it)?),
             "--out" => inv.out = Some(PathBuf::from(need(&mut it)?)),
             "--since" => inv.since = Some(PathBuf::from(need(&mut it)?)),
+            "--mod" => inv.mod_id = Some(need(&mut it)?),
             "--window" => {
                 let size = match it.clone().next() {
                     Some(s) if s.contains('x') && !s.starts_with('-') => {

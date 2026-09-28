@@ -20,7 +20,7 @@ mod migrate;
 pub use bind::script_codes as codes;
 pub use decl::{ComponentDecl, DefDecl, MigrateDecl, Step, SystemDecl};
 
-use argus_ecs::{Access, ArgusError, Result, World};
+use argus_ecs::{layers, Access, ArgusError, Layers, Result, World};
 use argus_sim::{ClockBinding, Scheduler, Stage, SystemDesc, SystemFn};
 use bind::{Link, QueryHandle};
 use decl::Pending;
@@ -206,6 +206,10 @@ pub struct ScriptHost {
     lua: Lua,
     config: ScriptConfig,
     root: Option<PathBuf>,
+    /// The game and its mods (phase 3 item 8): a mod's files are read
+    /// after the game's, under `mods/<id>/`, and what they declare is
+    /// checked against its namespace.
+    layers: Option<Layers>,
     files: BTreeMap<String, FileRecord>,
     components: Vec<ComponentInfo>,
     migrations: BTreeMap<String, MigrateDecl>,
@@ -353,6 +357,7 @@ impl ScriptHost {
             lua,
             config,
             root: None,
+            layers: None,
             files: BTreeMap::new(),
             components: Vec::new(),
             migrations: BTreeMap::new(),
@@ -375,15 +380,37 @@ impl ScriptHost {
         sched: &mut Scheduler,
         root: &Path,
     ) -> Result<bool> {
-        self.root = Some(root.to_path_buf());
+        self.load_layers(world, sched, &Layers::game(root))
+    }
+
+    /// [`load_project`](Self::load_project) for the game and its mods
+    /// (phase 3 item 8, §15): the game's files, then each mod's in load
+    /// order, a mod's named from the game's root (`mods/<id>/systems/..`).
+    /// A mod runs in the same sandbox with the same instruction budget;
+    /// what it declares must be in its namespace (`<id>.name`,
+    /// `<id>_Name`), and it cannot redeclare the game's systems,
+    /// components, or def tables.
+    pub fn load_layers(
+        &mut self,
+        world: &mut World,
+        sched: &mut Scheduler,
+        layers: &Layers,
+    ) -> Result<bool> {
+        self.root = Some(layers.game.clone());
+        self.layers = Some(layers.clone());
         let mut ok = true;
-        for rel in scan(root) {
+        for (shown, path) in scan_layers(layers) {
             // Source, or bytecode where a release pack compiled it (§15).
-            let src = argus_os::fs::read(root.join(&rel))
-                .map_err(|e| ArgusError::new(codes::SYNTAX, format!("cannot read {rel}: {e}")))?;
-            ok &= self.load_bytes(world, sched, &rel, &src);
+            let src = argus_os::fs::read(&path)
+                .map_err(|e| ArgusError::new(codes::SYNTAX, format!("cannot read {shown}: {e}")))?;
+            ok &= self.load_bytes(world, sched, &shown, &src);
         }
         Ok(ok)
+    }
+
+    /// The game and mods the scripts were loaded from.
+    pub fn layers(&self) -> Option<&Layers> {
+        self.layers.as_ref()
     }
 
     /// Re-scan the project: re-evaluate new and changed files, drop the
@@ -396,10 +423,12 @@ impl ScriptHost {
                 ..Default::default()
             });
         };
+        let layers = self.layers.clone().unwrap_or_else(|| Layers::game(&root));
         let mut report = ReloadReport::default();
-        let present = scan(&root);
-        for rel in &present {
-            let src = argus_os::fs::read(root.join(rel))
+        let found = scan_layers(&layers);
+        let present: Vec<String> = found.iter().map(|(s, _)| s.clone()).collect();
+        for (rel, path) in &found {
+            let src = argus_os::fs::read(path)
                 .map_err(|e| ArgusError::new(codes::SYNTAX, format!("cannot read {rel}: {e}")))?;
             let changed = self
                 .files
@@ -514,8 +543,58 @@ impl ScriptHost {
         };
         let mut ok = !self.errors.contains_key(rel);
         let mut declared_systems = Vec::new();
+        // A mod's file declares only in its namespace (phase 3 item 8).
+        let owner = self
+            .layers
+            .as_ref()
+            .and_then(|l| l.owner(rel))
+            .map(str::to_string);
+        let (mut components, mut defs, mut systems) = pending;
+        if let Some(id) = &owner {
+            let mut refused = Vec::new();
+            components.retain(|c| {
+                let n = &c.schema.name;
+                if layers::owns(id, n) {
+                    return true;
+                }
+                refused.push(if world.component_id(n).is_some() {
+                    layers::not_changeable(id, "component", n, rel)
+                } else {
+                    layers::outside(id, "component", n, rel)
+                });
+                false
+            });
+            defs.retain(|d| {
+                let n = &d.schema.name;
+                if layers::owns(id, n) {
+                    return true;
+                }
+                let theirs = self.defs.iter().any(|x| &x.schema.name == n);
+                refused.push(if theirs {
+                    layers::not_changeable(id, "def table", n, rel)
+                } else {
+                    layers::outside(id, "def table", n, rel)
+                });
+                false
+            });
+            systems.retain(|s| {
+                if layers::owns(id, &s.name) {
+                    return true;
+                }
+                refused.push(if sched.is_enabled(&s.name).is_ok() {
+                    layers::not_changeable(id, "system", &s.name, s.source.clone())
+                } else {
+                    layers::outside(id, "system", &s.name, s.source.clone())
+                });
+                false
+            });
+            for e in refused {
+                ok = false;
+                self.push_error(rel, ErrorPhase::Declaration, e);
+            }
+        }
 
-        for c in pending.0 {
+        for c in components {
             let name = c.schema.name.clone();
             let version = c.schema.version;
             match world.register_schema(c.schema) {
@@ -541,11 +620,11 @@ impl ScriptHost {
                 }
             }
         }
-        for d in pending.1 {
+        for d in defs {
             self.defs.retain(|x| x.schema.name != d.schema.name);
             self.defs.push(d);
         }
-        for s in pending.2 {
+        for s in systems {
             match self.bind_system(world, &s) {
                 Ok((desc, run)) => match sched.replace_system(desc, run) {
                     Ok(()) => declared_systems.push(s.name.clone()),
@@ -751,6 +830,19 @@ pub fn compile(rel: &str, src: &str) -> std::result::Result<Vec<u8>, ScriptError
 }
 
 /// Project-relative `.luau` files in load order.
+/// Every layer's script files, the game's first: each one's name from the
+/// game's root (`systems/x.luau`, `mods/<id>/systems/y.luau`) and its path.
+fn scan_layers(layers: &Layers) -> Vec<(String, PathBuf)> {
+    let mut out = Vec::new();
+    for l in layers.each() {
+        for rel in scan(l.root) {
+            let path = l.root.join(&rel);
+            out.push((l.show(&rel), path));
+        }
+    }
+    out
+}
+
 fn scan(root: &Path) -> Vec<String> {
     let mut out = Vec::new();
     for dir in ["components", "defs", "systems"] {

@@ -107,7 +107,8 @@ impl Daemon {
         let base = ProjectConfig::load(&ses.root)
             .map(|c| c.strings_base)
             .unwrap_or_else(|_| ses.ui.borrow().strings.base().to_string());
-        ses.ui.borrow_mut().strings = argus_ui::Strings::load(&ses.root, &base);
+        let layers = argus_ecs::Layers::with_mods(&ses.root, &ses.mods.ids());
+        ses.ui.borrow_mut().strings = argus_ui::Strings::load_layers(&layers, &base);
     }
 
     /// Read the dialogue graph again from the project's tables.

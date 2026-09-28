@@ -4,12 +4,14 @@
 //! wherever it runs. What each adds around it (the daemon's index, history,
 //! and window; a player's devices and recorder) is its own.
 
-use argus_ecs::{ArgusError, Result, World};
+use argus_ecs::layers;
+use argus_ecs::{ArgusError, Layers, Result, World};
 use argus_input::{ActionMap, InputState};
 use argus_luau::{ScriptConfig, ScriptHost};
 use argus_scene::{DefSchema, LoadReport, Project, ProjectConfig, Scene, SceneDoc, SeedPolicy};
 use argus_sim::{Clock, ClockKind, Scheduler, SchedulerConfig};
 use std::cell::RefCell;
+use std::collections::BTreeMap;
 use std::path::Path;
 use std::rc::Rc;
 
@@ -22,6 +24,9 @@ pub struct Options {
     pub random_seed: u64,
     /// Load the mixer (the daemon skips it for a fork).
     pub audio: bool,
+    /// The mods to lay over the game, in load order, and those already
+    /// left out (phase 3 item 8): [`crate::mods::choose`] makes it.
+    pub mods: crate::mods::Report,
 }
 
 impl Default for Options {
@@ -29,6 +34,7 @@ impl Default for Options {
         Options {
             random_seed: 1,
             audio: true,
+            mods: crate::mods::Report::default(),
         }
     }
 }
@@ -87,9 +93,19 @@ pub struct Assembly {
     /// The mixer, when asked for: its sounds set, no device open.
     #[cfg(feature = "audio")]
     pub audio: Option<Result<argus_audio::AudioEngine>>,
+    /// The mods laid over the game, those left out and why, and what they
+    /// changed (phase 3 item 8).
+    pub mods: crate::mods::Report,
 }
 
-/// Assemble scene `scene_name` of the project at `root`.
+/// Assemble scene `scene_name` of the project at `root`, with the mods
+/// `opts.mods` names laid over it (phase 3 item 8). A mod with any problem
+/// (a name outside its namespace, a row or an entity the game's schemas
+/// refuse, a script that does not load, a refused `audio.toml`, a string
+/// table or conversation that does not read) is left out whole, with
+/// every reason, and the scene assembled again without it; so is a mod
+/// needing one left out. The game's own problems are its issues, as
+/// before.
 pub fn assemble(
     root: &Path,
     cfg: &ProjectConfig,
@@ -97,7 +113,241 @@ pub fn assemble(
     seed: Option<u64>,
     opts: &Options,
 ) -> Result<Assembly> {
-    let scene_doc = SceneDoc::load(root, scene_name)?;
+    let mut report = opts.mods.clone();
+    loop {
+        let ids = report.ids();
+        let layers = Layers::with_mods(root, &ids);
+        let mut drop: BTreeMap<String, Vec<ArgusError>> = BTreeMap::new();
+        match assemble_layers(root, cfg, scene_name, seed, opts, &layers) {
+            Ok(mut a) => {
+                drop = mod_problems(&a, &layers);
+                if drop.is_empty() {
+                    fill_report(&mut report, &a, &layers);
+                    a.mods = report;
+                    return Ok(a);
+                }
+            }
+            // Nothing assembled: the mod the error names, else the last
+            // one, is left out and the rest tried again.
+            Err(e) if !ids.is_empty() => {
+                let id = e
+                    .r#ref
+                    .as_deref()
+                    .and_then(|r| layers.owner(r).map(str::to_string))
+                    .unwrap_or_else(|| ids[ids.len() - 1].clone());
+                drop.entry(id).or_default().push(e);
+            }
+            Err(e) => return Err(e),
+        }
+        // A mod needing one left out goes too.
+        loop {
+            let gone: Vec<String> = drop.keys().cloned().collect();
+            let more: Vec<(String, String)> = report
+                .loaded
+                .iter()
+                .filter(|l| !drop.contains_key(&l.manifest.id))
+                .filter_map(|l| {
+                    l.manifest
+                        .requires
+                        .iter()
+                        .find(|r| gone.contains(r))
+                        .map(|r| (l.manifest.id.clone(), r.clone()))
+                })
+                .collect();
+            if more.is_empty() {
+                break;
+            }
+            for (id, r) in more {
+                drop.entry(id.clone()).or_default().push(ArgusError::new(
+                    layers::codes::LOAD_ORDER,
+                    format!("{id} needs {r}, which was left out"),
+                ));
+            }
+        }
+        for (id, why) in drop {
+            report.loaded.retain(|l| l.manifest.id != id);
+            report.left_out.push((id, why));
+        }
+    }
+}
+
+/// Every problem the mods caused, by mod: whatever went wrong in a file
+/// under `mods/<id>/`.
+fn mod_problems(a: &Assembly, layers: &Layers) -> BTreeMap<String, Vec<ArgusError>> {
+    let mut out: BTreeMap<String, Vec<ArgusError>> = BTreeMap::new();
+    if !layers.has_mods() {
+        return out;
+    }
+    let mut put = |at: &str, e: ArgusError| {
+        if let Some(id) = layers.owner(at) {
+            out.entry(id.to_string()).or_default().push(e);
+        }
+    };
+    for e in &a.issues {
+        // A schema's refusal points at the schema (the game's) and names
+        // the row it refused in its message: "(in mods/<id>/...)".
+        // The mod's row is the thing to fix; the schema, a hint.
+        match e.r#ref.as_deref() {
+            Some(r) if layers.owner(r).is_some() => put(r, e.clone()),
+            _ => {
+                if let Some(at) = mentioned(&e.message)
+                    .into_iter()
+                    .find(|m| layers.owner(m).is_some())
+                {
+                    let mut e = e.clone();
+                    if let Some(decl) = e.r#ref.take() {
+                        e.hint = format!("{} The field is declared at {decl}.", e.hint)
+                            .trim()
+                            .to_string();
+                    }
+                    e.r#ref = Some(at.clone());
+                    put(&at, e);
+                }
+            }
+        }
+    }
+    for e in a.host.errors() {
+        let at = match e.line {
+            Some(l) => format!("{}:{l}", e.file),
+            None => e.file.clone(),
+        };
+        put(
+            &e.file,
+            ArgusError::new(argus_luau::codes::SYNTAX, e.message.clone()).at(Some(at)),
+        );
+    }
+    for f in &a.asset_report.failed {
+        put(f.error.r#ref.as_deref().unwrap_or(""), f.error.clone());
+    }
+    #[cfg(feature = "audio")]
+    if let Some(Ok(audio)) = &a.audio {
+        for e in audio.mod_problems() {
+            put(e.r#ref.as_deref().unwrap_or(""), e.clone());
+        }
+    }
+    for p in a.ui.borrow().strings.problems() {
+        put(p, ArgusError::new(argus_ui::codes::BAD_STRINGS, p.clone()));
+    }
+    for (at, m) in &a.dialogue.borrow().problems {
+        put(
+            at,
+            ArgusError::new(argus_dialogue::codes::BAD_DIALOGUE, m.clone()).at(Some(at.clone())),
+        );
+    }
+    for (at, m) in &a.timelines.borrow().problems {
+        put(
+            at,
+            ArgusError::new(argus_timeline::codes::BAD_TIMELINE, m.clone()).at(Some(at.clone())),
+        );
+    }
+    out
+}
+
+/// The places a message names as `(in <place>)`.
+fn mentioned(message: &str) -> Vec<String> {
+    message
+        .split("(in ")
+        .skip(1)
+        .filter_map(|s| s.split(')').next())
+        .map(str::to_string)
+        .collect()
+}
+
+/// What each mod added, and what the mods changed, into the report.
+fn fill_report(report: &mut crate::mods::Report, a: &Assembly, layers: &Layers) {
+    let mut changes = a.project.changes().to_vec();
+    changes.extend(a.scene.borrow().changes().iter().cloned());
+    changes.extend(a.assets.changes().iter().cloned());
+    #[cfg(feature = "audio")]
+    if let Some(Ok(audio)) = &a.audio {
+        changes.extend(audio.changes().iter().cloned());
+    }
+    changes.extend(a.ui.borrow().strings.changes().iter().cloned());
+    report.changes = changes;
+    let scene = a.scene.borrow();
+    for l in &mut report.loaded {
+        let id = l.manifest.id.clone();
+        let mine = |at: &str| layers.owner(at) == Some(id.as_str());
+        let mut adds = BTreeMap::new();
+        adds.insert(
+            "scripts".to_string(),
+            a.host.files().iter().filter(|f| mine(f)).count(),
+        );
+        adds.insert(
+            "components".to_string(),
+            a.host.components().iter().filter(|c| mine(&c.file)).count(),
+        );
+        adds.insert(
+            "def rows".to_string(),
+            a.project
+                .defs
+                .tables()
+                .flat_map(|t| t.rows.iter())
+                .filter(|r| mine(&r.at) && layers::owns(&id, &r.key))
+                .count(),
+        );
+        adds.insert(
+            "rooms".to_string(),
+            scene.rooms().filter(|r| layers::owns(&id, &r.name)).count(),
+        );
+        adds.insert(
+            "entities".to_string(),
+            scene
+                .ids()
+                .into_iter()
+                .filter(|i| {
+                    scene
+                        .entity_file(i)
+                        .is_some_and(|f| mine(&f.rel) && !report_changed(&report.changes, i))
+                })
+                .count(),
+        );
+        adds.insert(
+            "assets".to_string(),
+            a.assets
+                .entries()
+                .keys()
+                .filter(|n| a.assets.owner(n) == Some(id.as_str()) && layers::owns(&id, n))
+                .count(),
+        );
+        #[cfg(feature = "audio")]
+        if let Some(Ok(audio)) = &a.audio {
+            adds.insert(
+                "sounds".to_string(),
+                audio
+                    .sound_names()
+                    .iter()
+                    .filter(|n| layers::owns(&id, n))
+                    .count(),
+            );
+        }
+        let strings = &a.ui.borrow().strings;
+        adds.insert(
+            "strings".to_string(),
+            strings
+                .table(strings.base())
+                .map(|t| t.keys().filter(|k| layers::owns(&id, k)).count())
+                .unwrap_or(0),
+        );
+        l.adds = adds;
+    }
+}
+
+/// Whether an entity is one a mod replaced (not one it added).
+fn report_changed(changes: &[layers::Change], id: &str) -> bool {
+    changes.iter().any(|c| c.kind == "entity" && c.name == id)
+}
+
+/// [`assemble`] with the mods `layers` names, as they are.
+fn assemble_layers(
+    root: &Path,
+    cfg: &ProjectConfig,
+    scene_name: &str,
+    seed: Option<u64>,
+    opts: &Options,
+    layers: &Layers,
+) -> Result<Assembly> {
+    let scene_doc = SceneDoc::load_layers(layers, scene_name)?;
     let clock = Clock::parse(scene_doc.clock.as_deref().unwrap_or(&cfg.clock))?;
     let seed = seed.unwrap_or(match scene_doc.seed {
         SeedPolicy::Fixed(s) => s,
@@ -162,7 +412,7 @@ pub fn assemble(
     argus_ui::install(&mut world, &mut sched, ui.clone())?;
     // The string tables every UiText key and q:text reads (phase 3 item 4),
     // and conversations played through the UI.
-    ui.borrow_mut().strings = argus_ui::Strings::load(root, &cfg.strings_base);
+    ui.borrow_mut().strings = argus_ui::Strings::load_layers(layers, &cfg.strings_base);
     let dialogue = Rc::new(RefCell::new(argus_dialogue::Graph::default()));
     argus_dialogue::install(&mut world, &mut sched, dialogue.clone(), ui.clone())?;
     // Timelines over the tweens, animators, cameras, and conversations
@@ -184,7 +434,7 @@ pub fn assemble(
     })?;
     host.set_paths(Rc::new(NavPaths(nav.clone())));
     host.set_texts(Rc::new(UiTexts(ui.clone())));
-    host.load_project(&mut world, &mut sched, root)?;
+    host.load_layers(&mut world, &mut sched, layers)?;
     let defs: Vec<DefSchema> = host
         .defs()
         .iter()
@@ -194,7 +444,7 @@ pub fn assemble(
                 .prefix(d.prefix.clone())
         })
         .collect();
-    let project = Project::open(root, with_engine_defs(defs))?;
+    let project = Project::open_with(root, with_engine_defs(defs), &layers.ids())?;
     host.set_defs(Rc::new(ProjectDefs(project.defs.clone())));
     *dialogue.borrow_mut() = argus_dialogue::Graph::from_defs(&project.defs);
     *timelines.borrow_mut() = read_timelines(&project.defs, &world);
@@ -226,11 +476,8 @@ pub fn assemble(
     sched.validate()?;
     // A release pack carries the import cache (§15): its sprites come from
     // the catalog, the rest from their sidecars; a project imports them all.
-    let mut assets = if argus_os::fs::is_file(root.join(argus_assets::CATALOG)) {
-        argus_assets::Importer::packed(root)?
-    } else {
-        argus_assets::Importer::new(root)
-    };
+    // So does a mod pack, for its own (phase 3 item 8).
+    let mut assets = argus_assets::Importer::packed_layers(layers)?;
     let asset_report = assets.scan();
     set_fonts(&mut ui.borrow_mut().fonts, &assets);
     tiles.borrow_mut().set_tilesets(&assets);
@@ -239,7 +486,7 @@ pub fn assemble(
     // Variations come from the run seed, so sound.played replays.
     #[cfg(feature = "audio")]
     let audio = opts.audio.then(|| {
-        argus_audio::AudioEngine::load(root, seed).map(|mut a| {
+        argus_audio::AudioEngine::load_layers(layers, seed).map(|mut a| {
             a.set_asset_sounds(assets.sidecar_sounds());
             a
         })
@@ -269,6 +516,7 @@ pub fn assemble(
         asset_report,
         #[cfg(feature = "audio")]
         audio,
+        mods: crate::mods::Report::default(),
     })
 }
 

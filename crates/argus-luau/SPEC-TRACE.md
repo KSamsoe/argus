@@ -158,6 +158,12 @@ Phase 0 item 3, "Luau binding with component and def schemas": this crate.
 |---|---|---|---|
 | (§15) Luau precompiled to bytecode in a release build. | Done | `compile(rel, src)`: Luau bytecode with the options loading source uses (optimisation 1, line numbers kept), or the syntax error as a `script.errors` row with its line. `load_project` and `reload` read bytes, and `load_bytes` takes source or bytecode, which Luau tells apart by the first byte. A run-time error in bytecode still names the file and line. | `bytecode::bytecode_runs_as_its_source_does_and_keeps_its_lines`, `bytecode::a_syntax_error_is_caught_when_compiling_with_its_line` |
 
+## Phase 3, item 8: mods' scripts
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§15) A mod's Luau systems run "with the same sandbox and instruction budgets as the game's own scripts". | Done | `ScriptHost::load_layers`: each mod's `components/`, `defs/`, and `systems/` load into the same VM after the game's, named from the game's root (`mods/<id>/systems/x.luau`); `reload` walks the layers too. What a mod file declares must be in its namespace; a mod redeclaring a game's system, component, or def table is refused (`load_bytes`). | argus-player `mods::a_mod_that_breaks_a_rule_is_left_out_whole_and_the_game_runs`, `mods::a_mods_runaway_system_is_stopped_by_the_same_budget_as_the_games` |
+
 ## Known limitations, stated so they are decisions
 
 - One Luau VM per `ScriptHost`; a forked world needs its own host (or the same host with a different scheduler, since the VM holds no world state).
