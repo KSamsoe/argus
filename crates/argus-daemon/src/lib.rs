@@ -22,6 +22,7 @@
 pub mod daemon;
 pub mod docs;
 pub mod edit;
+pub mod feed;
 pub mod history;
 mod http;
 pub mod json;

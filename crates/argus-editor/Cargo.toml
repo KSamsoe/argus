@@ -1,0 +1,27 @@
+[package]
+name = "argus-editor"
+description = "Argus Engine editor (argus-editor): a separate process that reaches the world only through the protocol, as the agent does (section 11)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "argus_editor"
+path = "src/lib.rs"
+
+[[bin]]
+name = "argus-editor"
+path = "src/main.rs"
+
+# The protocol client and the UI only: no engine crate that holds a world
+# (P1, checked by tests/protocol_only.rs).
+[dependencies]
+argus-client = { path = "../argus-client", version = "0.0.1" }
+serde_json = "1"
+eframe = { version = "0.31", default-features = false, features = ["wgpu", "accesskit", "default_fonts"] }
+
+[dev-dependencies]
+egui_kittest = { version = "0.31", features = ["eframe", "wgpu"] }
+argus-daemon = { path = "../argus-daemon", version = "0.0.1" }
+argus-ecs = { path = "../argus-ecs", version = "0.0.1" }
+png = "0.17"

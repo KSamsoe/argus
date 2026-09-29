@@ -74,6 +74,7 @@ impl Daemon {
         }
         let t = self.edits.tx_mut(tx)?;
         t.ops.push(Op::Text { lang, key, text });
+        t.calls.push(crate::edit::tool_op("edit.text", params));
         Ok(json!({ "queued": t.ops.len() }))
     }
 

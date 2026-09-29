@@ -318,6 +318,12 @@ pub const METHODS: &[MethodDoc] = &[
         returns: "{project, scene, seed, clock, playing, paused, tick, time, frame}",
     },
     MethodDoc {
+        name: "session.identify",
+        doc: "Say who this connection is (phase 4): the author the change feed names for this connection's calls that change something, where a call has no author param of its own. The editor says \"human\" and argus mcp \"agent:claude\"; a connection that says nothing is \"cli\".",
+        params: &[req("author", STRING, "who, e.g. \"human\" or \"agent:claude\"")],
+        returns: "{author}",
+    },
+    MethodDoc {
         name: "session.capabilities",
         doc: "The daemon's version and every method it answers, with parameter docs.",
         params: &[],
@@ -781,14 +787,14 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "edit.feed",
-        doc: "The change feed: every commit with author, note, frame, and what it touched. Answers who changed this and why.",
+        doc: "The change feed: every change, from every client, with its author, frame, and the argus command that makes it (command). A commit also has its note, what it touched, and its ops, and its command is the whole transaction as the edit tool; any other call that changed something (play, a seek, a slider, a mark's note) is a row of kind \"command\" with its method and params. Lookups are not in it. Answers who changed this and why.",
         params: &[
             opt("since", INTEGER, "commit id, exclusive"),
             opt("author", STRING, "optional"),
             opt("limit", INTEGER, "rows per page"),
             opt("cursor", STRING, "the next page, from a previous answer's cursor"),
         ],
-        returns: "{total, rows: [{id, author, note, frame, kind, touched, files, ops}], next}",
+        returns: "{total, rows: [{id, author, note, frame, kind, touched, files, ops, command, method?, params?}], next}",
     },
     MethodDoc {
         name: "edit.lock",
@@ -1303,7 +1309,7 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "obs.subscribe",
-        doc: "Receive notifications on this connection: `event` for each new event, `edit.committed` for each commit (and proposal made or turned down), `tune.changed` for each tuning log row. Topics: events, edits, tune.",
+        doc: "Receive notifications on this connection: `event` for each new event, `edit.committed` for each commit (and proposal made or turned down), `edit.command` for each other change in the feed, `tune.changed` for each tuning log row. Topics: events, edits (the change feed), tune.",
         params: &[
             opt("topics", ARRAY, "[\"events\" | \"edits\" | \"tune\"]"),
             opt("off", BOOLEAN, "unsubscribe"),

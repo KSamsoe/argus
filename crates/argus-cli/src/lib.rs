@@ -196,6 +196,8 @@ pub enum Command {
     Help(Vec<String>),
     /// `argus daemon <start|stop|status|run>`.
     Daemon(Vec<String>),
+    /// `argus editor`: the editor window on the project's daemon (§11).
+    Editor,
     /// `argus test [name]`: `test.run` with a compact report (§9).
     Test(Vec<String>),
     /// `argus build`: a release of the project (§15).
@@ -220,6 +222,7 @@ pub fn resolve(words: &[String]) -> Command {
     match words[0].as_str() {
         "help" => return Command::Help(words[1..].to_vec()),
         "daemon" => return Command::Daemon(words[1..].to_vec()),
+        "editor" if words.len() == 1 => return Command::Editor,
         "build" => return Command::Build,
         "mcp" => return Command::Mcp,
         "docs" => return Command::Docs,
@@ -285,6 +288,7 @@ pub fn run(argv: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
             EXIT_USAGE
         }
         Command::Daemon(words) => project::daemon_command(&inv, &words, out, err),
+        Command::Editor => project::editor_command(&inv, out, err),
         Command::Test(words) => test_command(&inv, &words, out, err),
         Command::Build => build::build_command(&inv, out, err),
         Command::Tool(name, bare) => tool_command(&inv, name, bare, out, err),

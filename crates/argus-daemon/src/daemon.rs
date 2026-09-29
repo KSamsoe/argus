@@ -147,6 +147,14 @@ pub struct Daemon {
     edits: Editing,
     events: EventLog,
     subs: BTreeMap<ConnId, BTreeSet<String>>,
+    /// Who each connection said it is (`session.identify`, phase 4): the
+    /// author of its calls in the change feed.
+    identities: BTreeMap<ConnId, String>,
+    /// The call a client is making, while it runs: its `argus` line and
+    /// author, for the feed row it makes (phase 4).
+    calling: Option<(String, String)>,
+    /// Feed rows made so far: a call that made none gets a command row.
+    feed_rows: u64,
     /// Where the armed `prof.capture` writes when its last tick is in.
     capture_path: Option<PathBuf>,
     /// `session.shutdown` was called: the server should stop after replying.
@@ -221,6 +229,9 @@ impl Daemon {
             sched: Scheduler::new(SchedulerConfig::default()),
             session: None,
             edits: Editing::default(),
+            identities: BTreeMap::new(),
+            calling: None,
+            feed_rows: 0,
             events: EventLog {
                 next_seq: 1,
                 records: VecDeque::new(),
@@ -281,8 +292,59 @@ impl Daemon {
         })
     }
 
-    /// Dispatch a method. This is the whole protocol.
+    /// Call a method for a client. Every call that changes something is a
+    /// row in the change feed, with its author and the `argus` line that
+    /// makes it (phase 4, `feed.rs`): a commit's row where the call commits,
+    /// else a command row. Connection 0 is the daemon's own (the launcher,
+    /// the harness), and calls made inside a client's call belong to it.
     pub fn call(&mut self, conn: ConnId, method: &str, params: &Json) -> Result<Json> {
+        if conn == 0 || self.calling.is_some() {
+            return self.dispatch(conn, method, params);
+        }
+        let author = crate::feed::author_of(params, self.identities.get(&conn).map(String::as_str));
+        self.calling = Some((argus_client::command::line(method, params), author));
+        let rows = self.feed_rows;
+        let r = self.dispatch(conn, method, params);
+        let (line, author) = self.calling.take().unwrap_or_default();
+        if r.is_ok() && self.feed_rows == rows && crate::feed::changes(method) {
+            self.feed_command(&author, line, method, params);
+        }
+        r
+    }
+
+    /// A command row: a call that changed something outside a transaction.
+    fn feed_command(&mut self, author: &str, line: String, method: &str, params: &Json) {
+        let id = self.edits.next_commit_id();
+        let c = Commit {
+            id,
+            author: author.to_string(),
+            note: String::new(),
+            frame: self.world.frame(),
+            kind: CommitKind::Command,
+            ops: Vec::new(),
+            inverse: Vec::new(),
+            touched: Vec::new(),
+            files: Vec::new(),
+            command: line,
+            call: Some((method.to_string(), params.clone())),
+        };
+        let row = c.to_json();
+        self.edits.feed.push(c);
+        self.feed_rows += 1;
+        self.notify("edits", "edit.command", row);
+    }
+
+    /// The `argus` line of the call being made, for a feed row; empty for
+    /// the daemon's own calls.
+    pub(crate) fn call_line(&self) -> String {
+        self.calling
+            .as_ref()
+            .map(|(l, _)| l.clone())
+            .unwrap_or_default()
+    }
+
+    /// Dispatch a method. This is the whole protocol.
+    fn dispatch(&mut self, conn: ConnId, method: &str, params: &Json) -> Result<Json> {
         // `fork: "name"` on any method runs it against that world, which is
         // swapped in for the call (phase 2 item 0).
         if method != "sim.fork" {
@@ -294,7 +356,7 @@ impl Daemon {
                         .ok_or_else(|| self.unknown_fork(name))?;
                     self.swap_slot(&mut slot);
                     let was = std::mem::replace(&mut self.active, name.to_string());
-                    let r = self.call(conn, method, params);
+                    let r = self.dispatch(conn, method, params);
                     self.active = was;
                     self.swap_slot(&mut slot);
                     self.forks.insert(name.to_string(), slot);
@@ -302,9 +364,15 @@ impl Daemon {
                 }
             }
         }
+        check_params(method, params)?;
         let r = match method {
             "session.open" => self.session_open(params),
             "session.status" => Ok(self.session_status()),
+            "session.identify" => {
+                let author = json::str_param(params, "author")?.to_string();
+                self.identities.insert(conn, author.clone());
+                Ok(json!({ "author": author }))
+            }
             "session.capabilities" => Ok(self.capabilities()),
             "session.docs" => Ok(json!({ "text": docs::text(json::opt_str(params, "method")?) })),
             "session.close" => {
@@ -781,6 +849,7 @@ impl Daemon {
     /// Forget a connection's subscriptions.
     pub fn drop_conn(&mut self, conn: ConnId) {
         self.subs.remove(&conn);
+        self.identities.remove(&conn);
     }
 
     // ----- session ----------------------------------------------------------
@@ -2219,6 +2288,7 @@ impl Daemon {
         };
         let t = self.edits.tx_mut(tx)?;
         t.ops.push(op);
+        t.calls.push(crate::edit::tool_op("edit.tiles", params));
         Ok(json!({ "queued": t.ops.len() }))
     }
 
@@ -2378,6 +2448,7 @@ impl Daemon {
         };
         let t = self.edits.tx_mut(tx)?;
         t.ops.push(op);
+        t.calls.push(crate::edit::tool_op(method, params));
         Ok(json!({ "queued": t.ops.len() }))
     }
 
@@ -2390,7 +2461,13 @@ impl Daemon {
     fn edit_commit(&mut self, params: &Json) -> Result<Json> {
         let tx = json::u64_param(params, "tx", 0)? as u32;
         let t = self.edits.take(tx)?;
-        self.apply_commit(&t.author, &t.note, t.ops, CommitKind::Normal)
+        // The row's command is the whole transaction as the agent's `edit`
+        // tool: `edit commit tx=4` alone would not say what changed.
+        let line = argus_client::command::line(
+            "edit",
+            &json!({ "author": t.author, "note": t.note, "ops": t.calls }),
+        );
+        self.apply_commit_as(&t.author, &t.note, t.ops, CommitKind::Normal, line)
     }
 
     fn edit_undo(&mut self, params: &Json, redo: bool) -> Result<Json> {
@@ -2428,6 +2505,19 @@ impl Daemon {
         note: &str,
         ops: Vec<Op>,
         kind: CommitKind,
+    ) -> Result<Json> {
+        let line = self.call_line();
+        self.apply_commit_as(author, note, ops, kind, line)
+    }
+
+    /// [`Daemon::apply_commit`] with the feed row's command line given.
+    fn apply_commit_as(
+        &mut self,
+        author: &str,
+        note: &str,
+        ops: Vec<Op>,
+        kind: CommitKind,
+        command: String,
     ) -> Result<Json> {
         self.require_session()?;
         let mut inverse: Vec<Op> = Vec::new();
@@ -2479,6 +2569,8 @@ impl Daemon {
             inverse,
             touched: touched.into_iter().collect(),
             files: files.into_iter().collect(),
+            command,
+            call: None,
         };
         let row = commit.to_json();
         self.index_touched(&commit.touched);
@@ -2503,7 +2595,7 @@ impl Daemon {
                 .entry(author.to_string())
                 .or_default()
                 .push(id),
-            CommitKind::Proposed(_) | CommitKind::Rejected(_) => {}
+            CommitKind::Proposed(_) | CommitKind::Rejected(_) | CommitKind::Command => {}
         }
         let via = match &commit.kind {
             CommitKind::Undo(_) => "undo",
@@ -2511,6 +2603,7 @@ impl Daemon {
             _ => "edit",
         };
         self.edits.feed.push(commit);
+        self.feed_rows += 1;
         self.notify("edits", "edit.committed", row.clone());
         self.log_tuned(author, via, note, tuned);
         self.pump_events();
@@ -5302,6 +5395,32 @@ fn tick_json(t: &argus_sim::TickRecord) -> Json {
     })
 }
 
+/// Refuse a parameter the method does not have (phase 4 item 0): the
+/// editor's `sim.speed {value: 10}` set the speed to 1, since `x` was
+/// missing and `value` was ignored. `fork` goes with every method.
+fn check_params(method: &str, params: &Json) -> Result<()> {
+    let (Some(doc), Json::Object(m)) = (docs::find(method), params) else {
+        return Ok(());
+    };
+    for k in m.keys() {
+        if k == "fork" || doc.params.iter().any(|p| p.name == k) {
+            continue;
+        }
+        let names: Vec<&str> = doc.params.iter().map(|p| p.name).collect();
+        let hint = if names.is_empty() {
+            format!("{method} takes no parameters.")
+        } else {
+            format!(
+                "Its parameters: {}. `argus {} -h` has their docs.",
+                names.join(", "),
+                method.replacen('.', " ", 1)
+            )
+        };
+        return Err(bad_params(format!("{method} has no parameter {k:?}")).hint(hint));
+    }
+    Ok(())
+}
+
 impl argus_test::Driver for Daemon {
     fn call(&mut self, method: &str, params: &Json) -> std::result::Result<Json, Json> {
         Daemon::call(self, 0, method, params).map_err(|e| json::error_json(&e))
@@ -5565,7 +5684,7 @@ pub fn code_version(root: &Path) -> String {
 
 /// Where a project's daemon writes its connection info.
 pub fn daemon_info_path(root: &Path) -> PathBuf {
-    root.join(".argus").join("daemon.json")
+    argus_client::socket::daemon_info_path(root)
 }
 
 /// Sim seconds for shaders, at the moment the picture shows: a frame drawn

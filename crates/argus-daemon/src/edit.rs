@@ -202,6 +202,19 @@ impl Op {
     }
 }
 
+/// A queued call as the `edit` tool's op: its params without `tx`, with
+/// `op` the method's last word (`edit.set` is `{op: "set", ...}`).
+pub fn tool_op(method: &str, params: &Json) -> Json {
+    let mut m = match params {
+        Json::Object(m) => m.clone(),
+        _ => serde_json::Map::new(),
+    };
+    m.remove("tx");
+    let verb = method.strip_prefix("edit.").unwrap_or(method);
+    m.insert("op".into(), json!(verb));
+    Json::Object(m)
+}
+
 /// An open transaction.
 #[derive(Clone, Debug)]
 pub struct Tx {
@@ -213,6 +226,9 @@ pub struct Tx {
     pub note: String,
     /// Queued operations.
     pub ops: Vec<Op>,
+    /// The calls that queued them, as the `edit` tool's ops (`{op: "set",
+    /// entity, path, value}`): the commit's command line (phase 4).
+    pub calls: Vec<Json>,
 }
 
 /// Why a commit happened.
@@ -229,6 +245,9 @@ pub enum CommitKind {
     Proposed(u64),
     /// A proposal turned down.
     Rejected(u64),
+    /// A call that changed something outside a transaction (phase 4): play,
+    /// a seek, a slider, a mark's note. The row holds the call.
+    Command,
 }
 
 /// One entry of the change feed.
@@ -252,6 +271,12 @@ pub struct Commit {
     pub touched: Vec<String>,
     /// Files written or deleted (project-relative).
     pub files: Vec<String>,
+    /// The `argus` line that makes this change (phase 4, "show as
+    /// command"): a commit as the `edit` tool with its ops, anything else
+    /// as the call that did it. Empty for internal changes.
+    pub command: String,
+    /// A `Command` row's call: the method and its params.
+    pub call: Option<(String, Json)>,
 }
 
 impl Commit {
@@ -263,8 +288,9 @@ impl Commit {
             CommitKind::Redo(of) => json!({ "redo": of }),
             CommitKind::Proposed(p) => json!({ "proposed": p }),
             CommitKind::Rejected(p) => json!({ "rejected": p }),
+            CommitKind::Command => json!("command"),
         };
-        json!({
+        let mut row = json!({
             "id": self.id,
             "author": self.author,
             "note": self.note,
@@ -273,7 +299,13 @@ impl Commit {
             "touched": self.touched,
             "files": self.files,
             "ops": self.ops,
-        })
+            "command": self.command,
+        });
+        if let Some((m, p)) = &self.call {
+            row["method"] = json!(m);
+            row["params"] = p.clone();
+        }
+        row
     }
 }
 
@@ -348,6 +380,7 @@ impl Editing {
                 author: author.to_string(),
                 note: note.to_string(),
                 ops: Vec::new(),
+                calls: Vec::new(),
             },
         );
         id

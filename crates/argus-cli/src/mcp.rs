@@ -102,7 +102,11 @@ impl Server<'_> {
     /// The daemon, found or started.
     fn client(&mut self) -> Result<&mut Client, String> {
         if self.client.is_none() {
-            self.client = Some(project::connect(self.inv, self.err)?);
+            self.client = Some(project::connect_as(
+                self.inv,
+                self.err,
+                Some("agent:claude"),
+            )?);
         }
         Ok(self.client.as_mut().expect("connected"))
     }

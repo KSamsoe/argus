@@ -144,6 +144,18 @@ impl Daemon {
         let root = self.require_session()?.root.clone();
         let tx = json::u64_param(params, "tx", 0)? as u32;
         let t = self.edits.take(tx)?;
+        // The feed row's command is the agent's `propose` tool with the
+        // transaction's ops: `edit propose tx=4` alone would not say what.
+        if let Some(c) = self.calling.as_mut() {
+            let mut p = json!({ "author": t.author, "note": t.note, "ops": t.calls });
+            if let Some(n) = json::opt_str(params, "note")? {
+                p["note"] = json!(n);
+            }
+            if let Some(v) = params.get("proposal").filter(|v| !v.is_null()) {
+                p["proposal"] = v.clone();
+            }
+            c.0 = argus_client::command::line("propose", &p);
+        }
         let calls: Vec<Json> = t
             .ops
             .iter()
@@ -250,9 +262,12 @@ impl Daemon {
             inverse: Vec::new(),
             touched,
             files: Vec::new(),
+            command: self.call_line(),
+            call: None,
         };
         let r = c.to_json();
         self.edits.feed.push(c);
+        self.feed_rows += 1;
         self.notify("edits", "edit.committed", r.clone());
         r
     }

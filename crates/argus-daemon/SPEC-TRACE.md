@@ -244,6 +244,14 @@ Phase 0 item 4, "JSON-RPC daemon with session, world, edit, sim (play, pause, st
 | A person plays: keys and the mouse as a window sends them, the game playing in real time. | Done | `tests/window_play.rs`: Outpost's inspector opened with Tab, its People page reached with the arrows and Enter, Jobs with a click, closed with Esc, while the game plays on. | `window_play::a_person_opens_the_inspector_with_keys_and_the_mouse` |
 | (§17) Hollow's open at 201 rooms, the index warm, under 300 ms. | Done | 226 to 238 ms at the gate, after item 7's music was made in parallel (argus-audio). | `perf_rooms` |
 
+## Phase 4, item 0: every change in the feed, as a command
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (Phase 4 gate) "Everything the editor does appears in the change feed as a command the agent could have issued"; decided with Kevin: every call that changes something, from any client, with its author. | Done | `feed.rs` classifies every method as a change, a transaction piece, or a read. `Daemon::call` records the call's `argus` line and author; a commit's row takes the whole transaction as the `edit` tool (`edit.commit`) or the `propose` tool (`edit.propose`); a change that made no row gets a `command` row with its method and params, notified as `edit.command` on the `edits` topic. The daemon's own calls (connection 0) make none; the stdio transport is connection 1 now. | `feed::tests::every_method_is_a_change_a_transaction_part_or_a_read`; `argus-cli` `feed` |
+| Who a connection is. | Done | `session.identify {author}`; a call's own `author` param wins; else `cli`. | `argus-cli` `feed`; `argus-editor` `editor` |
+| (§5) "Errors are documentation": a parameter the method does not have. | Done | `check_params`: refused with the method's parameters in the hint (`fork` goes with every method). Found when the editor's `sim.speed {value}` set the speed to 1. | `argus-editor` `editor`; every suite (a call with an undeclared parameter fails) |
+
 ## Known limitations, stated so they are decisions
 
 - A mark's clip is drawn while the game waits: 0.37 s in a debug build on Hollow with the window open, most of it the clip's 61 pictures. Released builds are faster; drawing the clip after the note is typed is the next step if it is felt.

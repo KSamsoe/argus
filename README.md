@@ -195,6 +195,8 @@ crates/
   argus-jobs/         the job system: tasks posted as entities, claimed by priority and distance, walked to, worked, carried; why a worker is idle (phase 3, item 3)
   argus-dialogue/     dialogue: a def table of lines, choices, conditions, and edits, played through the UI in the world's language (phase 3, item 4)
   argus-timeline/     timelines: a def table of cues against time (tweens, animator states, camera cuts, dialogue lines, events), played by an entity and scrubbed by a seek (phase 3, item 5)
+  argus-client/       the protocol from outside: the socket, JSON lines, and the CLI's key=value grammar read and written ("show as command"); no engine (phase 4, item 0)
+  argus-editor/       argus-editor: the editor window, a separate process on the protocol alone, built on egui (phase 4)
 tools/
   web/                build, serve, and check the web player in headless Chrome (phase 2, item 1)
 examples/
@@ -218,7 +220,9 @@ docs/
 
 ## Phase 4
 
-Phase 4 is the editor: a separate program that reaches the game only through the protocol, as the agent does, so everything a person does in it is a command the agent could have issued. Its items, in the order agreed with Kevin, are in [docs/phase4-checklist.md](docs/phase4-checklist.md).
+Phase 4 is the editor: a separate program that reaches the game only through the protocol, as the agent does, so everything a person does in it is a command the agent could have issued. Its items, in the order agreed with Kevin, are in [docs/phase4-checklist.md](docs/phase4-checklist.md). Done so far:
+
+- **Item 0, the editor's frame.** `argus editor` opens the editor, [crates/argus-editor](crates/argus-editor), on the project's daemon (it starts one if none is running). The editor is its own program and has only the protocol, like the agent: a test fails if it ever depends on the engine. It has a bar with Play or Pause, Stop, Step, and 1x, 3x, 10x, an overview of the world, the change feed, and Show as command, which lists everything you did as the `argus` commands that do it, ready to copy into a chat. The change feed now has a row for every change anyone makes, the editor, the agent, or the CLI, with who made it and the command: `argus sim speed x=10`, or a whole edit as `argus edit author=human note=... ops='[...]'`. Typing a session's feed into the CLI against a fresh copy of the project makes the same world. Building it found that the daemon ignored parameters it did not know, so `sim.speed value=10` quietly set the speed to 1; an unknown parameter is refused now, with the right names. Trace: [crates/argus-editor/SPEC-TRACE.md](crates/argus-editor/SPEC-TRACE.md) and [crates/argus-client/SPEC-TRACE.md](crates/argus-client/SPEC-TRACE.md).
 
 ## Phase 3
 

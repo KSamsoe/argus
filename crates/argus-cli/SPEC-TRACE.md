@@ -32,7 +32,7 @@ Every statement in the design document (v0.3) that constrains the `argus` comman
 
 | Spec | Status | Where | Test |
 |---|---|---|---|
-| "show as command" prints the CLI equivalent of every editor action. | Deferred | Phase 4 item 0 (docs/phase4-checklist.md); the CLI's `key=value` grammar is what it will print. | |
+| "show as command" prints the CLI equivalent of every editor action. | Done (phase 4 item 0) | `argus_client::command::line` writes any call in this CLI's grammar, and the words reader moved to `argus-client` beside it, so the two directions are one crate's; every feed row carries its line. A session's feed typed into this CLI against a fresh copy makes the same world. `argus editor` opens the editor (`project::editor_command`). | `feed::every_change_is_a_command_the_agent_could_have_issued`; `argus-client` `command` tests |
 | The agent's `input.inject` says `{action: "jump"}`. | Done | `argus input inject jump` (a bare value goes to the first parameter, `action`). | `cli::key_values_become_the_params_object` |
 
 ## Parameters, stated so the grammar is a decision

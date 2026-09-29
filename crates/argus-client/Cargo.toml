@@ -1,0 +1,10 @@
+[package]
+name = "argus-client"
+description = "Argus Engine protocol client: the daemon's local socket, JSON-RPC lines, and the CLI's key=value grammar read and written; no world, no engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde_json = "1"
+interprocess = "2"

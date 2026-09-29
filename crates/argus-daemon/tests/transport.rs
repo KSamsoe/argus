@@ -119,7 +119,14 @@ fn call(
     )
     .unwrap();
     send.flush().unwrap();
-    let mut line = String::new();
-    reader.read_line(&mut line).unwrap();
-    serde_json::from_str(&line).unwrap()
+    // The reply, past any notification still on the line (a change's feed
+    // row, phase 4), as a client sets them aside.
+    loop {
+        let mut line = String::new();
+        reader.read_line(&mut line).unwrap();
+        let msg: Json = serde_json::from_str(&line).unwrap();
+        if msg.get("id").is_some() {
+            return msg;
+        }
+    }
 }

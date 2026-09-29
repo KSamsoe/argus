@@ -73,8 +73,30 @@ pub fn try_connect(root: &Path) -> Option<(Client, Json)> {
 }
 
 /// A client for this invocation: `--socket`, or the project's daemon,
-/// started if none answers (unless `--no-start`).
+/// started if none answers (unless `--no-start`). It says who it is when
+/// `ARGUS_AUTHOR` is set, for the change feed (phase 4); else the daemon
+/// calls it `cli`.
 pub fn connect(inv: &Invocation, err: &mut dyn Write) -> Result<Client, String> {
+    connect_as(inv, err, None)
+}
+
+/// [`connect`], saying who it is: `ARGUS_AUTHOR` if set, else `author`.
+pub fn connect_as(
+    inv: &Invocation,
+    err: &mut dyn Write,
+    author: Option<&str>,
+) -> Result<Client, String> {
+    let mut c = connect_quiet(inv, err)?;
+    let env = std::env::var("ARGUS_AUTHOR").ok().filter(|a| !a.is_empty());
+    if let Some(a) = env.as_deref().or(author) {
+        // A daemon from before phase 4 does not know the method; its calls
+        // are then simply unattributed.
+        let _ = c.call("session.identify", serde_json::json!({ "author": a }));
+    }
+    Ok(c)
+}
+
+fn connect_quiet(inv: &Invocation, err: &mut dyn Write) -> Result<Client, String> {
     if let Some(s) = &inv.socket {
         return Client::connect(s).map_err(|e| format!("cannot connect to socket {s}: {e}"));
     }
@@ -190,6 +212,91 @@ fn detach(cmd: &mut Command) {
 fn detach(cmd: &mut Command) {
     use std::os::unix::process::CommandExt;
     cmd.process_group(0);
+}
+
+/// `argus editor`: make sure the project's daemon is running (starting it
+/// as any command would), then open the editor on it: `argus-editor`
+/// beside this executable, its own process, speaking only the protocol
+/// (§11). The person is `human` in the change feed, or `ARGUS_AUTHOR`.
+pub fn editor_command(inv: &Invocation, out: &mut dyn Write, err: &mut dyn Write) -> i32 {
+    let socket = match &inv.socket {
+        Some(s) => s.clone(),
+        None => {
+            let root = match find_project(inv.project.as_deref()) {
+                Ok(r) => r,
+                Err(e) => {
+                    let _ = writeln!(err, "argus: {e}");
+                    return EXIT_USAGE;
+                }
+            };
+            if let Err(e) = connect(inv, err) {
+                let _ = writeln!(err, "argus: {e}");
+                return EXIT_CONNECT;
+            }
+            match daemon_info(&root).and_then(|i| i["socket"].as_str().map(str::to_string)) {
+                Some(s) => s,
+                None => {
+                    let _ = writeln!(
+                        err,
+                        "argus: the daemon is up but .argus/daemon.json names no socket"
+                    );
+                    return EXIT_CONNECT;
+                }
+            }
+        }
+    };
+    let exe = match std::env::current_exe() {
+        Ok(me) => me.with_file_name(format!("argus-editor{}", std::env::consts::EXE_SUFFIX)),
+        Err(e) => {
+            let _ = writeln!(err, "argus: {e}");
+            return EXIT_USAGE;
+        }
+    };
+    if !exe.exists() {
+        let _ = writeln!(
+            err,
+            "argus: {} is not built; `cargo build -p argus-editor` makes it",
+            exe.display()
+        );
+        return EXIT_USAGE;
+    }
+    let log_dir = inv
+        .project
+        .clone()
+        .or_else(|| find_project(None).ok())
+        .map(|r| r.join(".argus"))
+        .unwrap_or_else(std::env::temp_dir);
+    let _ = std::fs::create_dir_all(&log_dir);
+    let log = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_dir.join("editor.log"));
+    let mut cmd = Command::new(&exe);
+    cmd.arg("--socket").arg(&socket).stdin(Stdio::null());
+    match log.and_then(|l| Ok((l.try_clone()?, l))) {
+        Ok((a, b)) => {
+            cmd.stdout(Stdio::from(a)).stderr(Stdio::from(b));
+        }
+        Err(_) => {
+            cmd.stdout(Stdio::null()).stderr(Stdio::null());
+        }
+    }
+    detach(&mut cmd);
+    match cmd.spawn() {
+        Ok(child) => {
+            let _ = writeln!(
+                out,
+                "argus: the editor is open (pid {}, log in {})",
+                child.id(),
+                log_dir.join("editor.log").display()
+            );
+            EXIT_OK
+        }
+        Err(e) => {
+            let _ = writeln!(err, "argus: cannot start {}: {e}", exe.display());
+            EXIT_CONNECT
+        }
+    }
 }
 
 /// `argus daemon <start|stop|status|run>`.

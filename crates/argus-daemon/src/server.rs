@@ -5,9 +5,7 @@
 //! while the continuous clock is playing.
 
 use crate::daemon::{daemon_info_path, ConnId, Daemon};
-use interprocess::local_socket::{
-    prelude::*, GenericFilePath, GenericNamespaced, ListenerOptions, Stream, ToFsName, ToNsName,
-};
+use interprocess::local_socket::{prelude::*, ListenerOptions, Stream};
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
@@ -29,37 +27,14 @@ enum Msg {
     Closed(ConnId),
 }
 
-/// The socket name for a project: a namespaced name where the platform
-/// has them (Windows pipes, Linux abstract sockets), else a file under
-/// `.argus/`.
-pub fn socket_name_for(root: &Path) -> String {
-    let mut h: u64 = 0xcbf29ce484222325;
-    for b in root.to_string_lossy().as_bytes() {
-        h ^= *b as u64;
-        h = h.wrapping_mul(0x100000001b3);
-    }
-    if GenericNamespaced::is_supported() {
-        format!("argusd-{h:016x}.sock")
-    } else {
-        root.join(".argus")
-            .join("argusd.sock")
-            .to_string_lossy()
-            .into_owned()
-    }
-}
+use argus_client::socket::to_name;
+pub use argus_client::socket::{connect, socket_name_for};
 
-fn to_name(name: &str) -> std::io::Result<interprocess::local_socket::Name<'_>> {
-    if GenericNamespaced::is_supported() && !name.contains('/') && !name.contains('\\') {
-        name.to_ns_name::<GenericNamespaced>()
-    } else {
-        name.to_fs_name::<GenericFilePath>()
-    }
-}
-
-/// Connect to a daemon by socket name (what the CLI does).
-pub fn connect(name: &str) -> std::io::Result<Stream> {
-    Stream::connect(to_name(name)?)
-}
+/// The connection id of the stdio transport. Internal calls (the launcher,
+/// the test harness) are connection 0 and never appear in the change feed;
+/// stdio and socket clients do. The two transports never run together, so
+/// stdio can take the first socket id.
+const STDIO: ConnId = 1;
 
 /// Serve until stdin closes (stdio) or forever (socket). `project_root`,
 /// when given, gets a `.argus/daemon.json` with the socket name and pid so
@@ -73,7 +48,7 @@ pub fn serve(
     match &transport {
         Transport::Stdio => {
             let (out_tx, out_rx) = mpsc::channel::<String>();
-            tx.send(Msg::Open(0, out_tx)).ok();
+            tx.send(Msg::Open(STDIO, out_tx)).ok();
             std::thread::spawn(move || {
                 let stdout = std::io::stdout();
                 for line in out_rx {
@@ -89,14 +64,14 @@ pub fn serve(
                 for line in stdin.lock().lines() {
                     match line {
                         Ok(l) => {
-                            if tx2.send(Msg::Line(0, l)).is_err() {
+                            if tx2.send(Msg::Line(STDIO, l)).is_err() {
                                 break;
                             }
                         }
                         Err(_) => break,
                     }
                 }
-                let _ = tx2.send(Msg::Closed(0));
+                let _ = tx2.send(Msg::Closed(STDIO));
             });
         }
         Transport::Socket(name) => {

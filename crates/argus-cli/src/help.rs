@@ -11,7 +11,7 @@ use std::fmt::Write;
 pub fn overview() -> String {
     let mut out = String::new();
     out.push_str(
-        "usage: argus <namespace> <method> [value] [key=value ...] [--json] [--follow]\n       argus <namespace>              list a namespace's methods\n       argus <namespace> <method> -h  one method's doc, params, returns\n       argus daemon <start|stop|status|run> [--scene s] [--seed n] [--window WxH] [--play] [--mods a,b]\n       argus help [namespace | method]\n\nflags: --project <dir> (default: the nearest argus.toml upward from here, or $ARGUS_PROJECT)\n       --socket <name>   connect to this socket instead of the project's daemon\n       --no-start        fail if no daemon is running instead of starting one\n       --params <json>   a whole params object (or @file.json); key=value words layer on top\n       --json            print the result (or error) as one JSON line\n       --follow          keep the connection open and print notifications (obs.subscribe does this)\n\nvalues: JSON when they parse as JSON (2, true, \"text\", [1,2]); bare words are strings;\n        [a, b] and {k: v} accept bare words; dotted keys nest (where.has=[Enemy]);\n        a repeated key becomes a list; one bare value goes to the method's first parameter.\n\nmethods (each is `argus <ns> <name>`, or `argus <ns>.<name>`):\n",
+        "usage: argus <namespace> <method> [value] [key=value ...] [--json] [--follow]\n       argus <namespace>              list a namespace's methods\n       argus <namespace> <method> -h  one method's doc, params, returns\n       argus daemon <start|stop|status|run> [--scene s] [--seed n] [--window WxH] [--play] [--mods a,b]\n       argus editor                   the editor window on the project's daemon (started if none is running)\n       argus help [namespace | method]\n\nflags: --project <dir> (default: the nearest argus.toml upward from here, or $ARGUS_PROJECT)\n       --socket <name>   connect to this socket instead of the project's daemon\n       --no-start        fail if no daemon is running instead of starting one\n       --params <json>   a whole params object (or @file.json); key=value words layer on top\n       --json            print the result (or error) as one JSON line\n       --follow          keep the connection open and print notifications (obs.subscribe does this)\n\nvalues: JSON when they parse as JSON (2, true, \"text\", [1,2]); bare words are strings;\n        [a, b] and {k: v} accept bare words; dotted keys nest (where.has=[Enemy]);\n        a repeated key becomes a list; one bare value goes to the method's first parameter.\n\nmethods (each is `argus <ns> <name>`, or `argus <ns>.<name>`):\n",
     );
     let mut ns_seen = String::new();
     for m in METHODS {
@@ -153,6 +153,11 @@ pub fn mcp() -> String {
     "usage: argus mcp [--project <dir>]\n\nServe the agent tools over the Model Context Protocol on stdin and stdout (section 16),\nfor an agent host: {\"command\": \"argus\", \"args\": [\"mcp\", \"--project\", \"<dir>\"]}. It finds or starts the\nproject's daemon, and on connect runs world.summary into its instructions. Tool descriptions and\ninput schemas come from the same table as this help; `argus help` lists the tools.\n".to_string()
 }
 
+/// Help for `argus editor`.
+pub fn editor() -> String {
+    "usage: argus editor [--project <dir>]\n\nThe editor window (section 11, phase 4): its own program, argus-editor, that reaches the game only\nthrough the protocol, as the agent does. It opens on the project's daemon, starting one if none is\nrunning. Everything done in it is a row in the change feed with the argus command that does it, by\n\"human\" (or $ARGUS_AUTHOR); Show as command lists those lines to copy.\n".to_string()
+}
+
 /// Help for `argus docs`.
 pub fn docs_help() -> String {
     "usage: argus docs --for-agent [--out <file>]   the project's ARGUS.md, from the live daemon\n       argus docs                                 the engine's reference: the tools and every method\n\nARGUS.md (section 16) holds the component schemas with their docs, the systems with their stages\nand write sets, the prefab catalog, and each scene's summary, regenerated on demand so it never\ndrifts; a coding agent's project instructions point at it. --out defaults to <project>/ARGUS.md.\n".to_string()
@@ -178,6 +183,7 @@ pub fn for_command(cmd: &Command) -> String {
         Command::Method(name, _) => method(docs::find(name).expect("resolved")),
         Command::Namespace(ns) => namespace(ns),
         Command::Daemon(_) => daemon(),
+        Command::Editor => editor(),
         Command::Test(_) => test(),
         Command::Build => build(),
         Command::Tool(name, _) => tool_topic(name),

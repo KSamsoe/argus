@@ -41,7 +41,7 @@ The protocol already has most of what the panels call: `world.query`, `world.sea
 
 ## 0. The editor's frame, and "show as command"
 
-**Status: to do.**
+**Status: done** (2026-09-29) in `argus-client` (new), `argus-editor` (new), the daemon (`feed.rs`), and the CLI (`argus editor`). `argus editor` opens the editor on the project's daemon, starting one if none runs. It has a bar (the project and scene, Play or Pause, Stop, Step, 1x, 3x, 10x, the clock), an overview of the world, the change feed, and Show as command, a panel of everything the person did as `argus` lines with Copy. A failed call shows its sentence, hint, and file:line. Every change from every client is a feed row with its author and its command, and a test types a session's feed into the CLI against a fresh copy of the project and gets the same world. Traces: `crates/argus-editor/SPEC-TRACE.md`, `crates/argus-client/SPEC-TRACE.md`, and the rows in the daemon's and the CLI's.
 
 - §11: a separate process, `argus editor`, finding or starting the project's daemon as the CLI does.
 - P1, §11: built on the protocol client only, checked by a test on its dependencies.
@@ -49,6 +49,15 @@ The protocol already has most of what the panels call: `world.query`, `world.sea
 - The gate, and the decision above: the change feed records every call that changes something, from any client, with its author and its command. Each connection says who it is.
 - §5: every error carries a sentence, a hint, and a file:line reference. The editor shows all three.
 - Tests drive the editor headless (`egui_kittest`), clicking by label, as a person would.
+
+Decisions taken while building it:
+
+- **A client crate with no engine in it.** `argus-client` holds the socket, the JSON lines, and the CLI's grammar both ways; the editor depends on it and on egui alone, and a test fails if its dependency tree ever holds an engine crate. The CLI and the daemon use the same crate, so the socket name and the grammar exist once.
+- **One command line per change.** A commit's row carries the whole transaction as the agent's `edit` tool (`argus edit author=human note=... ops='[...]'`), since `argus edit commit tx=4` does not say what changed; a proposal's is the `propose` tool's. Undo, redo, picks, and tuning keep the call that made them. The transaction's pieces (`edit.begin`, `edit.set`, ...) are not rows.
+- **Every method is classified.** `feed.rs` lists each as a change, a transaction piece, or a read, and a test fails when a new method is in none. Pictures, sound clips, and profiles written to `.argus/` are reads: they observe.
+- **Who a connection is.** `session.identify {author}`: the editor is `human`, `argus mcp` is `agent:claude`, the CLI is `cli` unless `ARGUS_AUTHOR` says otherwise. A call's own `author` param wins. The daemon's own calls (the launcher, the harness inside `test.run`) make no rows; `test.run` is one.
+- **A parameter a method does not have is refused.** Found by the editor's first test: its 10x button sent `sim.speed {value: 10}`, the parameter is `x`, and the daemon had ignored `value` and set the speed to 1, the default. Now every call is checked against the method's declared parameters (`fork` goes with any), and the error lists the right ones. The feed test had passed with the same mistake, since the replay ignored it too; it compares the speed now.
+- **The line is for bash.** A value that needs it is single-quoted as a POSIX shell reads it; the tests and the docs run in bash (Git Bash on Windows).
 
 ## 1. Viewport
 
