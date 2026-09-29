@@ -24,7 +24,7 @@ Every statement in the design document (v0.3) that constrains the `argus` comman
 | The engine's own reference documentation ships in the same shape. | Done | `argus docs` (without `--for-agent`) prints the tools and every method with their parameter tables, from the same schema. | same |
 | `argus mcp` starts a stdio MCP server exposing about a dozen tools: summary, query, describe, edit, run, seek, observe, events, test, reload, marks, propose. | Done | `mcp.rs`: MCP over stdin and stdout, newline-delimited JSON-RPC 2.0 (`initialize` with protocol 2025-06-18, 2025-03-26, or 2024-11-05; `tools/list`; `tools/call`; `ping`); it finds or starts the project's daemon like every command. The twelve tools are `docs::TOOLS`; the five that only read say so (`readOnlyHint`). A tool's failure is an answer with `isError`, and a lost daemon is found again on the next call. `observe` with `format: "png"` returns the picture as an image. | `mcp::argus_mcp_serves_the_tools_of_the_one_schema` |
 | (§5) The MCP shim runs `world.summary` on connect. | Done | `initialize` runs the summary tool and puts it in the server's instructions, after a paragraph on the tools, so the agent starts oriented. | same |
-| `argus token` for remote access. | Deferred | Phase 4 with the tablet client. | |
+| `argus token` for remote access. | Deferred | Decided with Kevin at phase 4's start (docs/phase4-checklist.md): tokens, TLS, and a phone page for review requests wait for the first remote client; the editor connects on the local socket. | |
 | `argus build --release`. | Done | Phase 2 item 7; see its section below. | |
 | `argus test`. | Done | `argus test [name] [--seeds 1..50] [--file tests/x.luau] [--update] [--json]` calls `test.run` and prints the compact report (`render::test_report`): PASS/FAIL per scenario, a line per failing seed and expectation, a summary; exit 0 only when every run passed. `argus test run` still reaches the method directly. | `cli::the_cli_talks_to_a_daemon_over_its_socket` |
 
@@ -32,7 +32,7 @@ Every statement in the design document (v0.3) that constrains the `argus` comman
 
 | Spec | Status | Where | Test |
 |---|---|---|---|
-| "show as command" prints the CLI equivalent of every editor action. | Deferred | Phase 4 with the editor; the CLI's `key=value` grammar is what it will print. | |
+| "show as command" prints the CLI equivalent of every editor action. | Deferred | Phase 4 item 0 (docs/phase4-checklist.md); the CLI's `key=value` grammar is what it will print. | |
 | The agent's `input.inject` says `{action: "jump"}`. | Done | `argus input inject jump` (a bare value goes to the first parameter, `action`). | `cli::key_values_become_the_params_object` |
 
 ## Parameters, stated so the grammar is a decision

@@ -210,9 +210,15 @@ docs/
   phase1-gate.md                  the phase-1 gate run
   phase2-checklist.md             every phase-2 item and its status
   phase3-checklist.md             every phase-3 item and its status
+  phase3-gate.md                  the phase-3 gate run
+  phase4-checklist.md             every phase-4 item and its status
   web-spike.md                    what the web spike found (phase 2, item 1)
   playtest.md                     the playtest server on klab: the link, reports into marks, new builds (phase 2, item 7)
 ```
+
+## Phase 4
+
+Phase 4 is the editor: a separate program that reaches the game only through the protocol, as the agent does, so everything a person does in it is a command the agent could have issued. Its items, in the order agreed with Kevin, are in [docs/phase4-checklist.md](docs/phase4-checklist.md).
 
 ## Phase 3
 
