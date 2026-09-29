@@ -16,6 +16,12 @@ Every statement in the design document (v0.3) that constrains how a client reach
 | (§11) "Show as command" prints the CLI equivalent of every action the human takes, "so the human learns the agent's language by using the editor and can paste a command into a chat instead of describing a click". | Done | `command::line(method or tool, params)`: `argus sim step n=1`, `argus edit author=human note=... ops='[...]'`. Values in the CLI's own grammar (bare words, `[a, b]`, `{k: v}`, dotted keys for nested objects), JSON where that is the only form that reads back the same, single quotes for a POSIX shell where a word needs them, and `--params` for keys the words cannot carry. | `command::tests::calls_are_written_as_the_cli_types_them` |
 | (§16) "A human reading the agent's transcript can rerun any call": a written line reads back to the same call. | Done | `command::read_line` (with `split`, a POSIX shell's word splitting) is the inverse: `read_line(line(t, p)) == (t, p)`, checked over strings that look like JSON, brackets, quotes of both kinds, `$`, backquotes, backslashes, newlines, accents, empty strings, nested lists and objects, dotted keys, and keys with dots in them. `words.rs` is the CLI's reader, moved here so both directions live together. | `command::tests::every_value_reads_back_the_same`, `a_shell_splits_the_words_as_written`; `argus-cli` `feed` |
 
+## §5 The out-of-band channel (phase 4 item 1)
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| "The hot paths (frame streaming, snapshot transfer) use out-of-band shared memory or a sidecar binary channel that the JSON message merely points at." | Done (frames) | `frames.rs`: `FrameWriter` (the daemon's) and `FrameReader` (a client's) over one mapped file: a 64-byte header, then three slots each of a 64-byte header (a sequence number odd while written, the tick, the frame, the size) and RGBA8 pixels, every slot on a 64-byte boundary. A `render.frame` notification names the slot and sequence number; a copy is kept only if the number was the same before and after it. | `frames::tests::a_frame_written_is_read_whole_and_an_old_one_is_not`, `slots_stay_aligned_for_any_size` |
+
 ## Known limitations, stated so they are decisions
 
 - The line is for a POSIX shell (bash, and Git Bash on Windows), where the tests and the docs run. PowerShell reads single quotes the same way, but not `'\''` inside them.

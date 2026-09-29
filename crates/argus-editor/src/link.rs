@@ -22,6 +22,12 @@ pub enum Want {
     Feed,
     /// Something the person did, as its `argus` line.
     Action(String),
+    /// `render.stream`, the viewport's frames.
+    Stream,
+    /// `input.device`, the viewport's keys and mouse.
+    Input,
+    /// `obs.frame` (semantic), to find what is at this pixel.
+    Pick([f64; 2]),
 }
 
 /// An answer: what it was for, and its result or error.

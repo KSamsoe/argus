@@ -5,6 +5,7 @@
 //! command into a chat instead of describing a click".
 
 use crate::link::{Answer, Link, State, Want};
+use crate::viewport::{Send, Viewport};
 use argus_client::command;
 use eframe::egui::{self, Color32, RichText};
 use serde_json::{json, Value as Json};
@@ -60,6 +61,11 @@ pub struct Editor {
     pub show_commands: bool,
     /// The last call that failed.
     pub problem: Option<Problem>,
+    /// The game, drawn and played in.
+    pub viewport: Viewport,
+    /// The game's sound plays while the viewport shows it (tests turn it
+    /// off).
+    pub audio: bool,
     last_status: Option<Instant>,
     last_summary: Option<Instant>,
 }
@@ -77,6 +83,8 @@ impl Editor {
             commands: Vec::new(),
             show_commands: false,
             problem: None,
+            viewport: Viewport::default(),
+            audio: true,
             last_status: None,
             last_summary: None,
         }
@@ -100,6 +108,7 @@ impl Editor {
         if self.link.state == State::Idle {
             let c = ctx.clone();
             self.link.connect(&self.author, move || c.request_repaint());
+            self.viewport.reset();
         }
         let (answers, notes) = self.link.poll();
         for a in answers {
@@ -108,6 +117,8 @@ impl Editor {
         for (method, row) in notes {
             if method == "edit.committed" || method == "edit.command" {
                 self.push_feed(row);
+            } else if method == "render.frame" {
+                self.viewport.on_frame(row);
             }
         }
         if !self.link.is_up() {
@@ -148,6 +159,7 @@ impl Editor {
                 self.last_summary = None;
             }
             (Want::Action(line), Err(e)) => self.problem = Some(Problem::from_error(&line, &e)),
+            (Want::Pick(at), Ok(v)) => self.viewport.pick(&v, at),
             (w, Err(e)) => {
                 self.problem = Some(Problem::from_error(&format!("{w:?}"), &e));
             }
@@ -184,7 +196,38 @@ impl Editor {
             .resizable(true)
             .default_width(380.0)
             .show(ctx, |ui| self.feed_ui(ui));
-        egui::CentralPanel::default().show(ctx, |ui| self.overview(ui));
+        egui::SidePanel::left("world")
+            .resizable(true)
+            .min_width(220.0)
+            .default_width(280.0)
+            .show(ctx, |ui| self.overview(ui));
+        egui::CentralPanel::default().show(ctx, |ui| self.viewport_ui(ui));
+    }
+
+    fn viewport_ui(&mut self, ui: &mut egui::Ui) {
+        let up = self.link.is_up();
+        let playing = self.status["playing"] == true && self.status["paused"] != true;
+        for s in self.viewport.ui(ui, up, playing) {
+            match s {
+                Send::Stream(w, h) => self.link.send(
+                    "render.stream",
+                    json!({ "width": w, "height": h, "fps": 60, "audio": self.audio }),
+                    Want::Stream,
+                ),
+                Send::Input(events, text) => {
+                    let mut p = json!({ "events": events });
+                    if !text.is_empty() {
+                        p["text"] = json!(text);
+                    }
+                    self.link.send("input.device", p, Want::Input);
+                }
+                Send::Pick(at, w, h) => self.link.send(
+                    "obs.frame",
+                    json!({ "format": "semantic", "width": w, "height": h, "limit": 500 }),
+                    Want::Pick(at),
+                ),
+            }
+        }
     }
 
     fn bar(&mut self, ui: &mut egui::Ui) {

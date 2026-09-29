@@ -15,6 +15,9 @@
 //!   (the agent's `edit` tool with its ops).
 //! - [`READS`]: lookups and observations. A picture, a sound clip, or a
 //!   profile written to `.argus/` is an observation too.
+//! - [`INPUT`]: a person's keys and mouse, which the input log records as
+//!   a window's are, not the feed key by key (decided with Kevin). What a
+//!   key stands for (F8's mark, F9's proposal) is its call's row.
 //!
 //! Internal calls (connection 0: the launcher, the test harness inside
 //! `test.run`) make no rows; the call that started them did.
@@ -57,6 +60,7 @@ pub const CHANGES: &[&str] = &[
     "mark.open",
     "mark.note",
     "mark.close",
+    "mark.cancel",
     "mark.import",
     "mark.pull",
     "proposal.try",
@@ -149,6 +153,7 @@ pub const READS: &[&str] = &[
     "obs.subscribe",
     "test.list",
     "render.status",
+    "render.stream",
     "audio.status",
     "audio.clip",
     "prof.frame",
@@ -158,6 +163,9 @@ pub const READS: &[&str] = &[
     "prof.alloc",
     "prof.capture",
 ];
+
+/// A person's device events: the input log's, not the feed's.
+pub const INPUT: &[&str] = &["input.device"];
 
 /// Does this call change something (a feed row)?
 pub fn changes(method: &str) -> bool {
@@ -184,7 +192,12 @@ mod tests {
     #[test]
     fn every_method_is_a_change_a_transaction_part_or_a_read() {
         let mut seen = std::collections::BTreeMap::new();
-        for (kind, list) in [("changes", CHANGES), ("tx", TX_PARTS), ("reads", READS)] {
+        for (kind, list) in [
+            ("changes", CHANGES),
+            ("tx", TX_PARTS),
+            ("reads", READS),
+            ("input", INPUT),
+        ] {
             for m in list {
                 assert!(
                     seen.insert(*m, kind).is_none(),
@@ -196,7 +209,7 @@ mod tests {
         for m in METHODS {
             assert!(
                 seen.contains_key(m.name),
-                "{} is not classified: add it to CHANGES, TX_PARTS, or READS in feed.rs",
+                "{} is not classified: add it to CHANGES, TX_PARTS, READS, or INPUT in feed.rs",
                 m.name
             );
         }

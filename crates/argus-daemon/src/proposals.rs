@@ -731,19 +731,39 @@ impl Daemon {
         }
         // The bar shows the trial at once, not an older message.
         self.toast = None;
+        // Each key is the call that does it, in the change feed by whoever
+        // pressed it (phase 4): F9 is proposal.try then proposal.show, or
+        // proposal.show; F10 is proposal.pick.
         let said = if next {
             match &self.trial {
                 Some(t) => {
                     let i = (t.showing + 1) % t.worlds.len();
-                    self.show_world(i).err().map(|e| e.message)
+                    let label = t.worlds[i].0.clone();
+                    self.as_command("proposal.show", json!({ "variant": label }), |d, p| {
+                        d.proposal_show(p)
+                    })
+                    .err()
+                    .map(|e| e.message)
                 }
                 None => match first_pending(&root) {
                     Some(p) => {
                         let id = p["id"].as_u64().unwrap_or(0);
-                        self.start_trial(&root, id)
-                            .and_then(|_| self.show_world(1))
-                            .err()
-                            .map(|e| e.message)
+                        self.as_command("proposal.try", json!({ "id": id }), |d, p| {
+                            d.proposal_try(p)
+                        })
+                        .and_then(|_| {
+                            let label = self
+                                .trial
+                                .as_ref()
+                                .and_then(|t| t.worlds.get(1))
+                                .map(|w| w.0.clone())
+                                .unwrap_or_else(|| "B".to_string());
+                            self.as_command("proposal.show", json!({ "variant": label }), |d, p| {
+                                d.proposal_show(p)
+                            })
+                        })
+                        .err()
+                        .map(|e| e.message)
                     }
                     None => Some("NO PROPOSALS WAITING".to_string()),
                 },
@@ -753,7 +773,12 @@ impl Daemon {
                 None => Some("NOTHING TO KEEP: F9 TRIES A PROPOSAL".to_string()),
                 Some(t) => {
                     let (id, label) = (t.id, t.worlds[t.showing].0.clone());
-                    match self.proposal_pick(&json!({ "id": id, "variant": label })) {
+                    let author = self.key_author();
+                    match self.as_command(
+                        "proposal.pick",
+                        json!({ "id": id, "variant": label, "author": author }),
+                        |d, p| d.proposal_pick(p),
+                    ) {
                         Ok(_) if label == "A" => Some(format!("KEPT A: PROPOSAL {id} TURNED DOWN")),
                         Ok(_) => Some(format!("KEPT {label}: PROPOSAL {id} COMMITTED")),
                         Err(e) => Some(e.message),

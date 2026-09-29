@@ -902,6 +902,15 @@ pub const METHODS: &[MethodDoc] = &[
         returns: "{slot, tick, actions: {name: value}, pending}",
     },
     MethodDoc {
+        name: "input.device",
+        doc: "Device events from a client's viewport (phase 4 item 1), down the window's own path: F8 and its note prompt, F9 and F10 for a proposal, then the action map, so gameplay still sees actions and the input log records them as a window's. Keys by the window's names (KeyW, ArrowLeft, Space, F8, Enter), mouse buttons (left, right, middle, back, forward), the pointer in the pixels of this connection's render.stream, and release_all when the viewport loses focus. text is what was typed, for a mark's note. Not in the change feed key by key: the input log has them; what F8, F9, and F10 do is (mark.drop, proposal.show, ...).",
+        params: &[
+            opt("events", ARRAY, "[{key, pressed} | {mouse, pressed} | {pointer: [x, y]} | {release_all: true}]"),
+            opt("text", ARRAY, "strings typed, in order"),
+        ],
+        returns: "{events, turns}",
+    },
+    MethodDoc {
         name: "sim.play",
         doc: "Enter play: snapshot the world and enable the sim stages. In a continuous scene the daemon ticks in real time; in a discrete scene time moves on sim.advance.",
         params: &[],
@@ -1043,6 +1052,12 @@ pub const METHODS: &[MethodDoc] = &[
             req("note", STRING, ""),
         ],
         returns: "mark.drop's summary",
+    },
+    MethodDoc {
+        name: "mark.cancel",
+        doc: "Take a mark back, as Escape does at the note prompt after F8: its files go, and a mark.cancelled event says so. A prompt open for it closes, and play goes on if the prompt paused it.",
+        params: &[req("id", INTEGER, "")],
+        returns: "{cancelled}",
     },
     MethodDoc {
         name: "mark.close",
@@ -1353,7 +1368,20 @@ pub const METHODS: &[MethodDoc] = &[
         name: "render.status",
         doc: "Whether a window is open, the adapter in use, and the last frame's statistics.",
         params: &[],
-        returns: "{window, size: [w, h], adapter, software, last: {sprites, draw_calls, atlases, interpolated, missing_atlases, materials, missing_materials, material_problems, ms}, atlases: [name], materials: [name]}",
+        returns: "{window, stream: {path, size, fps, frames, last_ms, error}, size: [w, h], adapter, software, last: {sprites, draw_calls, atlases, interpolated, missing_atlases, materials, missing_materials, material_problems, ms}, atlases: [name], materials: [name]}",
+    },
+    MethodDoc {
+        name: "render.stream",
+        doc: "Frames for this connection (phase 4 item 1, section 5's out-of-band channel; the editor's viewport): the daemon draws the game as a window would, into a file both processes map, and sends a render.frame notification for each frame, {path, slot, seq, tick, frame, width, height}, naming the slot that holds it. The file is a 64-byte header (ARGUSFR1, version, slots, width, height, slot bytes), then slots of a 64-byte header (seq, tick, frame, width, height) and width x height RGBA8 pixels, rows top first; a slot's seq is odd while it is written, so a copy is whole when its seq was the notification's before and after. Frames come every frame while the game plays, and when something changes while it does not. One stream at a time; the gamepads and the sound open with it. Calling it again resizes; open: false or a disconnect closes it.",
+        params: &[
+            opt("width", INTEGER, "pixels, default 1280"),
+            opt("height", INTEGER, "pixels, default 720"),
+            opt("fps", NUMBER, "frames a second at most, default 60"),
+            opt("open", BOOLEAN, "false closes it"),
+            opt("audio", BOOLEAN, "open the sound output, default true"),
+            opt("software", BOOLEAN, "draw with the software rasteriser"),
+        ],
+        returns: "{stream: {path, width, height, fps, slots, header_bytes, slot_header_bytes, format}, audio, adapter, software}",
     },
     MethodDoc {
         name: "audio.status",

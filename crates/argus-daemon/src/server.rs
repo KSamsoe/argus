@@ -146,7 +146,7 @@ fn run_loop(
     let mut last_refresh = Instant::now();
     let mut last_assets = Instant::now();
     loop {
-        let timeout = if daemon.wants_frames() || daemon.has_window() {
+        let timeout = if daemon.wants_frames() || daemon.has_window() || daemon.has_stream() {
             next_frame.saturating_duration_since(Instant::now())
         } else {
             next_frame = Instant::now();
@@ -179,9 +179,11 @@ fn run_loop(
             }
             Err(RecvTimeoutError::Disconnected) => return Ok(()),
         }
-        if (daemon.wants_frames() || daemon.has_window()) && Instant::now() >= next_frame {
+        if (daemon.wants_frames() || daemon.has_window() || daemon.has_stream())
+            && Instant::now() >= next_frame
+        {
             // Devices first, so what the human pressed lands on this frame's ticks.
-            if daemon.has_window() {
+            if daemon.has_window() || daemon.has_stream() {
                 daemon.poll_devices();
             }
             if daemon.wants_frames() {
@@ -190,6 +192,8 @@ fn run_loop(
             if daemon.has_window() {
                 daemon.present();
             }
+            // A client's viewport (phase 4 item 1).
+            daemon.stream_frame();
             next_frame += Duration::from_secs_f64(daemon.frame_seconds());
             if next_frame < Instant::now() {
                 next_frame = Instant::now();

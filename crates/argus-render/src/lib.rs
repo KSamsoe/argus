@@ -1566,6 +1566,12 @@ impl Renderer {
         out
     }
 
+    /// The last offscreen frame's pixels into `out` (`width * height * 4`
+    /// bytes, RGBA8, rows top first): a frame stream's slot.
+    pub fn capture_into(&self, out: &mut [u8]) -> argus_ecs::Result<()> {
+        self.gpu.read_pixels_into(out)
+    }
+
     /// The last offscreen frame's pixels.
     pub fn capture(&self) -> argus_ecs::Result<Image> {
         let (width, height) = self.gpu.size();

@@ -290,6 +290,7 @@ name = "argus-client"
 version = "0.0.1"
 dependencies = [
  "interprocess",
+ "memmap2",
  "serde_json",
 ]
 

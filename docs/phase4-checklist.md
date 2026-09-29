@@ -61,7 +61,7 @@ Decisions taken while building it:
 
 ## 1. Viewport
 
-**Status: to do.**
+**Status: done** (2026-09-29) in the daemon (`render.stream`, `input.device`, `mark.cancel`), `argus-client` (`frames.rs`), and the editor (`viewport.rs`). The editor's middle is the game: the daemon draws it into a file both processes map and names each frame's slot in a `render.frame` notification. Click it and the keys, the mouse, and typed text go to the game down the window's own path, so the game's bindings work, F8 drops a mark whose note is typed in the frame's bar, and F9 and F10 try and keep a proposal. A click while the game is not playing, or Alt and a click while it is, selects what is under the pointer. The sound and the gamepads open with it. In release a 1280 x 720 frame costs the daemon 1.55 ms at p95 on Hollow and on Outpost. Traces: `crates/argus-editor/SPEC-TRACE.md`, `crates/argus-client/SPEC-TRACE.md`, and the daemon's.
 
 - §11: "the viewport subscribes to frames."
 - §5: frame streaming goes through shared memory the JSON points at.
@@ -69,6 +69,15 @@ Decisions taken while building it:
 - §10: F8 drops a mark and F9 toggles proposals in the viewport as in the game window.
 - §6: play, pause, step, and speed on either clock (`sim.*`), 10× included (the gate).
 - §8: clicking an entity selects it, through the semantic frame's screen bounds.
+
+Decisions taken while building it:
+
+- **A file both processes map.** The stream is a file in the system's temporary directory with a header and three slots of RGBA8 pixels; each slot's sequence number is odd while it is written, so a copy that raced a write is dropped. The daemon reads the GPU's frame straight into the slot. Slots start on 64-byte boundaries: a frame of odd size put the next slot's sequence number off its alignment, found by the editor's first resize.
+- **Frames when they say something.** Every frame while the game plays; paused or stopped, when the world, an edit, or the devices changed, and four times a second besides. The editor asks for the panel's size in pixels and asks again 200 ms after a resize settles.
+- **The window's path, not a new one.** `input.device` takes the window's events (key names as winit's physical keys, mouse buttons, the pointer in the stream's pixels) into the same code the window's go through: F8's prompt, a trial's F9 and F10, a controls menu waiting for a key, then the action map. The prompt and the trial bar are drawn into the stream's frames as into the window's.
+- **What a key stands for is a command.** F8 is `mark.drop`, Enter at the prompt `mark.note`, F9 `proposal.try` and `proposal.show`, F10 `proposal.pick`, each a feed row by whoever pressed it, in the window as in the viewport. Escape at the prompt took a mark back with no command that did the same (P1); `mark.cancel` is that command now.
+- **Selecting is a read.** Alt and a click, or a click while the game is not playing, asks `obs.frame` for the semantic frame at the stream's size and takes the smallest thing under the pointer, the UI before the world. It is not in the feed.
+- **One viewport at a time.** A second client's `render.stream` is refused with the reason; a disconnect closes the stream and removes its file.
 
 ## 2. Hierarchy and inspector with override provenance
 

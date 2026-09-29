@@ -78,10 +78,11 @@ fn the_editor_does_everything_as_commands_the_agent_could_have_issued() {
     let mut h = Harness::builder()
         .with_size(eframe::egui::vec2(1280.0, 800.0))
         .wgpu()
-        .build_state(
-            |ctx, ed: &mut Editor| ed.ui(ctx),
-            Editor::new(&socket, "human"),
-        );
+        .build_state(|ctx, ed: &mut Editor| ed.ui(ctx), {
+            let mut ed = Editor::new(&socket, "human");
+            ed.audio = false;
+            ed
+        });
     until(&mut h, "the bar", |ed| ed.status["project"] == "fixture");
     until(&mut h, "the rows from before", |ed| {
         has_row(ed, "agent:claude", "argus sim step n=2")

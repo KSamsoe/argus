@@ -8,9 +8,12 @@
 //! - [`words`]: the CLI's `key=value` words read into params.
 //! - [`command`]: params written back as an `argus` line ("show as
 //!   command", §11), which [`words`] reads back to the same params.
+//! - [`frames`]: a stream of frames in memory both processes map (§5's
+//!   out-of-band channel), which `render.frame` notifications point into.
 
 pub mod client;
 pub mod command;
+pub mod frames;
 pub mod socket;
 pub mod words;
 

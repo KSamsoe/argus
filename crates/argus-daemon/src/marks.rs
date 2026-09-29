@@ -631,6 +631,29 @@ impl Daemon {
 
     /// `mark.close`: done with a mark; it leaves the queue. `note` says what
     /// was done ("fixed: dash buffer 6 frames").
+    /// `mark.cancel`: take a mark back, as Escape does at the note prompt
+    /// after F8: its directory goes, and a `mark.cancelled` event says so.
+    /// A prompt open for it closes (play goes on if the prompt paused it).
+    pub(super) fn mark_cancel(&mut self, params: &Json) -> Result<Json> {
+        let root = self.require_session()?.root.clone();
+        let id = mark_id(params)?;
+        let dir = mark_dir(&root, id);
+        if !dir.join("mark.json").exists() {
+            return Err(no_mark(id));
+        }
+        std::fs::remove_dir_all(&dir).map_err(|e| bad_mark(id, e))?;
+        if self.mark_prompt.as_ref().is_some_and(|p| p.id == id) {
+            if let Some(p) = self.mark_prompt.take() {
+                if p.resume {
+                    self.sched.play(&self.world);
+                }
+            }
+        }
+        let frame = self.sched.tick();
+        self.emit_mark("mark.cancelled", id, frame, "");
+        Ok(json!({ "cancelled": id }))
+    }
+
     pub(super) fn mark_close(&mut self, params: &Json) -> Result<Json> {
         let root = self.require_session()?.root.clone();
         let id = mark_id(params)?;
@@ -1028,13 +1051,17 @@ impl Daemon {
         vec![DeviceInput::ReleaseAll]
     }
 
-    /// F8: drop a mark now, pause, and ask for its note.
+    /// F8: drop a mark now, pause, and ask for its note. The mark is
+    /// `mark.drop` in the change feed, by whoever pressed the key (phase 4).
     fn start_prompt(&mut self) {
         let resume = self.sched.is_playing() && !self.sched.is_paused();
         if resume {
             self.sched.pause();
         }
-        match self.mark_drop(&json!({ "author": "human" })) {
+        let author = self.key_author();
+        match self.as_command("mark.drop", json!({ "author": author }), |d, p| {
+            d.mark_drop(p)
+        }) {
             Ok(m) => {
                 self.mark_prompt = Some(Prompt {
                     id: m["id"].as_u64().unwrap_or(0),
@@ -1064,18 +1091,16 @@ impl Daemon {
             return;
         };
         let note = p.text.trim().to_string();
-        let root = self.session.as_ref().map(|s| s.root.clone());
+        // What Enter and Escape do, as the calls that do them (phase 4).
         if save && !note.is_empty() {
-            if let Some(root) = &root {
-                let _ = self.set_note(root, p.id, &note);
-            }
+            let _ = self.as_command("mark.note", json!({ "id": p.id, "note": note }), |d, q| {
+                d.mark_note(q)
+            });
         }
         if !save {
-            if let Some(root) = &root {
-                let _ = std::fs::remove_dir_all(mark_dir(root, p.id));
-            }
-            let frame = self.sched.tick();
-            self.emit_mark("mark.cancelled", p.id, frame, "");
+            let _ = self.as_command("mark.cancel", json!({ "id": p.id }), |d, q| {
+                d.mark_cancel(q)
+            });
         }
         let text = if !save {
             format!("MARK {} CANCELLED", p.id)
@@ -1091,7 +1116,7 @@ impl Daemon {
     }
 
     /// What the window's bottom bar says now, if anything.
-    fn bar_text(&mut self) -> Option<(String, [u8; 4])> {
+    pub(super) fn bar_text(&mut self) -> Option<(String, [u8; 4])> {
         if let Some(p) = &self.mark_prompt {
             let when = match self.sched.driving().kind {
                 ClockKind::Discrete => format!("TURN {}", self.sched.tick()),

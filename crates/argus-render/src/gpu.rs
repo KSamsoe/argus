@@ -1133,6 +1133,27 @@ impl Gpu {
 
     /// The last offscreen frame as tightly packed RGBA8 rows, top row first.
     pub fn read_pixels(&self) -> Result<Vec<u8>> {
+        let mut out = vec![0; (self.width * self.height * 4) as usize];
+        self.read_pixels_into(&mut out)?;
+        Ok(out)
+    }
+
+    /// [`Gpu::read_pixels`] into a buffer of exactly `width * height * 4`
+    /// bytes (a frame stream's slot, phase 4 item 1), with no allocation.
+    pub fn read_pixels_into(&self, out: &mut [u8]) -> Result<()> {
+        let row = (self.width * 4) as usize;
+        if out.len() != row * self.height as usize {
+            return Err(ArgusError::new(
+                crate::codes::GPU,
+                format!(
+                    "a {}x{} frame needs {} bytes; the buffer has {}",
+                    self.width,
+                    self.height,
+                    row * self.height as usize,
+                    out.len()
+                ),
+            ));
+        }
         let Target::Offscreen {
             readback,
             padded_row,
@@ -1154,15 +1175,13 @@ impl Gpu {
             .map_err(|_| ArgusError::new(crate::codes::GPU, "readback never completed"))?
             .map_err(err)?;
         let data = slice.get_mapped_range();
-        let row = (self.width * 4) as usize;
-        let mut out = Vec::with_capacity(row * self.height as usize);
         for y in 0..self.height as usize {
             let start = y * *padded_row as usize;
-            out.extend_from_slice(&data[start..start + row]);
+            out[y * row..(y + 1) * row].copy_from_slice(&data[start..start + row]);
         }
         drop(data);
         readback.unmap();
-        Ok(out)
+        Ok(())
     }
 
     /// The surface's format (for information).

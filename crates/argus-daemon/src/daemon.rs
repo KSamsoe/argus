@@ -604,6 +604,7 @@ impl Daemon {
             "mark.get" => self.mark_get(params),
             "mark.note" => self.mark_note(params),
             "mark.close" => self.mark_close(params),
+            "mark.cancel" => self.mark_cancel(params),
             "mark.open" => self.mark_open(params),
             "mark.import" => self.mark_import(params),
             "mark.pull" => self.mark_pull(params),
@@ -684,6 +685,8 @@ impl Daemon {
             "audio.device" => self.audio_device(params),
             "render.window" => self.render_window(params),
             "render.status" => Ok(self.render_status()),
+            "render.stream" => self.render_stream(conn, params),
+            "input.device" => self.input_device(conn, params),
             "test.list" => {
                 let root = self.require_session()?.root.clone();
                 let day = ProjectConfig::load(&root)?.day_seconds;
@@ -850,6 +853,238 @@ impl Daemon {
     pub fn drop_conn(&mut self, conn: ConnId) {
         self.subs.remove(&conn);
         self.identities.remove(&conn);
+        self.close_stream(conn);
+    }
+
+    /// True while a client's frame stream is open.
+    pub fn has_stream(&self) -> bool {
+        #[cfg(feature = "render")]
+        {
+            self.render.stream.is_some()
+        }
+        #[cfg(not(feature = "render"))]
+        {
+            false
+        }
+    }
+
+    /// Close this connection's frame stream, if it has one.
+    fn close_stream(&mut self, conn: ConnId) {
+        #[cfg(feature = "render")]
+        {
+            if !self.render.stream.as_ref().is_some_and(|s| s.conn == conn) {
+                return;
+            }
+            let s = self.render.stream.take();
+            #[cfg(feature = "audio")]
+            if s.as_ref().is_some_and(|s| s.audio) && !self.has_window() {
+                if let Some(a) = self.audio.as_mut() {
+                    a.close_device();
+                }
+            }
+            drop(s);
+        }
+        #[cfg(not(feature = "render"))]
+        let _ = conn;
+    }
+
+    /// Do something a key or a click stands for (F8, F9, F10, Escape at a
+    /// mark's prompt) as the protocol call that does it, so the change feed
+    /// has it as a command by whoever pressed it: the connection whose
+    /// `input.device` it came in, or the person at the window (phase 4).
+    pub(crate) fn as_command(
+        &mut self,
+        method: &str,
+        params: Json,
+        f: impl FnOnce(&mut Self, &Json) -> Result<Json>,
+    ) -> Result<Json> {
+        let author = self.key_author();
+        let line = argus_client::command::line(method, &params);
+        let saved = self.calling.replace((line.clone(), author.clone()));
+        let rows = self.feed_rows;
+        let r = f(self, &params);
+        let made = self.feed_rows != rows;
+        self.calling = saved;
+        if r.is_ok() && !made {
+            self.feed_command(&author, line, method, &params);
+        }
+        r
+    }
+
+    /// Who pressed the keys being handled: the calling client, or the
+    /// person at the window.
+    pub(crate) fn key_author(&self) -> String {
+        self.calling
+            .as_ref()
+            .map(|c| c.1.clone())
+            .unwrap_or_else(|| "human".to_string())
+    }
+
+    /// `input.device` (phase 4 item 1): a client's viewport's keys, mouse,
+    /// and typed text, down the window's own path: a mark's key and its
+    /// prompt, a trial's keys, then the action map, so gameplay still sees
+    /// actions and the input log records them as a window's.
+    fn input_device(&mut self, conn: ConnId, params: &Json) -> Result<Json> {
+        self.require_session()?;
+        let mut evs = Vec::new();
+        for e in params
+            .get("events")
+            .and_then(Json::as_array)
+            .into_iter()
+            .flatten()
+        {
+            evs.push(self.device_event(conn, e)?);
+        }
+        let typed = json::str_list(params, "text")?;
+        let seen = evs.len();
+        let evs = self.mark_keys(evs, typed);
+        let evs = self.trial_keys(evs);
+        let turns = if evs.is_empty() {
+            0
+        } else {
+            self.device_input(&evs)
+        };
+        Ok(json!({ "events": seen, "turns": turns }))
+    }
+
+    fn device_event(&self, conn: ConnId, e: &Json) -> Result<argus_input::DeviceInput> {
+        use argus_input::DeviceInput;
+        let pressed = || {
+            e.get("pressed").and_then(Json::as_bool).ok_or_else(|| {
+                bad_params(format!(
+                    "{e}: pressed (true or false) goes with a key or a button"
+                ))
+            })
+        };
+        if let Some(k) = e.get("key").and_then(Json::as_str) {
+            return Ok(DeviceInput::Key {
+                name: k.to_string(),
+                pressed: pressed()?,
+            });
+        }
+        if let Some(b) = e.get("mouse").and_then(Json::as_str) {
+            return Ok(DeviceInput::Mouse {
+                button: b.to_ascii_lowercase(),
+                pressed: pressed()?,
+            });
+        }
+        if e.get("release_all").and_then(Json::as_bool) == Some(true) {
+            return Ok(DeviceInput::ReleaseAll);
+        }
+        if let Some(p) = e.get("pointer").and_then(Json::as_array) {
+            let (x, y) = match (
+                p.first().and_then(Json::as_f64),
+                p.get(1).and_then(Json::as_f64),
+            ) {
+                (Some(x), Some(y)) => (x as f32, y as f32),
+                _ => return Err(bad_params(format!("{e}: pointer is [x, y]"))),
+            };
+            #[cfg(feature = "render")]
+            if let Some(s) = self.render.stream.as_ref().filter(|s| s.conn == conn) {
+                // The stream's pixels onto the UI canvas, as the window's are.
+                if let Some(f) = s.renderer.ui_fit() {
+                    let [x, y] = f.to_canvas([x, y]);
+                    return Ok(DeviceInput::Pointer { x, y });
+                }
+                return Ok(DeviceInput::Pointer { x, y });
+            }
+            let _ = (conn, x, y);
+            return Err(bad_params("pointer is a place in this connection's frames")
+                .hint("render.stream opens them; the pointer is in their pixels, as a window's is in its own."));
+        }
+        Err(bad_params(format!(
+            "{e} is not a device event: {{key, pressed}}, {{mouse, pressed}}, {{pointer: [x, y]}}, or {{release_all: true}}"
+        )))
+    }
+
+    /// Draw the stream's next frame, when one is due: every frame while the
+    /// clock plays; paused or stopped, when something changed, and four
+    /// times a second besides.
+    pub fn stream_frame(&mut self) {
+        #[cfg(feature = "render")]
+        {
+            let Some(s) = &self.render.stream else {
+                return;
+            };
+            if self.session.is_none() {
+                return;
+            }
+            let now = std::time::Instant::now();
+            if now < s.next_due {
+                return;
+            }
+            let key = (self.world.frame(), self.mutations, self.devices.events_seen);
+            let quiet = s.last.is_some_and(|(t, k)| {
+                k == key && now.duration_since(t) < std::time::Duration::from_millis(250)
+            });
+            if quiet && !self.wants_frames() {
+                return;
+            }
+            if !self.has_window() {
+                // With no window the stream's frame is the one: a trial's
+                // worlds keep step and the present stage runs, as a window's
+                // frame does.
+                if let Err(e) = self.sync_trial() {
+                    self.end_trial(true);
+                    self.toast = Some((
+                        format!("TRIAL ENDED: {}", e.message),
+                        now + std::time::Duration::from_secs(5),
+                    ));
+                }
+                let _ = self.sched.present(&mut self.world);
+            }
+            let bar = self.bar_text();
+            let (tick, frame, alpha) = (self.sched.tick(), self.world.frame(), self.sched.alpha());
+            let (w, h) = self
+                .render
+                .stream
+                .as_ref()
+                .map(|s| s.writer.size())
+                .unwrap_or((1, 1));
+            let extras = self.tile_extras(argus_render::view_for(&self.world, w, h));
+            let t = shader_time(&self.sched, alpha);
+            let (Some(s), Some(ses)) = (&mut self.render.stream, &self.session) else {
+                return;
+            };
+            let started = std::time::Instant::now();
+            let bar_key = bar.as_ref().map(|(t, _)| t.clone());
+            if s.bar.as_ref() != Some(&bar_key) {
+                s.renderer
+                    .set_bar(bar.as_ref().map(|(t, c)| (t.as_str(), *c)));
+                s.bar = Some(bar_key);
+            }
+            s.renderer.set_time(t);
+            s.renderer.set_ui(Some(ses.ui.clone()));
+            let store = ses.particles.borrow();
+            let drawn = s
+                .renderer
+                .render_frame(&self.world, tick, alpha, &extras, Some(&store));
+            drop(store);
+            let renderer = &s.renderer;
+            let wrote = drawn.and_then(|_| {
+                s.writer
+                    .write(tick, frame, |buf| renderer.capture_into(buf))
+            });
+            s.last = Some((now, key));
+            s.next_due = now + std::time::Duration::from_secs_f64(1.0 / s.fps);
+            s.last_ms = started.elapsed().as_secs_f64() * 1000.0;
+            let conn = s.conn;
+            match wrote {
+                Ok((slot, seq)) => {
+                    s.frames += 1;
+                    s.error = None;
+                    let n = json!({
+                        "path": s.writer.path().to_string_lossy(),
+                        "slot": slot, "seq": seq, "tick": tick, "frame": frame,
+                        "width": w, "height": h,
+                    });
+                    self.outbox
+                        .push((conn, rpc::notification("render.frame", n)));
+                }
+                Err(e) => s.error = Some(e.message),
+            }
+            self.pump_events();
+        }
     }
 
     // ----- session ----------------------------------------------------------
@@ -1044,11 +1279,15 @@ impl Daemon {
             if let Some((_, r)) = &mut self.render.window {
                 let _ = r.load_catalog(&assets);
             }
+            if let Some(s) = &mut self.render.stream {
+                let _ = s.renderer.load_catalog(&assets);
+                s.renderer.forget_motion();
+            }
         }
         #[cfg(feature = "audio")]
         match audio {
             Some(Ok(mut a)) => {
-                if self.has_window() {
+                if self.has_window() || self.stream_has_audio() {
                     let _ = a.open_device();
                 }
                 self.audio = Some(a);
@@ -1382,6 +1621,10 @@ impl Daemon {
                 if let Some((_, _, r)) = &mut self.render.offscreen {
                     let _ = r.reload_sprites(&ses.assets, &changed);
                     let _ = r.load_materials(&ses.assets);
+                }
+                if let Some(s) = &mut self.render.stream {
+                    let _ = s.renderer.reload_sprites(&ses.assets, &changed);
+                    let _ = s.renderer.load_materials(&ses.assets);
                 }
             }
             #[cfg(feature = "audio")]
@@ -4823,6 +5066,14 @@ impl Daemon {
         };
         json!({
             "window": window,
+            "stream": self.render.stream.as_ref().map(|s| json!({
+                "path": s.writer.path().to_string_lossy(),
+                "size": [s.writer.size().0, s.writer.size().1],
+                "fps": s.fps,
+                "frames": s.frames,
+                "last_ms": (s.last_ms * 1000.0).round() / 1000.0,
+                "error": s.error,
+            })),
             "size": [size.0, size.1],
             "adapter": adapter,
             "software": software,
@@ -4895,6 +5146,123 @@ impl Daemon {
     #[cfg(not(feature = "render"))]
     fn render_status(&self) -> Json {
         json!({ "window": false, "adapter": null })
+    }
+    #[cfg(not(feature = "render"))]
+    fn render_stream(&mut self, _conn: ConnId, _params: &Json) -> Result<Json> {
+        Err(ArgusError::new(
+            5005,
+            "this daemon was built without the renderer",
+        ))
+    }
+    /// A client's stream opened the sound (the scene's mixer opens its
+    /// device for it, as for a window).
+    #[cfg(feature = "audio")]
+    fn stream_has_audio(&self) -> bool {
+        #[cfg(feature = "render")]
+        {
+            self.render.stream.as_ref().is_some_and(|s| s.audio)
+        }
+        #[cfg(not(feature = "render"))]
+        {
+            false
+        }
+    }
+
+    /// `render.stream` (phase 4 item 1): frames for this connection, drawn
+    /// by the daemon into a file both processes map, each announced by a
+    /// `render.frame` notification naming its slot (§5, §11: "the viewport
+    /// subscribes to frames"). The gamepads open with it, and the sound.
+    #[cfg(feature = "render")]
+    fn render_stream(&mut self, conn: ConnId, params: &Json) -> Result<Json> {
+        use argus_client::frames::{FrameWriter, HEADER, SLOTS, SLOT_HEADER};
+        if !json::bool_param(params, "open", true)? {
+            self.close_stream(conn);
+            return Ok(json!({ "stream": null }));
+        }
+        self.require_session()?;
+        let width = json::u64_param(params, "width", 1280)?.clamp(16, 8192) as u32;
+        let height = json::u64_param(params, "height", 720)?.clamp(16, 8192) as u32;
+        let fps = json::f64_param(params, "fps", 60.0)?.clamp(1.0, 240.0);
+        let software = json::bool_param(params, "software", false)?;
+        let audio = json::bool_param(params, "audio", true)?;
+        if let Some(s) = &self.render.stream {
+            if s.conn != conn {
+                return Err(bad_params("another client is streaming this daemon's frames")
+                    .hint("One viewport at a time; its client closes it with render.stream {open: false}, or by disconnecting."));
+            }
+        }
+        let same = self.render.stream.as_ref().is_some_and(|s| {
+            s.writer.size() == (width, height) && s.renderer.gpu().software == software
+        });
+        if !same {
+            let old = self.render.stream.take();
+            let renderer = match old {
+                Some(s) if s.renderer.gpu().software == software => {
+                    let mut r = s.renderer;
+                    r.gpu_mut().resize(width, height);
+                    r.forget_motion();
+                    r
+                }
+                _ => {
+                    let mut r = argus_render::Renderer::offscreen(width, height, software)?;
+                    r.load_catalog(&self.session.as_ref().expect("session").assets)?;
+                    r
+                }
+            };
+            self.render.streams_made += 1;
+            let path = std::env::temp_dir().join(format!(
+                "argus-frames-{}-{conn}-{}.bin",
+                std::process::id(),
+                self.render.streams_made
+            ));
+            let writer = FrameWriter::create(&path, width, height).map_err(|e| {
+                ArgusError::new(
+                    argus_render::codes::GPU,
+                    format!("cannot make the frame stream {}: {e}", path.display()),
+                )
+            })?;
+            self.render.stream = Some(render::Stream {
+                conn,
+                renderer,
+                writer,
+                fps,
+                audio: false,
+                next_due: std::time::Instant::now(),
+                last: None,
+                bar: None,
+                frames: 0,
+                last_ms: 0.0,
+                error: None,
+            });
+        }
+        self.render.open_pads();
+        let mut sound = Json::Null;
+        #[cfg(feature = "audio")]
+        if audio {
+            if let Some(a) = self.audio.as_mut() {
+                sound = match a.open_device() {
+                    Ok(()) => json!(a.device_name()),
+                    Err(e) => json!({ "error": e.message }),
+                };
+            }
+        }
+        let s = self.render.stream.as_mut().expect("just made");
+        s.fps = fps;
+        s.audio = audio && !sound.is_null() && sound.get("error").is_none();
+        // The first frame goes at once.
+        s.next_due = std::time::Instant::now();
+        s.last = None;
+        Ok(json!({
+            "stream": {
+                "path": s.writer.path().to_string_lossy(),
+                "width": width, "height": height, "fps": fps,
+                "slots": SLOTS, "header_bytes": HEADER, "slot_header_bytes": SLOT_HEADER,
+                "format": "rgba8, rows top first",
+            },
+            "audio": sound,
+            "adapter": s.renderer.gpu().adapter,
+            "software": s.renderer.gpu().software,
+        }))
     }
 
     // ----- audio ------------------------------------------------------------
@@ -5457,6 +5825,39 @@ pub(crate) mod render {
         pub typed: Vec<String>,
         /// The bar the window shows now: its text and width.
         pub bar: Option<(String, u32)>,
+        /// A client's frame stream (phase 4 item 1, the editor's viewport).
+        pub stream: Option<Stream>,
+        /// Streams made so far: each file gets a new name.
+        pub streams_made: u64,
+    }
+
+    /// Frames for one connection in a file both processes map (§5's
+    /// out-of-band channel): its own offscreen renderer, the file, and
+    /// when it last drew.
+    pub(crate) struct Stream {
+        /// The connection it is for.
+        pub conn: super::ConnId,
+        /// Its renderer, the stream's size.
+        pub renderer: Renderer,
+        /// The shared file.
+        pub writer: argus_client::frames::FrameWriter,
+        /// Frames a second at most.
+        pub fps: f64,
+        /// Whether it opened the audio output.
+        pub audio: bool,
+        /// Not before this.
+        pub next_due: std::time::Instant,
+        /// When it last drew, and what it drew: the world's frame, its
+        /// mutations, and the device events seen by then.
+        pub last: Option<(std::time::Instant, (u64, u64, u64))>,
+        /// The bar it shows now.
+        pub bar: Option<Option<String>>,
+        /// Frames written.
+        pub frames: u64,
+        /// The last frame's drawing and copying, in ms.
+        pub last_ms: f64,
+        /// Why the last frame could not be written, if it could not.
+        pub error: Option<String>,
     }
 
     impl Drop for RenderState {
@@ -5473,6 +5874,13 @@ pub(crate) mod render {
             if let Some((host, r)) = self.window.take() {
                 drop(r);
                 drop(host);
+            }
+        }
+
+        /// Open the gamepads, if they are not yet.
+        pub fn open_pads(&mut self) {
+            if self.pads.is_none() {
+                self.pads = Some(Pads::open()).filter(Pads::is_open);
             }
         }
 
