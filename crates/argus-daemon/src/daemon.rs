@@ -5210,8 +5210,23 @@ impl Daemon {
                 }
             };
             self.render.streams_made += 1;
-            let path = std::env::temp_dir().join(format!(
-                "argus-frames-{}-{conn}-{}.bin",
+            // In the project's .argus/streams/, which only this project's
+            // daemon writes: files left there by an earlier stream (one a
+            // client still mapped when it closed, or a daemon that did not
+            // end cleanly) go now; one still mapped stays for the next.
+            let dir = self
+                .session
+                .as_ref()
+                .expect("session")
+                .root
+                .join(".argus")
+                .join("streams");
+            let _ = std::fs::create_dir_all(&dir);
+            for f in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+                let _ = std::fs::remove_file(f.path());
+            }
+            let path = dir.join(format!(
+                "frames-{}-{conn}-{}.bin",
                 std::process::id(),
                 self.render.streams_made
             ));
