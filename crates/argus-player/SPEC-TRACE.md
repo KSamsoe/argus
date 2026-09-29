@@ -115,6 +115,13 @@ Every statement in the design document (v0.3) that constrains a game as players 
 | Phase 2: first `argus build` for desktop and web so a playtest link exists before the editor does. | Done | Windows, Linux, and web builds, packs, patches, languages, the recorder, the report key, reports into marks, and the page served from klab at its HTTPS link. macOS waits for a Mac. | above |
 | Gate: a second human opens the web build from a link and drops a mark that reaches the agent the same way. | Partial | Everything the gate needs is in place and checked: the link on klab, the page's F8 posting a report to it, `mark.pull` importing it, `mark.open` reproducing it. The gate itself is a second person playing. | `tools/web/check.mjs`; `argus-daemon/tests/reports.rs`; the report round trip through klab |
 
+## The phase 3 gate
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| The tick-end hook that finds `q:save` requests is cheap in a long step. | Done | `savegame::requested` reads only the tick's events at the queue's tail. | Outpost's `tests/week.luau` |
+| What a report or a page can say of a player's memory. | Done | `Player::status` has `script_bytes` (the Luau heap) and `strings` (the string table's size). Used at the gate to find that the player does not leak: three hours of Outpost stayed at 19 to 23 MB once its saves were collected, as the executable collects them every frame. The heap's size is not the world's: it depends on when the collector ran and on whether the scripts were compiled or shipped as bytecode, so the tests that compare runs leave it out. | the gate's measurements; `packs`, `player` |
+
 ## Known limitations, stated so they are decisions
 
 - A desktop report is saved in the player's save location; the player sends the file. Posting it to a server, as the page does, can follow when a playtest ships desktop builds.

@@ -408,7 +408,14 @@ impl<'a> SystemCtx<'a> {
         name: &'b str,
     ) -> impl Iterator<Item = &'b argus_ecs::EventRecord> + 'b {
         let frame = self.world.frame();
-        self.world.events().iter().filter(move |r| {
+        // This frame's events are the last ones: the queue is appended in
+        // frame order, and a long step keeps every event since it began
+        // until the daemon logs them. Scanning all of it, each call grew
+        // with the step (found at the phase 3 gate: Outpost's inspector
+        // asks a dozen times a tick).
+        let all = self.world.events();
+        let start = all.len() - all.iter().rev().take_while(|r| r.frame >= frame).count();
+        all[start..].iter().filter(move |r| {
             r.frame == frame
                 && (name.is_empty()
                     || matches!(&r.event, argus_ecs::Event::Game { name: n, .. } if n == name))

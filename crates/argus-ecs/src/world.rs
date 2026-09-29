@@ -916,7 +916,40 @@ impl World {
 
     /// Approximate bytes held by columns, entity table, and strings.
     pub fn bytes(&self) -> usize {
-        self.archetypes.iter().map(Archetype::bytes).sum::<usize>() + self.strings.bytes()
+        self.archetypes.iter().map(Archetype::bytes).sum::<usize>()
+            + self.strings.bytes()
+            // The broadphase: an entry per placed entity and one in a cell.
+            + self.broadphase.len() * 20
+            + self.events.len() * std::mem::size_of::<EventRecord>()
+    }
+
+    /// A copy of the world's state with its event queue (§6): this frame's
+    /// events, the ones a system can still read. The older ones are only
+    /// waiting for the log, and are the log's: a snapshot taken deep into
+    /// a long step carried every event since the step began, and a keyframe
+    /// ring of them grew past its budget unseen (eight hours of Outpost in
+    /// one `sim.step` held 26 GB; found at the phase 3 gate).
+    pub(crate) fn clone_state(&self) -> World {
+        World {
+            registry: self.registry.clone(),
+            entities: self.entities.clone(),
+            archetypes: self.archetypes.clone(),
+            archetype_map: self.archetype_map.clone(),
+            names: self.names.clone(),
+            ids: self.ids.clone(),
+            short: self.short.clone(),
+            strings: self.strings.clone(),
+            events: self
+                .events
+                .iter()
+                .filter(|r| r.frame >= self.frame)
+                .cloned()
+                .collect(),
+            frame: self.frame,
+            emitter: self.emitter.clone(),
+            broadphase: self.broadphase.clone(),
+            structure: self.structure,
+        }
     }
 }
 

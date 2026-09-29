@@ -486,6 +486,8 @@ impl Player {
             "sounds": self.sounds,
             "digest": format!("{:016x}", self.digest()),
             "events_digest": format!("{:016x}", self.events_digest),
+            "script_bytes": self.host.memory_used(),
+            "strings": self.world.strings().len(),
         })
     }
 

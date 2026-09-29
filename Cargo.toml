@@ -11,6 +11,13 @@ repository = "https://github.com/KSamsoe/argus"
 [profile.release]
 debug = 1
 
+# Debug builds keep line tables only: file and line in a backtrace, which is
+# what the tests and the daemon's panics use. Full debug info in every test
+# binary, and every stale build of one, had target/debug at 213 GB by the
+# phase 3 gate (the disk filled twice).
+[profile.dev]
+debug = "line-tables-only"
+
 # What `argus build --release` makes for players (phase 2 item 7): the
 # release build without debug info. A crash report carries the panic's
 # message and place, and script errors their file and line, without it.
@@ -42,6 +49,12 @@ opt-level = 2
 opt-level = 2
 [profile.dev.package.argus-jobs]
 opt-level = 2
+# The UI's layout runs every tick a game has a UI (Outpost's inspector,
+# found at the phase 3 gate: a debug tick doubled by it).
+[profile.dev.package.argus-ui]
+opt-level = 2
+[profile.dev.package.taffy]
+opt-level = 3
 
 [profile.dev.package.png]
 opt-level = 3

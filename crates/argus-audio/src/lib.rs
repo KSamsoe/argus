@@ -387,11 +387,21 @@ impl AudioEngine {
                 });
             }
         }
+        // Every tone at once, then the sounds put together from them.
+        let tones: Vec<&config::Tone> = defs
+            .iter()
+            .flat_map(|d| d.variations.iter())
+            .filter_map(|v| match v {
+                Source::Tone(t) => Some(t),
+                Source::File(_) => None,
+            })
+            .collect();
+        let mut made = sound::synth_all(&tones, self.rate).into_iter();
         for def in defs {
             let mut clips = Vec::new();
             for v in &def.variations {
                 match v {
-                    Source::Tone(t) => clips.push(sound::synth(t, self.rate)),
+                    Source::Tone(_) => clips.extend(made.next()),
                     Source::File(f) => match sound::load_wav(&assets.join(f), self.rate) {
                         Ok(c) => clips.push(c),
                         Err(e) => self.warnings.push(format!("{}: {}", def.at, e.message)),

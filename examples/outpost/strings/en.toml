@@ -11,3 +11,60 @@ speed = "{x}x"
 [notice]
 day = "Day {day} begins with {food} food stored."
 starved = "{name} starved."
+
+# The inspector (the phase 3 gate): Tab opens it; its tabs, pages, and
+# lines. systems/inspector.luau fills the holes.
+[inspect]
+title = "Inspector"
+hint = "Arrows move, Enter picks, Esc backs out, Tab closes"
+day = "day"
+night = "night"
+none = "none"
+nobody = "nobody"
+
+[inspect.tab]
+colony = "Colony"
+people = "People"
+stores = "Stores"
+jobs = "Jobs"
+
+[inspect.colony]
+day = "Day {day}, {hour}:00, {when}. {speed}"
+food = "Food {food}: {meals} meals, {crops} crops"
+people = "{alive} colonists: {working} working, {idle} idle"
+lost = "Lost: {lost}"
+fields = "{fields} fields, {ripe} ripe; today's growth {growth}%"
+jobs = "Jobs: {open} open, {taken} taken"
+idle = "Most idle: {why} ({n})"
+
+[inspect.people]
+row = "{name}   fed {fed}%   rest {rest}%   {doing}"
+page = "{page} of {pages}"
+prev = "< Prev"
+next = "Next >"
+idle = "idle"
+doing = "{kind}, {stage}"
+
+[inspect.person]
+name = "{name}"
+skills = "Skills: {skills}"
+needs = "Fed {fed}%, rest {rest}%"
+doing = "Doing: {kind}, {stage}, {progress}% done"
+idle = "Idle: {why}"
+where = "At {x}, {y}"
+follow = "Follow"
+unfollow = "Stop following"
+back = "Back"
+
+[inspect.stores]
+pile = "Stockpile: {meals} meals, {crops} crops, {goods} goods"
+food = "Food stored: {food} meals' worth"
+lying = "Lying about: {n} ({kinds})"
+stove = "Stove: {state}"
+cooking = "{who} is cooking"
+cold = "cold"
+
+[inspect.jobs]
+kind = "{kind}: {open} open, {taken} taken, priority {priority}"
+job = "{who}: {kind}, {stage}"
+none = "No one has a job"

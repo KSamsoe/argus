@@ -55,7 +55,7 @@ Status words:
 
 | Spec | Status | Where | Test |
 |---|---|---|---|
-| A snapshot is every SoA column plus the RNG states, the event queue, and the Luau heap. | Partial | Columns, entity table, string ids, string table, event queue, frame counter: done. RNG states join with the scheduler piece; the Luau heap with the scripting piece (see §19 open question). | `maintain_snapshot::snapshot_restore_round_trips_everything` |
+| A snapshot is every SoA column plus the RNG states, the event queue, and the Luau heap. | Partial | Columns, entity table, string ids, string table, event queue, frame counter: done. The event queue is this frame's events, the ones a system can still read (`SystemCtx::events_now`); older events waiting for the daemon's log are the log's and stay out (found at the phase 3 gate: a keyframe taken deep into one long `sim.step` copied every event since the step began, and eight hours of Outpost in one step held 26 GB; `World::bytes` now counts the broadphase and the queue too). RNG states join with the scheduler piece; the Luau heap with the scripting piece (see §19 open question). | `maintain_snapshot::snapshot_restore_round_trips_everything` |
 | A snapshot at 100k entities is a few tens of MB and takes low single-digit ms. | Done | 4.1 MB and 1.1 ms for the example's component set. | `perf::perf_snapshot_100k_under_5ms` |
 | `sim.fork` creates a second world from a snapshot inside the same daemon; forks get their own tick counter. | Partial | `fork`; each `World` has its own `frame`. The sim tick is the clock's. | `maintain_snapshot::forks_evolve_independently` |
 | Components carry a version (save games). | Done | `ComponentSchema::version` (`#[argus(version = N)]`), written beside each component by `World::encode_state` (format 2; format 1 reads as "the live version"). Phase 3 item 0: `decode_state_with` hands each row of a component saved at an older version, as field values by the names it was saved with, to a `Migrate` (the script host), and writes what comes back into the live fields (coerced; a value the live type cannot hold names the component, the versions, and the entity). Without a declared migration the rows come field by field, by name. Every version change is in `StateReport::migrated` (component, from, to, rows, declared, fields nothing took); a component saved newer than the live one is in `newer`. | `components::derive_produces_an_introspectable_schema`, `persist::rows_saved_at_an_older_version_are_migrated_and_reported`, `persist::a_migration_that_returns_the_wrong_type_says_where` |
@@ -153,6 +153,13 @@ Phase 0 item 1, "ECS core with SoA columns, archetypes, and hierarchy": this cra
 | Spec | Status | Where | Test |
 |---|---|---|---|
 | (§15) "a load-order rule and a namespace prefix on mod content" | Done | `layers.rs`: `Layers` (the game's root, then each mod at `mods/<id>/`, in load order) for the loaders to walk; `owns(id, name)` (the id, then `.`, `_`, `/`, or `-`); `outside` and `not_changeable`, the refusals; `Change`, a thing a mod changed of an earlier layer's; the 60xx codes. | `layers::tests`; argus-player's mods tests |
+
+## The phase 3 gate: snapshots at scale
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§6) A snapshot's event queue. | Done | `World::clone_state` (used by `World::snapshot`): this frame's events only (see the row above); `World::bytes` counts the queue and the broadphase. A daemon stepping Outpost eight hours in one `sim.step` had grown to 26 GB, paged onto the disk. | `maintain_snapshot::snapshot_restore_round_trips_everything` |
+| A copy of the string table is cheap. | Done | `intern.rs`: strings are `Arc<str>`, shared between copies, so a keyframe copies two tables of pointers, not every string. Outpost's HUD makes about 3,000 strings an hour; at eight hours a ring of keyframes was millions of allocations, and a load took 1.6 s (224 ms now). The table still grows with play; a per-column arena with slot reuse would bound it. | `maintain_snapshot`; argus-daemon `perf_outpost` |
 
 ## Known limitations, stated so they are decisions
 

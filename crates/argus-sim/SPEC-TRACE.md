@@ -130,6 +130,12 @@ Phase 0 item 2, "scheduler with stages, declared write sets, and both clock driv
 |---|---|---|---|
 | (§4, §6) Rooms stream inside the tick, so replays reproduce them. | Done | `SystemDesc::exclusive` and `SystemCtx::world_mut`: a loader that spawns and despawns whole rooms gets the world to change as it must (anything else is refused, `NOT_EXCLUSIVE`), and declares what it wrote as it goes (`SystemCtx::declare`), so `who_writes` stays true. | `argus-scene` `stream::rooms_stream_around_the_followed_entity_and_remember` |
 
+## The phase 3 gate: this frame's events
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| A system reads the events of its tick cheaply. | Done | `SystemCtx::events_now` reads the queue's tail, where this frame's events are (the queue is in frame order), not the whole queue: during a long step the queue holds every event since the step began, and each call grew with it. Outpost's inspector's p95 went from 0.58 to 0.07 ms. | Outpost's `tests/inspector.luau`; argus-daemon `perf_outpost` |
+
 ## Known limitations, stated so they are decisions
 
 - One scheduler per world; forks need their own scheduler built from the same system list. The daemon piece owns that pairing.

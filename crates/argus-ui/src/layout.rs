@@ -146,6 +146,8 @@ struct State {
     prev: HashMap<Entity, Prev>,
     /// The fonts' generation it measured with.
     fonts: u64,
+    /// The world's language at the last layout.
+    lang: String,
 }
 
 impl Default for State {
@@ -155,6 +157,7 @@ impl Default for State {
             nodes: HashMap::new(),
             prev: HashMap::new(),
             fonts: 0,
+            lang: String::new(),
         }
     }
 }
@@ -172,6 +175,7 @@ struct Prev {
 #[derive(Clone)]
 struct TextKey {
     raw: StrId,
+    key: StrId,
     holes: bool,
     shown: Rc<str>,
     size: f32,
@@ -438,6 +442,19 @@ fn layout(
     }
     // Trees in draw order: by the root's layer, then entity.
     tops.sort_by_key(|&i| (items[i].root.map_or(0, |r| r.layer), items[i].e));
+    // A node under a hidden one (itself included) keeps last tick's words
+    // while its text, its key, and the language are the same: they are
+    // not read from the string tables again, nor their holes filled.
+    // Found at the phase 3 gate: Outpost's inspector, closed, read its
+    // seventy nodes' words every tick of the colony and doubled a debug
+    // tick. A language chosen still reaches a hidden menu at once.
+    let mut hidden = vec![false; items.len()];
+    let mut stack: Vec<(usize, bool)> = tops.iter().map(|&t| (t, false)).collect();
+    while let Some((i, above)) = stack.pop() {
+        let h = above || !items[i].node.visible;
+        hidden[i] = h;
+        stack.extend(items[i].kids.iter().map(|&k| (k, h)));
+    }
 
     // Texts, holes filled; fonts looked up once each. A keyed text is the
     // string table's in the world's language (phase 3 item 4), looked up
@@ -445,24 +462,28 @@ fn layout(
     let mut texts: Vec<TextItem> = Vec::new();
     let mut problems = Vec::new();
     let mut fonts: HashMap<StrId, Rc<dyn FontFace>> = HashMap::new();
-    let mut lang: Option<String> = None;
-    for it in items.iter_mut() {
+    let lang_now = crate::strings::language(world);
+    let lang_same = lang_now == state.lang;
+    for (i, it) in items.iter_mut().enumerate() {
         let Some(t) = it.text else {
             continue;
         };
+        let prev = state.prev.get(&it.e).and_then(|p| p.text.as_ref());
+        let unseen = prev
+            .filter(|k| hidden[i] && lang_same && k.raw == t.text && k.key == t.key)
+            .map(|k| (k.shown.clone(), (!k.holes).then_some(t.text)));
         // Words without holes are the text itself: resolved again only when
         // the text is another one.
-        let kept = state
-            .prev
-            .get(&it.e)
-            .and_then(|p| p.text.as_ref())
+        let kept = prev
             .filter(|k| t.key == StrId::EMPTY && k.raw == t.text && !k.holes)
             .map(|k| k.shown.clone());
-        let (shown, same): (Rc<str>, Option<StrId>) = match kept {
-            Some(s) => (s, Some(t.text)),
-            None if t.key != StrId::EMPTY => {
-                let l = lang.get_or_insert_with(|| crate::strings::language(world));
-                let raw = shared.strings.text(l, &world.strings().resolve(t.key));
+        let (shown, same): (Rc<str>, Option<StrId>) = match (unseen, kept) {
+            (Some((s, same)), _) => (s, same.filter(|_| t.key == StrId::EMPTY)),
+            (None, Some(s)) => (s, Some(t.text)),
+            (None, None) if t.key != StrId::EMPTY => {
+                let raw = shared
+                    .strings
+                    .text(&lang_now, &world.strings().resolve(t.key));
                 if raw.contains('{') {
                     (
                         Rc::from(argus_ecs::text::fill(world, it.e, &raw, &mut problems)),
@@ -472,7 +493,7 @@ fn layout(
                     (Rc::from(raw), None)
                 }
             }
-            None => {
+            (None, None) => {
                 let raw = world.strings().resolve(t.text).to_string();
                 if raw.contains('{') {
                     (
@@ -548,6 +569,7 @@ fn layout(
         let fill = (top && !floating).then_some((canvas[0], canvas[1]));
         let text = it.measured.map(|m| TextKey {
             raw: it.text.map_or(StrId::EMPTY, |t| t.text),
+            key: it.text.map_or(StrId::EMPTY, |t| t.key),
             holes: texts[m].same.is_none(),
             shown: texts[m].shown.clone(),
             size: texts[m].size,
@@ -740,6 +762,7 @@ fn layout(
         ctx.update::<UiButton, _>(e, |b| b.focused = f)?;
     }
     *shared.problems.borrow_mut() = problems;
+    state.lang = lang_now;
     Ok(())
 }
 

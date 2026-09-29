@@ -109,7 +109,14 @@ fn snapshot_restore_round_trips_everything() {
     w.insert_default(p, id).unwrap();
     w.set_field(p, "Name.s", "Ada").unwrap();
     w.end_frame();
-    let pending = w.events().len();
+    // This frame's events (the queue systems can still read) are the
+    // snapshot's; older ones only wait for the log.
+    w.emit(Event::Game {
+        name: "now".into(),
+        fields: Vec::new(),
+    });
+    let queued = w.events().iter().filter(|r| r.frame == w.frame()).count();
+    assert!(w.events().len() > queued, "older events are waiting too");
     let snap = w.snapshot();
     assert_eq!(snap.frame(), 1);
     assert_eq!(snap.entity_count(), 1);
@@ -132,9 +139,10 @@ fn snapshot_restore_round_trips_everything() {
     assert_eq!(w.get_field(p, "Name.s").unwrap(), Value::Str("Ada".into()));
     assert_eq!(
         w.events().len(),
-        pending,
-        "event queue is part of the snapshot"
+        queued,
+        "this frame's event queue is part of the snapshot, what waits for the log is not"
     );
+    assert!(w.events().iter().all(|r| r.frame == w.frame()));
     // Registry survives too.
     assert!(w.describe("Name").is_ok());
     // And a stale handle from the abandoned timeline stays dead.

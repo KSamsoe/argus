@@ -38,5 +38,48 @@ doc = "Zoom in and out"
 [actions.zoom.bindings]
 keyboard = ["minus/equal"]
 
+# The inspector (the phase 3 gate): Tab opens and closes it, and the menu
+# actions move and press in it. While it is open, the arrows move its focus
+# instead of the view.
+[actions.inspect]
+type = "button"
+doc = "Open or close the inspector"
+[actions.inspect.bindings]
+keyboard = ["tab"]
+gamepad = ["select"]
+
+[actions.ui_move]
+type = "axis2"
+doc = "Move the focus in the inspector"
+[actions.ui_move.bindings]
+keyboard = ["arrows", "wasd"]
+gamepad = ["dpad"]
+
+[actions.ui_confirm]
+type = "button"
+doc = "Press the focused button"
+[actions.ui_confirm.bindings]
+keyboard = ["enter"]
+gamepad = ["south"]
+
+[actions.ui_cancel]
+type = "button"
+doc = "Back out of the inspector's page"
+[actions.ui_cancel.bindings]
+keyboard = ["escape", "backspace"]
+gamepad = ["east"]
+
+[actions.ui_click]
+type = "button"
+doc = "Press the button under the pointer"
+[actions.ui_click.bindings]
+mouse = ["left"]
+
+[actions.pointer]
+type = "pointer"
+doc = "Where the mouse is, on the UI canvas"
+[actions.pointer.bindings]
+mouse = ["position"]
+
 [slots.1]
-devices = ["keyboard", "gamepad:0"]
+devices = ["keyboard", "mouse", "gamepad:0"]

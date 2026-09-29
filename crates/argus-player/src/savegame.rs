@@ -171,7 +171,11 @@ pub fn requested(
     // The world's frame moved on at the end of the tick; its events carry
     // the one before.
     let frame = world.frame().saturating_sub(1);
-    for rec in world.events().iter().filter(|r| r.frame == frame) {
+    // The tick's events are the last ones (the queue is in frame order): not
+    // every event of a long step, every tick (found at the phase 3 gate).
+    let all = world.events();
+    let start = all.len() - all.iter().rev().take_while(|r| r.frame >= frame).count();
+    for rec in all[start..].iter().filter(|r| r.frame == frame) {
         if let argus_ecs::Event::Game { name, fields } = &rec.event {
             if name == "save.requested" {
                 out.push((request_name(fields), sources.capture(world, sched, true)));

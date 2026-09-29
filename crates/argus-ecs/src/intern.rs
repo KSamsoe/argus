@@ -5,10 +5,16 @@
 //!
 //! Known cost: a game that generates unbounded distinct strings at runtime
 //! grows this table for the life of the world. Phase 0's reference games do
-//! not; if Outpost does, the fix is a per-column arena with slot reuse.
+//! not; Outpost does (its HUD line, a new one twice a second), about 3,000
+//! strings an hour of play. The strings are shared, not copied, when the
+//! table is cloned (phase 3 gate): each keyframe cloned the whole table,
+//! and at eight hours a ring of them was millions of small allocations to
+//! make and free. A per-column arena with slot reuse is the fix for the
+//! growth itself.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 /// Handle into the interner. Id 0 is always the empty string.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -22,8 +28,8 @@ impl StrId {
 
 #[derive(Clone, Debug)]
 struct Inner {
-    strings: Vec<String>,
-    map: HashMap<String, StrId>,
+    strings: Vec<Arc<str>>,
+    map: HashMap<Arc<str>, StrId>,
 }
 
 /// Append-only deduplicating string table with interior mutability, so that
@@ -42,11 +48,12 @@ impl Default for Interner {
 impl Interner {
     /// New table containing only the empty string.
     pub fn new() -> Interner {
+        let empty: Arc<str> = Arc::from("");
         let mut map = HashMap::new();
-        map.insert(String::new(), StrId::EMPTY);
+        map.insert(empty.clone(), StrId::EMPTY);
         Interner {
             inner: RefCell::new(Inner {
-                strings: vec![String::new()],
+                strings: vec![empty],
                 map,
             }),
         }
@@ -59,24 +66,27 @@ impl Interner {
         }
         let mut inner = self.inner.borrow_mut();
         let id = StrId(inner.strings.len() as u32);
-        inner.strings.push(s.to_string());
-        inner.map.insert(s.to_string(), id);
+        let s: Arc<str> = Arc::from(s);
+        inner.strings.push(s.clone());
+        inner.map.insert(s, id);
         id
     }
 
     /// Every string, in id order.
     pub fn all(&self) -> Vec<String> {
-        self.inner.borrow().strings.clone()
+        self.inner
+            .borrow()
+            .strings
+            .iter()
+            .map(|s| s.to_string())
+            .collect()
     }
 
     /// Resolve an id. Unknown ids resolve to the empty string rather than
     /// panicking, because a corrupt id must not take the daemon down (§2).
     pub fn get(&self, id: StrId) -> std::cell::Ref<'_, str> {
         std::cell::Ref::map(self.inner.borrow(), |i| {
-            i.strings
-                .get(id.0 as usize)
-                .map(String::as_str)
-                .unwrap_or("")
+            i.strings.get(id.0 as usize).map(|s| &**s).unwrap_or("")
         })
     }
 
@@ -95,13 +105,10 @@ impl Interner {
         false
     }
 
-    /// Approximate bytes held, for snapshot size reporting.
+    /// Approximate bytes a copy of the table holds, for snapshot size
+    /// reporting: its two tables of shared strings (the words themselves
+    /// are shared between copies, not held by each).
     pub fn bytes(&self) -> usize {
-        self.inner
-            .borrow()
-            .strings
-            .iter()
-            .map(|s| s.len() + 4)
-            .sum()
+        self.inner.borrow().strings.len() * 48
     }
 }

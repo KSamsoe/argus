@@ -69,6 +69,12 @@ The first run of Swarm's first wave with sound read `sfx peak +18 dB` in `audio.
 |---|---|---|---|
 | (§15) A mod carries sounds and music. | Done | `AudioConfig::lay_over`: a mod's `audio.toml` over the game's: buses, sounds, and tracks named in its namespace are added, a sound or track with the name of one before it replaced (reported), ducking rules added; a change to a game's bus, or a `[spatial]` table, is refused. `AudioEngine::load_layers` reads each mod's in load order, and a mod's WAVs named in its namespace are sounds. | Hollow's `tests/mods.luau` (the vigil's track changes on the bar); argus-player `mods::a_mod_adds_under_its_id_and_changes_what_came_before` |
 
+## The phase 3 gate: tones made at once
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§17) Hollow's cold open under 300 ms, with item 7's music. | Done | `sound::synth_all`: every described tone of a load made on every core, longest first to the least loaded (in order, one by one, on the web, which has no threads); `AudioEngine::load_sounds` puts the sounds together from them. Hollow's music, several seconds of samples a layer, was 52 ms of every open made in turn; the open went from 267 to 305 ms to 226 to 238. | `audio` tests; argus-daemon `perf_rooms` |
+
 ## Known limitations, stated so they are decisions
 
 - WAV only; OGG and other formats come with the importer.

@@ -236,6 +236,14 @@ Phase 0 item 4, "JSON-RPC daemon with session, world, edit, sim (play, pause, st
 | A person plays the game with mods. | Done | `argusd --mods a,b` and `argus daemon run --window --mods a,b` (or `start`) open the session with those mods, saying on stderr any left out and why; the window plays at once. | `argus daemon start --mods lanterns,brighter --play` on Hollow, headless: both loaded, playing; not yet run with a window |
 | A modded run reproduces. | Done | Marks, replay files, and saves record the mods (`mods: [{id, version, hash}]`); `mark.open`, `replay.open`, and `sim.load` load with them and say when the mods differ from those recorded. | Hollow's `tests/mods.luau`; argus-player's mods tests |
 
+## The phase 3 gate
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§17) Outpost's rows: tick at 10x with 200 colonists and 20k items under 1.6 ms, fast-forward over 2,000 ticks a second, save and load at 8 h of play under 200 and 500 ms with migrations. | Done | `tests/perf_outpost.rs`, run in release: p95 0.974 ms with the inspector closed and 1.037 ms open; 6,636 ticks a second; save 66.5 ms and load 223.7 ms at eight hours (day 479, the colony alive); the first week's save in 35.9 ms through 4 migrations. | `perf_outpost` (ignored; `--release -- --ignored`) |
+| A person plays: keys and the mouse as a window sends them, the game playing in real time. | Done | `tests/window_play.rs`: Outpost's inspector opened with Tab, its People page reached with the arrows and Enter, Jobs with a click, closed with Esc, while the game plays on. | `window_play::a_person_opens_the_inspector_with_keys_and_the_mouse` |
+| (§17) Hollow's open at 201 rooms, the index warm, under 300 ms. | Done | 226 to 238 ms at the gate, after item 7's music was made in parallel (argus-audio). | `perf_rooms` |
+
 ## Known limitations, stated so they are decisions
 
 - A mark's clip is drawn while the game waits: 0.37 s in a debug build on Hollow with the window open, most of it the clip's 61 pictures. Released builds are faster; drawing the clip after the note is typed is the next step if it is felt.
@@ -251,3 +259,5 @@ Phase 0 item 4, "JSON-RPC daemon with session, world, edit, sim (play, pause, st
 - The event log keeps the last 200,000 events; `obs.events {since}` beyond that is empty, not an error.
 - Real-time play runs on the server thread with `recv_timeout` pacing; jitter is a few milliseconds and the sim is unaffected (ticks are counted, not timed).
 - The world and the Luau VM are not `Send`, so the daemon lives on one thread and connections forward lines to it. That is the spec's single-process, single-world model; it also means a long `run_until` blocks other clients until it returns.
+- A save a tick asks for is written when the step returns (phase 3 gate): a game that saves every day, stepped eight hours in one `sim.step`, holds all 480 saves until then. A session steps a frame at a time and the harness at most 100,000 ticks a run.
+- Headless, the mixer catches up at most ten seconds a step, so a step longer than that leaves its clock behind the sim's; nothing is heard headless, and a long run's music events come at the mixer's time.

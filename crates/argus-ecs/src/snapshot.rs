@@ -50,7 +50,7 @@ impl World {
     /// Capture the world.
     pub fn snapshot(&self) -> Snapshot {
         Snapshot {
-            world: self.clone(),
+            world: self.clone_state(),
         }
     }
     /// Replace this world's state with the snapshot's.

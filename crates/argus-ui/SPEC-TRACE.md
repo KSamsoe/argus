@@ -15,8 +15,8 @@ Every statement in the design document (v0.3) that constrains the UI tree (§12 
 | Not a separate world: a menu is a query away like anything else. | Done | Every UI component is an ordinary component: `world.query`, `world.get`, `edit.set`, a Luau system, and a test's `t.expect:field("@pause.resume", "UiButton.focused")` all reach it. | Hollow's `tests/pause.luau`, `tests/controls.luau`, `tests/settings.luau`; Delve's `tests/menu.luau` |
 | The semantic frame (§8) reads it directly. | Done | `argus-render` `semantic.rs`: the frame's `ui` section lists each shown text and button in draw order with its words (a button's own, else its children's), its bounds in the frame, and whether it is focused or disabled; `argus render` prints it as `UI` lines. | Delve's `tests/menu.luau` (the HUD line); the web check reads the pause menu from it |
 | Delve's menus. | Done | Delve's menu (Escape or Start): Resume and New run, with the floor in its title; no turn passes while it is open. Its HUD line is a UI text. | Delve's `tests/menu.luau` |
-| Outpost's inspector panels and overview screens. | Deferred | Item 3 builds Outpost's core and its inspector, the gate's "menu-driven in-game inspector". | |
-| Every game's pause menu. | Partial | Hollow (Resume, Restart the run, Controls, Settings) and Delve. Swarm and Outpost have none yet; Outpost's comes with its inspector (item 3). | Hollow's `tests/pause.luau`; Delve's `tests/menu.luau` |
+| Outpost's inspector panels and overview screens. | Done | Built at the phase 3 gate (docs/phase3-gate.md): Outpost's inspector, Tab to open, a colony overview and pages for its people (ten to a page, each opening their own), its stores, and its jobs, driven by the menu actions and the mouse. | Outpost's `tests/inspector.luau`; argus-daemon `window_play` |
+| Every game's pause menu. | Partial | Hollow (Resume, Restart the run, Controls, Settings) and Delve. Swarm has none; Outpost pauses with Space and has its inspector, but no menu of settings yet. | Hollow's `tests/pause.luau`; Delve's `tests/menu.luau` |
 
 ## §12 Input actions
 
@@ -65,6 +65,13 @@ Every statement in the design document (v0.3) that constrains the UI tree (§12 
 | Spec | Status | Where | Test |
 |---|---|---|---|
 | (§15) A mod carries string tables. | Done | `Strings::load_layers`: each mod's `strings/<code>.toml` after the game's; a key in the mod's namespace is added, a key the game (or an earlier mod) has in any language is changed and reported, any other is a problem. A mod's own key in its second language is its own, not a change (found by Hollow's test). | Hollow's `tests/mods.luau` |
+
+## The phase 3 gate: Outpost's inspector
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§17) "UI tree, 2,000 nodes with text: < 1 ms layout" ("inspector panels and overview screens are most of what the player looks at"). | Done | Re-measured at the gate: 0.909 ms mean over 2,001 nodes in release; Outpost's inspector, 62 nodes, `ui.layout` p95 0.030 ms in the stress scene. | `ui::perf_2000_nodes_with_text_lay_out_in_a_millisecond`; argus-daemon `perf_outpost` |
+| A hidden tree costs almost nothing. | Done | `layout.rs`: a node under a hidden one keeps last tick's words while its text, key, and the world's language are the same (not read from the string tables again, nor its holes filled); a language chosen still reaches a hidden menu at once. Found at the gate: Outpost's closed inspector doubled a debug tick. Debug builds optimize this crate and taffy too (the workspace's dev profile). | Hollow's `tests/hermit.luau` (French reaches the hidden pause page); Outpost's tests |
 
 ## Known limitations, stated so they are decisions
 

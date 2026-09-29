@@ -59,6 +59,64 @@ pub fn resample(src: &[f32], from: u32, to: u32) -> Vec<f32> {
         .collect()
 }
 
+/// [`synth`] for many tones, in their order: at once on as many threads as
+/// the machine has, where it has threads. A game's music is seconds of
+/// samples a layer, and making Hollow's one after another was 50 ms of
+/// every open, a sixth of section 17's budget (found at the phase 3 gate).
+pub fn synth_all(tones: &[&Tone], rate: u32) -> Vec<Clip> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let threads = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(1)
+            .min(tones.len());
+        if threads > 1 {
+            // The longest first, each to the thread with the least to make.
+            let len = |t: &Tone| {
+                let n = if t.notes.is_empty() {
+                    1.0
+                } else {
+                    t.notes.len() as f32
+                };
+                n * if t.notes.is_empty() { t.ms } else { t.note_ms }
+            };
+            let mut order: Vec<usize> = (0..tones.len()).collect();
+            order.sort_by(|a, b| len(tones[*b]).total_cmp(&len(tones[*a])));
+            let mut load = vec![0.0f32; threads];
+            let mut work: Vec<Vec<usize>> = vec![Vec::new(); threads];
+            for i in order {
+                let (w, _) = load
+                    .iter()
+                    .enumerate()
+                    .min_by(|a, b| a.1.total_cmp(b.1))
+                    .expect("a thread");
+                load[w] += len(tones[i]);
+                work[w].push(i);
+            }
+            let mut out: Vec<Option<Clip>> = vec![None; tones.len()];
+            std::thread::scope(|s| {
+                let handles: Vec<_> = work
+                    .iter()
+                    .map(|mine| {
+                        s.spawn(move || {
+                            mine.iter()
+                                .map(|&i| (i, synth(tones[i], rate)))
+                                .collect::<Vec<_>>()
+                        })
+                    })
+                    .collect();
+                for h in handles {
+                    for (i, c) in h.join().expect("a tone") {
+                        out[i] = Some(c);
+                    }
+                }
+            });
+            return out.into_iter().map(|c| c.expect("made")).collect();
+        }
+    }
+    tones.iter().map(|t| synth(t, rate)).collect()
+}
+
 /// Synthesise a described tone at `rate`. Deterministic: noise uses a
 /// fixed seed, so the same description is the same samples everywhere.
 pub fn synth(t: &Tone, rate: u32) -> Clip {

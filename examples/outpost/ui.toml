@@ -1,0 +1,13 @@
+# Outpost's UI (the phase 3 gate): the HUD and the inspector in Liberation
+# Sans (assets/fonts, under the SIL Open Font License beside it, as Delve
+# has it), on the default 960 x 540 canvas.
+font = "fonts/LiberationSans-Regular"
+text_size = 15
+
+[colors]
+button = "#262C34"
+chosen = "#3D4A5A"
+
+[high_contrast_colors]
+button = "#000000"
+chosen = "#FFFFFF"

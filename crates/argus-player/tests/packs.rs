@@ -36,19 +36,28 @@ fn hollow(tag: &str) -> PathBuf {
     dir
 }
 
+/// The world's summary at a checkpoint. The Luau heap's size is left out:
+/// it depends on when the collector ran, and on whether the scripts were
+/// compiled here or shipped as bytecode.
+fn world(p: &Player) -> String {
+    let mut s = p.status();
+    s.as_object_mut().unwrap().remove("script_bytes");
+    s.to_string()
+}
+
 /// Hollow's run scenario, as `tests/player.rs` has it.
 fn run(p: &mut Player) -> Vec<String> {
-    let mut out = vec![p.status().to_string()];
+    let mut out = vec![world(p)];
     p.inject("move", Some(&json!([1, 0])), Some(450), false)
         .unwrap();
     p.step(118).unwrap();
-    out.push(p.status().to_string());
+    out.push(world(p));
     p.inject("jump", Some(&json!(true)), Some(18), false)
         .unwrap();
     p.step(330).unwrap();
-    out.push(p.status().to_string());
+    out.push(world(p));
     p.step(600).unwrap();
-    out.push(p.status().to_string());
+    out.push(world(p));
     out
 }
 
