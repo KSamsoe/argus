@@ -10,6 +10,7 @@
 
 use argus_client::frames::{FrameInfo, FrameReader};
 use eframe::egui::{self, Color32, Pos2, Rect, Sense, Vec2};
+use eframe::{egui_wgpu, wgpu};
 use serde_json::{json, Value as Json};
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -28,13 +29,93 @@ pub struct Selected {
     pub bounds: [f64; 4],
 }
 
+/// The window's GPU, when the editor runs in one: a frame goes from the
+/// shared file straight into a texture of its own, with no work per pixel
+/// (found when Kevin first played in the editor: egui's own texture path
+/// turned each frame's million pixels into colours one by one, most of a
+/// debug build's frame).
+pub struct Gpu {
+    state: egui_wgpu::RenderState,
+    texture: Option<(wgpu::Texture, egui::TextureId, (u32, u32))>,
+}
+
+impl Gpu {
+    /// The window's renderer (eframe's `CreationContext::wgpu_render_state`).
+    pub fn new(state: egui_wgpu::RenderState) -> Gpu {
+        Gpu {
+            state,
+            texture: None,
+        }
+    }
+
+    /// Put a frame's pixels in the texture, made or remade at its size.
+    fn upload(&mut self, info: FrameInfo, px: &[u8]) -> egui::TextureId {
+        let size = (info.width, info.height);
+        let extent = wgpu::Extent3d {
+            width: size.0,
+            height: size.1,
+            depth_or_array_layers: 1,
+        };
+        if self.texture.as_ref().is_none_or(|t| t.2 != size) {
+            let tex = self.state.device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("argus-viewport"),
+                size: extent,
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                // The daemon's offscreen format: sRGB bytes, as egui's own.
+                format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            });
+            let view = tex.create_view(&wgpu::TextureViewDescriptor::default());
+            let mut r = self.state.renderer.write();
+            let id = match self.texture.take() {
+                Some((_, id, _)) => {
+                    r.update_egui_texture_from_wgpu_texture(
+                        &self.state.device,
+                        &view,
+                        wgpu::FilterMode::Nearest,
+                        id,
+                    );
+                    id
+                }
+                None => {
+                    r.register_native_texture(&self.state.device, &view, wgpu::FilterMode::Nearest)
+                }
+            };
+            self.texture = Some((tex, id, size));
+        }
+        let (tex, id, _) = self.texture.as_ref().expect("just made");
+        self.state.queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: tex,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            px,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(4 * size.0),
+                rows_per_image: Some(size.1),
+            },
+            extent,
+        );
+        *id
+    }
+}
+
 /// The viewport's state.
 #[derive(Default)]
 pub struct Viewport {
     reader: Option<FrameReader>,
     latest: Option<Json>,
     shown_seq: u64,
+    /// The window's GPU, when there is one; else egui's own texture.
+    pub gpu: Option<Gpu>,
     texture: Option<egui::TextureHandle>,
+    texture_id: Option<egui::TextureId>,
     buf: Vec<u8>,
     /// Frames shown so far.
     pub frames_shown: u64,
@@ -114,16 +195,24 @@ impl Viewport {
             // Overwritten already: the next notification brings a newer one.
             return;
         };
-        let img = egui::ColorImage::from_rgba_unmultiplied(
-            [info.width as usize, info.height as usize],
-            &self.buf,
-        );
-        match &mut self.texture {
-            Some(t) => t.set(img, egui::TextureOptions::NEAREST),
-            None => {
-                self.texture =
-                    Some(ctx.load_texture("argus-viewport", img, egui::TextureOptions::NEAREST))
+        if let Some(g) = &mut self.gpu {
+            self.texture_id = Some(g.upload(info, &self.buf));
+        } else {
+            // Without the window's GPU (the headless tests): egui's texture.
+            // The frames are opaque, so their bytes are already the
+            // premultiplied colours egui keeps.
+            let img = egui::ColorImage::from_rgba_premultiplied(
+                [info.width as usize, info.height as usize],
+                &self.buf,
+            );
+            match &mut self.texture {
+                Some(t) => t.set(img, egui::TextureOptions::NEAREST),
+                None => {
+                    self.texture =
+                        Some(ctx.load_texture("argus-viewport", img, egui::TextureOptions::NEAREST))
+                }
             }
+            self.texture_id = self.texture.as_ref().map(|t| t.id());
         }
         self.shown_seq = seq;
         self.frames_shown += 1;
@@ -178,14 +267,14 @@ impl Viewport {
         let (rect, response) = ui.allocate_exact_size(avail, Sense::click());
         let painter = ui.painter_at(rect);
         painter.rect_filled(rect, 0.0, Color32::from_gray(12));
-        let image = match (&self.texture, &self.info) {
+        let image = match (self.texture_id, &self.info) {
             (Some(t), Some(i)) => {
                 // The frame at its size, fitted into the panel and centred.
                 let size = Vec2::new(i.width as f32, i.height as f32) / ppp;
                 let scale = (rect.width() / size.x).min(rect.height() / size.y).min(1.0);
                 let r = Rect::from_center_size(rect.center(), size * scale);
                 painter.image(
-                    t.id(),
+                    t,
                     r,
                     Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
                     Color32::WHITE,

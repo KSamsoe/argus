@@ -25,3 +25,4 @@ egui_kittest = { version = "0.31", features = ["eframe", "wgpu"] }
 argus-daemon = { path = "../argus-daemon", version = "0.0.1" }
 argus-ecs = { path = "../argus-ecs", version = "0.0.1" }
 png = "0.17"
+pollster = "0.4"

@@ -217,6 +217,11 @@ fn a_person_plays_outpost_in_the_viewport() {
         !h.state().viewport.focused,
         "a click outside gives the keys back"
     );
+    // Enter put play back on; the bar shows it at its next look.
+    until(&mut h, "playing again", |ed| {
+        ed.status["playing"] == true && ed.status["paused"] == false
+    });
+    h.step();
     h.get_by_label("Pause").click();
     until(&mut h, "paused", |ed| ed.status["paused"] == true);
     let info = h.state().viewport.info.unwrap();

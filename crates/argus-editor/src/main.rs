@@ -29,7 +29,11 @@ fn main() {
     if let Err(e) = eframe::run_native(
         "argus editor",
         options,
-        Box::new(move |_cc| Ok(Box::new(Editor::new(socket, author)))),
+        Box::new(move |cc| {
+            Ok(Box::new(
+                Editor::new(socket, author).with_gpu(cc.wgpu_render_state.clone()),
+            ))
+        }),
     ) {
         eprintln!("argus-editor: {e}");
         std::process::exit(1);

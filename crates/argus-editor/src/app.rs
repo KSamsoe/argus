@@ -90,6 +90,13 @@ impl Editor {
         }
     }
 
+    /// Draw the viewport's frames with the window's GPU (eframe's wgpu
+    /// render state), straight from the shared file into a texture.
+    pub fn with_gpu(mut self, state: Option<eframe::egui_wgpu::RenderState>) -> Editor {
+        self.viewport.gpu = state.map(crate::viewport::Gpu::new);
+        self
+    }
+
     /// The connection's state.
     pub fn link_state(&self) -> &State {
         &self.link.state

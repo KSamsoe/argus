@@ -23,6 +23,7 @@ Every statement in the design document (v0.3) that constrains the editor (§11, 
 | (§10) F8 marks and F9 toggles proposals in the viewport as in the game window. | Done | They are keys like any other: the daemon's window path handles them, the prompt shows in the frame's bar, and the note is typed there. | `viewport` (F8, a typed note, Enter) |
 | (§8) Clicking an entity selects it, through the semantic frame's screen bounds. | Done | While the game is not playing a click, and while it plays Alt and a click, asks `obs.frame {format: semantic}` at the frame's size and selects the smallest thing under the pointer, UI before the world; the bar above the frame names it. | `viewport` (a colonist) |
 | The game's sound plays while it is shown. | Done | `render.stream {audio: true}`, unless `Editor::audio` is off (the tests turn it off). | |
+| (Kevin's first play) The viewport keeps up with the game, in the debug build too. | Done | In the window a frame goes from the shared file straight into a GPU texture of the editor's own (`viewport::Gpu`, eframe's wgpu render state); headless, egui's texture takes the frame's bytes as they are. The editor, egui, and wgpu's core are optimized in debug builds. A debug editor frame is 1.6 ms, and 59 of 60 frames a second are shown. | `keep_up::the_viewport_shows_every_frame_the_game_plays`, `frames_go_straight_into_the_windows_gpu` |
 
 ## The phase 4 gate, first half
 

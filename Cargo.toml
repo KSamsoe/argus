@@ -56,6 +56,38 @@ opt-level = 2
 [profile.dev.package.taffy]
 opt-level = 3
 
+# The editor is optimized in debug builds too (phase 4 item 1): Kevin's
+# first play in its viewport was slow, and a debug frame of the editor
+# took 18 ms, most of it egui laying out and painting the panels and
+# turning a frame's pixels into colours. wgpu's core checks every call,
+# which the daemon's renderer and the editor's both pay.
+[profile.dev.package.argus-editor]
+opt-level = 2
+[profile.dev.package.argus-client]
+opt-level = 2
+[profile.dev.package.egui]
+opt-level = 2
+[profile.dev.package.epaint]
+opt-level = 2
+[profile.dev.package.emath]
+opt-level = 2
+[profile.dev.package.ecolor]
+opt-level = 2
+[profile.dev.package.eframe]
+opt-level = 2
+[profile.dev.package.egui-wgpu]
+opt-level = 2
+[profile.dev.package.egui-winit]
+opt-level = 2
+[profile.dev.package.ab_glyph_rasterizer]
+opt-level = 2
+[profile.dev.package.wgpu]
+opt-level = 2
+[profile.dev.package.wgpu-core]
+opt-level = 2
+[profile.dev.package.wgpu-hal]
+opt-level = 2
+
 [profile.dev.package.png]
 opt-level = 3
 [profile.dev.package.fdeflate]

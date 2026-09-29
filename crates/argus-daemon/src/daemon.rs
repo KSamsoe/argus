@@ -1010,7 +1010,11 @@ impl Daemon {
                 return;
             }
             let now = std::time::Instant::now();
-            if now < s.next_due {
+            // Due a little early rather than a loop's jitter late: the
+            // server's loop runs at the sim's rate, and a due time a hair
+            // after its next turn skipped every other frame (37 frames a
+            // second of 60, found when Kevin first played in the editor).
+            if now + STREAM_SLACK < s.next_due {
                 return;
             }
             let key = (self.world.frame(), self.mutations, self.devices.events_seen);
@@ -1066,7 +1070,15 @@ impl Daemon {
                     .write(tick, frame, |buf| renderer.capture_into(buf))
             });
             s.last = Some((now, key));
-            s.next_due = now + std::time::Duration::from_secs_f64(1.0 / s.fps);
+            // A steady schedule, not one counted from whenever this frame
+            // happened to be drawn; one that fell behind starts again.
+            let interval = std::time::Duration::from_secs_f64(1.0 / s.fps);
+            let next = s.next_due + interval;
+            s.next_due = if next + interval < now {
+                now + interval
+            } else {
+                next
+            };
             s.last_ms = started.elapsed().as_secs_f64() * 1000.0;
             let conn = s.conn;
             match wrote {
@@ -5777,6 +5789,11 @@ fn tick_json(t: &argus_sim::TickRecord) -> Json {
         "archetypes": t.archetypes.iter().map(|(id, n)| json!([id, n])).collect::<Vec<_>>(),
     })
 }
+
+/// How early a stream's frame may be drawn: less than the jitter of the
+/// server's frame loop, well under a frame.
+#[cfg(feature = "render")]
+const STREAM_SLACK: std::time::Duration = std::time::Duration::from_millis(4);
 
 /// Refuse a parameter the method does not have (phase 4 item 0): the
 /// editor's `sim.speed {value: 10}` set the speed to 1, since `x` was
