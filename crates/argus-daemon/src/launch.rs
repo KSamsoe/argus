@@ -24,6 +24,9 @@ pub struct Launch {
     pub window: Option<(u32, u32)>,
     /// Enter play mode after opening, with or without a window.
     pub play: bool,
+    /// Mods from the project's `mods/` to open with, in load order
+    /// (phase 3 item 8).
+    pub mods: Vec<String>,
 }
 
 /// Open the project (if any), announce on stderr, serve until told to
@@ -43,9 +46,15 @@ pub fn launch(l: Launch) -> i32 {
         if let Some(s) = l.seed {
             params["seed"] = json!(s);
         }
+        if !l.mods.is_empty() {
+            params["mods"] = json!(l.mods);
+        }
         match daemon.call(0, "session.open", &params) {
             Ok(v) => {
                 eprintln!("argusd: opened {}", v["scene"]);
+                for m in v["mods"]["left_out"].as_array().into_iter().flatten() {
+                    eprintln!("argusd: mod {} left out: {}", m["id"], m["why"]);
+                }
                 if l.play {
                     let _ = daemon.call(0, "sim.play", &json!({}));
                 }

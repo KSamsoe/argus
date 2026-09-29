@@ -1,7 +1,7 @@
 //! `argusd`: the Argus daemon.
 //!
 //! ```text
-//! argusd --project <dir> [--scene <name>] [--seed <n>] [--stdio | --socket [name]] [--headless | --window [WxH]]
+//! argusd --project <dir> [--scene <name>] [--seed <n>] [--stdio | --socket [name]] [--headless | --window [WxH]] [--play] [--mods a,b]
 //! ```
 //!
 //! With `--project` the session opens before the first client connects and
@@ -17,7 +17,7 @@ use std::path::PathBuf;
 static ALLOC: argus_sim::alloc::Counting = argus_sim::alloc::Counting;
 
 fn usage() -> ! {
-    eprintln!("usage: argusd [--project <dir>] [--scene <name>] [--seed <n>] [--stdio | --socket [name]] [--headless | --window [WxH]] [--play]");
+    eprintln!("usage: argusd [--project <dir>] [--scene <name>] [--seed <n>] [--stdio | --socket [name]] [--headless | --window [WxH]] [--play] [--mods a,b]");
     std::process::exit(2)
 }
 
@@ -29,6 +29,7 @@ fn main() {
     let mut transport: Option<Transport> = None;
     let mut window: Option<(u32, u32)> = None;
     let mut play = false;
+    let mut mods: Vec<String> = Vec::new();
     while let Some(a) = args.next() {
         match a.as_str() {
             "--project" | "-p" => {
@@ -49,6 +50,15 @@ fn main() {
             }
             "--headless" => {}
             "--play" => play = true,
+            "--mods" => {
+                mods = args
+                    .next()
+                    .unwrap_or_else(|| usage())
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect()
+            }
             "--window" => {
                 window = Some(match args.next() {
                     Some(s) if s.contains('x') => {
@@ -69,5 +79,6 @@ fn main() {
         transport,
         window,
         play,
+        mods,
     }));
 }

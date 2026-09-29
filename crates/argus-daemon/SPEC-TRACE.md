@@ -226,12 +226,14 @@ Phase 0 item 4, "JSON-RPC daemon with session, world, edit, sim (play, pause, st
 | Spec | Status | Where | Test |
 |---|---|---|---|
 | (§10) The human plays the build the agent made. | Done | `launch.rs`: a window opened from the command line starts the game playing. Kevin played item 7's build with `argus daemon run --window` (the command he was given left out `--play`): the window drew the game and answered F8, but nothing ticked, so the keys seemed to do nothing. Driving Hollow headless showed the keys reach the hero and move him once the game plays (x 3.0 to 6.05 in half a second of frames). | not with a real window; the frame loop checked headless |
+| A load keeps the game playing. | Done | `scene.load` carries playing, paused, and speed over, as `sim.load` does; a scenario's loads start stopped, and `test.run` puts the session's play state back after. Kevin's window froze on `argus scene load mods=[lanterns,brighter]`: the fresh scene's clock was stopped, so nothing moved until something said play. | `protocol::a_scene_loaded_while_playing_plays_on_and_scenarios_start_stopped` |
 
 ## Phase 3, item 8: mods in the session
 
 | Spec | Status | Where | Test |
 |---|---|---|---|
 | (§15) The agent makes and tests mods. | Done | `session.open` and `scene.load` take `mods` (ids from the project's `mods/`, in load order), kept by later loads and forks and put back after `test.run`; `mods.list` says what loaded, what each added and changed, what was left out and why, and what is in `mods/`. The open's answer has `mods: {loaded, left_out, changes}`. | Hollow's `tests/mods.luau` |
+| A person plays the game with mods. | Done | `argusd --mods a,b` and `argus daemon run --window --mods a,b` (or `start`) open the session with those mods, saying on stderr any left out and why; the window plays at once. | `argus daemon start --mods lanterns,brighter --play` on Hollow, headless: both loaded, playing; not yet run with a window |
 | A modded run reproduces. | Done | Marks, replay files, and saves record the mods (`mods: [{id, version, hash}]`); `mark.open`, `replay.open`, and `sim.load` load with them and say when the mods differ from those recorded. | Hollow's `tests/mods.luau`; argus-player's mods tests |
 
 ## Known limitations, stated so they are decisions

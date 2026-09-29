@@ -855,3 +855,44 @@ fn rooms_stream_through_the_protocol() {
     assert!(r.get("issues").is_none());
     assert_eq!(ok(&mut d, "scene.issues", json!({}))["total"], 0);
 }
+
+#[test]
+fn a_scene_loaded_while_playing_plays_on_and_scenarios_start_stopped() {
+    // Found by Kevin (2026-09-28): a playing window froze on `argus scene
+    // load mods=[...]`, since a fresh scene's clock starts stopped.
+    let t = temp("scene-play");
+    project(t.path());
+    let mut d = open(t.path());
+    ok(&mut d, "sim.play", json!({}));
+    ok(&mut d, "sim.speed", json!({ "x": 3 }));
+    ok(&mut d, "scene.load", json!({}));
+    let st = ok(&mut d, "sim.status", json!({}));
+    assert_eq!(st["playing"], true, "{st}");
+    assert_eq!(st["speed"], 3.0, "{st}");
+    assert!(d.wants_frames());
+    // Stopped, it loads stopped.
+    ok(&mut d, "sim.pause", json!({}));
+    ok(&mut d, "sim.stop", json!({}));
+    ok(&mut d, "scene.load", json!({}));
+    assert_eq!(ok(&mut d, "sim.status", json!({}))["playing"], false);
+
+    // A scenario's load starts stopped though the session plays, and the
+    // session plays on after the run.
+    let scene = ok(&mut d, "session.status", json!({}))["scene"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let file = t.path().join("tests").join("playing.luau");
+    std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+    std::fs::write(
+        &file,
+        format!(
+            "return scenario \"starts stopped\" {{\n  scene = \"{scene}\",\n  run = function(t)\n    if t:status().playing then error(\"playing\", 0) end\n    t:step(1)\n  end,\n}}\n"
+        ),
+    )
+    .unwrap();
+    ok(&mut d, "sim.play", json!({}));
+    let r = ok(&mut d, "test.run", json!({}));
+    assert_eq!(r["ok"], true, "{r}");
+    assert_eq!(ok(&mut d, "sim.status", json!({}))["playing"], true);
+}

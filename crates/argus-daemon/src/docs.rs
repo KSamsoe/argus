@@ -454,7 +454,7 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "scene.load",
-        doc: "Reload the current scene, or switch to another one. Re-reads scripts, prefabs, defs, and files, and rebuilds the world.",
+        doc: "Reload the current scene, or switch to another one. Re-reads scripts, prefabs, defs, and files, and rebuilds the world. A scene loaded while playing plays on, paused or at its speed as it was; a scenario's loads start stopped.",
         params: &[
             opt("scene", STRING, "default: current"),
             opt("seed", INTEGER, ""),

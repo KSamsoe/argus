@@ -1762,7 +1762,44 @@ impl Daemon {
             self.mods_asked = json::str_list(params, "mods")?;
         }
         let cfg = ProjectConfig::load(&root)?;
-        self.open_scene(root, &cfg, &name, seed)
+        // A scene loaded while playing plays on, as a save does: a fresh
+        // scene's clock starts stopped, and a person's window froze on
+        // `argus scene load mods=[...]` (found by Kevin, 2026-09-28). A
+        // scenario's loads start stopped, as they always have.
+        let play = self.play_state();
+        let r = self.open_scene(root, &cfg, &name, seed)?;
+        if play.0 && !self.live_edits {
+            self.resume(play)?;
+        }
+        Ok(r)
+    }
+
+    /// Whether the sim is playing, paused, and at what speed.
+    fn play_state(&self) -> (bool, bool, f64) {
+        (
+            self.sched.is_playing(),
+            self.sched.is_paused(),
+            self.sched.speed(),
+        )
+    }
+
+    /// Put a play state back on a scene just loaded, whose clock starts
+    /// stopped.
+    fn resume(&mut self, play: (bool, bool, f64)) -> Result<()> {
+        if !play.0 {
+            return Ok(());
+        }
+        if let Some(ses) = &mut self.session {
+            ses.play_from = Some(self.sched.tick());
+        }
+        self.sched.play(&self.world);
+        if play.1 {
+            self.sched.pause();
+        }
+        if self.sched.driving().kind == ClockKind::Continuous {
+            self.sched.set_speed(play.2)?;
+        }
+        Ok(())
     }
 
     fn scene_issues(&self) -> Result<Json> {
@@ -4996,6 +5033,7 @@ impl Daemon {
         };
         let day = ProjectConfig::load(&self.require_session()?.root)?.day_seconds;
         let mods_before = self.mods_asked.clone();
+        let play_before = self.play_state();
         let opts = argus_test::Options {
             day_seconds: Some(day),
             name: json::opt_str(params, "name")?.map(str::to_string),
@@ -5016,15 +5054,19 @@ impl Daemon {
         };
         self.live_edits = true;
         let report = argus_test::run(self, &opts);
-        self.live_edits = false;
+        // The scene the session had, stopped (whatever the last scenario
+        // left playing), then the play state it had.
         let restore = self.call(
             0,
             "scene.load",
             &json!({ "scene": before.0, "seed": before.1, "mods": mods_before }),
         );
+        self.live_edits = false;
         let mut report = report.map_err(|e| ArgusError::new(codes::TEST_RUNNER, e))?;
-        if let Err(e) = restore {
-            report["restore_error"] = json::error_json(&e);
+        match restore {
+            Err(e) => report["restore_error"] = json::error_json(&e),
+            // The game plays on after the tests if it was playing before.
+            Ok(_) => self.resume(play_before)?,
         }
         Ok(report)
     }
