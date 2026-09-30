@@ -143,6 +143,7 @@ Decisions taken while building it:
 - **One answer.** A request is answered once, by a choice or a sentence; the agent asks again for another look. Asking and answering are events, feed rows with their authors, and `reviews` notifications, so the editor shows a question the moment it is asked.
 - **The clip is drawn at the person's view.** A mark's frame and a clip were drawn at 960 x 540 when there was no game window; with the editor's viewport streaming they are its size, so the clip frames the scene as the person sees it (found by looking at a Swarm review in the panel).
 - **The editor reads the clip from disk.** It runs beside the daemon, and the answer names the file; the decoding runs off the UI thread. A remote editor (remote access waits) would need the daemon to send the bytes.
+- **Asking pauses the game briefly.** The clip is drawn in the daemon's loop, as a mark's is: about 0.3 s in the debug build (0.75 s the first time, while the offscreen renderer starts), measured on Swarm through the CLI. The same holds for F8; drawing clips off the loop is for a later item if it is felt.
 - **Marks are shown, not only listed.** Their frame, note, and state are there, and the person can reword a note, reproduce the moment, close a mark they no longer care about, or take one back; closing with what was done stays the agent's.
 
 ## 5. Replay scrubber
