@@ -414,10 +414,18 @@ fn test_command(
             "name" | "file" | "seeds" => params[k] = json!(v),
             "update" | "software" => params[k] = json!(v != "false"),
             "replays" => params[k] = json!(v != "false"),
+            // Candidates tried without writing them (phase 4 item 3).
+            "set" | "sweep" => match params::value(v) {
+                Ok(x) => params[k] = x,
+                Err(e) => {
+                    let _ = writeln!(err, "argus: {k}: {e}");
+                    return EXIT_USAGE;
+                }
+            },
             other => {
                 let _ = writeln!(
                     err,
-                    "argus: test takes name, file, seeds, update, software, and replays; not {other:?}"
+                    "argus: test takes name, file, seeds, update, software, replays, set, and sweep; not {other:?}"
                 );
                 return EXIT_USAGE;
             }

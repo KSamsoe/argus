@@ -46,6 +46,12 @@ pub enum Want {
     EditPart(u64),
     /// `edit.abort` of a transaction one of whose ops was refused.
     EditAbort,
+    /// `tune.fields`, for the tuning panel.
+    TuneFields,
+    /// `tune.log` of the open session: its search paths.
+    TuneLog,
+    /// A slider's `tune.set`.
+    TuneSet,
 }
 
 /// An answer: what it was for, and its result or error.

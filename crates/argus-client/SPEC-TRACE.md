@@ -22,6 +22,12 @@ Every statement in the design document (v0.3) that constrains how a client reach
 |---|---|---|---|
 | "The hot paths (frame streaming, snapshot transfer) use out-of-band shared memory or a sidecar binary channel that the JSON message merely points at." | Done (frames) | `frames.rs`: `FrameWriter` (the daemon's) and `FrameReader` (a client's) over one mapped file: a 64-byte header, then three slots each of a 64-byte header (a sequence number odd while written, the tick, the frame, the size) and RGBA8 pixels, every slot on a 64-byte boundary. A `render.frame` notification names the slot and sequence number; a copy is kept only if the number was the same before and after it. | `frames::tests::a_frame_written_is_read_whole_and_an_old_one_is_not`, `slots_stay_aligned_for_any_size` |
 
+## Phase 4, item 3
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| A def row in a written line. | Done | Inside brackets, a colon between two word characters stays in the word, as the reader keeps it: `{def: item:meal, ...}`, not `"item:meal"`. | `command::tests::every_value_reads_back_the_same` |
+
 ## Known limitations, stated so they are decisions
 
 - The line is for a POSIX shell (bash, and Git Bash on Windows), where the tests and the docs run. PowerShell reads single quotes the same way, but not `'\''` inside them.

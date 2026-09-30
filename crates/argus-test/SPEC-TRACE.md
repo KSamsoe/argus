@@ -59,6 +59,12 @@ Phase 0 item 10, "scenario test runner with state goldens and seed sweeps": this
 |---|---|---|---|
 | (§15) The agent tests a mod as the game is tested. | Done | A scenario's `mods = {"a", "b"}` loads those mods from the project's `mods/`, in that order, and fails if any is left out; a scenario without `mods` loads none, whatever ran before it. | Hollow's `tests/mods.luau` |
 
+## Phase 4, item 3: candidates tried without writing them
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§10) "Runs the twenty-seed, thirty-day sweep from §9 against each candidate value." | Done | `Options::set`: fields the harness puts in each run's world with `sim.set` just after its scene loads, before the scenario looks at it. The daemon's `test.run {sweep}` runs the scenarios once for each candidate. | argus-daemon `tune_defs::a_sweep_tries_each_candidate_without_writing_it` |
+
 ## Known limitations, stated so they are decisions
 
 - The harness is Luau over one Rust function (`call`). That keeps the runner a client by construction and makes the harness readable by the people who write scenarios; it costs a JSON round trip per call, which at tens of calls per scenario is invisible.

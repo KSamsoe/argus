@@ -263,6 +263,15 @@ Phase 0 item 4, "JSON-RPC daemon with session, world, edit, sim (play, pause, st
 | (Kevin's second play) The sound plays only while the game does. | Done | `Daemon::sync_audio`, every frame a window or a stream is open and when either opens a device: the audio engine is held while the clock is stopped or paused (`AudioEngine::set_hold`: the device's callback sends silence and leaves the mixer where it is). `audio.status` says `held` and the music's `seconds`. | `stream::the_music_waits_for_play` (a real device, the master bus muted) |
 | (P1) Escape at a mark's note prompt had no command. | Done | `mark.cancel {id}`: the mark's files go, `mark.cancelled` says so, and a prompt open for it closes. | `stream` |
 
+## Phase 4, item 3: tuning over def rows, and candidates tried
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§10) Tune fields in the panel: named entities', def rows', runtime entities' of a kind there are few of. | Done | `tune.fields`: rows with a `label`; def rows `{def: "item:meal", path: "food"}`; runtime entities one by one while a component has 32 or fewer (`JobKind cook`), else one row with the count. | `tune_defs::the_tuning_panel_reaches_def_rows_and_job_kinds` |
+| A slider on a def row; the session's end commits it to the table's file. | Done | `tune.set {def, path, value}`: set in memory (checked against the table's schema) and given to scripts, conversations, and timelines again; logged as a component's is. `tune.end` commits it as `edit.def`. | `tune_defs` (0.7 into `defs/items.toml`, comments kept; one undo back) |
+| Def tables edited through transactions (brought forward from item 8). | Done | `edit.def {tx, def, path, value}`: `Op::Def`, undoable, in the feed as the `edit` tool's op; the file written by `argus_scene::defs::write_value`. | `tune_defs` |
+| (§10) "Runs the twenty-seed, thirty-day sweep from §9 against each candidate value and reports which ones starve." | Done | `sim.set {entity or def, path, value}`: live only, no file, no log, locks respected for a client. `test.run {set}` applies it after each scenario's load (the harness); `test.run {sweep: {target, values}}` runs the scenarios per value and answers with each candidate's runs, failures, and first errors. `argus test ... sweep=...` prints a line a candidate; the MCP `test` tool takes `set` and `sweep`. | `tune_defs::a_sweep_tries_each_candidate_without_writing_it` |
+
 ## Known limitations, stated so they are decisions
 
 - A mark's clip is drawn while the game waits: 0.37 s in a debug build on Hollow with the window open, most of it the clip's 61 pictures. Released builds are faster; drawing the clip after the note is typed is the next step if it is felt.

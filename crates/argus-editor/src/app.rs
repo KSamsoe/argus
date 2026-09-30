@@ -7,6 +7,7 @@
 use crate::hierarchy::{Ask, Hierarchy};
 use crate::inspector::{Do, Inspector};
 use crate::link::{Answer, Link, State, Want};
+use crate::tuning::{Tune, Tuning};
 use crate::viewport::{Selected, Send, Viewport};
 use argus_client::command;
 use eframe::egui::{self, Color32, RichText};
@@ -26,12 +27,16 @@ const GET_PLAYING: Duration = Duration::from_millis(250);
 const GET_STILL: Duration = Duration::from_secs(1);
 /// How often the locks are read.
 const LOCKS_EVERY: Duration = Duration::from_secs(1);
+/// How often the tuning panel reads its fields and the session's paths.
+const TUNE_EVERY: Duration = Duration::from_millis(500);
 
 /// The right panel's tab.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Tab {
     /// The selected entity.
     Inspector,
+    /// The tune fields' sliders.
+    Tuning,
     /// The change feed.
     Feed,
 }
@@ -100,12 +105,15 @@ pub struct Editor {
     pub selected: Option<String>,
     /// The right panel's tab.
     pub tab: Tab,
+    /// The tune fields, a slider each.
+    pub tuning: Tuning,
     txs: HashMap<u64, TxRun>,
     described: bool,
     last_status: Option<Instant>,
     last_summary: Option<Instant>,
     last_get: Option<Instant>,
     last_locks: Option<Instant>,
+    last_tune: Option<Instant>,
 }
 
 impl Editor {
@@ -127,12 +135,14 @@ impl Editor {
             inspector: Inspector::default(),
             selected: None,
             tab: Tab::Inspector,
+            tuning: Tuning::default(),
             txs: HashMap::new(),
             described: false,
             last_status: None,
             last_summary: None,
             last_get: None,
             last_locks: None,
+            last_tune: None,
         }
     }
 
@@ -166,6 +176,26 @@ impl Editor {
             json!({ "author": self.author, "note": note }),
             Want::EditBegin(line, ops),
         );
+    }
+
+    fn tuned(&mut self, t: Tune) {
+        match t {
+            // Every move goes to the daemon, which logs it with its frame.
+            Tune::Set(p) => {
+                self.link.send("tune.set", p, Want::TuneSet);
+                self.last_tune = None;
+            }
+            // The value the person let go at is the command they gave.
+            Tune::Done(p) => self.commands.push(command::line("tune.set", &p)),
+            Tune::End(commit, note) => {
+                let mut p = json!({ "commit": commit });
+                if !note.is_empty() {
+                    p["note"] = json!(note);
+                }
+                self.act("tune.end", p);
+                self.tuning.note.clear();
+            }
+        }
     }
 
     fn done(&mut self, d: Do) {
@@ -293,6 +323,24 @@ impl Editor {
                 }
             }
         }
+        // The tuning panel's fields while it is shown, and the session's
+        // search paths while one is open.
+        if (self.tab == Tab::Tuning || !self.tuning.session.is_null())
+            && due(self.last_tune, TUNE_EVERY)
+            && !self.link.waiting(&Want::TuneFields)
+        {
+            self.last_tune = Some(now);
+            self.link.send("tune.fields", json!({}), Want::TuneFields);
+            if let Some(id) = self.tuning.session["id"].as_u64() {
+                if !self.link.waiting(&Want::TuneLog) {
+                    self.link.send(
+                        "tune.log",
+                        json!({ "session": id, "limit": 1 }),
+                        Want::TuneLog,
+                    );
+                }
+            }
+        }
         if due(self.last_locks, LOCKS_EVERY) && !self.link.waiting(&Want::Locks) {
             self.last_locks = Some(now);
             self.link.send("edit.locks", json!({}), Want::Locks);
@@ -322,6 +370,7 @@ impl Editor {
                 self.last_summary = None;
                 self.last_get = None;
                 self.last_locks = None;
+                self.last_tune = None;
                 self.hierarchy.stale();
             }
             (Want::Action(line), Err(e)) => self.problem = Some(Problem::from_error(&line, &e)),
@@ -400,6 +449,21 @@ impl Editor {
                 }
             }
             (Want::EditAbort, _) => {}
+            (Want::TuneFields, Ok(v)) => {
+                self.tuning.take(&v);
+                if self.tuning.session.is_null() {
+                    self.tuning.story.clear();
+                }
+            }
+            (Want::TuneLog, Ok(v)) => {
+                self.tuning.story = v["story"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|s| s.as_str().map(str::to_string))
+                    .collect();
+            }
+            (Want::TuneSet, Ok(_)) => {}
             (w, Err(e)) => {
                 self.problem = Some(Problem::from_error(&format!("{w:?}"), &e));
             }
@@ -457,6 +521,7 @@ impl Editor {
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.selectable_value(&mut self.tab, Tab::Inspector, "Inspector");
+                    ui.selectable_value(&mut self.tab, Tab::Tuning, "Tuning");
                     ui.selectable_value(&mut self.tab, Tab::Feed, "Change feed");
                 });
                 ui.separator();
@@ -465,6 +530,12 @@ impl Editor {
                         let author = self.author.clone();
                         for d in self.inspector.ui(ui, &author) {
                             self.done(d);
+                        }
+                    }
+                    Tab::Tuning => {
+                        let author = self.author.clone();
+                        for t in self.tuning.ui(ui, &author) {
+                            self.tuned(t);
                         }
                     }
                     Tab::Feed => self.feed_ui(ui),

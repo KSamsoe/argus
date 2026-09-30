@@ -9,13 +9,15 @@
 //! its frame: the connection, the play controls, the change feed, and
 //! "show as command". Item 1 is the viewport: the game's frames, played
 //! in with the game's own bindings. Item 2 is the hierarchy and the
-//! inspector, with each field's provenance as a colour.
+//! inspector, with each field's provenance as a colour. Item 3 is the
+//! tuning panel: a slider for every tune field, its moves logged.
 
 pub mod app;
 pub mod hierarchy;
 pub mod inspector;
 pub mod launch;
 pub mod link;
+pub mod tuning;
 pub mod viewport;
 
 pub use app::{Editor, Problem};

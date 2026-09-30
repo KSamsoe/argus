@@ -105,9 +105,10 @@ Decisions taken while building it:
 - **Undo is the person's own**, from the buttons or Ctrl+Z and Ctrl+Shift+Z (Ctrl+Y), when neither the game nor a text field has the keys.
 - **Locks as the daemon draws them.** An entity's lock is shown once, at its name; a component's in its header; a field's by underlining its name, with who holds it on hover. A lock is taken with an optional note ("camera feel is mine"), and only its holder is offered Unlock.
 - **Prefabs are read, not edited, here.** The inspector names an entity's prefab chain and how many entities use the prefab; editing a prefab's own file is a data edit, item 8's.
-, and sweeping candidates
 
-**Status: to do.**
+## 3. Tuning panel, and sweeping candidates
+
+**Status: done** (2026-09-30) in the editor (`tuning.rs`), the daemon (`tune.fields`, `tune.set`, `tune.end` over def rows; `edit.def`; `sim.set`; `test.run`'s `set` and `sweep`), `argus-scene` (a def row's value set and written back), and the test harness. The right panel's Tuning tab has a slider for every tune field: the named entities' (Outpost's colony), the data tables' rows (a meal's food, each job's priority and work, a recipe's), and the few of a kind made at run time (the job kinds); the many of a kind are folded at the bottom, tuned through what makes them. Every move of a slider is a `tune.set` the daemon logs with its frame, while the game runs; the session's search path shows above the sliders; Keep saves the values as one change by the person (the colony's field to its scene file, a meal's food to `defs/items.toml`), Put back returns them. A test run takes values without writing them (`set`), and a sweep runs the chosen scenarios once for each candidate value and reports which fail: `argus test name=... seeds=1..20 sweep='{entity: @colony, path: Colony.hunger_per_day, values: [0.8, 1, 1.2]}'`. Traces: `crates/argus-editor/SPEC-TRACE.md`, the daemon's, `argus-scene`'s, and `argus-test`'s.
 
 - §4, §10: "Any field with `tune = true` appears in the editor's tuning panel as a slider while the game runs."
 - §10: "Every movement of every slider is logged with its frame"; the agent subscribes and sees the search path, not only the final value.
@@ -116,6 +117,14 @@ Decisions taken while building it:
 - §10: "the human nudges a value while watching the colony at 10×, the agent sees the path, and then does what a human can't: runs the twenty-seed, thirty-day sweep from §9 against each candidate value and reports which ones starve." A test run takes field overrides, so a candidate is tried without writing it.
 - §13: clip rates, anticipation, and hold frames, the post stack's passes, and emitters' knobs are tune fields too, so the panel is not Outpost's alone.
 - §17: Outpost's fast-forward is over 2,000 ticks a second, "a 30-day balance scenario in under a minute per seed".
+
+Decisions taken while building it:
+
+- **Def tables come with this item, not item 8.** A tuning session's end has to write a meal's food to its table, so `edit.def` (one field of one row, in a transaction, the file's layout and comments kept, undoable) is here; item 8 keeps asset sidecars (animators). A def row's value is changed in memory and given to the scripts again (`q:def` reads it at once), and to the conversations and timelines built from the tables.
+- **What the panel lists.** `tune.fields` has the named entities' tune fields, every def row's (`{def: "item:meal", path: "food"}`), and the runtime entities': one by one while a component has 32 or fewer (a label from the component's first word, `JobKind cook`), else one row with their count.
+- **A candidate is tried, not written.** `sim.set` puts one value in the live world with no transaction, no file, and no tuning log; a client's respects locks and is a row in the feed. `test.run {set}` runs it after each scenario's scene loads; `test.run {sweep: {target, values}}` runs the scenarios once per value and answers with each candidate's runs, failures, and first errors. The agent reads the candidates off the tuning log's path.
+- **One command per drag.** Every step of a drag is a `tune.set` (the log keeps the path); Show as command lists the value let go at.
+- **The panel does not move under a hand.** A session opening at a drag's first step put its line above the sliders, pushed them down, and the slider dropped the drag (found by this item's test, which drags the way a person does); the session's area is the same height open or not, and each slider's id is its row's.
 
 ## 4. Agent panel
 
@@ -155,7 +164,7 @@ Decisions taken while building it:
 
 **Status: to do.**
 
-- Carried in: def tables and asset sidecars edited through transactions, with layout and comments kept, undoable per author, in the feed, reloaded at commit (as `edit.text` does for strings).
+- Carried in: asset sidecars edited through transactions, with layout and comments kept, undoable per author, in the feed, reloaded at commit (as `edit.text` does for strings, and `edit.def` for def tables since item 3).
 - §13: an animator is a state machine in TOML: states reference clips, transitions have conditions on fields and blend windows, and states carry events by frame ("hitbox enabled at frame 4 of slash").
 - §13: clip rates, anticipation frame counts, and hold frames are tune fields: "a human adjusting a wind-up while playing is the canonical tuning session".
 - The editor shows a selected entity's animator live: its state, its frame, the events it fires.

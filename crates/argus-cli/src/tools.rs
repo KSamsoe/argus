@@ -240,7 +240,10 @@ pub fn run(c: &mut dyn Caller, name: &str, args: &Json) -> Result<Json, Json> {
                 pick(args, &["name", "entity", "since", "limit"]),
             )
         }
-        "test" => c.call("test.run", pick(args, &["name", "file", "seeds", "update"])),
+        "test" => c.call(
+            "test.run",
+            pick(args, &["name", "file", "seeds", "update", "set", "sweep"]),
+        ),
         "reload" => {
             if let Some(m) = args.get("mods").filter(|v| !v.is_null()) {
                 let loaded = c.call("scene.load", json!({ "mods": m }))?;

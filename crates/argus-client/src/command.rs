@@ -124,9 +124,20 @@ fn relaxed(v: &Json) -> String {
 }
 
 /// A string that stays one bare word inside brackets and reads back as
-/// itself.
+/// itself: word characters, and colons between two of them (a def row,
+/// `item:meal`, as the reader keeps a glued colon in the word).
 fn bare_in_brackets(s: &str) -> bool {
-    !s.is_empty() && s.chars().all(words::is_bare_start) && !words::is_literal_word(s)
+    let cs: Vec<char> = s.chars().collect();
+    !cs.is_empty()
+        && !words::is_literal_word(s)
+        && cs.iter().enumerate().all(|(i, c)| {
+            words::is_bare_start(*c)
+                || (*c == ':'
+                    && i > 0
+                    && i + 1 < cs.len()
+                    && words::is_bare_start(cs[i - 1])
+                    && words::is_bare_start(cs[i + 1]))
+        })
 }
 
 /// A word for a POSIX shell: as it is when every character is safe there,
@@ -362,6 +373,17 @@ mod tests {
             json!({"words": ["inf", "true", "1", "a b", "item:key.brass", "count()", "", "-", "#x"]}),
         );
         round_trip("x.y", json!({"deep": {"a": {"b": {"c": "d"}}, "e": [1]}}));
+        round_trip(
+            "edit",
+            json!({"ops": [{"op": "def", "def": "recipe:meal", "path": "work", "value": 4}, {"k": "a::b", "j": ":x", "i": "y:"}]}),
+        );
+        assert_eq!(
+            line(
+                "edit",
+                &json!({"ops": [{"op": "def", "def": "item:meal", "path": "food", "value": 0.8}]})
+            ),
+            "argus edit ops='[{def: item:meal, op: def, path: food, value: 0.8}]'"
+        );
         round_trip(
             "edit",
             json!({"author": "human", "note": "paint", "ops": [{"op": "tiles", "file": "scenes/a/b.tilemap.toml", "layer": "ground", "rect": [0, 0, 2, 1], "cells": [1, 2]}]}),

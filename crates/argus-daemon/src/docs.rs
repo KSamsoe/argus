@@ -227,12 +227,14 @@ pub const TOOLS: &[ToolDoc] = &[
     },
     ToolDoc {
         name: "test",
-        doc: "Run the project's scenarios (tests/*.luau): each run's pass or fail with the expectations that failed; a failing run saves a replay of the moment it failed.",
+        doc: "Run the project's scenarios (tests/*.luau): each run's pass or fail with the expectations that failed; a failing run saves a replay of the moment it failed. set tries values without writing them; sweep runs the scenarios once for each candidate value of one field and says which candidates fail (the human tuned by hand; this verifies by machine).",
         params: &[
             opt("name", STRING, "a scenario, exact or a substring; default all"),
             opt("file", STRING, "only tests/x.luau"),
             opt("seeds", STRING, "\"7\", \"1..50\", or \"1,2,9\""),
             opt("update", BOOLEAN, "rewrite the state goldens"),
+            opt("set", ARRAY, "[{entity | def, path, value}]: into each run's world after its scene loads, live only"),
+            opt("sweep", OBJECT, "{entity | def, path, values: [...]}: every run once for each value"),
         ],
         calls: &["test.run"],
     },
@@ -688,6 +690,17 @@ pub const METHODS: &[MethodDoc] = &[
             req("lang", STRING, "a language's code, e.g. \"fr\""),
             req("key", STRING, "the string's key, e.g. \"menu.resume\""),
             opt("text", STRING, "the words; null removes the key"),
+        ],
+        returns: "{queued}",
+    },
+    MethodDoc {
+        name: "edit.def",
+        doc: "Queue a def row edit in a transaction (phase 4 item 3): one field of one row of a data table (defs/<table>.toml, its layout and comments kept), checked against the table's schema. Applied at commit, undoable per author, in the change feed; scripts read the new value at once (q:def).",
+        params: &[
+            req("tx", INTEGER, "the transaction, from edit.begin"),
+            req("def", STRING, "the row, prefix:key, e.g. \"item:meal\""),
+            req("path", STRING, "the field, e.g. \"food\""),
+            req("value", ANY, ""),
         ],
         returns: "{queued}",
     },
@@ -1158,11 +1171,11 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "tune.fields",
-        doc: "The tune fields (tune = true) in the world with their values, defaults, ranges, and docs: what the editor's tuning panel will show (section 10). Every one of an entity, or of every entity with an id.",
+        doc: "The tune fields (tune = true) with their values, defaults, ranges, and docs: what the editor\'s tuning panel shows (section 10). Every one of an entity; or every one of the entities with an id, of the runtime entities (one by one while a component has 32 or fewer, as Outpost\'s job kinds; else one row with their count, tuned through what they are made from), and of the def tables\' rows (phase 4 item 3: {def: \"item:meal\", path: \"food\"}). label says what each is.",
         params: &[
             opt("entity", STRING, "optional"),
         ],
-        returns: "{total, rows: [{entity, path, value, default, range, doc}], session: the open tuning session or null}",
+        returns: "{total, rows: [{entity | def | component, path, value, default, range, doc, label, runtime?, table?}], session: the open tuning session or null}",
     },
     MethodDoc {
         name: "tune.begin",
@@ -1175,14 +1188,15 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "tune.set",
-        doc: "The slider, until the editor has one: set a tune field in the live world now, with no file written, and log it with its frame (section 10). Opens a tuning session if none is open. A field that is not a tune field is refused; edit.set changes any field.",
+        doc: "The slider (section 10): set a tune field in the live world now, an entity\'s (entity, path Component.field) or a def row\'s (def \"item:meal\", path the field), with no file written, and log it with its frame. Opens a tuning session if none is open; tune.end commits the session\'s final values, to the entities\' files and the def tables\'. A field that is not a tune field is refused.",
         params: &[
-            req("entity", STRING, ""),
-            req("path", STRING, "Component.field"),
+            opt("entity", STRING, "one of entity, def"),
+            opt("def", STRING, "one of entity, def: a def row, \"item:meal\""),
+            req("path", STRING, "Component.field for an entity; the field for a def row"),
             req("value", ANY, ""),
             opt("author", STRING, "default \"human\", when it opens the session"),
         ],
-        returns: "{entity, path, from, to, session}",
+        returns: "{entity | def, path, from, to, session}",
     },
     MethodDoc {
         name: "tune.end",
@@ -1223,6 +1237,17 @@ pub const METHODS: &[MethodDoc] = &[
             req("path", STRING, "relative to the project"),
         ],
         returns: "{frame, from, replayed, against_mark: {same, appeared, vanished, changed, first}, digest: {saved, now, same}, code: {saved, now}, remapped, dropped, missing_effects, replay: replay.save's summary, ms}",
+    },
+    MethodDoc {
+        name: "sim.set",
+        doc: "Put one field in the live world now, an entity's (entity, path Component.field) or a def row's (def \"item:meal\", path the field), with no transaction, no file, and no tuning log: a scenario's setup, a sweep's candidate (test.run's set runs it after each load). A client's respects locks and is a row in the change feed. To change the game for good, edit; to tune by feel, tune.set.",
+        params: &[
+            opt("entity", STRING, "one of entity, def"),
+            opt("def", STRING, "one of entity, def: a def row, \"item:meal\""),
+            req("path", STRING, "Component.field for an entity; the field for a def row"),
+            req("value", ANY, ""),
+        ],
+        returns: "{entity | def, path, from, to}",
     },
     MethodDoc {
         name: "sim.status",
@@ -1339,7 +1364,7 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "test.run",
-        doc: "Run scenarios headless in this daemon: each seed loads the scene fresh, scripts input, runs frames, and checks expectations; state goldens live in tests/goldens/ and a mismatch is a field-level diff. A failing run saves a replay the moment it fails (the first failed expectation, or the error) under .argus/replays/<scenario>/seed<n>/, with a clip of the seconds before it for the first five failures; replay.open reproduces one (section 9). The scene that was open is reloaded afterwards. `argus test` is this.",
+        doc: "Run scenarios headless in this daemon: each seed loads the scene fresh, scripts input, runs frames, and checks expectations; state goldens live in tests/goldens/ and a mismatch is a field-level diff. set puts fields in each run\'s world just after its scene loads, live only, as sim.set does (phase 4 item 3). sweep runs the chosen scenarios once for each of its values of one target and reports each candidate (section 10: which ones starve): sweep={entity: @colony, path: Colony.hunger_per_day, values: [0.8, 1, 1.2]}.",
         params: &[
             opt("name", STRING, "optional; exact or substring"),
             opt("file", STRING, "optional, tests/x.luau"),
@@ -1347,6 +1372,8 @@ pub const METHODS: &[MethodDoc] = &[
             opt("update", BOOLEAN, "rewrite goldens"),
             opt("replays", BOOLEAN, "default true"),
             opt("software", BOOLEAN, "draw clips with the software rasteriser, as CI does"),
+            opt("set", ARRAY, "[{entity | def, path, value}]: into each run's world after its scene loads, live only"),
+            opt("sweep", OBJECT, "{entity | def, path, values: [...]}: the runs once for each value; then the answer is {ok, sweep, candidates: [{value, ok, runs, failed, failing: [{scenario, seed, error}], ms}], ms}"),
         ],
         returns: "{ok, ms, total_runs, passed_runs, failed_runs, scenarios: [{name, file, scene, ok, seeds: [{seed, ok, ms, tick, error, expectations: [{kind, desc, ok, message, ...}], log, replay: replay.save's summary, for a failing run}]}], load_errors}",
     },

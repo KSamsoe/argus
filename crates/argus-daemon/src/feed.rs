@@ -56,6 +56,7 @@ pub const CHANGES: &[&str] = &[
     "sim.snapshot",
     "sim.save",
     "sim.load",
+    "sim.set",
     "mark.drop",
     "mark.open",
     "mark.note",
@@ -93,6 +94,7 @@ pub const TX_PARTS: &[&str] = &[
     "edit.despawn",
     "edit.tiles",
     "edit.text",
+    "edit.def",
     "edit.abort",
 ];
 

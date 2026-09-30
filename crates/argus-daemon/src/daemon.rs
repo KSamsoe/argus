@@ -521,7 +521,8 @@ impl Daemon {
                 self.tiles_info(&file)
             }
             "scene.tiles.collision" => self.tiles_collision(params),
-            "edit.set" | "edit.add" | "edit.remove" | "edit.spawn" | "edit.despawn" => {
+            "edit.set" | "edit.add" | "edit.remove" | "edit.spawn" | "edit.despawn"
+            | "edit.def" => {
                 self.edit_queue(method, params)
             }
             "edit.commit" => {
@@ -652,6 +653,7 @@ impl Daemon {
             }
             "sim.run_until" => self.sim_run_until(params),
             "sim.status" => Ok(self.sim_status()),
+            "sim.set" => self.sim_set(params),
             "script.reload" => {
                 self.mutations += 1;
                 self.script_reload()
@@ -2713,6 +2715,11 @@ impl Daemon {
                 tags: json::str_list(params, "tags")?,
                 components: components_param(params)?,
             },
+            "edit.def" => Op::Def {
+                def: json::str_param(params, "def")?.to_string(),
+                path: json::str_param(params, "path")?.to_string(),
+                value: params.get("value").cloned().unwrap_or(Json::Null),
+            },
             _ => Op::Despawn {
                 entity: json::str_param(params, "entity")?.to_string(),
             },
@@ -2816,6 +2823,18 @@ impl Daemon {
                             tuned.push((entity.clone(), path.clone(), value.clone(), now));
                         }
                     }
+                    // A def row's tune field, as a component's (phase 4 item 3).
+                    if let (true, Op::Def { path, .. }, Op::Def { def, value, .. }) =
+                        (log_tune, &op, &inv)
+                    {
+                        if self.def_field(def, path).is_ok_and(|(_, f)| f.tune) {
+                            let now = self
+                                .def_field(def, path)
+                                .map(|(v, _)| json::to_json(&self.world, &v))
+                                .unwrap_or(Json::Null);
+                            tuned.push((def.clone(), path.clone(), value.clone(), now));
+                        }
+                    }
                     inverse.push(inv)
                 }
                 Ok(None) => {}
@@ -2892,6 +2911,7 @@ impl Daemon {
         match op {
             Op::Tiles { .. } | Op::Terrain { .. } => self.apply_tiles(op, touched, files),
             Op::Text { .. } => self.apply_text(op, touched, files),
+            Op::Def { .. } => self.apply_def(author, op, touched, files),
             Op::Set {
                 entity,
                 path,
@@ -5561,9 +5581,14 @@ impl Daemon {
             update_goldens: json::bool_param(params, "update", false)?,
             replays: json::bool_param(params, "replays", true)?,
             software: json::bool_param(params, "software", false)?,
+            set: override_list(params.get("set"))?,
         };
+        let sweep = sweep_of(params.get("sweep"))?;
         self.live_edits = true;
-        let report = argus_test::run(self, &opts);
+        let report = match &sweep {
+            None => argus_test::run(self, &opts),
+            Some((target, values)) => self.run_sweep(&opts, target, values),
+        };
         // The scene the session had, stopped (whatever the last scenario
         // left playing), then the play state it had.
         let restore = self.call(
@@ -5810,6 +5835,58 @@ fn tick_json(t: &argus_sim::TickRecord) -> Json {
         "systems": t.systems.iter().map(|s| json!([s.name.as_ref(), s.elapsed.as_secs_f64() * 1000.0, s.allocs, s.bytes])).collect::<Vec<_>>(),
         "archetypes": t.archetypes.iter().map(|(id, n)| json!([id, n])).collect::<Vec<_>>(),
     })
+}
+
+/// `test.run`'s `set`: fields to put in each scenario's world after its
+/// scene loads, live only (`sim.set`'s shape: `{entity | def, path, value}`).
+fn override_list(v: Option<&Json>) -> Result<Vec<Json>> {
+    let list = match v {
+        None | Some(Json::Null) => return Ok(Vec::new()),
+        Some(Json::Array(a)) => a.clone(),
+        Some(o @ Json::Object(_)) => vec![o.clone()],
+        Some(other) => {
+            return Err(bad_params(format!(
+                "set is a list of {{entity | def, path, value}}; got {other}"
+            )))
+        }
+    };
+    for s in &list {
+        let target = s.get("entity").or_else(|| s.get("def"));
+        if target.and_then(Json::as_str).is_none()
+            || s.get("path").and_then(Json::as_str).is_none()
+            || s.get("value").is_none()
+        {
+            return Err(bad_params(format!(
+                "each of set is {{entity: \"@id\" | def: \"prefix:key\", path, value}}; got {s}"
+            ))
+            .hint("As sim.set takes it: set=[{entity: @colony, path: Colony.hunger_per_day, value: 1.2}]."));
+        }
+    }
+    Ok(list)
+}
+
+/// `test.run`'s `sweep`: one target and the values to try it at.
+fn sweep_of(v: Option<&Json>) -> Result<Option<(Json, Vec<Json>)>> {
+    let Some(s) = v.filter(|s| !s.is_null()) else {
+        return Ok(None);
+    };
+    let values = s
+        .get("values")
+        .and_then(Json::as_array)
+        .filter(|a| !a.is_empty())
+        .cloned()
+        .ok_or_else(|| {
+            bad_params("sweep needs values: the candidates to try")
+                .hint("sweep={entity: @colony, path: Colony.hunger_per_day, values: [0.8, 1, 1.2]}")
+        })?;
+    let mut target = s.clone();
+    if let Some(m) = target.as_object_mut() {
+        m.remove("values");
+    }
+    let mut probe = target.clone();
+    probe["value"] = values[0].clone();
+    override_list(Some(&probe))?;
+    Ok(Some((target, values)))
 }
 
 /// How early a stream's frame may be drawn: less than the jitter of the

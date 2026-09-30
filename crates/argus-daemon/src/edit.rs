@@ -101,6 +101,16 @@ pub enum Op {
         /// The words, or `None` to remove the key.
         text: Option<String>,
     },
+    /// Set one value of a def row (phase 4 item 3: a tuning session's
+    /// commit), and the inverse of one.
+    Def {
+        /// The row, `prefix:key` (`item:meal`).
+        def: String,
+        /// The field.
+        path: String,
+        /// The value as JSON.
+        value: Json,
+    },
     /// Paint a terrain over a rect (or erase it) and re-pick the tiles
     /// around it by the tileset's auto-tiling rules.
     Terrain {
@@ -161,6 +171,10 @@ impl Op {
                 "edit.text",
                 json!({ "lang": lang, "key": key, "text": text }),
             ),
+            Op::Def { def, path, value } => (
+                "edit.def",
+                json!({ "def": def, "path": path, "value": value }),
+            ),
             _ => return None,
         })
     }
@@ -168,7 +182,10 @@ impl Op {
     /// A field write or a component added or removed: an op a world that
     /// has it already can take again (an A/B trial's picked world).
     pub fn is_field_edit(&self) -> bool {
-        matches!(self, Op::Set { .. } | Op::Add { .. } | Op::Remove { .. })
+        matches!(
+            self,
+            Op::Set { .. } | Op::Add { .. } | Op::Remove { .. } | Op::Def { .. }
+        )
     }
 
     /// Compact description for the feed.
@@ -192,6 +209,7 @@ impl Op {
                 file, layer, rect, ..
             } => json!(["tiles", file, layer, rect]),
             Op::Text { lang, key, text } => json!(["text", lang, key, text]),
+            Op::Def { def, path, value } => json!(["def", def, path, value]),
             Op::Terrain {
                 file,
                 layer,

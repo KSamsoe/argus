@@ -661,6 +661,11 @@ local function run_seed(spec, seed, opts, series)
       ctx.result.seed = st.seed
       seed = st.seed
     end
+    -- A run's overrides (test.run's set, a sweep's candidate): into the
+    -- world as it loaded, before the scenario looks at it (phase 4 item 3).
+    for _, s in ipairs(opts.set or {}) do
+      callm("sim.set", s)
+    end
     ctx.loaded = true
     -- The run's events start where the load's end; what `on_load` systems
     -- emit (a generated floor) belongs to the run.

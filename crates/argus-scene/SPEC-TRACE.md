@@ -105,6 +105,12 @@ Phase 0 item 5, "TOML scenes, rooms, defs, and prefab overrides": this crate.
 | (§15) Mods add defs and scenes. | Done | `Project::open_with(root, schemas, mods)` keeps the layers. `Defs::load_layers`: a mod's `defs/<table>.toml` rows after the game's; a new key must be the mod's, an existing one has the fields the mod writes changed. `PrefabLibrary::load_layers` the same for prefabs (whole). `Scene::open` lays each mod's `scenes/<name>/` over the scene (`lay_mods`): new rooms named in the mod's namespace join the graph by their `neighbors`; entities named in its namespace join rooms that are there; an entity file with the id of one before it replaces it; a mod's `scene.toml` or `room.toml` for another's scene or room is refused. `SceneDoc::load_layers` and `Project::scenes` find a mod's own scenes. | argus-player's mods tests; Hollow's `tests/mods.luau` |
 | (§15) "Games that don't want mods set one flag." | Done | `ProjectConfig::mods_enabled`, `[mods] enabled` in `argus.toml`, true when not said. | argus-player `mods::games_that_dont_want_mods_set_one_flag` |
 
+## Phase 4, item 3: def rows changed while the game runs
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§10) A def row's tune field moved by a slider, and kept. | Done | `Defs::value_of` and `Defs::set_value` (checked against the table's schema, as an entity's field is: its type and range); `defs::write_value` writes one value into the row's table in its file, keeping the file's layout and comments and the old value's own comment, an f32 through its shortest text. | argus-daemon `tune_defs` |
+
 ## Known limitations, stated so they are decisions
 
 - A child entity that exists only because a prefab declares it is not an "instance" of that prefab (`instances_of`), but it is counted among the entities a prefab change touched (`reapply_prefab`).

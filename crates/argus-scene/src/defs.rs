@@ -287,6 +287,42 @@ impl Defs {
         t.get(key).map(|row| (t, row))
     }
 
+    /// One value of a row, by reference (`item:meal`) and field (phase 4
+    /// item 3: the tuning panel reads def rows as it reads components).
+    pub fn value_of(&self, r: &str, field: &str) -> Result<Value> {
+        let (t, row) = self.resolve(r).ok_or_else(|| no_row(r))?;
+        t.value(row, field)
+            .cloned()
+            .ok_or_else(|| no_field(t, field))
+    }
+
+    /// Set one value of a row in memory, checked against the table's schema
+    /// (its type and range, as an entity's field is). The value it had.
+    /// Scripts read rows through `q:def`, so a change reaches the running
+    /// game once the rows are given to the VM again.
+    pub fn set_value(&mut self, r: &str, field: &str, v: Value) -> Result<Value> {
+        let (p, key) = r.split_once(':').ok_or_else(|| no_row(r))?;
+        let name = self.by_prefix.get(p).cloned().ok_or_else(|| no_row(r))?;
+        let t = self.tables.get_mut(&name).ok_or_else(|| no_row(r))?;
+        let i = t.field_index(field).ok_or_else(|| no_field(t, field))?;
+        if field == t.key {
+            return Err(
+                ArgusError::new(codes::BAD_DEF, format!("{r}: {field} is the row's key"))
+                    .hint("asset.move renames a row and rewrites every reference to it."),
+            );
+        }
+        let fs = t.schema.fields[i].clone();
+        let v = t.schema.check(&fs, v)?;
+        let row = t
+            .rows
+            .iter_mut()
+            .find(|row| row.key == key)
+            .ok_or_else(|| no_row(r))?;
+        let old = std::mem::replace(&mut row.values[i], v);
+        row.given[i] = true;
+        Ok(old)
+    }
+
     /// A def reference must point at a row; other reference kinds pass.
     pub fn check_ref(&self, r: &str, at: &str, moves_log: &[MoveRecord]) -> Result<()> {
         if self.is_def_ref(r) && self.resolve(r).is_none() {
@@ -362,6 +398,85 @@ fn load_rows(table: &mut DefTable, rel: &str, text: &str, errors: &mut Vec<Argus
             Err(e) => errors.push(e),
         }
     }
+}
+
+fn no_row(r: &str) -> ArgusError {
+    ArgusError::new(codes::MISSING_REFERENCE, format!("no def row {r:?}"))
+        .hint("A def row is prefix:key (item:meal); world.defs lists the tables and their rows.")
+}
+
+fn no_field(t: &DefTable, field: &str) -> ArgusError {
+    ArgusError::new(
+        argus_ecs::codes::UNKNOWN_FIELD,
+        format!("{} has no field {field:?}", t.name),
+    )
+    .hint(format!("Fields: {}", t.columns().join(", ")))
+}
+
+/// Write one value of a def row into its table's file (phase 4 item 3: a
+/// tuning session's commit, `edit.def`), keeping the file's layout and
+/// comments: the row's table gets the field, or its new value. A table
+/// with no file gets `defs/<name>.toml`. The project-relative path written.
+pub fn write_value(
+    root: &Path,
+    table: &DefTable,
+    key: &str,
+    field: &str,
+    v: &Value,
+) -> Result<String> {
+    let rel = table
+        .file
+        .clone()
+        .unwrap_or_else(|| format!("defs/{}.toml", table.name));
+    let path = root.join(&rel);
+    let text = if path.exists() {
+        tomlv::read(&path)?
+    } else {
+        String::new()
+    };
+    let mut doc = tomlv::parse_mut(&rel, &text)?;
+    let fs = table
+        .schema
+        .fields
+        .iter()
+        .find(|f| f.name == field)
+        .ok_or_else(|| no_field(table, field))?;
+    // An f32 is written through its shortest text: 1.2, not
+    // 1.2000000476837158.
+    let tv = match (fs.ty, v) {
+        (FieldType::F32, Value::Float(f)) => {
+            let short: f64 = format!("{}", *f as f32).parse().unwrap_or(*f);
+            toml_edit::Value::from(short)
+        }
+        _ => tomlv::from_value(v)?,
+    };
+    if !doc.contains_key(key) {
+        doc.insert(key, toml_edit::Item::Table(toml_edit::Table::new()));
+    }
+    let row = doc[key]
+        .as_table_like_mut()
+        .ok_or_else(|| ArgusError::new(codes::BAD_DEF, format!("{rel}: {key} is not a table")))?;
+    match row.get_mut(field) {
+        Some(item) if item.is_value() => {
+            // The old value's comment and spacing stay with the new one.
+            let decor = item.as_value().map(|x| x.decor().clone());
+            let mut nv = tv;
+            if let Some(d) = decor {
+                *nv.decor_mut() = d;
+            }
+            *item = toml_edit::Item::Value(nv);
+        }
+        _ => {
+            row.insert(field, toml_edit::Item::Value(tv));
+        }
+    }
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)
+            .map_err(|e| ArgusError::new(codes::MISSING_FILE, format!("{}: {e}", dir.display())))?;
+    }
+    std::fs::write(&path, doc.to_string())
+        .map_err(|e| ArgusError::new(codes::MISSING_FILE, format!("{rel}: {e}")))?;
+    Ok(rel)
 }
 
 fn parse_row(

@@ -125,9 +125,49 @@ pub fn error(e: &Json) -> String {
 }
 
 /// A `test.run` report as the compact text of §9: one line per scenario,
-/// a line per failing seed with the expectation that failed, a summary.
+/// a line per failing seed with the expectation that failed, a summary. A
+/// sweep's is a line per candidate (phase 4 item 3: "which ones starve").
 pub fn test_report(r: &Json) -> String {
     let mut out = String::new();
+    if let Some(cands) = r["candidates"].as_array() {
+        let s = &r["sweep"];
+        let target = s["entity"].as_str().or(s["def"].as_str()).unwrap_or("?");
+        let _ = writeln!(out, "SWEEP {target} {}", s["path"].as_str().unwrap_or("?"));
+        let mut bad = 0;
+        for c in cands {
+            let ok = c["ok"] == json!(true);
+            if !ok {
+                bad += 1;
+            }
+            let first = c["failing"][0].clone();
+            let why = if first.is_null() {
+                String::new()
+            } else {
+                format!(
+                    "  first: {} seed {}: {}",
+                    first["scenario"].as_str().unwrap_or("?"),
+                    cell(&first["seed"]),
+                    first["error"].as_str().unwrap_or("")
+                )
+            };
+            let _ = writeln!(
+                out,
+                "{}  {:<8} {} runs, {} failed  ({:.1} s){why}",
+                if ok { "PASS" } else { "FAIL" },
+                cell(&c["value"]),
+                cell(&c["runs"]),
+                cell(&c["failed"]),
+                c["ms"].as_f64().unwrap_or(0.0) / 1000.0
+            );
+        }
+        let _ = writeln!(
+            out,
+            "{} candidates, {bad} failed, {:.1} s",
+            cands.len(),
+            r["ms"].as_f64().unwrap_or(0.0) / 1000.0
+        );
+        return out;
+    }
     for e in r["load_errors"].as_array().into_iter().flatten() {
         let _ = writeln!(
             out,

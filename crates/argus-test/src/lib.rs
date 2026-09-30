@@ -50,6 +50,10 @@ pub struct Options {
     pub replays: bool,
     /// Draw those clips with the software rasteriser, as CI does (§9).
     pub software: bool,
+    /// Fields put in each scenario's world after its scene loads, live only
+    /// (`sim.set`'s `{entity | def, path, value}`): a sweep's candidate, tried
+    /// without writing it (phase 4 item 3).
+    pub set: Vec<serde_json::Value>,
 }
 
 /// Parse a seeds spec into a list.
@@ -255,6 +259,7 @@ pub fn run(driver: &mut dyn Driver, opts: &Options) -> Result<Json, String> {
             "replays": opts.replays,
             "software": opts.software,
             "update": opts.update_goldens,
+            "set": opts.set,
         }),
     )
     .map_err(|e| e.to_string())?;

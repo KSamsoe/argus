@@ -38,11 +38,20 @@ Every statement in the design document (v0.3) that constrains the editor (§11, 
 | (§5, §10) Locks on an entity, a component, or a path, with a note; the agent's write fails naming the owner. | Done | Lock at the entity's name, in each component's header, and on a field by right-clicking its name; shown as the daemon's `Lock::covers` draws them; Unlock for the holder. | `inspector` (the agent refused with "human" in the error, then allowed; a field's lock fences only that field) |
 | (§3) Instance counts when a prefab changes. | Partial | The inspector says how many entities use the entity's prefab (`world.instances`). Editing a prefab's own file is a data edit, item 8's. | |
 
+## §4, §10 The tuning panel (item 3)
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| "Any field with tune = true appears in the editor's tuning panel as a slider while the game runs." | Done | `tuning.rs`: `tune.fields` read twice a second while the tab is shown; a slider in its range (a number where none), grouped by what it tunes: named entities, the data tables' rows, the few of a kind made at run time; the many of a kind folded, tuned through what makes them. A filter by label or field. | `tuning::a_person_tunes_the_food_economy_at_10x_and_keeps_it` |
+| "Every movement of every slider is logged with its frame"; the agent sees the search path. | Done | Each step of a drag is a `tune.set`; the session's path (`tune.log`'s story) shows above the sliders. Show as command lists the value let go at, once a drag. | `tuning` (steps at different frames, at 10x; one command) |
+| "When the human ends the session, the final values are committed as an ordinary transaction with the human as author." | Done | Keep (`tune.end`, with an optional note) and Put back (`commit: false`). The session's area is the same height open or not, so no slider moves under a hand; each slider's id is its row's. | `tuning` (the colony's file and `defs/items.toml` written; the feed's row with the note) |
+| (§10) Outpost's tune fields: job priorities, consumption rates, growth curves. | Done | The colony's fields, the def rows (a meal's food, each job's priority and work), and the job kinds made at run time are all rows. | `tuning`; argus-daemon `tune_defs` |
+
 ## The phase 4 gate, first half
 
 | Spec | Status | Where | Test |
 |---|---|---|---|
-| "Everything the editor does appears in the change feed as a command the agent could have issued." | Partial (items 0 to 2) | The daemon writes a feed row for every call that changes something, from any client, with its author and its `argus` line (`argus-daemon` `feed.rs`); a commit's line is the whole transaction as the agent's `edit` tool. The viewport's keys are the input log's, and what F8, F9, and F10 stand for is a feed row by the person (`argus-daemon` `stream`). Each item's panel adds its actions to the editor test; the gate drives every panel and replays the feed through the CLI. | `editor`; `argus-cli` `feed::every_change_is_a_command_the_agent_could_have_issued` |
+| "Everything the editor does appears in the change feed as a command the agent could have issued." | Partial (items 0 to 3) | The daemon writes a feed row for every call that changes something, from any client, with its author and its `argus` line (`argus-daemon` `feed.rs`); a commit's line is the whole transaction as the agent's `edit` tool. The viewport's keys are the input log's, and what F8, F9, and F10 stand for is a feed row by the person (`argus-daemon` `stream`). Each item's panel adds its actions to the editor test; the gate drives every panel and replays the feed through the CLI. | `editor`; `argus-cli` `feed::every_change_is_a_command_the_agent_could_have_issued` |
 
 ## Known limitations, stated so they are decisions
 
