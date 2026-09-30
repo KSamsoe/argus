@@ -28,6 +28,24 @@ pub enum Want {
     Input,
     /// `obs.frame` (semantic), to find what is at this pixel.
     Pick([f64; 2]),
+    /// A page for the hierarchy.
+    Hier(crate::hierarchy::Ask),
+    /// `world.get {resolved: true}` of the entity inspected.
+    Get(String),
+    /// `world.get` of its own file's overrides.
+    Overrides(String),
+    /// `world.describe`: every component's schema.
+    Describe,
+    /// `world.instances` of a prefab: how many entities share it.
+    Instances(String),
+    /// `edit.locks`.
+    Locks,
+    /// `edit.begin` of the person's transaction: its `argus` line and ops.
+    EditBegin(String, Vec<Json>),
+    /// One op queued in transaction `tx`.
+    EditPart(u64),
+    /// `edit.abort` of a transaction one of whose ops was refused.
+    EditAbort,
 }
 
 /// An answer: what it was for, and its result or error.

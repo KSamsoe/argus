@@ -88,6 +88,9 @@ fn the_editor_does_everything_as_commands_the_agent_could_have_issued() {
         has_row(ed, "agent:claude", "argus sim step n=2")
     });
     h.get_by_label("fixture / arena");
+    // The feed is a tab beside the inspector (item 2).
+    h.get_by_label("Change feed").click();
+    h.step();
 
     // A click is a command in the feed, by the person.
     h.get_by_label("Step").click();

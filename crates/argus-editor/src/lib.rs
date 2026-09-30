@@ -8,9 +8,12 @@
 //! Phase 4 builds it panel by panel (docs/phase4-checklist.md). Item 0 is
 //! its frame: the connection, the play controls, the change feed, and
 //! "show as command". Item 1 is the viewport: the game's frames, played
-//! in with the game's own bindings.
+//! in with the game's own bindings. Item 2 is the hierarchy and the
+//! inspector, with each field's provenance as a colour.
 
 pub mod app;
+pub mod hierarchy;
+pub mod inspector;
 pub mod launch;
 pub mod link;
 pub mod viewport;

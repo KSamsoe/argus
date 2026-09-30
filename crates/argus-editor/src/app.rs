@@ -4,11 +4,14 @@
 //! human learns the agent's language by using the editor and can paste a
 //! command into a chat instead of describing a click".
 
+use crate::hierarchy::{Ask, Hierarchy};
+use crate::inspector::{Do, Inspector};
 use crate::link::{Answer, Link, State, Want};
-use crate::viewport::{Send, Viewport};
+use crate::viewport::{Selected, Send, Viewport};
 use argus_client::command;
 use eframe::egui::{self, Color32, RichText};
 use serde_json::{json, Value as Json};
+use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 /// How often the bar asks where the sim is.
@@ -17,6 +20,29 @@ const STATUS_EVERY: Duration = Duration::from_millis(200);
 const SUMMARY_EVERY: Duration = Duration::from_secs(1);
 /// Feed rows kept in the panel.
 const FEED_KEEP: usize = 500;
+/// How often the inspected entity is read again while the game plays, and
+/// while it does not.
+const GET_PLAYING: Duration = Duration::from_millis(250);
+const GET_STILL: Duration = Duration::from_secs(1);
+/// How often the locks are read.
+const LOCKS_EVERY: Duration = Duration::from_secs(1);
+
+/// The right panel's tab.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Tab {
+    /// The selected entity.
+    Inspector,
+    /// The change feed.
+    Feed,
+}
+
+/// A transaction of the person's on its way: ops queued, and whether one
+/// was refused.
+struct TxRun {
+    left: usize,
+    failed: Option<Problem>,
+    line: String,
+}
 
 /// A call that failed: the protocol's sentence, hint, and file:line (§5:
 /// "errors are documentation").
@@ -66,8 +92,20 @@ pub struct Editor {
     /// The game's sound plays while the viewport shows it (tests turn it
     /// off).
     pub audio: bool,
+    /// The scene's entities, a page at a time.
+    pub hierarchy: Hierarchy,
+    /// The selected entity's components.
+    pub inspector: Inspector,
+    /// The entity selected, in the hierarchy or the viewport.
+    pub selected: Option<String>,
+    /// The right panel's tab.
+    pub tab: Tab,
+    txs: HashMap<u64, TxRun>,
+    described: bool,
     last_status: Option<Instant>,
     last_summary: Option<Instant>,
+    last_get: Option<Instant>,
+    last_locks: Option<Instant>,
 }
 
 impl Editor {
@@ -85,8 +123,72 @@ impl Editor {
             problem: None,
             viewport: Viewport::default(),
             audio: true,
+            hierarchy: Hierarchy::default(),
+            inspector: Inspector::default(),
+            selected: None,
+            tab: Tab::Inspector,
+            txs: HashMap::new(),
+            described: false,
             last_status: None,
             last_summary: None,
+            last_get: None,
+            last_locks: None,
+        }
+    }
+
+    /// Select an entity (or none), as the hierarchy and the viewport do.
+    pub fn select(&mut self, entity: Option<String>) {
+        if self.selected != entity {
+            self.selected = entity.clone();
+            self.inspector.show(entity.clone());
+            self.last_get = None;
+            let same = self.viewport.selected.as_ref().map(|s| &s.id) == entity.as_ref();
+            if !same {
+                self.viewport.selected = entity.map(|id| Selected {
+                    id,
+                    name: String::new(),
+                    bounds: [0.0; 4],
+                });
+            }
+        }
+    }
+
+    /// A transaction by the person: `edit.begin`, its ops, `edit.commit`,
+    /// shown as the one `argus edit` line the change feed will carry.
+    pub fn edit(&mut self, note: &str, ops: Vec<Json>) {
+        let line = command::line(
+            "edit",
+            &json!({ "author": self.author, "note": note, "ops": ops }),
+        );
+        self.commands.push(line.clone());
+        self.link.send(
+            "edit.begin",
+            json!({ "author": self.author, "note": note }),
+            Want::EditBegin(line, ops),
+        );
+    }
+
+    fn done(&mut self, d: Do) {
+        let author = self.author.clone();
+        match d {
+            Do::Edit(note, ops) => self.edit(&note, ops),
+            Do::Lock(entities, paths, note) => {
+                let mut p = json!({ "author": author, "note": note });
+                if !entities.is_empty() {
+                    p["entities"] = json!(entities);
+                }
+                if !paths.is_empty() {
+                    p["paths"] = json!(paths);
+                }
+                self.act("edit.lock", p);
+                self.last_locks = None;
+            }
+            Do::Unlock(id) => {
+                self.act("edit.unlock", json!({ "author": author, "lock": id }));
+                self.last_locks = None;
+            }
+            Do::Undo => self.act("edit.undo", json!({ "author": author })),
+            Do::Redo => self.act("edit.redo", json!({ "author": author })),
         }
     }
 
@@ -116,6 +218,8 @@ impl Editor {
             let c = ctx.clone();
             self.link.connect(&self.author, move || c.request_repaint());
             self.viewport.reset();
+            self.described = false;
+            self.hierarchy.stale();
         }
         let (answers, notes) = self.link.poll();
         for a in answers {
@@ -124,6 +228,9 @@ impl Editor {
         for (method, row) in notes {
             if method == "edit.committed" || method == "edit.command" {
                 self.push_feed(row);
+                // Something changed: the tree and the entity shown, again.
+                self.hierarchy.stale();
+                self.last_get = None;
             } else if method == "render.frame" {
                 self.viewport.on_frame(row);
             }
@@ -140,6 +247,55 @@ impl Editor {
         if due(self.last_summary, SUMMARY_EVERY) && !self.link.waiting(&Want::Summary) {
             self.last_summary = Some(now);
             self.link.send("world.summary", json!({}), Want::Summary);
+        }
+        if !self.described && !self.link.waiting(&Want::Describe) {
+            self.described = true;
+            self.link
+                .send("world.describe", json!({ "limit": 1000 }), Want::Describe);
+        }
+        for ask in self.hierarchy.due(now) {
+            let want = Want::Hier(ask.clone());
+            if self.link.waiting(&want) {
+                continue;
+            }
+            let (method, params) = match &ask {
+                Ask::Top(c, n) => ("world.query", self.hierarchy.top_query(c.as_deref(), *n)),
+                Ask::Children(p) => ("world.query", self.hierarchy.children_query(p)),
+                Ask::Parents => ("world.query", Hierarchy::parents_query()),
+                Ask::Rooms => ("scene.rooms", json!({})),
+            };
+            self.link.send(method, params, want);
+        }
+        let playing = self.status["playing"] == true && self.status["paused"] != true;
+        if let Some(e) = self.selected.clone() {
+            let every = if playing { GET_PLAYING } else { GET_STILL };
+            let want = Want::Get(e.clone());
+            if due(self.last_get, every) && !self.link.waiting(&want) {
+                self.last_get = Some(now);
+                self.link
+                    .send("world.get", json!({ "entity": e, "resolved": true }), want);
+                let want = Want::Overrides(e.clone());
+                if !self.link.waiting(&want) {
+                    self.link.send("world.get", json!({ "entity": e }), want);
+                }
+            }
+            if let Some(p) = self.inspector.prefab() {
+                let want = Want::Instances(p.clone());
+                if self
+                    .inspector
+                    .instances
+                    .as_ref()
+                    .is_none_or(|(q, _)| *q != p)
+                    && !self.link.waiting(&want)
+                {
+                    self.link
+                        .send("world.instances", json!({ "prefab": p, "limit": 1 }), want);
+                }
+            }
+        }
+        if due(self.last_locks, LOCKS_EVERY) && !self.link.waiting(&Want::Locks) {
+            self.last_locks = Some(now);
+            self.link.send("edit.locks", json!({}), Want::Locks);
         }
         ctx.request_repaint_after(STATUS_EVERY);
     }
@@ -164,13 +320,108 @@ impl Editor {
                 // What changed shows at once, not at the next poll.
                 self.last_status = None;
                 self.last_summary = None;
+                self.last_get = None;
+                self.last_locks = None;
+                self.hierarchy.stale();
             }
             (Want::Action(line), Err(e)) => self.problem = Some(Problem::from_error(&line, &e)),
-            (Want::Pick(at), Ok(v)) => self.viewport.pick(&v, at),
+            (Want::Pick(at), Ok(v)) => {
+                self.viewport.pick(&v, at);
+                let id = self.viewport.selected.as_ref().map(|s| s.id.clone());
+                self.select(id);
+            }
+            (Want::Hier(ask), Ok(v)) => self.hierarchy.take(&ask, &v),
+            // A flat scene has no rooms to list.
+            (Want::Hier(Ask::Rooms), Err(_)) => {}
+            (Want::Get(e), Ok(v)) => {
+                if self.selected.as_deref() == Some(e.as_str()) {
+                    self.inspector.take(v);
+                }
+            }
+            (Want::Overrides(e), Ok(v)) => {
+                if self.selected.as_deref() == Some(e.as_str()) {
+                    self.inspector.overrides = v["overrides"].clone();
+                }
+            }
+            (Want::Overrides(_), Err(_)) => {}
+            (Want::Get(e), Err(err)) => {
+                if self.selected.as_deref() == Some(e.as_str()) {
+                    self.inspector.got = json!({ "entity": e, "error": err["message"] });
+                }
+            }
+            (Want::Describe, Ok(v)) => {
+                self.inspector.take_schemas(&v);
+                self.hierarchy.named = self.inspector.schemas.contains_key("Describe");
+                self.hierarchy.stale();
+            }
+            (Want::Instances(p), Ok(v)) => {
+                self.inspector.instances = Some((p, v["total"].as_u64().unwrap_or(0)));
+            }
+            (Want::Locks, Ok(v)) => {
+                self.inspector.locks = v["rows"].as_array().cloned().unwrap_or_default();
+            }
+            (Want::EditBegin(line, ops), Ok(v)) => {
+                let tx = v["tx"].as_u64().unwrap_or(0);
+                self.txs.insert(
+                    tx,
+                    TxRun {
+                        left: ops.len(),
+                        failed: None,
+                        line: line.clone(),
+                    },
+                );
+                for op in ops {
+                    let mut p = op.clone();
+                    let verb = p["op"].as_str().unwrap_or("set").to_string();
+                    if let Some(m) = p.as_object_mut() {
+                        m.remove("op");
+                        m.insert("tx".into(), json!(tx));
+                    }
+                    self.link
+                        .send(&format!("edit.{verb}"), p, Want::EditPart(tx));
+                }
+                if self.txs.get(&tx).is_some_and(|t| t.left == 0) {
+                    self.finish_tx(tx);
+                }
+            }
+            (Want::EditBegin(line, _), Err(e)) => {
+                self.problem = Some(Problem::from_error(&line, &e));
+            }
+            (Want::EditPart(tx), r) => {
+                if let Some(t) = self.txs.get_mut(&tx) {
+                    t.left = t.left.saturating_sub(1);
+                    if let Err(e) = r {
+                        let line = t.line.clone();
+                        t.failed.get_or_insert(Problem::from_error(&line, &e));
+                    }
+                    if t.left == 0 {
+                        self.finish_tx(tx);
+                    }
+                }
+            }
+            (Want::EditAbort, _) => {}
             (w, Err(e)) => {
                 self.problem = Some(Problem::from_error(&format!("{w:?}"), &e));
             }
             _ => {}
+        }
+    }
+
+    /// Every op of a transaction answered: commit it, or abort it if one was
+    /// refused (and say why).
+    fn finish_tx(&mut self, tx: u64) {
+        let Some(t) = self.txs.remove(&tx) else {
+            return;
+        };
+        match t.failed {
+            Some(p) => {
+                self.problem = Some(p);
+                self.link
+                    .send("edit.abort", json!({ "tx": tx }), Want::EditAbort);
+            }
+            None => self
+                .link
+                .send("edit.commit", json!({ "tx": tx }), Want::Action(t.line)),
         }
     }
 
@@ -199,16 +450,55 @@ impl Editor {
                 .default_height(140.0)
                 .show(ctx, |ui| self.commands_ui(ui));
         }
-        egui::SidePanel::right("feed")
+        egui::SidePanel::right("right")
             .resizable(true)
+            .min_width(300.0)
             .default_width(380.0)
-            .show(ctx, |ui| self.feed_ui(ui));
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.selectable_value(&mut self.tab, Tab::Inspector, "Inspector");
+                    ui.selectable_value(&mut self.tab, Tab::Feed, "Change feed");
+                });
+                ui.separator();
+                match self.tab {
+                    Tab::Inspector => {
+                        let author = self.author.clone();
+                        for d in self.inspector.ui(ui, &author) {
+                            self.done(d);
+                        }
+                    }
+                    Tab::Feed => self.feed_ui(ui),
+                }
+            });
         egui::SidePanel::left("world")
             .resizable(true)
             .min_width(220.0)
             .default_width(280.0)
             .show(ctx, |ui| self.overview(ui));
         egui::CentralPanel::default().show(ctx, |ui| self.viewport_ui(ui));
+        // Ctrl+Z and Ctrl+Shift+Z (or Ctrl+Y): the person's own undo and
+        // redo, when neither the game nor a text field has the keys.
+        let free = !self.viewport.focused && ctx.memory(|m| m.focused().is_none());
+        if free && self.link.is_up() {
+            let (redo, undo) = ctx.input_mut(|i| {
+                let redo = i.consume_key(
+                    egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
+                    egui::Key::Z,
+                ) || i.consume_key(egui::Modifiers::COMMAND, egui::Key::Y);
+                let undo = i.consume_key(egui::Modifiers::COMMAND, egui::Key::Z);
+                (redo, undo)
+            });
+            if redo {
+                self.done(Do::Redo);
+            } else if undo {
+                self.done(Do::Undo);
+            }
+        }
+        // A click in the viewport selected something.
+        let picked = self.viewport.selected.as_ref().map(|s| s.id.clone());
+        if picked != self.selected && picked.is_some() {
+            self.select(picked);
+        }
     }
 
     fn viewport_ui(&mut self, ui: &mut egui::Ui) {
@@ -385,41 +675,37 @@ impl Editor {
             });
     }
 
+    /// The left panel: the scene in a line, then its hierarchy.
     fn overview(&mut self, ui: &mut egui::Ui) {
         let s = &self.summary;
         if s.is_null() {
             ui.weak("waiting for the world");
             return;
         }
-        ui.heading(format!(
-            "{}  ({} entities, {} authored)",
+        ui.label(format!(
+            "{}: {} entities, {} authored, seed {}",
             s["scene"].as_str().unwrap_or("-"),
             s["entities"],
-            s["authored"]
-        ));
-        ui.label(format!(
-            "seed {}  {}",
+            s["authored"],
             s["seed"],
-            s["clock"].as_str().unwrap_or("")
-        ));
+        ))
+        .on_hover_text(format!("systems: {}", list(&s["systems"])));
         ui.separator();
-        egui::ScrollArea::vertical()
-            .id_salt("overview")
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                ui.strong("Named entities");
-                for n in s["named"].as_array().into_iter().flatten().take(200) {
-                    ui.label(format!("{}  {}", n[0].as_str().unwrap_or("?"), list(&n[1])));
-                }
-                ui.add_space(8.0);
-                ui.strong("Archetypes");
-                for a in s["archetypes"].as_array().into_iter().flatten().take(100) {
-                    ui.label(format!("{} x {}", a[1], list(&a[0])));
-                }
-                ui.add_space(8.0);
-                ui.strong("Systems");
-                ui.label(list(&s["systems"]));
-            });
+        let comps: Vec<String> = self.inspector.schemas.keys().cloned().collect();
+        let selected = self.selected.clone();
+        let (picked, asks) = self.hierarchy.ui(ui, selected.as_deref(), &comps);
+        for ask in asks {
+            let (method, params) = match &ask {
+                Ask::Top(c, n) => ("world.query", self.hierarchy.top_query(c.as_deref(), *n)),
+                Ask::Children(p) => ("world.query", self.hierarchy.children_query(p)),
+                Ask::Parents => ("world.query", Hierarchy::parents_query()),
+                Ask::Rooms => ("scene.rooms", json!({})),
+            };
+            self.link.send(method, params, Want::Hier(ask));
+        }
+        if picked.is_some() {
+            self.select(picked);
+        }
     }
 }
 

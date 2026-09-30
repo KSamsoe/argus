@@ -87,7 +87,7 @@ Found in Kevin's first play in it ("the game has poor performance in the editor"
 
 ## 2. Hierarchy and inspector with override provenance
 
-**Status: to do.**
+**Status: done** (2026-09-29) in the editor (`hierarchy.rs`, `inspector.rs`), with no new protocol: everything it needed was there. The left panel is the scene's hierarchy: its top level fifty at a time with the total said, a parent opened for its children, filtered by a component or a room. The right panel has two tabs, the inspector and the change feed. The inspector shows the selected entity (from the hierarchy or a click in the viewport) with each field's name in the colour of where its value comes from, its own file, a prefab, or the default, and the prefab, file, and line on hover beside the field's doc and range. Changing a field, adding or removing a component, is one transaction by the person, in the feed as the `argus edit` line; Undo, Redo, Ctrl+Z, and Ctrl+Shift+Z are the person's own; an entity, a component, or a field (right-click its name) can be locked. Trace: `crates/argus-editor/SPEC-TRACE.md`.
 
 - §11: the hierarchy is `world.query`; the inspector is `world.describe` plus `edit.set`.
 - §3: `world.get {resolved: true}` gives each field's provenance (own, a prefab path, or default), and "the editor's inspector shows the same provenance as a colour".
@@ -97,7 +97,15 @@ Found in Kevin's first play in it ("the game has poor performance in the editor"
 - §3: ranges and docs from the schema; the transform hierarchy as a tree; rooms (§4).
 - P2: pages with totals, never the whole scene.
 
-## 3. Tuning panel, and sweeping candidates
+Decisions taken while building it:
+
+- **The tree one level at a time.** The top level is `world.query` of the entities with no `Parent`; opening a parent queries `where: {"Parent.entity": ...}`; which entities have children is one grouped query (`group_by Parent.entity`). Nothing asks for the whole scene. It looks again every two seconds, and at once after any change in the feed.
+- **Live values, file provenance.** The values shown are the world's now (`world.get`'s components), read four times a second while the game plays; where each came from is the resolved file view (`resolved`), and what the entity's own file takes away from its prefab is its overrides (`removed`).
+- **A change is committed when the person is done with it**: a drag let go, text entered, a box ticked. A drag is not a transaction a pixel. The editor sends `edit.begin`, the ops, and `edit.commit`; if the daemon refuses an op the transaction is aborted and the reason shown. Show as command lists it as the one `argus edit author=human note=... ops='[...]'` line the feed carries.
+- **Undo is the person's own**, from the buttons or Ctrl+Z and Ctrl+Shift+Z (Ctrl+Y), when neither the game nor a text field has the keys.
+- **Locks as the daemon draws them.** An entity's lock is shown once, at its name; a component's in its header; a field's by underlining its name, with who holds it on hover. A lock is taken with an optional note ("camera feel is mine"), and only its holder is offered Unlock.
+- **Prefabs are read, not edited, here.** The inspector names an entity's prefab chain and how many entities use the prefab; editing a prefab's own file is a data edit, item 8's.
+, and sweeping candidates
 
 **Status: to do.**
 
