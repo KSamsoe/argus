@@ -108,6 +108,7 @@ pub const READS: &[&str] = &[
     "session.identify",
     "sim.ring",
     "replay.list",
+    "scene.tiles.list",
     "world.summary",
     "world.query",
     "world.get",

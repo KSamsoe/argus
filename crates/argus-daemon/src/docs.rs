@@ -686,6 +686,12 @@ pub const METHODS: &[MethodDoc] = &[
         returns: "{file, width, height, tile_size, chunk, cell, hash, layers: [{name, tileset, z, collision, terrains, tileset_found}], chunks, loaded}",
     },
     MethodDoc {
+        name: "scene.tiles.list",
+        doc: "The tilemaps placed in the world: each Tilemap entity, where its tile (0, 0)'s top-left corner is in world units (rows go down), and its index (size, tile size, layers with their tilesets and terrains). With a frame's view (render.frame's view), a point on screen is a cell: what the editor paints with.",
+        params: &[],
+        returns: "{rows: [scene.tiles.info plus {entity, origin: [x, y], visible}]}",
+    },
+    MethodDoc {
         name: "scene.tiles.collision",
         doc: "What bodies hit in a rect of a tilemap, one string per row: # solid, - one-way, / and \\ slopes rising right and left, _ a low flat block, . empty. From every collision layer's tiles' solid, slope, and one_way properties, as the physics step reads them.",
         params: &[
@@ -1471,7 +1477,7 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "render.stream",
-        doc: "Frames for this connection (phase 4 item 1, section 5's out-of-band channel; the editor's viewport): the daemon draws the game as a window would, into a file both processes map, and sends a render.frame notification for each frame, {path, slot, seq, tick, frame, width, height}, naming the slot that holds it. The file is a 64-byte header (ARGUSFR1, version, slots, width, height, slot bytes), then slots of a 64-byte header (seq, tick, frame, width, height) and width x height RGBA8 pixels, rows top first; a slot's seq is odd while it is written, so a copy is whole when its seq was the notification's before and after. Frames come every frame while the game plays, and when something changes while it does not. One stream at a time; the gamepads and the sound open with it. Calling it again resizes; open: false or a disconnect closes it.",
+        doc: "Frames for this connection (phase 4 item 1, section 5's out-of-band channel; the editor's viewport): the daemon draws the game as a window would, into a file both processes map, and sends a render.frame notification for each frame, {path, slot, seq, tick, frame, width, height, view: {center, half, angle} in world units}, naming the slot that holds it (the view turns a point on the frame into a place: y is down on the frame and up in the world). The file is a 64-byte header (ARGUSFR1, version, slots, width, height, slot bytes), then slots of a 64-byte header (seq, tick, frame, width, height) and width x height RGBA8 pixels, rows top first; a slot's seq is odd while it is written, so a copy is whole when its seq was the notification's before and after. Frames come every frame while the game plays, and when something changes while it does not. One stream at a time; the gamepads and the sound open with it. Calling it again resizes; open: false or a disconnect closes it.",
         params: &[
             opt("width", INTEGER, "pixels, default 1280"),
             opt("height", INTEGER, "pixels, default 720"),

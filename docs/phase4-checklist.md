@@ -184,11 +184,20 @@ Decisions taken while building it:
 
 ## 7. Tilemap painting
 
-**Status: to do.**
+**Status: done** (2026-09-30) in the editor (`tiles.rs`; the viewport's paint mode) and the daemon (`scene.tiles.list`; the view in each `render.frame`). The right panel's Tiles tab: a map placed in the scene and a layer; the pencil, the rectangle, and pick; a tile from the layer's tileset (its palette, cut from the imported texture), one of its auto-tiling terrains, or the eraser; the grid, the map's outline, and what bodies hit over the game. With the tab open the pointer paints in the viewport: the stroke shows at once over the game, and letting go is one change by the person (`edit.tiles` ops in one transaction: one undo, one row in the feed, the `argus edit` line). B, R, I, and E pick the tools. A new map can be made in any scene, placed at the view's top left. Traces: `crates/argus-editor/SPEC-TRACE.md`, the daemon's, and `argus-tiles`'.
 
 - §12: tiles are "editable through the protocol at the rect level, so an agent can carve a room without touching pixels and a human can paint in the editor and both land in the same chunk". Hollow and Outpost.
 - §12: layers, auto-tiling rules, collision from tile properties.
 - §17: a 4,096 × 4,096 map of 8 layers edits "without pauses".
+
+Decisions taken while building it:
+
+- **The protocol had the edits; the editor needed the geometry.** `edit.tiles` already takes a rect with cells, a tile, a terrain, or erase. What a painter lacked was where things are: each `render.frame` now says what the frame shows (its view: centre, half extents, roll, in world units), and `scene.tiles.list` says which maps are placed where. With those the editor turns a pointer into a cell itself; nothing about painting is private.
+- **A stroke is one change.** The cells a pencil stroke covers (every cell on the way, so a quick stroke leaves no gaps) become one `edit.tiles` op per run of a row, all in one transaction, applied when the pointer lets go; a rectangle is one op. The stroke is drawn over the game until its commit lands, so painting feels immediate without a commit per cell.
+- **Outpost has no tilemap.** Its valley is laid out from the seed each run as sprites and a navigation grid, so there is nothing of it to paint. The Tiles tab can make a map in any scene (Outpost's included), placed as an authored entity; whether Outpost's ground should become a tilemap is a game decision, not this item's.
+- **The palette reads the tileset's texture.** `asset.get` names the imported texture and each frame's rect and properties; the editor cuts the tiles out of the file, as it reads a review's clip.
+- **Measured, debug build, a 4,096 × 4,096 map of 8 layers:** a stroke's worth in 1.5 ms, a room's worth (40 × 24) in 5.3 ms, 512 × 512 in 36.5 ms, each only the chunks it touched (`argus-daemon` `tiles`); release numbers are `argus-tiles`' perf gate.
+- **An entity id from a file name.** A new map's entity is named after its file; `room` and `scene` are the scene's own documents, so a map named so gets `-map` after it (found by this item's test).
 
 ## 8. Data edits and the animator editor
 

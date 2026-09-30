@@ -118,6 +118,12 @@ fn a_viewport_gets_frames_and_plays_the_game_as_a_window_does() {
     let reader = FrameReader::open(Path::new(&path)).unwrap();
     assert_eq!(reader.size(), (480, 270));
     let last = frames.last().unwrap();
+    // What the frame shows, in world units, for turning a point on it into
+    // a place (phase 4 item 7): the frame's shape.
+    let half = &last["view"]["half"];
+    let aspect = half[0].as_f64().unwrap() / half[1].as_f64().unwrap();
+    assert!((aspect - 480.0 / 270.0).abs() < 0.01, "{}", last["view"]);
+    assert_eq!(last["view"]["center"].as_array().unwrap().len(), 2);
     let mut px = Vec::new();
     let info = reader
         .read(

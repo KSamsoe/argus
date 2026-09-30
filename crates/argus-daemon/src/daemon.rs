@@ -571,6 +571,7 @@ impl Daemon {
                 self.tiles_info(&file)
             }
             "scene.tiles.collision" => self.tiles_collision(params),
+            "scene.tiles.list" => self.tiles_list(),
             "edit.set" | "edit.add" | "edit.remove" | "edit.spawn" | "edit.despawn"
             | "edit.def" => {
                 self.edit_queue(method, params)
@@ -1173,6 +1174,14 @@ impl Daemon {
                         "path": s.writer.path().to_string_lossy(),
                         "slot": slot, "seq": seq, "tick": tick, "frame": frame,
                         "width": w, "height": h,
+                        // What the frame shows, in world units: for a
+                        // client to turn a point on it into a place (a
+                        // painter's cell, phase 4 item 7).
+                        "view": {
+                            "center": s.renderer.last().view_center,
+                            "half": s.renderer.last().view_half,
+                            "angle": s.renderer.last().view_angle,
+                        },
                     });
                     self.outbox
                         .push((conn, rpc::notification("render.frame", n)));
@@ -2506,6 +2515,50 @@ impl Daemon {
             .borrow_mut()
             .insert(&file, map);
         self.tiles_info(&file)
+    }
+
+    /// `scene.tiles.list`: the tilemaps placed in the world (their Tilemap
+    /// entities), where each one's tile (0, 0) is, and its index, for a
+    /// painter to turn a point on screen into a cell (phase 4 item 7).
+    fn tiles_list(&mut self) -> Result<Json> {
+        self.require_session()?;
+        let mut placed = Vec::new();
+        if let Some(tm) = self.world.component_id_of::<argus_tiles::Tilemap>() {
+            for e in self.world.query().has(tm).entities() {
+                let Ok(t) = self.world.get::<argus_tiles::Tilemap>(e) else {
+                    continue;
+                };
+                let origin = self
+                    .world
+                    .get::<argus_ecs::GlobalTransform>(e)
+                    .map(|g| [g.pos.x, g.pos.y])
+                    .or_else(|_| {
+                        self.world
+                            .get::<argus_ecs::Transform>(e)
+                            .map(|t| [t.pos.x, t.pos.y])
+                    })
+                    .unwrap_or([0.0, 0.0]);
+                placed.push((
+                    crate::history::id_of(&self.world, e),
+                    self.world.strings().resolve(t.map),
+                    origin,
+                    t.visible,
+                ));
+            }
+        }
+        let mut rows = Vec::new();
+        for (entity, file, origin, visible) in placed {
+            let mut row = match self.tiles_info(&file) {
+                Ok(info) => info,
+                Err(e) => json!({ "file": file, "error": e.message }),
+            };
+            row["entity"] = json!(entity);
+            row["origin"] = json!(origin);
+            row["visible"] = json!(visible);
+            rows.push(row);
+        }
+        rows.sort_by(|a, b| a["file"].as_str().cmp(&b["file"].as_str()));
+        Ok(json!({ "rows": rows }))
     }
 
     fn tiles_info(&mut self, file: &str) -> Result<Json> {

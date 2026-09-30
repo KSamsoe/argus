@@ -263,6 +263,14 @@ Phase 0 item 4, "JSON-RPC daemon with session, world, edit, sim (play, pause, st
 | (Kevin's second play) The sound plays only while the game does. | Done | `Daemon::sync_audio`, every frame a window or a stream is open and when either opens a device: the audio engine is held while the clock is stopped or paused (`AudioEngine::set_hold`: the device's callback sends silence and leaves the mixer where it is). `audio.status` says `held` and the music's `seconds`. | `stream::the_music_waits_for_play` (a real device, the master bus muted) |
 | (P1) Escape at a mark's note prompt had no command. | Done | `mark.cancel {id}`: the mark's files go, `mark.cancelled` says so, and a prompt open for it closes. | `stream` |
 
+## Phase 4, item 7: what a painter needs
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§12) The editor paints over the protocol: where a point on the frame is. | Done | Each `render.frame` carries its view (`{center, half, angle}` in world units, from the stream renderer's last frame). | `stream::a_viewport_gets_frames_and_plays_the_game_as_a_window_does` (the frame's shape) |
+| Which maps are placed where. | Done | `scene.tiles.list`: each Tilemap entity with its origin (tile (0, 0)'s top-left corner), visibility, and `scene.tiles.info`. | `tiles::placed_maps_are_listed_and_a_big_map_edits_without_pauses` |
+| (§17) A 4,096 × 4,096 map of 8 layers edits "without pauses". | Done | Through the protocol in the debug build: 4 × 1 in 1.5 ms, 40 × 24 in 5.3 ms, 512 × 512 in 36.5 ms, only the chunks touched written. | `tiles::placed_maps_are_listed_and_a_big_map_edits_without_pauses` |
+
 ## Phase 4, item 6: §17 beside what is measured
 
 | Spec | Status | Where | Test |

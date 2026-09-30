@@ -80,6 +80,18 @@ pub enum Want {
     ProfArchetypes,
     /// `prof.capture`: armed, or how far it got.
     ProfCapture,
+    /// `scene.tiles.list`, for the Tiles tab.
+    TileMaps,
+    /// `asset.get` of a tileset, for the palette.
+    TileAsset(String),
+    /// `scene.tiles.collision` of what is on screen.
+    TileCollision,
+    /// `scene.tiles.get` of the cell under the pointer.
+    TileAt([i64; 2]),
+    /// `scene.tiles.get` of the cell the pick tool took.
+    TilePick,
+    /// `asset.list {kind: sprite}`: tilesets for a new map.
+    Sprites,
 }
 
 /// An answer: what it was for, and its result or error.

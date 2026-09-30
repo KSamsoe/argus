@@ -13,7 +13,8 @@
 //! tuning panel: a slider for every tune field, its moves logged. Item 4
 //! is the agent panel: its questions, proposals, the person's marks, and
 //! what it did. Item 5 is the replay scrubber under the viewport. Item 6
-//! is the profiler view, with §17's targets beside what is measured.
+//! is the profiler view, with §17's targets beside what is measured. Item
+//! 7 is tilemap painting, in the viewport.
 
 pub mod agent;
 pub mod app;
@@ -23,6 +24,7 @@ pub mod launch;
 pub mod link;
 pub mod profile;
 pub mod scrubber;
+pub mod tiles;
 pub mod tuning;
 pub mod viewport;
 

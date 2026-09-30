@@ -77,11 +77,20 @@ Every statement in the design document (v0.3) that constrains the editor (§11, 
 | (§5) "A perf regression is a query result with a system name on it." The view shows the §17 targets beside what is measured. | Done | §17's rows for the game open and for every game, two lines each: the measure and target, then what is measured now (red, with "look at" the system, when over) or the test that gates it; the other games' rows folded. A debug daemon says so. | `profile` (Outpost's tick over, "look at sim.slow"; the budget 1.6 ms) |
 | Protocol call times. | Done | Protocol calls: each method's count, mean, last, and worst (`prof.calls`), the slowest on average first. | `profile` |
 
+## §12, §17 Tilemap painting (item 7)
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§12) "A human can paint in the editor and both land in the same chunk." | Done | `tiles.rs`: with the Tiles tab open and a map and layer chosen, the viewport's pointer paints (`viewport.rs` paint mode: no keys to the game, no picks). A stroke is one transaction by the person of `edit.tiles` ops, one per run of a row (a rectangle, one op), sent when the pointer lets go and drawn over the game until it lands; Ctrl+Z takes it back. | `tiles::a_person_paints_the_map_the_agent_carved_and_both_land_in_one_chunk` (the agent's carving and the person's stroke in `ground/0_0.bin`) |
+| (§12) Layers, auto-tiling rules, collision from tile properties. | Done | The map's layers (their tilesets, whether bodies hit them); the palette cut from the tileset's texture (`asset.get`), each tile's properties on hover; its terrains as brushes (`edit.tiles {terrain}`); the eraser; pick; "What bodies hit" draws `scene.tiles.collision` over the game (solid, one-way, slopes). | `tiles` (terrain auto-tiled: edges differ from the middle; the collision rows; erase; pick) |
+| A map made in the editor. | Done | New tilemap: `scene.tiles.create`, then its entity spawned (in a room, for a room scene) at the view's top left. | `tiles` (the file, its entity's file, the person's commit) |
+| P1: the painting is commands. | Done | A stroke's line is `argus edit author=human note='painted N cells of ground with tile 16' ops='[{op: tiles, ...}]'`. | `tiles` |
+
 ## The phase 4 gate, first half
 
 | Spec | Status | Where | Test |
 |---|---|---|---|
-| "Everything the editor does appears in the change feed as a command the agent could have issued." | Partial (items 0 to 6) | The daemon writes a feed row for every call that changes something, from any client, with its author and its `argus` line (`argus-daemon` `feed.rs`); a commit's line is the whole transaction as the agent's `edit` tool. The viewport's keys are the input log's, and what F8, F9, and F10 stand for is a feed row by the person (`argus-daemon` `stream`). Each item's panel adds its actions to the editor test; the gate drives every panel and replays the feed through the CLI. | `editor`; `argus-cli` `feed::every_change_is_a_command_the_agent_could_have_issued` |
+| "Everything the editor does appears in the change feed as a command the agent could have issued." | Partial (items 0 to 7) | The daemon writes a feed row for every call that changes something, from any client, with its author and its `argus` line (`argus-daemon` `feed.rs`); a commit's line is the whole transaction as the agent's `edit` tool. The viewport's keys are the input log's, and what F8, F9, and F10 stand for is a feed row by the person (`argus-daemon` `stream`). Each item's panel adds its actions to the editor test; the gate drives every panel and replays the feed through the CLI. | `editor`; `argus-cli` `feed::every_change_is_a_command_the_agent_could_have_issued` |
 
 ## Known limitations, stated so they are decisions
 

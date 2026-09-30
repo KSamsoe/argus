@@ -10,6 +10,7 @@ use crate::inspector::{Do, Inspector};
 use crate::link::{Answer, Link, State, Want};
 use crate::profile::Profile;
 use crate::scrubber::{Scrub, Scrubber};
+use crate::tiles::{TileDo, Tiles};
 use crate::tuning::{Tune, Tuning};
 use crate::viewport::{Selected, Send, Viewport};
 use argus_client::command;
@@ -43,6 +44,9 @@ const REPLAYS_EVERY: Duration = Duration::from_secs(3);
 /// How often the profiler view reads the ticks, and the rest, while shown.
 const PROF_TICKS_EVERY: Duration = Duration::from_millis(500);
 const PROF_EVERY: Duration = Duration::from_secs(2);
+/// How often the Tiles tab reads the maps placed, and what bodies hit.
+const TILES_EVERY: Duration = Duration::from_secs(1);
+const COLLISION_EVERY: Duration = Duration::from_millis(400);
 
 /// The right panel's tab.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -55,6 +59,8 @@ pub enum Tab {
     Agent,
     /// Where the time goes, beside §17's targets.
     Profile,
+    /// Painting tilemaps.
+    Tiles,
     /// The change feed.
     Feed,
 }
@@ -133,6 +139,8 @@ pub struct Editor {
     pub scrubber: Scrubber,
     /// The profiler view.
     pub profile: Profile,
+    /// Tilemap painting.
+    pub tiles: Tiles,
     txs: HashMap<u64, TxRun>,
     described: bool,
     last_status: Option<Instant>,
@@ -147,6 +155,8 @@ pub struct Editor {
     last_prof_ticks: Option<Instant>,
     last_prof: Option<Instant>,
     last_capture: Option<Instant>,
+    last_tiles: Option<Instant>,
+    last_collision: Option<Instant>,
 }
 
 impl Editor {
@@ -173,6 +183,7 @@ impl Editor {
             feed_author: None,
             scrubber: Scrubber::default(),
             profile: Profile::default(),
+            tiles: Tiles::default(),
             txs: HashMap::new(),
             described: false,
             last_status: None,
@@ -187,6 +198,8 @@ impl Editor {
             last_prof_ticks: None,
             last_prof: None,
             last_capture: None,
+            last_tiles: None,
+            last_collision: None,
         }
     }
 
@@ -209,7 +222,7 @@ impl Editor {
 
     /// A transaction by the person: `edit.begin`, its ops, `edit.commit`,
     /// shown as the one `argus edit` line the change feed will carry.
-    pub fn edit(&mut self, note: &str, ops: Vec<Json>) {
+    pub fn edit(&mut self, note: &str, ops: Vec<Json>) -> String {
         let line = command::line(
             "edit",
             &json!({ "author": self.author, "note": note, "ops": ops }),
@@ -218,8 +231,33 @@ impl Editor {
         self.link.send(
             "edit.begin",
             json!({ "author": self.author, "note": note }),
-            Want::EditBegin(line, ops),
+            Want::EditBegin(line.clone(), ops),
         );
+        line
+    }
+
+    /// Where the frame on screen is, and what it shows.
+    pub fn mapping(&self) -> Option<crate::tiles::Mapping> {
+        crate::tiles::Mapping::new(
+            self.viewport.image_rect?,
+            self.viewport.info?,
+            self.viewport.view.as_ref()?,
+        )
+    }
+
+    fn tile_do(&mut self, d: TileDo) {
+        match d {
+            TileDo::Edit(note, ops) => {
+                let line = self.edit(&note, ops);
+                self.tiles.sent(line);
+            }
+            TileDo::Pick(p) => self.link.send("scene.tiles.get", p, Want::TilePick),
+            TileDo::Create(create, note, ops) => {
+                self.act("scene.tiles.create", create);
+                self.edit(&note, ops);
+                self.last_tiles = None;
+            }
+        }
     }
 
     fn tuned(&mut self, t: Tune) {
@@ -245,7 +283,9 @@ impl Editor {
     fn done(&mut self, d: Do) {
         let author = self.author.clone();
         match d {
-            Do::Edit(note, ops) => self.edit(&note, ops),
+            Do::Edit(note, ops) => {
+                self.edit(&note, ops);
+            }
             Do::Lock(entities, paths, note) => {
                 let mut p = json!({ "author": author, "note": note });
                 if !entities.is_empty() {
@@ -447,6 +487,59 @@ impl Editor {
             self.last_capture = Some(now);
             self.link.send("prof.capture", json!({}), Want::ProfCapture);
         }
+        // The Tiles tab: the maps placed, their tilesets, what bodies hit on
+        // screen, and the cell under the pointer.
+        if self.tab == Tab::Tiles {
+            if due(self.last_tiles, TILES_EVERY) && !self.link.waiting(&Want::TileMaps) {
+                self.last_tiles = Some(now);
+                self.link
+                    .send("scene.tiles.list", json!({}), Want::TileMaps);
+                if !self.link.waiting(&Want::Sprites) {
+                    self.link.send(
+                        "asset.list",
+                        json!({ "kind": "sprite", "limit": 500 }),
+                        Want::Sprites,
+                    );
+                }
+            }
+            for name in self.tiles.wanted_tilesets() {
+                self.link.send(
+                    "asset.get",
+                    json!({ "name": name }),
+                    Want::TileAsset(name.clone()),
+                );
+            }
+            let visible = self.mapping().and_then(|m| self.tiles.visible_rect(&m));
+            if let (true, Some(r), Some(file)) =
+                (self.tiles.show_collision, visible, self.tiles.map.clone())
+            {
+                if due(self.last_collision, COLLISION_EVERY)
+                    && !self.link.waiting(&Want::TileCollision)
+                {
+                    self.last_collision = Some(now);
+                    self.link.send(
+                        "scene.tiles.collision",
+                        json!({ "file": file, "rect": { "x": r[0], "y": r[1], "w": r[2], "h": r[3] } }),
+                        Want::TileCollision,
+                    );
+                }
+            }
+            if let (Some(c), None, Some(file), Some(layer)) = (
+                self.tiles.hover,
+                self.tiles.hover_tile,
+                self.tiles.map.clone(),
+                self.tiles.layer.clone(),
+            ) {
+                let want = Want::TileAt(c);
+                if !self.link.waiting(&want) {
+                    self.link.send(
+                        "scene.tiles.get",
+                        json!({ "file": file, "layer": layer, "rect": { "x": c[0], "y": c[1], "w": 1, "h": 1 } }),
+                        want,
+                    );
+                }
+            }
+        }
         if due(self.last_agent, AGENT_EVERY) {
             self.last_agent = Some(now);
             for (method, want) in [
@@ -483,6 +576,9 @@ impl Editor {
                 if self.problem.as_ref().is_some_and(|p| p.what == line) {
                     self.problem = None;
                 }
+                // A stroke landed: the game draws it now.
+                self.tiles.landed(&line);
+                self.tiles.hover_tile = None;
                 // What changed shows at once, not at the next poll.
                 self.last_status = None;
                 self.last_summary = None;
@@ -494,7 +590,10 @@ impl Editor {
                 self.last_markers = None;
                 self.hierarchy.stale();
             }
-            (Want::Action(line), Err(e)) => self.problem = Some(Problem::from_error(&line, &e)),
+            (Want::Action(line), Err(e)) => {
+                self.tiles.landed(&line);
+                self.problem = Some(Problem::from_error(&line, &e));
+            }
             (Want::Pick(at), Ok(v)) => {
                 self.viewport.pick(&v, at);
                 let id = self.viewport.selected.as_ref().map(|s| s.id.clone());
@@ -555,6 +654,7 @@ impl Editor {
                 }
             }
             (Want::EditBegin(line, _), Err(e)) => {
+                self.tiles.landed(&line);
                 self.problem = Some(Problem::from_error(&line, &e));
             }
             (Want::EditPart(tx), r) => {
@@ -596,6 +696,28 @@ impl Editor {
             (Want::ProfCalls, Ok(v)) => self.profile.calls = v,
             (Want::ProfArchetypes, Ok(v)) => self.profile.archetypes = v,
             (Want::ProfCapture, Ok(v)) => self.profile.take_capture(v),
+            (Want::TileMaps, Ok(v)) => self.tiles.take_maps(&v),
+            (Want::TileAsset(name), Ok(v)) => self.tiles.take_tileset(&name, &v),
+            (Want::TileCollision, Ok(v)) => self.tiles.collision = v,
+            (Want::TileAt(c), Ok(v)) => {
+                if self.tiles.hover == Some(c) {
+                    self.tiles.hover_tile = v["cells"][0].as_u64();
+                }
+            }
+            (Want::TilePick, Ok(v)) => self.tiles.take_pick(&v),
+            (Want::Sprites, Ok(v)) => {
+                self.tiles.sprites = v["rows"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|r| {
+                        r[0].as_str()
+                            .or_else(|| r["name"].as_str())
+                            .map(str::to_string)
+                    })
+                    .collect();
+            }
+            (Want::TileAt(_) | Want::TileCollision | Want::TileMaps | Want::Sprites, Err(_)) => {}
             (Want::Replays, Ok(v)) => self.scrubber.replays = v,
             (Want::Events(name), Ok(v)) => self.scrubber.take_events(&name, &v),
             (Want::Seek, r) => {
@@ -647,6 +769,7 @@ impl Editor {
         };
         match t.failed {
             Some(p) => {
+                self.tiles.landed(&t.line);
                 self.problem = Some(p);
                 self.link
                     .send("edit.abort", json!({ "tx": tx }), Want::EditAbort);
@@ -704,6 +827,7 @@ impl Editor {
                     };
                     ui.selectable_value(&mut self.tab, Tab::Agent, agent);
                     ui.selectable_value(&mut self.tab, Tab::Profile, "Profile");
+                    ui.selectable_value(&mut self.tab, Tab::Tiles, "Tiles");
                     ui.selectable_value(&mut self.tab, Tab::Feed, "Change feed");
                 });
                 ui.separator();
@@ -739,6 +863,14 @@ impl Editor {
                             }
                         }
                     }
+                    Tab::Tiles => {
+                        let scene = self.status["scene"].as_str().unwrap_or("scene").to_string();
+                        let rooms = self.hierarchy.rooms.clone();
+                        let top_left = self.mapping().map(|m| m.world_of_px([0.0, 0.0]));
+                        for d in self.tiles.ui(ui, &scene, &rooms, top_left) {
+                            self.tile_do(d);
+                        }
+                    }
                     Tab::Feed => self.feed_ui(ui),
                 }
             });
@@ -765,6 +897,26 @@ impl Editor {
                 self.done(Do::Redo);
             } else if undo {
                 self.done(Do::Undo);
+            }
+            // The painter's tools, a key each, while the Tiles tab shows.
+            if self.tab == Tab::Tiles {
+                use crate::tiles::{Brush, Tool};
+                let keys = ctx.input_mut(|i| {
+                    [egui::Key::B, egui::Key::R, egui::Key::I, egui::Key::E]
+                        .map(|k| i.consume_key(egui::Modifiers::NONE, k))
+                });
+                if keys[0] {
+                    self.tiles.tool = Tool::Pencil;
+                }
+                if keys[1] {
+                    self.tiles.tool = Tool::Rect;
+                }
+                if keys[2] {
+                    self.tiles.tool = Tool::Pick;
+                }
+                if keys[3] {
+                    self.tiles.brush = Brush::Erase;
+                }
             }
             // A review's choices, a key each, while the question shows.
             if self.tab == Tab::Agent {
@@ -841,6 +993,8 @@ impl Editor {
     fn viewport_ui(&mut self, ui: &mut egui::Ui) {
         let up = self.link.is_up();
         let playing = self.status["playing"] == true && self.status["paused"] != true;
+        // The Tiles tab with a map and a layer: the pointer paints.
+        self.viewport.paint = up && self.tab == Tab::Tiles && self.tiles.ready();
         for s in self.viewport.ui(ui, up, playing) {
             match s {
                 Send::Stream(w, h) => self.link.send(
@@ -860,6 +1014,18 @@ impl Editor {
                     json!({ "format": "semantic", "width": w, "height": h, "limit": 500 }),
                     Want::Pick(at),
                 ),
+                Send::Paint(p) => {
+                    if let Some(m) = self.mapping() {
+                        for d in self.tiles.on_paint(p, &m) {
+                            self.tile_do(d);
+                        }
+                    }
+                }
+            }
+        }
+        if self.tab == Tab::Tiles {
+            if let Some(m) = self.mapping() {
+                self.tiles.overlay(ui, &m);
             }
         }
     }

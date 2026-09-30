@@ -134,6 +134,13 @@ pub struct Viewport {
     pub image_rect: Option<Rect>,
     /// What a click selected.
     pub selected: Option<Selected>,
+    /// What the frame on screen shows, in world units (`render.frame`'s
+    /// `view`: centre, half extents, roll).
+    pub view: Option<Json>,
+    /// The pointer paints (the Tiles tab has a tool): presses and drags go
+    /// to the painter, not the game.
+    pub paint: bool,
+    painting: bool,
 }
 
 /// What the viewport wants sent.
@@ -144,6 +151,21 @@ pub enum Send {
     Input(Vec<Json>, Vec<String>),
     /// `obs.frame` (semantic) to find what is at this pixel.
     Pick([f64; 2], u32, u32),
+    /// The pointer, painting, in the frame's pixels.
+    Paint(Paint),
+}
+
+/// The pointer in paint mode, in the frame's pixels.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Paint {
+    /// Over the frame, not pressed.
+    Hover([f32; 2]),
+    /// Pressed: a stroke begins.
+    Down([f32; 2]),
+    /// Dragged.
+    Move([f32; 2]),
+    /// Let go: the stroke ends.
+    Up([f32; 2]),
 }
 
 impl Viewport {
@@ -217,6 +239,7 @@ impl Viewport {
         self.shown_seq = seq;
         self.frames_shown += 1;
         self.info = Some(info);
+        self.view = self.latest.as_ref().and_then(|n| n.get("view").cloned());
     }
 
     /// Draw the viewport and turn what the person does in it into calls.
@@ -348,6 +371,52 @@ impl Viewport {
         let mut evs: Vec<Json> = Vec::new();
         let mut text: Vec<String> = Vec::new();
         let mut moved: Option<[f32; 2]> = None;
+        if self.paint {
+            // The painter has the pointer; the game has nothing while it does.
+            if self.focused {
+                self.blur(&mut evs);
+                out.push(Send::Input(evs, Vec::new()));
+            }
+            let mut last = self.pointer;
+            for e in &events {
+                match e {
+                    egui::Event::PointerMoved(p) if img.contains(*p) || self.painting => {
+                        let at = to_px(*p);
+                        last = Some(at);
+                        out.push(Send::Paint(if self.painting {
+                            Paint::Move(at)
+                        } else {
+                            Paint::Hover(at)
+                        }));
+                    }
+                    egui::Event::PointerButton {
+                        pos,
+                        button: egui::PointerButton::Primary,
+                        pressed: true,
+                        ..
+                    } if img.contains(*pos) => {
+                        let at = to_px(*pos);
+                        last = Some(at);
+                        self.painting = true;
+                        out.push(Send::Paint(Paint::Down(at)));
+                    }
+                    egui::Event::PointerButton {
+                        pos,
+                        button: egui::PointerButton::Primary,
+                        pressed: false,
+                        ..
+                    } if self.painting => {
+                        let at = to_px(*pos);
+                        self.painting = false;
+                        out.push(Send::Paint(Paint::Up(at)));
+                    }
+                    _ => {}
+                }
+            }
+            self.pointer = last;
+            return out;
+        }
+        self.painting = false;
         for e in &events {
             match e {
                 egui::Event::PointerMoved(p)

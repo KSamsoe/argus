@@ -25,6 +25,95 @@ tiles = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
 "#;
 
 #[test]
+fn placed_maps_are_listed_and_a_big_map_edits_without_pauses() {
+    let t = temp("tiles-list");
+    project(t.path());
+    argus_assets::encode_png(
+        &t.path().join("assets/tiles/rock.png"),
+        16,
+        16,
+        &[90, 80, 70, 255].repeat(256),
+    )
+    .unwrap();
+    write(t.path(), "assets/tiles/rock.toml", TILESET);
+    let mut d = open(t.path());
+    assert_eq!(ok(&mut d, "scene.tiles.list", json!({}))["rows"], json!([]));
+    // §17: "a 4,096 x 4,096 map of 8 layers" that edits "without pauses".
+    let file = "scenes/arena/big.tilemap.toml";
+    let layers: Vec<serde_json::Value> = (0..8)
+        .map(|i| json!({ "name": format!("l{i}"), "tileset": "tiles/rock", "collision": i == 0 }))
+        .collect();
+    let started = std::time::Instant::now();
+    ok(
+        &mut d,
+        "scene.tiles.create",
+        json!({ "file": file, "width": 4096, "height": 4096, "chunk": 64, "layers": layers }),
+    );
+    let made = started.elapsed();
+    let c = commit(
+        &mut d,
+        "agent:claude",
+        "place it",
+        &[(
+            "edit.spawn",
+            json!({ "id": "big", "components": { "Tilemap": { "map": file }, "Transform": { "pos": [-10.0, 20.0] } } }),
+        )],
+    );
+    assert!(
+        c["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|f| f == "scenes/arena/big.toml"),
+        "{c}"
+    );
+    let l = ok(&mut d, "scene.tiles.list", json!({}));
+    let row = &l["rows"][0];
+    assert_eq!(row["entity"], "@big");
+    assert_eq!(row["origin"], json!([-10.0, 20.0]));
+    assert_eq!(
+        (row["width"].clone(), row["height"].clone()),
+        (json!(4096), json!(4096))
+    );
+    assert_eq!(row["layers"].as_array().unwrap().len(), 8);
+    assert_eq!(row["layers"][0]["terrains"], json!(["rock"]));
+    assert_eq!(row["visible"], true);
+    // A stroke's worth, a room's worth, and a large rectangle, far apart.
+    let mut worst = std::time::Duration::ZERO;
+    for (x, y, w, h, layer) in [
+        (10, 10, 4, 1, "l0"),
+        (2000, 3000, 40, 24, "l3"),
+        (3500, 100, 512, 512, "l7"),
+    ] {
+        let t0 = std::time::Instant::now();
+        commit(
+            &mut d,
+            "human",
+            "paint",
+            &[(
+                "edit.tiles",
+                json!({ "file": file, "layer": layer, "rect": { "x": x, "y": y, "w": w, "h": h }, "tile": 16 }),
+            )],
+        );
+        let took = t0.elapsed();
+        println!(
+            "{w} x {h} on {layer} at ({x}, {y}): {:.1} ms",
+            took.as_secs_f64() * 1e3
+        );
+        worst = worst.max(took);
+    }
+    let info = ok(&mut d, "scene.tiles.info", json!({ "file": file }));
+    println!(
+        "made in {:.1} ms; {} chunks on disk after the edits",
+        made.as_secs_f64() * 1e3,
+        info["chunks"]
+    );
+    // Only the chunks touched: 1, 2 (the room across a boundary), and 64.
+    assert!(info["chunks"].as_u64().unwrap() <= 1 + 4 + 81, "{info}");
+    assert!(worst.as_secs_f64() < 2.0, "an edit paused for {worst:?}");
+}
+
+#[test]
 fn a_room_is_carved_at_the_rect_level_undone_and_drawn() {
     let t = temp("tiles");
     project(t.path());
