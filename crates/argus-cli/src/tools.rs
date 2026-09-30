@@ -274,6 +274,24 @@ pub fn run(c: &mut dyn Caller, name: &str, args: &Json) -> Result<Json, Json> {
                 pick(args, &["question", "frames", "options", "note"]),
             )
         }
+        "profile" => {
+            let last = args.get("last").cloned().unwrap_or(json!(600));
+            if let Some(n) = args.get("capture").filter(|v| !v.is_null()) {
+                return c.call("prof.capture", json!({ "ticks": n }));
+            }
+            if let Some(n) = args.get("worst").filter(|v| !v.is_null()) {
+                return c.call("prof.worst", json!({ "n": n }));
+            }
+            if args.get("calls").and_then(Json::as_bool) == Some(true) {
+                return c.call("prof.calls", json!({}));
+            }
+            if args.get("systems").and_then(Json::as_bool) == Some(true) {
+                let systems = c.call("prof.systems", json!({ "last": last }))?;
+                let alloc = c.call("prof.alloc", json!({ "last": last }))?;
+                return Ok(json!({ "systems": systems, "alloc": alloc }));
+            }
+            c.call("prof.targets", json!({ "last": last }))
+        }
         "marks" => {
             let action = args.get("action").and_then(Json::as_str).unwrap_or("list");
             match action {

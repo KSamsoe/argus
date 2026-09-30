@@ -66,6 +66,9 @@ pub struct Ring {
     pub mutations: u64,
     /// Which run this is (see `RUNS`).
     pub run: u64,
+    /// How long the last keyframes taken on a tick took, in ms, newest
+    /// last: §17's "full snapshot ... invisible during play".
+    captures: std::collections::VecDeque<f64>,
 }
 
 impl Ring {
@@ -80,7 +83,23 @@ impl Ring {
             floor: 0,
             mutations: 0,
             run: next_run(),
+            captures: std::collections::VecDeque::new(),
         }
+    }
+
+    /// A keyframe taken on a tick took this long.
+    pub fn note_capture(&mut self, d: std::time::Duration) {
+        if self.captures.len() == 64 {
+            self.captures.pop_front();
+        }
+        self.captures.push_back(d.as_secs_f64() * 1e3);
+    }
+
+    /// The last keyframe's capture and the slowest of the last 64, in ms.
+    pub fn capture_ms(&self) -> Option<(f64, f64)> {
+        let last = *self.captures.back()?;
+        let max = self.captures.iter().copied().fold(0.0, f64::max);
+        Some((last, max))
     }
 
     /// Keep a keyframe. A plain one at a tick that already has a keyframe on
@@ -224,6 +243,10 @@ impl Ring {
         });
         out["run"] = json!(self.run);
         out["dense_from"] = json!(dense_from);
+        out["capture_ms"] = match self.capture_ms() {
+            Some((last, max)) => json!({ "last": last, "max": max }),
+            None => Json::Null,
+        };
         out["ticks"] = json!(spaced(self.ticks()));
         out["barrier_ticks"] = json!(spaced(
             self.keys

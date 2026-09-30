@@ -8,6 +8,7 @@ use crate::agent::Agent;
 use crate::hierarchy::{Ask, Hierarchy};
 use crate::inspector::{Do, Inspector};
 use crate::link::{Answer, Link, State, Want};
+use crate::profile::Profile;
 use crate::scrubber::{Scrub, Scrubber};
 use crate::tuning::{Tune, Tuning};
 use crate::viewport::{Selected, Send, Viewport};
@@ -39,6 +40,9 @@ const RING_EVERY: Duration = Duration::from_millis(250);
 const MARKERS_EVERY: Duration = Duration::from_secs(1);
 /// How often the scrubber lists the saved replays.
 const REPLAYS_EVERY: Duration = Duration::from_secs(3);
+/// How often the profiler view reads the ticks, and the rest, while shown.
+const PROF_TICKS_EVERY: Duration = Duration::from_millis(500);
+const PROF_EVERY: Duration = Duration::from_secs(2);
 
 /// The right panel's tab.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -49,6 +53,8 @@ pub enum Tab {
     Tuning,
     /// What the agent waits on the person for, and what it did.
     Agent,
+    /// Where the time goes, beside §17's targets.
+    Profile,
     /// The change feed.
     Feed,
 }
@@ -125,6 +131,8 @@ pub struct Editor {
     pub feed_author: Option<String>,
     /// The replay scrubber under the viewport.
     pub scrubber: Scrubber,
+    /// The profiler view.
+    pub profile: Profile,
     txs: HashMap<u64, TxRun>,
     described: bool,
     last_status: Option<Instant>,
@@ -136,6 +144,9 @@ pub struct Editor {
     last_ring: Option<Instant>,
     last_markers: Option<Instant>,
     last_replays: Option<Instant>,
+    last_prof_ticks: Option<Instant>,
+    last_prof: Option<Instant>,
+    last_capture: Option<Instant>,
 }
 
 impl Editor {
@@ -161,6 +172,7 @@ impl Editor {
             agent: Agent::default(),
             feed_author: None,
             scrubber: Scrubber::default(),
+            profile: Profile::default(),
             txs: HashMap::new(),
             described: false,
             last_status: None,
@@ -172,6 +184,9 @@ impl Editor {
             last_ring: None,
             last_markers: None,
             last_replays: None,
+            last_prof_ticks: None,
+            last_prof: None,
+            last_capture: None,
         }
     }
 
@@ -395,6 +410,43 @@ impl Editor {
             self.last_replays = Some(now);
             self.link.send("replay.list", json!({}), Want::Replays);
         }
+        // The profiler view's answers while it is shown (and a capture's
+        // progress until it is written).
+        if self.tab == Tab::Profile && due(self.last_prof_ticks, PROF_TICKS_EVERY) {
+            self.last_prof_ticks = Some(now);
+            for (method, params, want) in [
+                (
+                    "prof.systems",
+                    json!({ "last": 600, "series": true }),
+                    Want::ProfSystems,
+                ),
+                ("prof.targets", json!({ "last": 600 }), Want::ProfTargets),
+            ] {
+                if !self.link.waiting(&want) {
+                    self.link.send(method, params, want);
+                }
+            }
+        }
+        if self.tab == Tab::Profile && due(self.last_prof, PROF_EVERY) {
+            self.last_prof = Some(now);
+            for (method, params, want) in [
+                ("prof.alloc", json!({ "last": 600 }), Want::ProfAlloc),
+                ("prof.worst", json!({ "n": 5 }), Want::ProfWorst),
+                ("prof.calls", json!({}), Want::ProfCalls),
+                ("prof.archetypes", json!({}), Want::ProfArchetypes),
+            ] {
+                if !self.link.waiting(&want) {
+                    self.link.send(method, params, want);
+                }
+            }
+        }
+        if self.profile.capturing()
+            && due(self.last_capture, PROF_TICKS_EVERY)
+            && !self.link.waiting(&Want::ProfCapture)
+        {
+            self.last_capture = Some(now);
+            self.link.send("prof.capture", json!({}), Want::ProfCapture);
+        }
         if due(self.last_agent, AGENT_EVERY) {
             self.last_agent = Some(now);
             for (method, want) in [
@@ -537,6 +589,13 @@ impl Editor {
             (Want::Proposals, Ok(v)) => self.agent.proposals = v,
             (Want::Marks, Ok(v)) => self.agent.take_marks(&v),
             (Want::Ring, Ok(v)) => self.scrubber.take_ring(v),
+            (Want::ProfTargets, Ok(v)) => self.profile.targets = v,
+            (Want::ProfSystems, Ok(v)) => self.profile.systems = v,
+            (Want::ProfAlloc, Ok(v)) => self.profile.alloc = v,
+            (Want::ProfWorst, Ok(v)) => self.profile.worst = v,
+            (Want::ProfCalls, Ok(v)) => self.profile.calls = v,
+            (Want::ProfArchetypes, Ok(v)) => self.profile.archetypes = v,
+            (Want::ProfCapture, Ok(v)) => self.profile.take_capture(v),
             (Want::Replays, Ok(v)) => self.scrubber.replays = v,
             (Want::Events(name), Ok(v)) => self.scrubber.take_events(&name, &v),
             (Want::Seek, r) => {
@@ -564,7 +623,13 @@ impl Editor {
                 | Want::Marks
                 | Want::Ring
                 | Want::Replays
-                | Want::Events(_),
+                | Want::Events(_)
+                | Want::ProfTargets
+                | Want::ProfSystems
+                | Want::ProfAlloc
+                | Want::ProfWorst
+                | Want::ProfCalls
+                | Want::ProfArchetypes,
                 Err(_),
             ) => {}
             (w, Err(e)) => {
@@ -638,6 +703,7 @@ impl Editor {
                         format!("Agent ({n})")
                     };
                     ui.selectable_value(&mut self.tab, Tab::Agent, agent);
+                    ui.selectable_value(&mut self.tab, Tab::Profile, "Profile");
                     ui.selectable_value(&mut self.tab, Tab::Feed, "Change feed");
                 });
                 ui.separator();
@@ -658,6 +724,19 @@ impl Editor {
                         let author = self.author.clone();
                         for (method, params) in self.agent.ui(ui, &author, &self.feed) {
                             self.act(&method, params);
+                        }
+                    }
+                    Tab::Profile => {
+                        let discrete = self.status["driver"] == "discrete";
+                        for (method, params) in self.profile.ui(ui, discrete) {
+                            if method == "prof.capture" {
+                                // Its answer says where the file will be.
+                                self.commands.push(command::line(&method, &params));
+                                self.link.send(&method, params, Want::ProfCapture);
+                            } else {
+                                self.act(&method, params);
+                                self.last_ring = None;
+                            }
                         }
                     }
                     Tab::Feed => self.feed_ui(ui),

@@ -1213,6 +1213,11 @@ impl Scheduler {
         self.prof.tick_p95_ms(last)
     }
 
+    /// The last `last` ticks' numbers and whole times in ms, oldest first.
+    pub fn prof_totals(&self, last: usize) -> Vec<(u64, f64)> {
+        self.prof.totals(last)
+    }
+
     /// Ticks currently held by the profiler.
     pub fn prof_len(&self) -> usize {
         self.prof.len()

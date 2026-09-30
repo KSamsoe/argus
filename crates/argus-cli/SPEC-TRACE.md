@@ -90,6 +90,12 @@ Phase 0 item 9, "CLI": this crate, plus `argus_daemon::launch` (shared with `arg
 | (§15) Mod packs. | Done | `argus build --mod <id>`: the mod's pack in `dist/mods/` (or `--out`), after checking that it loads with the game (the mods it requires first), nothing left out, and that the game plays the same with the mod from its pack as from its directory. | Hollow's `lanterns` and `brighter` built and checked |
 | (§16) About a dozen tools. | Done | No new tool: `query {mods: true}` reads `mods.list`, `reload {mods: [...]}` loads the scene again with those mods. | `tools.rs` |
 
+## Phase 4, item 6: the profile tool
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§5, §16) The agent enforces §17: "a perf regression is a query result with a system name on it". | Done | The `profile` tool: §17's targets beside what is measured (`prof.targets`) by default; `systems: true` (`prof.systems` and `prof.alloc`), `worst: n`, `calls: true`, `capture: n`. `argus profile`, `argus prof targets` from the command line. | `schema::the_tools_call_methods_that_exist`, `mcp` |
+
 ## Phase 4, item 5: the scrubber's calls
 
 | Spec | Status | Where | Test |

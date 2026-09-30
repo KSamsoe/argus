@@ -263,6 +263,16 @@ Phase 0 item 4, "JSON-RPC daemon with session, world, edit, sim (play, pause, st
 | (Kevin's second play) The sound plays only while the game does. | Done | `Daemon::sync_audio`, every frame a window or a stream is open and when either opens a device: the audio engine is held while the clock is stopped or paused (`AudioEngine::set_hold`: the device's callback sends silence and leaves the mixer where it is). `audio.status` says `held` and the music's `seconds`. | `stream::the_music_waits_for_play` (a real device, the master bus muted) |
 | (P1) Escape at a mark's note prompt had no command. | Done | `mark.cancel {id}`: the mark's files go, `mark.cancelled` says so, and a prompt open for it closes. | `stream` |
 
+## Phase 4, item 6: §17 beside what is measured
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§5) "This is what makes the §17 targets something the agent can enforce rather than something a human notices: a perf regression is a query result with a system name on it." | Done | `perf.rs`: `prof.targets {last}`, §17's 23 rows in the design's words with their gates; for the open game (by name) and for every game, what is measured now, `ok` against the bound, and the system to look at; `build` says debug or release; `over` counts the rows over. | `perf::tests::every_row_of_section_17_is_here_once`; `prof_targets::a_reference_games_rows_are_measured_and_one_over_names_its_system` |
+| The measures behind it. | Done | The tick's p95 and systems' p95 or worst (`prof.systems`); the last seek, reload, open, save, load, and query (`prof.calls`: each outermost call's own `ms` or the daemon's time on it, so the harness's calls inside `test.run` are the test's); the last `sim.run_until`'s ticks a second; a keyframe's capture on a tick (the ring's last 64, also in `sim.ring`'s `capture_ms`). | `prof_targets::every_rows_target_is_there_and_the_rows_for_every_game_are_measured` |
+| A tick series to draw. | Done | `prof.systems {series: true}`: each tick's number and whole time, oldest first. | `prof_targets` |
+| (§16) The agent reaches the profiler. | Done | The `profile` tool (fourteen tools): the targets by default; `systems` (with allocations), `worst`, `calls`, `capture`. | `argus-cli` `schema::the_tools_call_methods_that_exist`, `mcp` (the tool count) |
+| A capture's path, pasteable. | Done | `prof.capture`'s answers and event leave off Windows' `\\?\` prefix. | `argus-editor` `profile` |
+
 ## Phase 4, item 5: the scrubber's calls
 
 | Spec | Status | Where | Test |

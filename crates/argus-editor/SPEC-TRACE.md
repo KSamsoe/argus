@@ -69,11 +69,19 @@ Every statement in the design document (v0.3) that constrains the editor (§11, 
 | (§9) A failing test's replay "the human can open in the editor". | Done | Replays: `replay.list`, each with its scenario, seed, frame, and failure; Open is `replay.open`, paused at its frame with its lead-in to scrub. | `scrubber` (a test's replay opened, its lead-in on the strip) |
 | P1: the scrubber's moves are commands. | Done | A drag is one `argus sim seek frame=...` in Show as command and one feed row (the daemon updates the row); the pause and play around a drag, the steps, the forks, and the replays opened are rows and lines too. | `scrubber` |
 
+## §5, §17 The profiler view (item 6)
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§5) `prof.systems`, `prof.worst`, `prof.alloc`, `prof.archetypes`, `prof.capture` in the editor. | Done | `profile.rs`, the Profile tab, read while shown: the tick's p95 and heaviest system; the last 600 ticks drawn against the budget; every system's p95, mean, worst, and allocations a tick (slowest first or in stage order); the five slowest ticks with their top systems and Go there (`sim.seek` to the tick); Capture (`prof.capture {ticks}`), its progress, and the file's path to copy; the archetypes. | `profile::a_person_sees_the_tick_over_outposts_target_and_the_system_that_did_it` |
+| (§5) "A perf regression is a query result with a system name on it." The view shows the §17 targets beside what is measured. | Done | §17's rows for the game open and for every game, two lines each: the measure and target, then what is measured now (red, with "look at" the system, when over) or the test that gates it; the other games' rows folded. A debug daemon says so. | `profile` (Outpost's tick over, "look at sim.slow"; the budget 1.6 ms) |
+| Protocol call times. | Done | Protocol calls: each method's count, mean, last, and worst (`prof.calls`), the slowest on average first. | `profile` |
+
 ## The phase 4 gate, first half
 
 | Spec | Status | Where | Test |
 |---|---|---|---|
-| "Everything the editor does appears in the change feed as a command the agent could have issued." | Partial (items 0 to 5) | The daemon writes a feed row for every call that changes something, from any client, with its author and its `argus` line (`argus-daemon` `feed.rs`); a commit's line is the whole transaction as the agent's `edit` tool. The viewport's keys are the input log's, and what F8, F9, and F10 stand for is a feed row by the person (`argus-daemon` `stream`). Each item's panel adds its actions to the editor test; the gate drives every panel and replays the feed through the CLI. | `editor`; `argus-cli` `feed::every_change_is_a_command_the_agent_could_have_issued` |
+| "Everything the editor does appears in the change feed as a command the agent could have issued." | Partial (items 0 to 6) | The daemon writes a feed row for every call that changes something, from any client, with its author and its `argus` line (`argus-daemon` `feed.rs`); a commit's line is the whole transaction as the agent's `edit` tool. The viewport's keys are the input log's, and what F8, F9, and F10 stand for is a feed row by the person (`argus-daemon` `stream`). Each item's panel adds its actions to the editor test; the gate drives every panel and replays the feed through the CLI. | `editor`; `argus-cli` `feed::every_change_is_a_command_the_agent_could_have_issued` |
 
 ## Known limitations, stated so they are decisions
 

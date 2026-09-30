@@ -12,7 +12,8 @@
 //! inspector, with each field's provenance as a colour. Item 3 is the
 //! tuning panel: a slider for every tune field, its moves logged. Item 4
 //! is the agent panel: its questions, proposals, the person's marks, and
-//! what it did. Item 5 is the replay scrubber under the viewport.
+//! what it did. Item 5 is the replay scrubber under the viewport. Item 6
+//! is the profiler view, with §17's targets beside what is measured.
 
 pub mod agent;
 pub mod app;
@@ -20,6 +21,7 @@ pub mod hierarchy;
 pub mod inspector;
 pub mod launch;
 pub mod link;
+pub mod profile;
 pub mod scrubber;
 pub mod tuning;
 pub mod viewport;

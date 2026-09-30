@@ -88,6 +88,12 @@ Release build, one thread, development laptop. Gates in `tests/perf.rs`.
 
 "Profiling, always on at low cost" (§5 namespace table): the gates run with `alloc::Counting` installed, as `argusd` has it. The allocator adds two thread-local increments per allocation and two counter reads per system; the swarm loses about six percent of its headless rate, which is the price of `prof.alloc` being a query rather than a build flag.
 
+## Phase 4, item 6: the profiler view's series
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| Each recent tick's time, for a view to draw against a budget. | Done | `Scheduler::prof_totals(last)`: the ring's tick numbers and whole times, oldest first. | `argus-daemon` `prof_targets` |
+
 ## §12 The shared broadphase (phase 1, item 0)
 
 | Spec | Status | Where | Test |

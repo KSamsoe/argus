@@ -267,6 +267,18 @@ impl Profiler {
         self.ring.iter().rev().take(last.max(1)).collect()
     }
 
+    /// Each of the last `last` ticks' number and whole time in ms, oldest
+    /// first: what a profiler view draws against the budget.
+    pub fn totals(&self, last: usize) -> Vec<(u64, f64)> {
+        let mut v: Vec<(u64, f64)> = self
+            .window(last)
+            .iter()
+            .map(|t| (t.tick, t.total.as_secs_f64() * 1e3))
+            .collect();
+        v.reverse();
+        v
+    }
+
     /// Per-system aggregates over the last `last` ticks, in the given order.
     pub fn systems(&self, last: usize, order: &[(Arc<str>, Stage)]) -> Vec<SystemProf> {
         let window = self.window(last);

@@ -215,6 +215,18 @@ pub const TOOLS: &[ToolDoc] = &[
         calls: &["obs.frame"],
     },
     ToolDoc {
+        name: "profile",
+        doc: "How fast it runs, as data (section 5: a perf regression is a query result with a system name on it). Default: section 17's targets for this game beside what is measured now, each over-target row naming the system to look at. systems: each system's mean and p95 in stage order, with its allocations; worst: the slowest recent ticks with their systems and archetypes; calls: how long protocol calls took; capture: record the next n ticks as a trace a human opens in Perfetto or Tracy.",
+        params: &[
+            opt("systems", BOOLEAN, "each system's time and allocations"),
+            opt("worst", INTEGER, "the n slowest recent ticks"),
+            opt("calls", BOOLEAN, "protocol calls' times"),
+            opt("capture", INTEGER, "ticks to record as a trace file"),
+            opt("last", INTEGER, "ticks to cover; default 600"),
+        ],
+        calls: &["prof.targets", "prof.systems", "prof.alloc", "prof.worst", "prof.calls", "prof.capture"],
+    },
+    ToolDoc {
         name: "events",
         doc: "What happened: the event log (collisions, deaths, sounds, faults, anything a system emitted), by name, entity, or since a sequence number. why: the systems and events that led to one event. trace: an entity's fields frame by frame.",
         params: &[
@@ -1018,7 +1030,7 @@ pub const METHODS: &[MethodDoc] = &[
         name: "sim.ring",
         doc: "The run a scrubber draws, with no keyframe taken (sim.snapshot takes one): the frames a seek reaches (floor to end), the keyframes' ticks and the barriers' (the changes made between ticks: edits, room changes, reloads), where the stretch with every keyframe begins (a seek from there replays at most `every` ticks, one before it up to a minute), and which run it is: run changes when a scene loads, a replay opens, or another world is switched to.",
         params: &[],
-        returns: "sim.snapshot's report plus {run, dense_from, ticks, barrier_ticks (at most 4096 of each, evenly spaced), tick, time, driver, hz, fork: the world in use, worlds: sim.fork's list}",
+        returns: "sim.snapshot's report plus {run, dense_from, capture_ms: {last, max} of the keyframes taken on ticks, ticks, barrier_ticks (at most 4096 of each, evenly spaced), tick, time, driver, hz, fork: the world in use, worlds: sim.fork's list}",
     },
     MethodDoc {
         name: "sim.snapshot",
@@ -1543,11 +1555,12 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "prof.systems",
-        doc: "Per-system mean and p95 over the last n ticks, in stage order.",
+        doc: "Per-system mean and p95 over the last n ticks, in stage order. series: each tick's whole time too, for drawing against a budget.",
         params: &[
             opt("last", INTEGER, "default 600"),
+            opt("series", BOOLEAN, "default false: also ticks, [[tick, ms]] oldest first"),
         ],
-        returns: "{last, tick_p95_ms, rows: [[name, stage, mean_ms, p95_ms, max_ms, samples]]}",
+        returns: "{last, tick_p95_ms, rows: [[name, stage, mean_ms, p95_ms, max_ms, samples]], ticks?}",
     },
     MethodDoc {
         name: "prof.archetypes",
@@ -1562,6 +1575,18 @@ pub const METHODS: &[MethodDoc] = &[
             opt("last", INTEGER, "default 600"),
         ],
         returns: "{last, counted, tick_mean_allocs, tick_mean_bytes, rows: [[name, stage, mean_allocs, mean_bytes, max_allocs, max_bytes, samples]]}",
+    },
+    MethodDoc {
+        name: "prof.targets",
+        doc: "Section 17's performance targets beside what is measured here (section 5: \"a perf regression is a query result with a system name on it\"). Every row in the design's words with the test that gates it; for the open game's rows (and the rows for every game) what this daemon measures now: the tick's p95, a system's time, the last seek, reload, open, save, or load, the last fast-forward's rate, a keyframe's capture. ok is false for a row over its bound; system names the one to look at (for a tick row, the heaviest). build says whether this daemon is a debug build, whose numbers run slower than the release numbers the targets are.",
+        params: &[opt("last", INTEGER, "ticks the tick and system rows cover; default 600")],
+        returns: "{game, build, last, tick_p95_ms, heaviest: {name, p95_ms}, entities, speed, over: rows over their bound, rows: [{game, measure, target, why, gate, live, value, unit, text, ok, system, context, bound: {below} or {at_least} for a measured row, tick: whether it is the game's tick budget}]}",
+    },
+    MethodDoc {
+        name: "prof.calls",
+        doc: "How long clients' calls took, by method, the latest first: the protocol's side of the loop (a seek, a reload, a query). A call's own ms where it reports one, else the daemon's time on it; the harness's calls inside a test run are the test's.",
+        params: &[],
+        returns: "{columns: [method, count, last_ms, mean_ms, max_ms], rows}",
     },
     MethodDoc {
         name: "prof.capture",

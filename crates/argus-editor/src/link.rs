@@ -66,6 +66,20 @@ pub enum Want {
     Events(String),
     /// A seek from the scrubber's drag.
     Seek,
+    /// `prof.targets`, for the profiler view.
+    ProfTargets,
+    /// `prof.systems {series: true}`.
+    ProfSystems,
+    /// `prof.alloc`.
+    ProfAlloc,
+    /// `prof.worst`.
+    ProfWorst,
+    /// `prof.calls`.
+    ProfCalls,
+    /// `prof.archetypes`.
+    ProfArchetypes,
+    /// `prof.capture`: armed, or how far it got.
+    ProfCapture,
 }
 
 /// An answer: what it was for, and its result or error.

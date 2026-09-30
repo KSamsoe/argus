@@ -167,10 +167,19 @@ Decisions taken while building it:
 
 ## 6. Profiler view
 
-**Status: to do.**
+**Status: done** (2026-09-30) in the editor (`profile.rs`), the daemon (`perf.rs`: `prof.targets`, `prof.calls`; `prof.systems {series}`; a keyframe's capture time in the ring), `argus-sim` (each tick's time), and the MCP server (the `profile` tool). The right panel's Profile tab: the tick's p95 and the last 600 ticks drawn against the game's budget (Outpost's 1.6 ms, Swarm's 6, Delve's 2, else a frame at the speed it runs), §17's rows for the game that is open beside what is measured now, each over its bound in red with the system to look at, every system's p95, mean, worst, and allocations, the five slowest recent ticks with Go there (a seek to that tick), a capture of the next ticks for Perfetto or Tracy, how long each protocol call took, and the archetypes. Traces: `crates/argus-editor/SPEC-TRACE.md`, the daemon's, `argus-sim`'s, and `argus-cli`'s.
 
 - §5: `prof.systems` (per-system mean and p95 in stage order), `prof.worst` (the slowest ticks with a per-system breakdown and the archetype counts), `prof.alloc`, `prof.archetypes`, and `prof.capture` (a Tracy trace for the human).
 - §5: "a perf regression is a query result with a system name on it." The view shows the §17 targets beside what is measured.
+
+Decisions taken while building it:
+
+- **§17 is data in the daemon.** `prof.targets` holds all 23 rows in the design's words with the test that gates each, so the view, the CLI, and the agent read the same table. A reference game's rows are measured when that game is open (by its `argus.toml` name) and the rows for every game always; another game's rows show their gate only, since Swarm's 6 ms says nothing about Outpost's tick.
+- **What is measured live.** The tick's p95; a system's p95 (particles, animators, UI layout) or worst (room stream-in); the last call's time for a seek, a Luau reload, a scene open, a save, a load, and a query, from the call's own `ms` or the daemon's time on it; the last `sim.run_until`'s rate; a keyframe's capture on a tick. Rows only a test can measure (the post stack's GPU time, the tilemap at 4,096 square) say which test. Two rows have no gate yet, the web build's cold load and the release build's incremental time: they say so (phase 5 gates every row in CI).
+- **An over row names a system.** A tick row names the heaviest system in the window; a system row names its system. The agent's `profile` tool answers with the same rows.
+- **A debug build says so.** The targets are release numbers and the editor usually runs a debug daemon; the view says it is a debug build rather than hiding the rows.
+- **Calls are timed at the top.** `prof.calls` times each call a client (or the launcher) makes, not the harness's calls inside `test.run`, which are the test's.
+- **A capture's path is pasteable.** Windows' `\\?\` long-path prefix is left off the paths a capture reports (found in the view: a file picker does not take it).
 
 ## 7. Tilemap painting
 

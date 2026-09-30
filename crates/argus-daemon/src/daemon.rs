@@ -27,6 +27,8 @@ mod jobs;
 mod marks;
 #[path = "nav.rs"]
 mod nav;
+#[path = "perf.rs"]
+mod perf;
 #[path = "proposals.rs"]
 mod proposals;
 #[path = "reviews.rs"]
@@ -211,6 +213,15 @@ pub struct Daemon {
     tune_committing: bool,
     /// Notifications waiting for the transport, per connection.
     pub outbox: Vec<(ConnId, Json)>,
+    /// Clients' calls by method: how long they took (`prof.calls`, and the
+    /// §17 rows `prof.targets` measures from them; phase 4 item 6).
+    calls: BTreeMap<String, perf::CallStat>,
+    call_seq: u64,
+    /// Calls in progress: only the outermost is timed (the harness's
+    /// calls inside `test.run` are the test's).
+    call_depth: u32,
+    /// The last `sim.run_until`: ticks, and the ms it took.
+    fast_forward: Option<(u64, f64)>,
     /// The mods the session asked for, in load order (phase 3 item 8):
     /// `session.open {mods}`, kept by `scene.load` and forks, set by a
     /// replay, a mark, or a save from the mods it recorded.
@@ -267,6 +278,10 @@ impl Daemon {
             tuning: None,
             tune_committing: false,
             outbox: Vec::new(),
+            calls: BTreeMap::new(),
+            call_seq: 0,
+            call_depth: 0,
+            fast_forward: None,
             mods_asked: Vec::new(),
         }
     }
@@ -300,6 +315,17 @@ impl Daemon {
     /// else a command row. Connection 0 is the daemon's own (the launcher,
     /// the harness), and calls made inside a client's call belong to it.
     pub fn call(&mut self, conn: ConnId, method: &str, params: &Json) -> Result<Json> {
+        self.call_depth += 1;
+        let started = std::time::Instant::now();
+        let r = self.call_fed(conn, method, params);
+        self.call_depth -= 1;
+        if self.call_depth == 0 {
+            self.time_call(method, &r, started.elapsed());
+        }
+        r
+    }
+
+    fn call_fed(&mut self, conn: ConnId, method: &str, params: &Json) -> Result<Json> {
         if conn == 0 || self.calling.is_some() {
             return self.dispatch(conn, method, params);
         }
@@ -702,6 +728,8 @@ impl Daemon {
             "prof.archetypes" => Ok(self.prof_archetypes()),
             "prof.alloc" => self.prof_alloc(params),
             "prof.capture" => self.prof_capture(params),
+            "prof.targets" => self.prof_targets(params),
+            "prof.calls" => Ok(self.prof_calls()),
             "obs.frame" => self.obs_frame(params),
             "obs.annotate" => {
                 let mut p = if params.is_object() { params.clone() } else { json!({}) };
@@ -4164,7 +4192,9 @@ impl Daemon {
             let mut r = ring.borrow_mut();
             r.end = r.end.max(tick);
             if tick % r.every == 0 {
+                let t = std::time::Instant::now();
                 let k = sources.capture(world, sched, false);
+                r.note_capture(t.elapsed());
                 r.push(k);
             }
             argus_player::savegame::requested(world, sched, &sources, &mut saves.borrow_mut());
@@ -5698,12 +5728,21 @@ impl Daemon {
                 ])
             })
             .collect();
-        Ok(json!({
+        let mut out = json!({
             "last": last,
             "tick_p95_ms": self.sched.prof_tick_p95_ms(last),
             "columns": ["name", "stage", "mean_ms", "p95_ms", "max_ms", "samples"],
             "rows": rows,
-        }))
+        });
+        if json::bool_param(params, "series", false)? {
+            out["ticks"] = json!(self
+                .sched
+                .prof_totals(last)
+                .iter()
+                .map(|(t, ms)| json!([t, (ms * 1e3).round() / 1e3]))
+                .collect::<Vec<_>>());
+        }
+        Ok(out)
     }
 
     fn prof_alloc(&mut self, params: &Json) -> Result<Json> {
@@ -5766,7 +5805,7 @@ impl Daemon {
                 "armed": true,
                 "captured": 0,
                 "ticks": n,
-                "path": path.to_string_lossy(),
+                "path": shown_path(&path),
                 "from_tick": self.sched.tick(),
             }));
         }
@@ -5775,7 +5814,7 @@ impl Daemon {
                 "armed": true,
                 "captured": got,
                 "ticks": want,
-                "path": self.capture_path.as_ref().map(|p| p.to_string_lossy().into_owned()),
+                "path": self.capture_path.as_deref().map(shown_path),
             })),
             None => Ok(json!({ "armed": false, "captured": 0, "ticks": 0, "path": null })),
         }
@@ -5793,10 +5832,7 @@ impl Daemon {
             .take()
             .unwrap_or_else(|| PathBuf::from("argus-capture.json"));
         let mut fields = vec![
-            (
-                "path".to_string(),
-                Value::Str(path.to_string_lossy().into_owned()),
-            ),
+            ("path".to_string(), Value::Str(shown_path(&path))),
             ("ticks".to_string(), Value::Int(cap.ticks.len() as i64)),
             (
                 "from_tick".to_string(),
@@ -5825,6 +5861,12 @@ impl Daemon {
 }
 
 // ----- helpers ------------------------------------------------------------
+
+/// A path as a person pastes it: without Windows' `\\?\` long-path prefix,
+/// which file pickers (Perfetto's, a shell's) do not take.
+fn shown_path(p: &Path) -> String {
+    p.to_string_lossy().trim_start_matches(r"\\?\").to_string()
+}
 
 /// `rect {x, y, w, h}` from params.
 fn rect_param(params: &Json) -> Result<argus_tiles::Rect> {

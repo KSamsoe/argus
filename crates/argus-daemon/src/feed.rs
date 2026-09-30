@@ -170,6 +170,8 @@ pub const READS: &[&str] = &[
     "prof.archetypes",
     "prof.alloc",
     "prof.capture",
+    "prof.targets",
+    "prof.calls",
 ];
 
 /// A person's device events: the input log's, not the feed's.
