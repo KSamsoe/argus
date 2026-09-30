@@ -194,6 +194,8 @@ fn run_loop(
             }
             // A client's viewport (phase 4 item 1).
             daemon.stream_frame();
+            // The sound plays only while the game does.
+            daemon.sync_audio();
             next_frame += Duration::from_secs_f64(daemon.frame_seconds());
             if next_frame < Instant::now() {
                 next_frame = Instant::now();

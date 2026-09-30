@@ -83,6 +83,7 @@ Found in Kevin's first play in it ("the game has poor performance in the editor"
 
 - **The daemon drew 37 frames a second of 60.** A frame's next due time was counted from when the last one happened to be drawn, so it often fell a hair after the server loop's next turn and that frame was skipped. The schedule is steady now, and a frame may be drawn up to 4 ms early.
 - **An editor frame took 18 ms.** egui ran unoptimized in debug builds, and egui's texture path turned each frame's million pixels into colours one by one. The editor, egui, and wgpu's core are optimized in debug builds now (as the UI and Luau crates were), and in the window a frame goes from the shared file straight into a GPU texture of the editor's own. A debug frame of the editor is 1.6 ms, and it shows 59 of the game's 60 frames a second (`tests/keep_up.rs`, which runs in every test run).
+- **The music played before Play.** The stream opens the sound, and a sound device pulls the mixer in real time whatever the game's clock does; the game window never showed it, since a window opened from the command line plays at once. The sound is held now while the game is stopped or paused (before Play, at F8's note prompt): the device gets silence and the mixer waits, so the music goes on from where it was.
 
 ## 2. Hierarchy and inspector with override provenance
 

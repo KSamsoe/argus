@@ -856,6 +856,22 @@ impl Daemon {
         self.close_stream(conn);
     }
 
+    /// The sound goes with play: held while the clock is stopped or paused
+    /// (before Play in the editor, at F8's prompt), so the music waits
+    /// where it was. The server calls this every frame a window or a stream
+    /// is open, which is when a device is.
+    pub fn sync_audio(&mut self) {
+        #[cfg(feature = "audio")]
+        {
+            let running = self.sched.is_playing() && !self.sched.is_paused();
+            if let Some(a) = &self.audio {
+                if a.held() == running {
+                    a.set_hold(!running);
+                }
+            }
+        }
+    }
+
     /// True while a client's frame stream is open.
     pub fn has_stream(&self) -> bool {
         #[cfg(feature = "render")]
@@ -5050,6 +5066,8 @@ impl Daemon {
                 }
             }
         }
+        // Held from the first sample if the game is not playing.
+        self.sync_audio();
         Ok(self.render_status())
     }
 
@@ -5273,6 +5291,8 @@ impl Daemon {
                 };
             }
         }
+        // Held from the first sample if the game is not playing.
+        self.sync_audio();
         let s = self.render.stream.as_mut().expect("just made");
         s.fps = fps;
         s.audio = audio && !sound.is_null() && sound.get("error").is_none();
@@ -5338,6 +5358,7 @@ impl Daemon {
             .collect();
         Ok(json!({
             "device": a.device_name(),
+            "held": a.held(),
             "rate": a.rate(),
             "voices": a.voices(),
             "played": a.played,
@@ -5353,6 +5374,7 @@ impl Daemon {
                     "bpm": pos.as_ref().and_then(|p| p.bpm),
                     "bar": pos.as_ref().and_then(|p| p.bar),
                     "beat": pos.as_ref().and_then(|p| p.beat),
+                    "seconds": pos.as_ref().map(|p| (p.seconds * 1000.0).round() / 1000.0),
                     "queued": pos.as_ref().and_then(|p| p.queued.as_ref()).map(|(t, ms)| json!({ "track": t, "in_ms": (ms * 10.0).round() / 10.0 })),
                 })
             }),

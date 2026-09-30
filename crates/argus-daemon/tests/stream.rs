@@ -300,3 +300,70 @@ fn a_viewport_gets_frames_and_plays_the_game_as_a_window_does() {
     assert!(!Path::new(&path).exists(), "the file goes with the stream");
     assert!(!d.has_stream());
 }
+
+/// Kevin's play in the editor: "the music plays before play has been hit".
+/// The viewport opens the sound with its stream, and a device pulls the
+/// mixer in real time whatever the clock does. Now the sound is held
+/// while the game is stopped or paused, and the music goes on from where
+/// it was. (With the master bus muted, so the test is silent; skipped on a
+/// machine with no audio output.)
+#[test]
+fn the_music_waits_for_play() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../examples/hollow")
+        .canonicalize()
+        .unwrap();
+    let mut d = open(&root);
+    let s = me(
+        &mut d,
+        "render.stream",
+        json!({ "width": 320, "height": 180, "audio": true }),
+    );
+    if s["audio"].is_null() || s["audio"].get("error").is_some() {
+        println!("no audio output here ({}); skipped", s["audio"]);
+        return;
+    }
+    me(
+        &mut d,
+        "audio.bus",
+        json!({ "bus": "master", "mute": true }),
+    );
+    let frames = |d: &mut Daemon, ms: u64| {
+        let t0 = Instant::now();
+        while t0.elapsed() < Duration::from_millis(ms) {
+            if d.wants_frames() {
+                d.frame().unwrap();
+            }
+            d.stream_frame();
+            d.sync_audio();
+            d.outbox.clear();
+            std::thread::sleep(Duration::from_millis(16));
+        }
+    };
+    let music = |d: &mut Daemon| {
+        let a = ok(d, "audio.status", json!({}));
+        (
+            a["held"].as_bool().unwrap(),
+            a["music"]["seconds"].as_f64().unwrap_or(0.0),
+        )
+    };
+    frames(&mut d, 300);
+    let (held, before) = music(&mut d);
+    assert!(held, "not playing: held");
+    frames(&mut d, 500);
+    assert_eq!(music(&mut d), (true, before), "before Play the music waits");
+    me(&mut d, "sim.play", json!({}));
+    frames(&mut d, 700);
+    let (held, playing) = music(&mut d);
+    assert!(!held, "playing: not held");
+    assert!(
+        playing > before + 0.3,
+        "the music goes on: {before} to {playing}"
+    );
+    me(&mut d, "sim.pause", json!({}));
+    frames(&mut d, 100);
+    let (held, paused) = music(&mut d);
+    assert!(held, "paused: held");
+    frames(&mut d, 500);
+    assert_eq!(music(&mut d).1, paused, "paused, it waits where it was");
+}

@@ -75,6 +75,12 @@ The first run of Swarm's first wave with sound read `sfx peak +18 dB` in `audio.
 |---|---|---|---|
 | (§17) Hollow's cold open under 300 ms, with item 7's music. | Done | `sound::synth_all`: every described tone of a load made on every core, longest first to the least loaded (in order, one by one, on the web, which has no threads); `AudioEngine::load_sounds` puts the sounds together from them. Hollow's music, several seconds of samples a layer, was 52 ms of every open made in turn; the open went from 267 to 305 ms to 226 to 238. | `audio` tests; argus-daemon `perf_rooms` |
 
+## Phase 4: the sound waits for the game
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (Kevin's play in the editor) The music does not play before Play. | Done | `AudioEngine::set_hold`: while held, the device's callback (`device.rs`) fills its buffer with silence and does not pull the mixer, so voices and music stay where they are and go on from there. The daemon holds it while its clock is stopped or paused. Headless the mixer follows sim time and is never held. | argus-daemon `stream::the_music_waits_for_play` |
+
 ## Known limitations, stated so they are decisions
 
 - WAV only; OGG and other formats come with the importer.

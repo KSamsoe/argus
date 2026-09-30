@@ -36,6 +36,7 @@ use argus_sim::Pcg32;
 use sound::Clip;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 /// Error codes this crate adds (51xx).
@@ -175,6 +176,10 @@ pub struct AudioEngine {
     rng: Pcg32,
     #[cfg(feature = "device")]
     device: Option<device::Output>,
+    /// Set while the game is not playing: the device sends silence and the
+    /// mixer waits (phase 4 item 1: the editor opened the sound before its
+    /// Play, and the music played).
+    hold: Arc<AtomicBool>,
     spatial: Vec<SpatialVoice>,
     /// The track the world asks for (waiting for its bar while `due`).
     music: Option<Playing>,
@@ -284,6 +289,7 @@ impl AudioEngine {
             rng: argus_sim::rng::stream(seed, "audio"),
             #[cfg(feature = "device")]
             device: None,
+            hold: Arc::new(AtomicBool::new(false)),
             spatial: Vec::new(),
             music: None,
             outgoing: None,
@@ -1155,7 +1161,8 @@ impl AudioEngine {
                 self.due = None;
                 self.load_sounds();
             }
-            self.device = Some(device::open(self.mixer.clone(), rate).map_err(e)?);
+            self.device =
+                Some(device::open(self.mixer.clone(), rate, self.hold.clone()).map_err(e)?);
             Ok(())
         }
         #[cfg(not(feature = "device"))]
@@ -1179,6 +1186,18 @@ impl AudioEngine {
             .collect();
         self.lock().stop_all_but(&keep, 0.03);
         self.spatial.clear();
+    }
+
+    /// Hold the output (the game is not playing): silence out, and the
+    /// mixer where it is until released. Headless, the mixer follows sim
+    /// time and nothing needs holding.
+    pub fn set_hold(&self, held: bool) {
+        self.hold.store(held, Ordering::Relaxed);
+    }
+
+    /// Whether the output is held.
+    pub fn held(&self) -> bool {
+        self.hold.load(Ordering::Relaxed)
     }
 
     /// Close the output device.

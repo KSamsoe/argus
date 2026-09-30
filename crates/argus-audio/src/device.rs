@@ -1,9 +1,12 @@
 //! The system's audio output (cpal). The callback thread pulls blocks
 //! straight from the shared mixer, so audio runs in real time even on a
-//! discrete scene where nothing ticks between turns.
+//! discrete scene where nothing ticks between turns. While `hold` is set
+//! (the game is not playing) it sends silence and leaves the mixer where
+//! it is, so the music goes on from the same place when play does.
 
 use crate::mixer::Mixer;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 /// An open output stream. Dropping it closes the device.
@@ -48,17 +51,17 @@ fn pick(want: u32) -> Result<(cpal::Device, cpal::SupportedStreamConfig), String
     Ok((device, cfg))
 }
 
-/// Open the default device and start pulling from `mixer`.
-pub fn open(mixer: Arc<Mutex<Mixer>>, want: u32) -> Result<Output, String> {
+/// Open the default device and start pulling from `mixer`, unless `hold`.
+pub fn open(mixer: Arc<Mutex<Mixer>>, want: u32, hold: Arc<AtomicBool>) -> Result<Output, String> {
     let (device, supported) = pick(want)?;
     let name = device.name().unwrap_or_else(|_| "audio device".to_string());
     let rate = supported.sample_rate().0;
     let channels = supported.channels();
     let config: cpal::StreamConfig = supported.config();
     let stream = match supported.sample_format() {
-        cpal::SampleFormat::F32 => build::<f32>(&device, &config, mixer),
-        cpal::SampleFormat::I16 => build::<i16>(&device, &config, mixer),
-        cpal::SampleFormat::U16 => build::<u16>(&device, &config, mixer),
+        cpal::SampleFormat::F32 => build::<f32>(&device, &config, mixer, hold),
+        cpal::SampleFormat::I16 => build::<i16>(&device, &config, mixer, hold),
+        cpal::SampleFormat::U16 => build::<u16>(&device, &config, mixer, hold),
         other => return Err(format!("unsupported sample format {other:?}")),
     }?;
     stream.play().map_err(|e| e.to_string())?;
@@ -74,6 +77,7 @@ fn build<T>(
     device: &cpal::Device,
     config: &cpal::StreamConfig,
     mixer: Arc<Mutex<Mixer>>,
+    hold: Arc<AtomicBool>,
 ) -> Result<cpal::Stream, String>
 where
     T: cpal::SizedSample + cpal::FromSample<f32>,
@@ -84,6 +88,10 @@ where
         .build_output_stream(
             config,
             move |data: &mut [T], _| {
+                if hold.load(Ordering::Relaxed) {
+                    data.fill(T::from_sample(0.0f32));
+                    return;
+                }
                 let frames = data.len() / ch;
                 stereo.resize(frames * 2, 0.0);
                 match mixer.lock() {
