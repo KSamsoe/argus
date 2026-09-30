@@ -201,10 +201,15 @@ pub fn run(c: &mut dyn Caller, name: &str, args: &Json) -> Result<Json, Json> {
                 }
                 return c.call("timeline.seek", p);
             }
+            if args.get("replays").and_then(Json::as_bool) == Some(true) {
+                return c.call("replay.list", json!({}));
+            }
+            if let Some(path) = args.get("replay").and_then(Json::as_str) {
+                return c.call("replay.open", json!({ "path": path }));
+            }
             if args.get("frame").is_none() && args.get("turn").is_none() {
-                return Err(bad(
-                    "seek needs frame (or turn, on a discrete clock), or timeline and time",
-                ));
+                // Nothing to go to: where the run can go.
+                return c.call("sim.ring", json!({}));
             }
             match args.get("fork").and_then(Json::as_str) {
                 Some(name) => {

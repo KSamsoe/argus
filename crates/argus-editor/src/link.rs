@@ -58,6 +58,14 @@ pub enum Want {
     Proposals,
     /// `mark.list`, for the agent panel.
     Marks,
+    /// `sim.ring`, for the scrubber.
+    Ring,
+    /// `replay.list`, for the scrubber's replays.
+    Replays,
+    /// `obs.events` of one name, for the scrubber's markers.
+    Events(String),
+    /// A seek from the scrubber's drag.
+    Seek,
 }
 
 /// An answer: what it was for, and its result or error.

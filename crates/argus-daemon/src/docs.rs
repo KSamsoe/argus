@@ -191,15 +191,17 @@ pub const TOOLS: &[ToolDoc] = &[
     },
     ToolDoc {
         name: "seek",
-        doc: "Go to any frame of this run, rebuilt from keyframes and the recorded input; stepping on replays what happened next until a new input branches the run. fork: instead build a second world at that frame, named, to try something beside this one (every method then takes fork: name). timeline and time: scrub a timeline, to the first frame at which it had reached that many seconds.",
+        doc: "Go to any frame of this run, rebuilt from keyframes and the recorded input; stepping on replays what happened next until a new input branches the run. fork: instead build a second world at that frame, named, to try something beside this one (every method then takes fork: name). timeline and time: scrub a timeline, to the first frame at which it had reached that many seconds. With none of these: the run's range, keyframes, and changes (sim.ring). replays: the saved replays, a failing test's among them; replay: open one (its path from that list).",
         params: &[
             opt("frame", INTEGER, "one of frame, turn, time; the tick"),
             opt("turn", INTEGER, "one of frame, turn, time; the turn, on a discrete clock"),
             opt("time", NUMBER, "one of frame, turn, time; seconds into the timeline named by timeline"),
             opt("timeline", STRING, "with time: a timeline's name (its latest play) or its entity (\"e:40\")"),
             opt("fork", STRING, "a name: fork there instead of seeking"),
+            opt("replays", BOOLEAN, "list the saved replays"),
+            opt("replay", STRING, "open this replay: its path from replays"),
         ],
-        calls: &["sim.seek", "sim.fork", "timeline.seek"],
+        calls: &["sim.seek", "sim.fork", "timeline.seek", "sim.ring", "replay.list", "replay.open"],
     },
     ToolDoc {
         name: "observe",
@@ -1006,11 +1008,17 @@ pub const METHODS: &[MethodDoc] = &[
         params: &[
             opt("name", STRING, "omit to list the worlds"),
             opt("frame", INTEGER, "default: now; a past frame of this run"),
-            opt("switch", BOOLEAN, ""),
+            opt("switch", BOOLEAN, "make it the world in use; a new name is made first"),
             opt("drop", BOOLEAN, ""),
             opt("turn", INTEGER, "on a discrete clock, the turn to fork at instead of frame"),
         ],
         returns: "{active, worlds: [{name, tick, frame, entities}]}, plus made: {name, frame, from} when one was made",
+    },
+    MethodDoc {
+        name: "sim.ring",
+        doc: "The run a scrubber draws, with no keyframe taken (sim.snapshot takes one): the frames a seek reaches (floor to end), the keyframes' ticks and the barriers' (the changes made between ticks: edits, room changes, reloads), where the stretch with every keyframe begins (a seek from there replays at most `every` ticks, one before it up to a minute), and which run it is: run changes when a scene loads, a replay opens, or another world is switched to.",
+        params: &[],
+        returns: "sim.snapshot's report plus {run, dense_from, ticks, barrier_ticks (at most 4096 of each, evenly spaced), tick, time, driver, hz, fork: the world in use, worlds: sim.fork's list}",
     },
     MethodDoc {
         name: "sim.snapshot",
@@ -1275,6 +1283,12 @@ pub const METHODS: &[MethodDoc] = &[
             req("answer", STRING, "a choice, or a sentence"),
         ],
         returns: "review.list's row, answered",
+    },
+    MethodDoc {
+        name: "replay.list",
+        doc: "The replays saved under .argus/replays/, newest first: a failing test's (<test>/seed<n>/, its note the failure) and replay.save's. replay.open opens one.",
+        params: &[opt("limit", INTEGER, "default 50")],
+        returns: "{total, rows: [{path: relative to the project, for replay.open, dir, frame, scene, seed, note, about: {scenario, file, seed} for a test's, saved_at, picture, clip, sheet, sound}]}",
     },
     MethodDoc {
         name: "replay.open",

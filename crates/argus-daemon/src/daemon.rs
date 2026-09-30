@@ -308,7 +308,7 @@ impl Daemon {
         let rows = self.feed_rows;
         let r = self.dispatch(conn, method, params);
         let (line, author) = self.calling.take().unwrap_or_default();
-        if r.is_ok() && self.feed_rows == rows && crate::feed::changes(method) {
+        if r.is_ok() && self.feed_rows == rows && crate::feed::changes(method, params) {
             self.feed_command(&author, line, method, params);
         }
         r
@@ -316,6 +316,28 @@ impl Daemon {
 
     /// A command row: a call that changed something outside a transaction.
     fn feed_command(&mut self, author: &str, line: String, method: &str, params: &Json) {
+        // A seek right after a seek by the same author, in the same world,
+        // is the same move: a drag along the editor's scrubber is one row,
+        // the frame it let go at (phase 4 item 5). The row keeps its id and
+        // is announced again.
+        if method == "sim.seek" {
+            if let Some(last) = self.edits.feed.last_mut() {
+                let same = matches!(last.kind, CommitKind::Command)
+                    && last.author == author
+                    && last.call.as_ref().is_some_and(|(m, p)| {
+                        m == "sim.seek" && p.get("fork") == params.get("fork")
+                    });
+                if same {
+                    last.frame = self.world.frame();
+                    last.command = line;
+                    last.call = Some((method.to_string(), params.clone()));
+                    let row = last.to_json();
+                    self.feed_rows += 1;
+                    self.notify("edits", "edit.command", row);
+                    return;
+                }
+            }
+        }
         let id = self.edits.next_commit_id();
         let c = Commit {
             id,
@@ -591,6 +613,7 @@ impl Daemon {
             "sim.seek" => self.sim_seek(params),
             "sim.fork" => self.sim_fork(params),
             "sim.snapshot" => self.sim_snapshot(params),
+            "sim.ring" => self.sim_ring(params),
             "nav.grids" => self.nav_grids(),
             "nav.grid" => self.nav_grid(params),
             "nav.path" => self.nav_path(params),
@@ -630,6 +653,7 @@ impl Daemon {
             "tune.end" => self.tune_end(params),
             "tune.log" => self.tune_log(params),
             "replay.open" => self.replay_open(params),
+            "replay.list" => self.replay_list(params),
             "obs.diff" => self.obs_diff(params),
             "obs.trace" => self.obs_trace(params),
             "obs.why" => self.obs_why(params),
@@ -3521,24 +3545,12 @@ impl Daemon {
                 .ok_or_else(|| self.unknown_fork(&name))?;
             return Ok(self.forks_json());
         }
-        if json::bool_param(params, "switch", false)? {
-            if name != self.active {
-                let mut slot = self
-                    .forks
-                    .remove(&name)
-                    .ok_or_else(|| self.unknown_fork(&name))?;
-                self.swap_slot(&mut slot);
-                let was = std::mem::replace(&mut self.active, name.clone());
-                self.forks.insert(was, slot);
-                #[cfg(feature = "render")]
-                if let Some((_, r)) = &mut self.render.window {
-                    r.forget_motion();
-                }
-                #[cfg(feature = "audio")]
-                if let Some(a) = self.audio.as_mut() {
-                    a.silence();
-                }
-            }
+        let switch = json::bool_param(params, "switch", false)?;
+        // Switching to a world there is; a new name is made first, then
+        // switched to (the editor's Try from here, phase 4 item 5: one
+        // command).
+        if switch && (name == self.active || self.forks.contains_key(&name)) {
+            self.switch_world(&name)?;
             return Ok(self.forks_json());
         }
         if name.is_empty() || name == self.active || self.forks.contains_key(&name) {
@@ -3642,9 +3654,36 @@ impl Daemon {
         self.swap_slot(&mut main);
         result?;
         self.forks.insert(name.clone(), fork);
+        if switch {
+            self.switch_world(&name)?;
+        }
         let mut out = self.forks_json();
         out["made"] = json!({ "name": name, "frame": frame, "from": key.tick });
         Ok(out)
+    }
+
+    /// Make the world named the one in use, the one the window and the
+    /// editor show.
+    fn switch_world(&mut self, name: &str) -> Result<()> {
+        if name == self.active {
+            return Ok(());
+        }
+        let mut slot = self
+            .forks
+            .remove(name)
+            .ok_or_else(|| self.unknown_fork(name))?;
+        self.swap_slot(&mut slot);
+        let was = std::mem::replace(&mut self.active, name.to_string());
+        self.forks.insert(was, slot);
+        #[cfg(feature = "render")]
+        if let Some((_, r)) = &mut self.render.window {
+            r.forget_motion();
+        }
+        #[cfg(feature = "audio")]
+        if let Some(a) = self.audio.as_mut() {
+            a.silence();
+        }
+        Ok(())
     }
 
     /// `sim.seek {frame}`: the nearest earlier keyframe, restored, and the
@@ -3893,6 +3932,27 @@ impl Daemon {
         s.ring.borrow_mut().push(k);
         let mut out = s.ring.borrow().status();
         out["tick"] = json!(self.sched.tick());
+        Ok(out)
+    }
+
+    /// `sim.ring`: the run a scrubber draws (phase 4 item 5), with no
+    /// keyframe taken: its range, its keyframes and barriers, and where the
+    /// clock is.
+    fn sim_ring(&mut self, _params: &Json) -> Result<Json> {
+        self.require_session()?;
+        let s = self.session.as_ref().expect("session");
+        let mut out = s.ring.borrow().report();
+        let clock = self.sched.driving();
+        out["tick"] = json!(self.sched.tick());
+        out["time"] = json!(self.sched.time());
+        out["driver"] = json!(clock.kind.to_string());
+        out["hz"] = if clock.kind == ClockKind::Continuous {
+            json!(1.0 / clock.timestep)
+        } else {
+            Json::Null
+        };
+        out["fork"] = json!(self.active);
+        out["worlds"] = self.forks_json()["worlds"].take();
         Ok(out)
     }
 

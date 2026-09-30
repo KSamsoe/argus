@@ -8,6 +8,7 @@ use crate::agent::Agent;
 use crate::hierarchy::{Ask, Hierarchy};
 use crate::inspector::{Do, Inspector};
 use crate::link::{Answer, Link, State, Want};
+use crate::scrubber::{Scrub, Scrubber};
 use crate::tuning::{Tune, Tuning};
 use crate::viewport::{Selected, Send, Viewport};
 use argus_client::command;
@@ -33,6 +34,11 @@ const TUNE_EVERY: Duration = Duration::from_millis(500);
 /// How often the agent panel reads the questions, proposals, and marks
 /// (the bar counts them, so also while it is not shown).
 const AGENT_EVERY: Duration = Duration::from_secs(1);
+/// How often the scrubber reads the ring, and the events it marks.
+const RING_EVERY: Duration = Duration::from_millis(250);
+const MARKERS_EVERY: Duration = Duration::from_secs(1);
+/// How often the scrubber lists the saved replays.
+const REPLAYS_EVERY: Duration = Duration::from_secs(3);
 
 /// The right panel's tab.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -117,6 +123,8 @@ pub struct Editor {
     pub agent: Agent,
     /// The change feed shows only this author's rows.
     pub feed_author: Option<String>,
+    /// The replay scrubber under the viewport.
+    pub scrubber: Scrubber,
     txs: HashMap<u64, TxRun>,
     described: bool,
     last_status: Option<Instant>,
@@ -125,6 +133,9 @@ pub struct Editor {
     last_locks: Option<Instant>,
     last_tune: Option<Instant>,
     last_agent: Option<Instant>,
+    last_ring: Option<Instant>,
+    last_markers: Option<Instant>,
+    last_replays: Option<Instant>,
 }
 
 impl Editor {
@@ -149,6 +160,7 @@ impl Editor {
             tuning: Tuning::default(),
             agent: Agent::default(),
             feed_author: None,
+            scrubber: Scrubber::default(),
             txs: HashMap::new(),
             described: false,
             last_status: None,
@@ -157,6 +169,9 @@ impl Editor {
             last_locks: None,
             last_tune: None,
             last_agent: None,
+            last_ring: None,
+            last_markers: None,
+            last_replays: None,
         }
     }
 
@@ -358,6 +373,28 @@ impl Editor {
                 }
             }
         }
+        if due(self.last_ring, RING_EVERY) && !self.link.waiting(&Want::Ring) {
+            self.last_ring = Some(now);
+            self.link.send("sim.ring", json!({}), Want::Ring);
+        }
+        if due(self.last_markers, MARKERS_EVERY) {
+            self.last_markers = Some(now);
+            for name in self.scrubber.event_names() {
+                let want = Want::Events(name.clone());
+                if !self.link.waiting(&want) {
+                    let since = self.scrubber.since(&name);
+                    self.link.send(
+                        "obs.events",
+                        json!({ "name": name, "since": since, "limit": 500 }),
+                        want,
+                    );
+                }
+            }
+        }
+        if due(self.last_replays, REPLAYS_EVERY) && !self.link.waiting(&Want::Replays) {
+            self.last_replays = Some(now);
+            self.link.send("replay.list", json!({}), Want::Replays);
+        }
         if due(self.last_agent, AGENT_EVERY) {
             self.last_agent = Some(now);
             for (method, want) in [
@@ -401,6 +438,8 @@ impl Editor {
                 self.last_locks = None;
                 self.last_tune = None;
                 self.last_agent = None;
+                self.last_ring = None;
+                self.last_markers = None;
                 self.hierarchy.stale();
             }
             (Want::Action(line), Err(e)) => self.problem = Some(Problem::from_error(&line, &e)),
@@ -497,8 +536,37 @@ impl Editor {
             (Want::Reviews, Ok(v)) => self.agent.take_reviews(&v),
             (Want::Proposals, Ok(v)) => self.agent.proposals = v,
             (Want::Marks, Ok(v)) => self.agent.take_marks(&v),
+            (Want::Ring, Ok(v)) => self.scrubber.take_ring(v),
+            (Want::Replays, Ok(v)) => self.scrubber.replays = v,
+            (Want::Events(name), Ok(v)) => self.scrubber.take_events(&name, &v),
+            (Want::Seek, r) => {
+                match r {
+                    Ok(v) => {
+                        self.status = v;
+                        self.last_ring = None;
+                        self.hierarchy.stale();
+                        self.last_get = None;
+                    }
+                    Err(e) => {
+                        let line = command::line("sim.seek", &json!({}));
+                        self.problem = Some(Problem::from_error(&line, &e));
+                    }
+                }
+                if let Some(t) = self.scrubber.seek_answered() {
+                    let p = self.scrubber.seek_params(t);
+                    self.link.send("sim.seek", p, Want::Seek);
+                }
+            }
             // No project open yet: nothing to list.
-            (Want::Reviews | Want::Proposals | Want::Marks, Err(_)) => {}
+            (
+                Want::Reviews
+                | Want::Proposals
+                | Want::Marks
+                | Want::Ring
+                | Want::Replays
+                | Want::Events(_),
+                Err(_),
+            ) => {}
             (w, Err(e)) => {
                 self.problem = Some(Problem::from_error(&format!("{w:?}"), &e));
             }
@@ -526,7 +594,13 @@ impl Editor {
 
     fn push_feed(&mut self, row: Json) {
         let id = row["id"].as_u64();
-        if id.is_some() && self.feed.iter().any(|r| r["id"].as_u64() == id) {
+        // A row announced again (a drag's seeks are one row, its latest).
+        if let Some(r) = self
+            .feed
+            .iter_mut()
+            .find(|r| id.is_some() && r["id"].as_u64() == id)
+        {
+            *r = row;
             return;
         }
         self.feed.push(row);
@@ -594,6 +668,7 @@ impl Editor {
             .min_width(220.0)
             .default_width(280.0)
             .show(ctx, |ui| self.overview(ui));
+        egui::TopBottomPanel::bottom("scrubber").show(ctx, |ui| self.scrubber_ui(ui));
         egui::CentralPanel::default().show(ctx, |ui| self.viewport_ui(ui));
         // Ctrl+Z and Ctrl+Shift+Z (or Ctrl+Y): the person's own undo and
         // redo, when neither the game nor a text field has the keys.
@@ -638,6 +713,49 @@ impl Editor {
         let picked = self.viewport.selected.as_ref().map(|s| s.id.clone());
         if picked != self.selected && picked.is_some() {
             self.select(picked);
+        }
+    }
+
+    fn scrubber_ui(&mut self, ui: &mut egui::Ui) {
+        if !self.link.is_up() {
+            return;
+        }
+        // The tick on screen: the viewport's latest frame, else the clock's.
+        let now = self
+            .viewport
+            .info
+            .as_ref()
+            .map(|i| i.tick)
+            .or(self.status["tick"].as_u64())
+            .unwrap_or(0);
+        self.scrubber
+            .settle(self.status["tick"].as_u64().unwrap_or(now));
+        let playing = self.status["playing"] == true && self.status["paused"] != true;
+        let free = !self.viewport.focused && ui.ctx().memory(|m| m.focused().is_none());
+        for s in self.scrubber.ui(ui, now, playing, free) {
+            match s {
+                Scrub::Pause => self.act("sim.pause", json!({})),
+                Scrub::Seek(t) => {
+                    if let Some(t) = self.scrubber.want_seek(t) {
+                        let p = self.scrubber.seek_params(t);
+                        self.link.send("sim.seek", p, Want::Seek);
+                    }
+                }
+                Scrub::Let(t, resume) => {
+                    // The position let go at is the command the person gave
+                    // (the daemon's feed keeps one row for the drag too).
+                    self.commands
+                        .push(command::line("sim.seek", &self.scrubber.seek_params(t)));
+                    if resume {
+                        self.act("sim.play", json!({}));
+                    }
+                }
+                Scrub::Act(method, params) => {
+                    self.act(&method, params);
+                    self.last_ring = None;
+                    self.last_markers = None;
+                }
+            }
         }
     }
 

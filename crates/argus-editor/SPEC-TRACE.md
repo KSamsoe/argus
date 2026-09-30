@@ -58,11 +58,22 @@ Every statement in the design document (v0.3) that constrains the editor (§11, 
 | (§10) Marks, with their notes. | Done | Each open mark with its frame's picture, its note to reword (`mark.note`), Reproduce (`mark.open`), Close, and Take back (`mark.cancel`). | `agent` (the note, closed) |
 | (§10) "The human returning after an hour reads what the agent did as a sequence of notes." | Done | What the agent did: every other author's feed rows, newest first, the note or, without one, the command. The Change feed tab filters by author. | `agent` (the agent's rows only, then the person's) |
 
+## §6, §9, §11 The replay scrubber (item 5)
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§11) "The timeline scrubber is `sim.seek` over the keyframe ring." | Done | `scrubber.rs`, a strip under the viewport: `sim.ring` read four times a second; the track from its floor to its end, the stretch with every keyframe lighter, the barriers (changes between ticks) in amber, the tick on screen. A drag sends one `sim.seek` at a time, the latest position next; a drag while playing pauses and plays on; a click lands; Frame -1, Frame +1 (`sim.advance` on a discrete clock), To the end, and the arrows over the strip. | `scrubber::a_person_scrubs_the_run_tries_from_a_frame_and_opens_a_replay`; `scrubber::tests::one_seek_in_flight_and_the_latest_next` |
+| (§10) Marks surface where they happened. | Done | Markers from `obs.events` (`mark.dropped`, `review.asked`, and the names typed in Mark events), kept while the run goes on the same and dropped when it branches or is another run (`run`). | `scrubber` (the mark at 300 stays after a seek to 150); `scrubber::tests::markers_stay_across_a_seek_and_go_with_a_branch_or_a_new_run` |
+| (§17) Seek to any point in the last five minutes under 500 ms: "marks and A/B toggling must feel instant". | Done | Release: `argus-daemon` `perf_seek`. Debug, the build the person runs: 12 to 36 ms for the longest seek (59 ticks replayed) on Swarm, Hollow, and Outpost; a click on the fixture's run to its frame on screen, 14 to 28 ms. Further back a seek replays up to a minute: shaded, and the tooltip says how many ticks. | `scrubber` (under 1 s end to end, asserted) |
+| (§6) "`sim.fork` ... how the editor offers live A/B toggling"; trying something from a point without losing the run. | Done | Try from here: `sim.fork {name: try-N, switch: true}`; the World list switches between worlds and drops them. The run's world waits where it was. | `scrubber` (a step in try-1, main unmoved, back to main with its run) |
+| (§9) A failing test's replay "the human can open in the editor". | Done | Replays: `replay.list`, each with its scenario, seed, frame, and failure; Open is `replay.open`, paused at its frame with its lead-in to scrub. | `scrubber` (a test's replay opened, its lead-in on the strip) |
+| P1: the scrubber's moves are commands. | Done | A drag is one `argus sim seek frame=...` in Show as command and one feed row (the daemon updates the row); the pause and play around a drag, the steps, the forks, and the replays opened are rows and lines too. | `scrubber` |
+
 ## The phase 4 gate, first half
 
 | Spec | Status | Where | Test |
 |---|---|---|---|
-| "Everything the editor does appears in the change feed as a command the agent could have issued." | Partial (items 0 to 4) | The daemon writes a feed row for every call that changes something, from any client, with its author and its `argus` line (`argus-daemon` `feed.rs`); a commit's line is the whole transaction as the agent's `edit` tool. The viewport's keys are the input log's, and what F8, F9, and F10 stand for is a feed row by the person (`argus-daemon` `stream`). Each item's panel adds its actions to the editor test; the gate drives every panel and replays the feed through the CLI. | `editor`; `argus-cli` `feed::every_change_is_a_command_the_agent_could_have_issued` |
+| "Everything the editor does appears in the change feed as a command the agent could have issued." | Partial (items 0 to 5) | The daemon writes a feed row for every call that changes something, from any client, with its author and its `argus` line (`argus-daemon` `feed.rs`); a commit's line is the whole transaction as the agent's `edit` tool. The viewport's keys are the input log's, and what F8, F9, and F10 stand for is a feed row by the person (`argus-daemon` `stream`). Each item's panel adds its actions to the editor test; the gate drives every panel and replays the feed through the CLI. | `editor`; `argus-cli` `feed::every_change_is_a_command_the_agent_could_have_issued` |
 
 ## Known limitations, stated so they are decisions
 

@@ -263,6 +263,17 @@ Phase 0 item 4, "JSON-RPC daemon with session, world, edit, sim (play, pause, st
 | (Kevin's second play) The sound plays only while the game does. | Done | `Daemon::sync_audio`, every frame a window or a stream is open and when either opens a device: the audio engine is held while the clock is stopped or paused (`AudioEngine::set_hold`: the device's callback sends silence and leaves the mixer where it is). `audio.status` says `held` and the music's `seconds`. | `stream::the_music_waits_for_play` (a real device, the master bus muted) |
 | (P1) Escape at a mark's note prompt had no command. | Done | `mark.cancel {id}`: the mark's files go, `mark.cancelled` says so, and a prompt open for it closes. | `stream` |
 
+## Phase 4, item 5: the scrubber's calls
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§11) The scrubber reads the ring. | Done | `sim.ring`: `sim.snapshot`'s report with no keyframe taken, plus `run` (a new number for a scene load, a replay opened, another world), `dense_from`, the keyframes' and barriers' ticks (at most 4096 each), the clock, and the worlds. | `scrub::the_ring_is_the_run_to_draw_and_a_drag_is_one_row`, `scrub::a_discrete_ring_counts_turns` |
+| (Phase 4 gate) A drag's seeks in the change feed. | Done | `feed_command`: a `sim.seek` right after a `sim.seek` row by the same author in the same world updates that row (its frame, command, and call) and announces it again with the same id. | `scrub` (three seeks, one row, three notifications; another author's, or a step between, a row of its own) |
+| Listing the worlds is a read. | Done | `feed::changes(method, params)`: `sim.fork` with no name makes no row. | `scrub` |
+| (§6) Trying from a frame without losing the run. | Done | `sim.fork {name, switch: true}` with a new name makes the world, then switches to it (`switch_world`). | `scrub` (try-1 from 100; main back with its run and end) |
+| (§9) A failing test's replay opened in the editor. | Done | `replay.list {limit}`: `.argus/replays/**/replay.json` with its `replay.bin`, newest first, each with its path for `replay.open`, scene, seed, frame, note (the failure), and `about`. | `scrub::a_failing_tests_replay_is_listed_for_the_editor_to_open` |
+| (§16) The agent reaches them. | Done | The `seek` tool with no frame reads `sim.ring`; `replays: true` lists them, `replay: path` opens one. | `argus-cli` `schema::the_tools_call_methods_that_exist` |
+
 ## Phase 4, item 4: review requests
 
 | Spec | Status | Where | Test |

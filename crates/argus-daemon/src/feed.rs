@@ -106,6 +106,8 @@ pub const READS: &[&str] = &[
     "session.capabilities",
     "session.docs",
     "session.identify",
+    "sim.ring",
+    "replay.list",
     "world.summary",
     "world.query",
     "world.get",
@@ -173,9 +175,12 @@ pub const READS: &[&str] = &[
 /// A person's device events: the input log's, not the feed's.
 pub const INPUT: &[&str] = &["input.device"];
 
-/// Does this call change something (a feed row)?
-pub fn changes(method: &str) -> bool {
+/// Does this call change something (a feed row)? `sim.fork` with no name
+/// only lists the worlds (found by the scrubber, which lists them: every
+/// look was a row by the person).
+pub fn changes(method: &str, params: &serde_json::Value) -> bool {
     CHANGES.contains(&method)
+        && !(method == "sim.fork" && params.get("name").is_none_or(serde_json::Value::is_null))
 }
 
 /// The author a call is by: its own `author` param where it has one

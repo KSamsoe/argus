@@ -1204,6 +1204,57 @@ impl Daemon {
         Ok(replay_summary(&dir, &info))
     }
 
+    /// `replay.list`: the replays under `.argus/replays/`, a failing test's
+    /// (`<test>/seed<n>/`) and `replay.save`'s, newest first, for the
+    /// editor to open (§9: "a replay file the human can open in the
+    /// editor"; phase 4 item 5).
+    pub(super) fn replay_list(&self, params: &Json) -> Result<Json> {
+        let root = self.require_session()?.root.clone();
+        let limit = json::u64_param(params, "limit", 50)? as usize;
+        fn walk(d: &Path, depth: u32, out: &mut Vec<PathBuf>) {
+            let Ok(rd) = std::fs::read_dir(d) else {
+                return;
+            };
+            for e in rd.flatten() {
+                let p = e.path();
+                if !p.is_dir() {
+                    continue;
+                }
+                if p.join("replay.json").is_file() && p.join("replay.bin").is_file() {
+                    out.push(p.clone());
+                }
+                if depth < 4 {
+                    walk(&p, depth + 1, out);
+                }
+            }
+        }
+        let base = root.join(".argus").join("replays");
+        let mut dirs = Vec::new();
+        walk(&base, 0, &mut dirs);
+        let mut rows: Vec<Json> = dirs
+            .iter()
+            .filter_map(|dir| {
+                let text = std::fs::read_to_string(dir.join("replay.json")).ok()?;
+                let info: Json = serde_json::from_str(&text).ok()?;
+                let mut row = replay_summary(dir, &info);
+                let rel = dir.strip_prefix(&root).unwrap_or(dir);
+                row["path"] = json!(rel.to_string_lossy().replace('\\', "/"));
+                row["seed"] = info["seed"].clone();
+                row["saved_at"] = info["saved_at"].clone();
+                Some(row)
+            })
+            .collect();
+        rows.sort_by(|a, b| {
+            b["saved_at"]
+                .as_u64()
+                .cmp(&a["saved_at"].as_u64())
+                .then_with(|| a["path"].as_str().cmp(&b["path"].as_str()))
+        });
+        let total = rows.len();
+        rows.truncate(limit);
+        Ok(json!({ "total": total, "rows": rows }))
+    }
+
     /// `replay.open`: reproduce a saved replay (a directory `replay.save`
     /// or a failing test wrote, or its `replay.bin`): load its scene with
     /// its seed, restore the keyframe, play the lead-in, and compare the

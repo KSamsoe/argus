@@ -90,6 +90,12 @@ Phase 0 item 9, "CLI": this crate, plus `argus_daemon::launch` (shared with `arg
 | (§15) Mod packs. | Done | `argus build --mod <id>`: the mod's pack in `dist/mods/` (or `--out`), after checking that it loads with the game (the mods it requires first), nothing left out, and that the game plays the same with the mod from its pack as from its directory. | Hollow's `lanterns` and `brighter` built and checked |
 | (§16) About a dozen tools. | Done | No new tool: `query {mods: true}` reads `mods.list`, `reload {mods: [...]}` loads the scene again with those mods. | `tools.rs` |
 
+## Phase 4, item 5: the scrubber's calls
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§16) The run's range and the saved replays, for the agent. | Done | The `seek` tool: no frame reads `sim.ring`; `replays: true` calls `replay.list`, `replay: path` calls `replay.open`. `argus sim ring`, `argus replay list`, and `argus seek replays=true` from the command line. | `schema::the_tools_call_methods_that_exist` |
+
 ## Phase 4, item 4: review requests
 
 | Spec | Status | Where | Test |

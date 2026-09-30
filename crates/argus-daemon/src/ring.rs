@@ -11,6 +11,7 @@
 //! and a replay must never cross one; barriers are never thinned.
 
 use serde_json::{json, Value as Json};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 // Keyframes live with the runtime (phase 2 item 7), so a release build's
 // recorder and a replay file take them the same way the ring does.
@@ -23,6 +24,29 @@ pub use argus_player::keyframe::{Keyframe, Sources};
 pub const DENSE_SECONDS: f64 = 300.0;
 /// Then one keyframe a minute up to an hour, and one per ten minutes after.
 pub const HOUR: f64 = 3600.0;
+/// The most keyframe and barrier ticks `sim.ring` lists; past it, evenly
+/// spaced ones (a long session's barriers: every room change is one).
+const REPORT_TICKS: usize = 4096;
+
+/// Runs made in this process: a ring's `run` says which run it is, so a
+/// client drawing it knows when the run it drew is gone (a scene load, a
+/// replay opened, another world switched to).
+static RUNS: AtomicU64 = AtomicU64::new(0);
+
+fn next_run() -> u64 {
+    RUNS.fetch_add(1, Ordering::Relaxed) + 1
+}
+
+/// At most `REPORT_TICKS` of `ticks`, evenly spaced, the first and last kept.
+fn spaced(ticks: Vec<u64>) -> Vec<u64> {
+    let n = ticks.len();
+    if n <= REPORT_TICKS {
+        return ticks;
+    }
+    (0..REPORT_TICKS)
+        .map(|i| ticks[i * (n - 1) / (REPORT_TICKS - 1)])
+        .collect()
+}
 
 /// The ring.
 pub struct Ring {
@@ -40,6 +64,8 @@ pub struct Ring {
     /// The daemon's change counter at the last keyframe: a change since
     /// needs a barrier before the next tick.
     pub mutations: u64,
+    /// Which run this is (see `RUNS`).
+    pub run: u64,
 }
 
 impl Ring {
@@ -53,6 +79,7 @@ impl Ring {
             end: 0,
             floor: 0,
             mutations: 0,
+            run: next_run(),
         }
     }
 
@@ -99,6 +126,7 @@ impl Ring {
         self.keys.clear();
         self.end = k.tick;
         self.floor = k.tick;
+        self.run = next_run();
         self.push(k);
     }
 
@@ -180,6 +208,31 @@ impl Ring {
                 self.floor = self.keys[0].tick;
             }
         }
+    }
+
+    /// `sim.ring`'s report (phase 4 item 5, the editor's scrubber):
+    /// `status`, which run this is, the keyframes' ticks and the barriers',
+    /// and where the stretch with every keyframe begins, since a seek there
+    /// replays at most `every` ticks and one before it up to a minute.
+    pub fn report(&self) -> Json {
+        let mut out = self.status();
+        let dense_from = self.keys.last().and_then(|newest| {
+            self.keys
+                .iter()
+                .find(|k| newest.time - k.time <= DENSE_SECONDS)
+                .map(|k| k.tick)
+        });
+        out["run"] = json!(self.run);
+        out["dense_from"] = json!(dense_from);
+        out["ticks"] = json!(spaced(self.ticks()));
+        out["barrier_ticks"] = json!(spaced(
+            self.keys
+                .iter()
+                .filter(|k| k.barrier)
+                .map(|k| k.tick)
+                .collect()
+        ));
+        out
     }
 
     /// `sim.snapshot`'s report.

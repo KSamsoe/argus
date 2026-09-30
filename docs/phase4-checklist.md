@@ -148,12 +148,22 @@ Decisions taken while building it:
 
 ## 5. Replay scrubber
 
-**Status: to do.**
+**Status: done** (2026-09-30) in the editor (`scrubber.rs`) and the daemon (`sim.ring`, `replay.list`, a drag's seeks as one feed row, `sim.fork {switch}` making a new world, listing the worlds no longer a change). A strip under the viewport draws the run from the oldest frame a seek reaches to the furthest it went: the stretch where a seek is instant, the changes made between ticks, the person's marks, the agent's questions, and any game event named in Mark events. Drag it and the game follows; a drag while playing pauses and plays on at the end; Frame -1, Frame +1, To the end, and the arrow keys over it move a frame at a time. Try from here makes a world of its own to play in (the run stays; the World list goes back to it), and Replays lists the saved ones, a failing test's with its failure, to open. Traces: `crates/argus-editor/SPEC-TRACE.md`, the daemon's, `argus-test`'s, and `argus-cli`'s.
 
 - §11: "the timeline scrubber is `sim.seek` over the keyframe ring."
 - §17: seek to any point in the last five minutes under 500 ms: "marks and A/B toggling must feel instant to the human".
 - §9: a failing test's replay file "the human can open in the editor".
 - §6: `sim.fork` for trying something from a point without losing the run.
+
+Decisions taken while building it:
+
+- **The ring is read, not snapshotted.** `sim.snapshot` takes a keyframe (a barrier), so polling it would have cut the run's replays into pieces; `sim.ring` reports the same with none taken, plus the keyframes' and barriers' ticks, where the stretch with every keyframe begins, the worlds, and a `run` number that changes when the run is another (a scene load, a replay opened, another world).
+- **Markers outlive the log's cut.** A seek back cuts the event log at the new frame (the future is replayed, not logged again), so the strip keeps what it read: marks and questions stay drawn while the run goes on the same, and go when it branches (its end moves back) or is another run.
+- **A drag is one row.** A seek right after a seek by the same author, in the same world, updates that feed row (same id, announced again) instead of adding one: forty seeks in a drag read as `argus sim seek frame=150`. Show as command lists the frame let go at. The editor sends one seek at a time, the latest position next, so a slow seek never queues up.
+- **Try from here is one command.** `sim.fork {name, switch: true}` makes the world when the name is new, then switches to it (it used to need two calls).
+- **Listing the worlds is not a change.** `sim.fork` with no name only lists them, but it was a feed row; the scrubber would have written one a second.
+- **Seek times.** In the debug build a seek in the last five minutes, at its longest (59 ticks replayed), took 12 to 36 ms on Swarm, Hollow, and Outpost; §17's under-500 ms bound is the release gate `perf_seek`. A seek further back replays up to a minute; the strip shades that stretch and its tooltip says how many ticks a seek there replays.
+- **Checked, not a bug.** The stream renderer is not told to forget motion after a seek, as the window's is; it does not need to be, since it blends only from the tick just before the one it draws.
 
 ## 6. Profiler view
 
