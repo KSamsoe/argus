@@ -2,7 +2,8 @@
 -- day 7 on 2026-09-24 by Outpost's first skeleton) still loads. The phase 3
 -- gate asks that it load at the end of the phase through at least one
 -- migration: since item 3 it goes through four. Colony drops the rule the
--- fields replaced and Stockpile counts its food as meals (both declared);
+-- fields replaced and, since phase 4, the speed its HUD used to show (the
+-- clock's is q:speed()), and Stockpile counts its food as meals (both declared);
 -- Colonist and Needs gained fields and come field by field. The skeleton
 -- had no valley, so the next tick lays one out around its six colonists,
 -- and the colony plays on.
@@ -11,7 +12,7 @@ return scenario "the first week's save still loads" {
   run = function(t)
     local loaded = t:call("sim.load", { path = "tests/saves/week1.save" })
     t.expect:events("component.migrated"):count():eq(4)
-    t.expect:events("component.migrated", { component = "Colony", declared = true, from = 1, to = 2 }):count():eq(1)
+    t.expect:events("component.migrated", { component = "Colony", declared = true, from = 1, to = 3 }):count():eq(1)
     t.expect:events("component.migrated", { component = "Stockpile", declared = true, from = 1, to = 2 }):count():eq(1)
     t.expect:field("@colony", "Colony.day"):eq(7)
     t.expect:count({ has = { "Colonist" } }):eq(6)

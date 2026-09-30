@@ -987,7 +987,7 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "sim.speed",
-        doc: "Continuous clock speed: sim ticks per render frame. 0 pauses; 3 runs three ticks per frame.",
+        doc: "Continuous clock speed: sim ticks per render frame. 0 pauses; 3 runs three ticks per frame. A game reads its speed (q:speed(), for a HUD), so a change is a change between ticks: a keyframe comes before the next tick and a replay never crosses it. A game asks for a speed with q:speed(x), which takes effect at the end of the tick that asked.",
         params: &[
             opt("x", NUMBER, ""),
         ],

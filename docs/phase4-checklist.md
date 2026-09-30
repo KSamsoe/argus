@@ -179,6 +179,7 @@ Decisions taken while building it:
 - **An over row names a system.** A tick row names the heaviest system in the window; a system row names its system. The agent's `profile` tool answers with the same rows.
 - **A debug build says so.** The targets are release numbers and the editor usually runs a debug daemon; the view says it is a debug build rather than hiding the rows.
 - **Calls are timed at the top.** `prof.calls` times each call a client (or the launcher) makes, not the harness's calls inside `test.run`, which are the test's.
+- **Outpost's HUD shows the clock's speed.** Looking at Outpost at 10x in the view found its HUD saying 1x: it showed the speed its keys had recorded (`Colony.speed`), and the editor's bar sets the clock. A game reads its speed now (`q:speed()`); the scheduler answers a game's `q:speed(x)` at the end of the tick that asked, and a `sim.speed` from outside is a change between ticks, so every replay sees the same (phase 3's decision, revised there). `Colony.speed` is dropped by a migration.
 - **A capture's path is pasteable.** Windows' `\\?\` long-path prefix is left off the paths a capture reports (found in the view: a file picker does not take it).
 
 ## 7. Tilemap painting

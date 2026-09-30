@@ -88,6 +88,12 @@ Release build, one thread, development laptop. Gates in `tests/perf.rs`.
 
 "Profiling, always on at low cost" (§5 namespace table): the gates run with `alloc::Counting` installed, as `argusd` has it. The allocator adds two thread-local increments per allocation and two counter reads per system; the swarm loses about six percent of its headless rate, which is the price of `prof.alloc` being a query rather than a build flag.
 
+## A game's speed (2026-09-30)
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§6) Speed is a property of the continuous clock, and a game may show it. | Done | `SystemCtx::speed`: the continuous clock's speed as the tick began. A `speed.requested` emitted during a tick sets the clock's speed at its end (`apply_speed_requests`), so the running frame keeps its count and every replay of the tick does the same. | `clocks::a_speed_a_system_asks_for_takes_effect_at_the_end_of_its_tick` |
+
 ## Phase 4, item 6: the profiler view's series
 
 | Spec | Status | Where | Test |

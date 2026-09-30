@@ -59,14 +59,37 @@ scenario "why a colonist is idle" {
   end,
 }
 
+-- The HUD's line, as the player reads it.
+function hud_line(t)
+  local q = t:call("world.query", { where = { ["Hud.kind"] = "line" }, select = { "UiText.text" } })
+  return q.rows[1][1]
+end
+
+scenario "the HUD shows a speed set from outside the game" {
+  scene = "valley", seed = 1,
+  run = function(t)
+    -- The editor's bar, the CLI, or the agent: sim.speed, not the keys.
+    t:call("sim.speed", { x = 10 })
+    t:step(31)
+    local line = hud_line(t)
+    if not string.find(line, "10x", 1, true) then error("the HUD shows the clock's 10x: " .. line, 0) end
+    t:call("sim.speed", { x = 3 })
+    t:step(30)
+    line = hud_line(t)
+    if not string.find(line, "3x", 1, true) then error("then 3x: " .. line, 0) end
+  end,
+}
+
 return scenario "speed and pause" {
   scene = "valley", seed = 1,
   run = function(t)
     t:step(10)
     t.input:tap("speed_10")
     t:step(2)
-    t.expect:field("@colony", "Colony.speed"):eq(10)
     if t:status().speed ~= 10 then error("speed_10 set the clock's speed: " .. tostring(t:status().speed), 0) end
+    t:step(30)
+    local line = hud_line(t)
+    if not string.find(line, "10x", 1, true) then error("the HUD shows 10x: " .. line, 0) end
     t.input:tap("speed_1")
     t:step(2)
     if t:status().speed ~= 1 then error("speed_1 set it back", 0) end

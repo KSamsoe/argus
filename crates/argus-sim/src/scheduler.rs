@@ -784,9 +784,11 @@ impl Scheduler {
             spans: Vec::new(),
         };
         self.frozen = false;
+        let events_before = world.events().len();
         for stage in [Stage::Input, Stage::Sim, Stage::Late] {
             self.run_stage(world, stage, kind, tick, time, dt, &mut samples);
         }
+        self.apply_speed_requests(world, events_before);
         {
             let t = Instant::now();
             let (pa, pb) = alloc::counters();
@@ -870,6 +872,34 @@ impl Scheduler {
             }
         }
         Ok(())
+    }
+
+    /// A game's `speed.requested` (Luau's `q:speed(x)`) takes effect at the
+    /// end of the tick that asked, here, inside the run: every host (the
+    /// daemon, a release build, the page) and every replay of the tick
+    /// sees the same clock after it, so a game may read its speed. The
+    /// frame that is running keeps the count of ticks it began with.
+    fn apply_speed_requests(&mut self, world: &World, from: usize) {
+        let evs = world.events();
+        let asked = evs[from.min(evs.len())..]
+            .iter()
+            .rev()
+            .find_map(|r| match &r.event {
+                Event::Game { name, fields } if name == "speed.requested" => fields
+                    .iter()
+                    .find(|(k, _)| k == "x")
+                    .and_then(|(_, v)| match v {
+                        argus_ecs::Value::Float(f) => Some(*f),
+                        argus_ecs::Value::Int(i) => Some(*i as f64),
+                        argus_ecs::Value::UInt(u) => Some(*u as f64),
+                        _ => None,
+                    }),
+                _ => None,
+            });
+        if let Some(x) = asked.filter(|x| *x > 0.0) {
+            // A discrete scene has no speed to set.
+            let _ = self.continuous.set_speed(x);
+        }
     }
 
     /// Record one system's sample for the profiler ring and, while a
@@ -990,6 +1020,7 @@ impl Scheduler {
     ) {
         let froze;
         let frozen = self.frozen;
+        let speed = self.continuous.speed;
         let slot = &mut self.systems[i];
         let outcome = {
             let mut ctx = SystemCtx {
@@ -1002,6 +1033,7 @@ impl Scheduler {
                 tick,
                 time,
                 dt,
+                speed,
                 learned: Vec::new(),
                 frozen,
                 freeze: false,

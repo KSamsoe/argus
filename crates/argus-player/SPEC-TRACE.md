@@ -64,7 +64,7 @@ Every statement in the design document (v0.3) that constrains a game as players 
 |---|---|---|---|
 | (§12) The job system in every scene, the same in the daemon, the executable, and the page. | Done | `assemble.rs` installs `argus-jobs` over the session's navigation, after it. | `argus-daemon` `jobs.rs`; Outpost's tests |
 | (§4) Scripts read the project's data tables. | Done | `ProjectDefs`, the project's `Defs` as `argus_luau::DefRows`, handed to the host after the tables are read (`q:def`, `q:defs`). | Outpost's tests |
-| (§6) A game's speed controls. | Done | `Player` answers `speed.requested` by setting its clock's speed after the step (`requested_speed`). | Outpost's `tests/colony.luau` (through the daemon); the executable and the page read the speed each frame |
+| (§6) A game's speed controls. | Done | The scheduler answers `speed.requested` at the end of the tick that asked (since 2026-09-30; the player set it after the step before), so the player, the daemon, and the page agree with every replay. | Outpost's `tests/colony.luau` (through the daemon); `argus-sim` `clocks::a_speed_a_system_asks_for_takes_effect_at_the_end_of_its_tick`; the executable and the page read the speed each frame |
 
 ## Phase 3, item 4: words and conversations in the one assembly
 

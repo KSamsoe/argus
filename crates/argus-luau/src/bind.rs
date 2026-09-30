@@ -881,20 +881,24 @@ impl UserData for QueryHandle {
                 Ok(())
             });
         }
-        // speed(x): ask whatever runs the game for x ticks a frame (section
-        // 6, Outpost's 1x/3x/10x), between frames. A `speed.requested`
-        // event; the daemon, a release build, and the page each set their
-        // clock's speed (sim.speed). The ticks are the same at any speed,
-        // so a replay needs nothing of it. Not 0: no tick would run to ask
-        // for another speed; a game pauses itself with q:freeze().
-        m.add_method("speed", |_, this, x: f64| {
+        // speed(x): ask for x ticks a frame (section 6, Outpost's 1x/3x/10x):
+        // a `speed.requested` event the scheduler answers at the end of this
+        // tick, from the next frame, inside the run, so every host and
+        // every replay agree. speed(): the clock's speed as this tick began,
+        // however it was set (a game's request, the editor's bar, sim.speed),
+        // for a HUD to show. Not 0: no tick would run to ask for another
+        // speed; a game pauses itself with q:freeze().
+        m.add_method("speed", |_, this, x: Option<f64>| {
+            let Some(x) = x else {
+                return Ok(Some(ctx(&this.link)?.speed));
+            };
             if !(x > 0.0 && x <= 1000.0) {
                 return Err(mlua::Error::runtime(format!(
                     "speed {x} is not a speed: more than 0, up to 1000 ticks a frame (a game pauses with q:freeze())"
                 )));
             }
             ctx(&this.link)?.emit("speed.requested", vec![("x".to_string(), Value::Float(x))]);
-            Ok(())
+            Ok(None)
         });
         // freeze(): the rest of this tick stands still, but for systems
         // declared unfrozen (the UI's among them): a pause menu, a hit-stop

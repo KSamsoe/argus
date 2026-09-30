@@ -85,6 +85,55 @@ fn continuous_clock_runs_speed_ticks_per_frame() {
 }
 
 #[test]
+fn a_speed_a_system_asks_for_takes_effect_at_the_end_of_its_tick() {
+    let mut w = World::new();
+    let mut s = Scheduler::new(SchedulerConfig::continuous(60.0));
+    let seen = Rc::new(RefCell::new(Vec::new()));
+    let v = seen.clone();
+    s.add_system(
+        SystemDesc::new("sim.pace", Stage::Sim),
+        Box::new(move |ctx| {
+            v.borrow_mut().push(ctx.speed);
+            if ctx.tick == 1 {
+                ctx.emit(
+                    "speed.requested",
+                    vec![("x".to_string(), argus_ecs::Value::Float(4.0))],
+                );
+            }
+            Ok(())
+        }),
+    )
+    .unwrap();
+    s.play(&w);
+    assert_eq!(s.frame(&mut w).unwrap().sim_ticks, 1);
+    // Tick 1 asks for 4x: the frame keeps the count it began with, the
+    // clock is at 4x after the tick, and the next frame runs four.
+    assert_eq!(s.frame(&mut w).unwrap().sim_ticks, 1);
+    assert_eq!(s.speed(), 4.0);
+    assert_eq!(s.frame(&mut w).unwrap().sim_ticks, 4);
+    // What the system saw, tick by tick (a game's q:speed()).
+    assert_eq!(*seen.borrow(), vec![1.0, 1.0, 4.0, 4.0, 4.0, 4.0]);
+    // Headless, the same: the request is the run's, not the host's.
+    let mut w2 = World::new();
+    let mut s2 = Scheduler::new(SchedulerConfig::continuous(60.0));
+    s2.add_system(
+        SystemDesc::new("sim.pace", Stage::Sim),
+        Box::new(|ctx| {
+            if ctx.tick == 1 {
+                ctx.emit(
+                    "speed.requested",
+                    vec![("x".to_string(), argus_ecs::Value::Float(4.0))],
+                );
+            }
+            Ok(())
+        }),
+    )
+    .unwrap();
+    s2.step(&mut w2, 2).unwrap();
+    assert_eq!(s2.speed(), 4.0);
+}
+
+#[test]
 fn discrete_clock_only_advances_on_command() {
     let mut w = World::new();
     let mut s = Scheduler::new(SchedulerConfig::discrete());

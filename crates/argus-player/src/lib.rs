@@ -34,16 +34,5 @@ pub use pack::{pack, unpack};
 #[cfg(all(feature = "render", feature = "audio"))]
 pub use player::Player;
 
-/// The speed a `speed.requested` event asks for (`q:speed(x)`, phase 3
-/// item 3): ticks a frame, 0 paused.
-pub fn requested_speed(fields: &[(String, argus_ecs::Value)]) -> Option<f64> {
-    fields
-        .iter()
-        .find(|(k, _)| k == "x")
-        .and_then(|(_, v)| match v {
-            argus_ecs::Value::Float(f) => Some(*f),
-            argus_ecs::Value::Int(i) => Some(*i as f64),
-            argus_ecs::Value::UInt(u) => Some(*u as f64),
-            _ => None,
-        })
-}
+// `q:speed(x)` (phase 3 item 3) is answered by the scheduler at the end of
+// the tick that asked (argus-sim), so a host has nothing to do for it.

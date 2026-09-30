@@ -40,7 +40,8 @@ return system "late.colony.hud" {
         crops = math.floor(crop),
         colonists = n,
         working = busy,
-        speed = if rules.paused then q:text("hud.paused") else q:text("hud.speed", { x = rules.speed }),
+        -- The clock's speed, however it was set: the keys, the editor, the agent.
+        speed = if rules.paused then q:text("hud.paused") else q:text("hud.speed", { x = q:speed() }),
       })
     end
     if line == nil and notice == nil then return end

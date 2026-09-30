@@ -41,7 +41,7 @@ Every statement in the design document (v0.3) that constrains the web spike (pha
 
 | Spec | Status | Where | Test |
 |---|---|---|---|
-| (§6) A game's speed controls on the page. | Done | `WebPlayer::frame` owes ticks at the clock's speed, which `q:speed` sets through the player. | The page's check (Hollow, at 1x); Outpost by hand |
+| (§6) A game's speed controls on the page. | Done | `WebPlayer::frame` owes ticks at the clock's speed, which `q:speed(x)` sets at the end of the tick that asked (the scheduler's). | The page's check (Hollow, at 1x); Outpost by hand |
 
 ## Known limitations, stated so they are decisions
 

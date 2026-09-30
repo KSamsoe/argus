@@ -16,7 +16,7 @@ The release executable (§15, phase 2 item 7): what a player double-clicks. The 
 
 | Spec | Status | Where | Test |
 |---|---|---|---|
-| (§6) Outpost's 1x/3x/10x in a release build. | Done | A frame owes `dt x hz x speed` ticks (at most five frames' worth at that speed), and the speed is the one a game asked for with `q:speed` (the player sets it after the step). | The daemon's and Outpost's tests; a window by hand |
+| (§6) Outpost's 1x/3x/10x in a release build. | Done | A frame owes `dt x hz x speed` ticks (at most five frames' worth at that speed), and the speed is the one a game asked for with `q:speed(x)` (the scheduler sets it at the end of the tick that asked). | The daemon's and Outpost's tests; a window by hand |
 
 ## Phase 3, item 8: mods
 

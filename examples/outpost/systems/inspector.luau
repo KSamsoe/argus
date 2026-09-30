@@ -161,7 +161,7 @@ local function colony_page(q)
   for _, j in q:each("Job") do
     if j.worker ~= nil then taken += 1 else open += 1 end
   end
-  local speed = if rules.paused then q:text("hud.paused") else q:text("hud.speed", { x = rules.speed })
+  local speed = if rules.paused then q:text("hud.paused") else q:text("hud.speed", { x = q:speed() })
   return {
     q:text("inspect.colony.day", {
       day = rules.day,
@@ -401,7 +401,7 @@ return system "sim.colony.inspector" {
       return
     end
     local rules = q:entity("@colony"):get("Colony")
-    ins.refresh = 10 * math.max(1, math.floor(rules.speed))
+    ins.refresh = 10 * math.max(1, math.floor(q:speed()))
     local words
     if ins.page == "colony" then
       words = colony_page(q)

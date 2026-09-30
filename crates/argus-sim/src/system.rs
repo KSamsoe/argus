@@ -254,6 +254,11 @@ pub struct SystemCtx<'a> {
     pub time: f64,
     /// Timestep on that clock.
     pub dt: f64,
+    /// The continuous clock's speed as this tick began: ticks a frame
+    /// (Luau's `q:speed()`). Part of the run: a game's request for another
+    /// speed takes effect at the end of the tick that asked, and a change
+    /// from outside is a change between ticks, so a replay sees the same.
+    pub speed: f64,
     /// Components this run declared it touches (see [`SystemCtx::declare`]).
     pub(crate) learned: Vec<(ComponentId, bool)>,
     /// The tick is frozen (a hit-stop, phase 2 item 6): only `unfrozen`

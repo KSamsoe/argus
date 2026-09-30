@@ -11,13 +11,12 @@ return system "input.colony.controls" {
   unfrozen = true,
   reads = { "Actions" },
   writes = { "Colony" },
-  doc = "Speed keys ask for 1x, 3x, or 10x (q:speed) and record it in Colony.speed; pause toggles Colony.paused, and a paused colony freezes each tick.",
+  doc = "Speed keys ask for 1x, 3x, or 10x (q:speed); pause toggles Colony.paused, and a paused colony freezes each tick.",
   run = function(q)
     local rules = q:entity("@colony"):get("Colony")
     for _, a in q:each("Actions") do
       for _, s in ipairs(SPEEDS) do
-        if a[s[1] .. "_pressed"] and rules.speed ~= s[2] then
-          rules.speed = s[2]
+        if a[s[1] .. "_pressed"] and q:speed() ~= s[2] then
           q:speed(s[2])
         end
       end

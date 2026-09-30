@@ -11,7 +11,7 @@
 
 component "Colony" {
   doc = "The colony as a whole: its calendar and the rules of its economy (tune fields: a slider is a hypothesis about balance, section 10)",
-  version = 2,
+  version = 3,
   day = field.u32 { doc = "Days since the colony was founded; the game saves itself when one turns" },
   clock = field.f64 { doc = "The colony's own seconds, which stand still while the game is paused (day and night follow it)" },
   hunger_per_day = field.f32 { default = 1, range = {0, 10}, tune = true, doc = "Food a colonist needs a day (a meal is 1)" },
@@ -28,12 +28,15 @@ component "Colony" {
   size = field.vec2 { default = {40, 24}, doc = "The valley's size in cells, when it is laid out" },
   colonists = field.u32 { default = 0, doc = "Colonists to found it with; 0: the founders of defs/founders.toml (the stress scene founds 200)" },
   stones = field.u32 { default = 0, doc = "Stones lying about when it is laid out, for haulers (the stress scene has 20,000)" },
-  speed = field.f32 { default = 1, doc = "The speed the player chose: 1, 3, or 10 ticks a frame" },
   paused = field.bool { doc = "Paused by the player: nothing but the controls runs" },
   migrate = {
     -- v1 (the skeleton): the fields yielded farm_per_day by themselves, and
     -- the colony's calendar was the sim's.
     [2] = { drop = { "farm_per_day" } },
+    -- v2 kept the speed the player chose, which the HUD showed; a speed
+    -- set from outside the game (the editor's bar, sim.speed) never
+    -- reached it. The clock's speed is q:speed() now.
+    [3] = { drop = { "speed" } },
   },
 }
 

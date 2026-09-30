@@ -704,7 +704,15 @@ impl Daemon {
             }
             "sim.speed" => {
                 let x = json::f64_param(params, "x", 1.0)?;
+                let before = self.sched.speed();
                 self.sched.set_speed(x)?;
+                // A game reads its speed (q:speed()), so a speed set from
+                // outside is a change between ticks: a keyframe before the
+                // next tick, which no replay crosses (found with Outpost's
+                // HUD, which said 1x while the editor ran it at 10x).
+                if x != before {
+                    self.mutations += 1;
+                }
                 Ok(self.sim_status())
             }
             "sim.run_until" => self.sim_run_until(params),
@@ -4343,13 +4351,6 @@ impl Daemon {
             if let Event::Game { name, fields } = &rec.event {
                 if name == "load.requested" && self.from_ticks && !self.backstage {
                     self.load_request = Some(argus_player::savegame::request_name(fields));
-                }
-                // q:speed(x): the clock's speed from the next frame (a
-                // trial's parked world catching up asks nothing).
-                if name == "speed.requested" && self.from_ticks && !self.backstage {
-                    if let Some(x) = argus_player::requested_speed(fields) {
-                        let _ = self.sched.set_speed(x);
-                    }
                 }
             }
             let seq = self.events.next_seq;
