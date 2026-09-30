@@ -19,10 +19,11 @@ path = "src/main.rs"
 argus-client = { path = "../argus-client", version = "0.0.1" }
 serde_json = "1"
 eframe = { version = "0.31", default-features = false, features = ["wgpu", "accesskit", "default_fonts"] }
+# A review's clip is an animated PNG the daemon wrote (phase 4 item 4).
+png = "0.17"
 
 [dev-dependencies]
 egui_kittest = { version = "0.31", features = ["eframe", "wgpu"] }
 argus-daemon = { path = "../argus-daemon", version = "0.0.1" }
 argus-ecs = { path = "../argus-ecs", version = "0.0.1" }
-png = "0.17"
 pollster = "0.4"

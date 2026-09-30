@@ -126,8 +126,8 @@ pub struct ToolDoc {
 }
 
 /// The tools, about a dozen on purpose: enough to build, run, look, and
-/// work through the human's marks and proposals; every method stays
-/// reachable through the CLI.
+/// work through the human's marks, proposals, and review requests; every
+/// method stays reachable through the CLI.
 pub const TOOLS: &[ToolDoc] = &[
     ToolDoc {
         name: "summary",
@@ -268,6 +268,19 @@ pub const TOOLS: &[ToolDoc] = &[
             opt("author", STRING, "default \"agent:claude\""),
         ],
         calls: &["edit.begin", "edit.set", "edit.add", "edit.remove", "edit.spawn", "edit.despawn", "edit.propose", "edit.abort", "proposal.list"],
+    },
+    ToolDoc {
+        name: "review",
+        doc: "Ask the human to judge a moment by feel: a question and the clip of its frames go into the editor's agent panel, where they scrub it and answer with a key or a sentence, at their pace. Ask after a change whose effect is a feeling (\"does the enemy death read as a kill?\"); keep working, and read the answers later with list. A clip is at most ten seconds; frames default to the last two.",
+        params: &[
+            opt("question", STRING, "one of question, list"),
+            opt("frames", ARRAY, "[from, to]; default the last two seconds"),
+            opt("options", ARRAY, "the choices, default [\"yes\", \"no\"]; the human can always write a sentence"),
+            opt("note", STRING, "what you changed, or why you ask"),
+            opt("list", BOOLEAN, "one of question, list: the requests and their answers"),
+            opt("all", BOOLEAN, "with list: the answered ones too (default true)"),
+        ],
+        calls: &["obs.review", "review.list"],
     },
 ];
 
@@ -1231,6 +1244,39 @@ pub const METHODS: &[MethodDoc] = &[
         returns: "{dir, frame, scene, note, about, picture, clip, sheet, sound: absolute paths, ms}",
     },
     MethodDoc {
+        name: "obs.review",
+        doc: "Ask the human for judgement on a moment of this run: a question (\"does the enemy death read as a kill?\") and the clip of its frames, replayed from the keyframe ring and drawn offscreen, go into the editor's agent panel, where the human scrubs the clip and answers with one key (a choice) or a sentence. The queue drains at their pace: review.list reads the answers. Frames default to the last two seconds; at most ten seconds.",
+        params: &[
+            req("question", STRING, "what to judge by feel"),
+            opt("frames", ARRAY, "[from, to]; default the last two seconds (on a discrete clock, the last eight turns)"),
+            opt("options", ARRAY, "the choices, one key each (1 to 9); default [\"yes\", \"no\"]; a sentence is always an answer too"),
+            opt("note", STRING, "what the agent changed, or why it asks"),
+            opt("software", BOOLEAN, "draw with the software rasteriser"),
+        ],
+        returns: "{id, status: open, question, options, from, to, asked_by, clip, sheet: absolute paths, frames, every, fps, note}",
+    },
+    MethodDoc {
+        name: "review.list",
+        doc: "The review requests waiting for the human, oldest first, and with all the answered ones too: each answer, who gave it, and the frame the game was at.",
+        params: &[opt("all", BOOLEAN, "default false: open requests only")],
+        returns: "{open, answered, rows: [obs.review's summary, with answer, answered_by, answered_at, answered_frame once answered]}",
+    },
+    MethodDoc {
+        name: "review.get",
+        doc: "One review request: obs.review's summary, with its scene, seed, and when it was asked.",
+        params: &[req("id", INTEGER, "")],
+        returns: "review.list's row plus scene, seed, asked_at",
+    },
+    MethodDoc {
+        name: "review.answer",
+        doc: "Answer a review request: one of its choices, or a sentence. It leaves the queue, and a review.answered event and notification say so. A request is answered once.",
+        params: &[
+            req("id", INTEGER, ""),
+            req("answer", STRING, "a choice, or a sentence"),
+        ],
+        returns: "review.list's row, answered",
+    },
+    MethodDoc {
         name: "replay.open",
         doc: "Reproduce a saved replay (the directory replay.save or a failing test wrote, or its replay.bin): load its scene with its seed, restore its keyframe, and play the seconds before it so obs.events and obs.trace hold them, stopping at its frame. Then compare the world with the one it saved, field by field. Paused there; sim.seek moves within the lead-in, and an open window shows it (the editor opens these in phase 4).",
         params: &[
@@ -1349,9 +1395,9 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "obs.subscribe",
-        doc: "Receive notifications on this connection: `event` for each new event, `edit.committed` for each commit (and proposal made or turned down), `edit.command` for each other change in the feed, `tune.changed` for each tuning log row. Topics: events, edits (the change feed), tune.",
+        doc: "Receive notifications on this connection: `event` for each new event, `edit.committed` for each commit (and proposal made or turned down), `edit.command` for each other change in the feed, `tune.changed` for each tuning log row, `review.asked` and `review.answered` for review requests. Topics: events, edits (the change feed), tune, reviews.",
         params: &[
-            opt("topics", ARRAY, "[\"events\" | \"edits\" | \"tune\"]"),
+            opt("topics", ARRAY, "[\"events\" | \"edits\" | \"tune\" | \"reviews\"]"),
             opt("off", BOOLEAN, "unsubscribe"),
         ],
         returns: "{topics}",

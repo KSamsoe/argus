@@ -52,6 +52,12 @@ pub enum Want {
     TuneLog,
     /// A slider's `tune.set`.
     TuneSet,
+    /// `review.list`, for the agent panel.
+    Reviews,
+    /// `proposal.list`, for the agent panel.
+    Proposals,
+    /// `mark.list`, for the agent panel.
+    Marks,
 }
 
 /// An answer: what it was for, and its result or error.
@@ -96,8 +102,8 @@ impl Link {
         }
     }
 
-    /// Connect, say who this is, and subscribe to the change feed. `wake`
-    /// runs whenever a message arrives.
+    /// Connect, say who this is, and subscribe to the change feed and the
+    /// review requests. `wake` runs whenever a message arrives.
     pub fn connect(&mut self, author: &str, wake: impl Fn() + Send + 'static) {
         match Conn::connect(&self.socket, wake) {
             Ok(c) => {
@@ -111,7 +117,7 @@ impl Link {
                 );
                 self.send(
                     "obs.subscribe",
-                    json!({ "topics": ["edits"] }),
+                    json!({ "topics": ["edits", "reviews"] }),
                     Want::Subscribe,
                 );
                 self.send("edit.feed", json!({ "limit": 200 }), Want::Feed);

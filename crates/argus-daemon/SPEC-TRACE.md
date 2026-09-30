@@ -263,6 +263,15 @@ Phase 0 item 4, "JSON-RPC daemon with session, world, edit, sim (play, pause, st
 | (Kevin's second play) The sound plays only while the game does. | Done | `Daemon::sync_audio`, every frame a window or a stream is open and when either opens a device: the audio engine is held while the clock is stopped or paused (`AudioEngine::set_hold`: the device's callback sends silence and leaves the mixer where it is). `audio.status` says `held` and the music's `seconds`. | `stream::the_music_waits_for_play` (a real device, the master bus muted) |
 | (P1) Escape at a mark's note prompt had no command. | Done | `mark.cancel {id}`: the mark's files go, `mark.cancelled` says so, and a prompt open for it closes. | `stream` |
 
+## Phase 4, item 4: review requests
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§10) "`obs.review {clip, question}` queues a short clip and a question to the editor." | Done | `reviews.rs`: `obs.review {question, frames?, options?, note?}` writes `.argus/reviews/<id>/` (`review.json`, `clip.png`, `clip-sheet.png`); `review.list`, `review.get`. Asked by the connection's author. | `reviews::the_agent_asks_with_a_clip_and_the_human_answers` |
+| (§10) "Because the clip is rendered from a deterministic replay, the agent can attach the exact frame range." | Done | `frames: [from, to]`, the last two seconds by default (eight turns on a discrete clock), ten seconds at most; replayed from the ring's keyframe at or before `from` and drawn offscreen, the live run put back; frames not run forward, not yet played, or older than the ring are refused. | `reviews` (280 to 400, 61 pictures; 100 to 160; the tick and the player where they were), `reviews::a_review_on_a_discrete_clock_is_turns` |
+| (§10) "The human answers with one keystroke or a sentence"; the queue drains at their pace. | Done | `review.answer {id, answer}`: once, by the connection's author, with the frame the game was at; `review.asked` and `review.answered` are events, feed rows, and notifications on the `reviews` topic. | `reviews` (answered once; the feed's authors; the notifications) |
+| A clip frames the scene as the person saw it. | Done | A mark's and a review's pictures are the window's size, else the editor viewport's stream's, else 960 x 540. | Swarm review in the editor (by hand, headless) |
+
 ## Phase 4, item 3: tuning over def rows, and candidates tried
 
 | Spec | Status | Where | Test |

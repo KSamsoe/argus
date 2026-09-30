@@ -69,6 +69,11 @@ pub mod codes {
     /// A save that is missing, unreadable, from a newer version of the
     /// game, or whose scene does not load (phase 3 item 0).
     pub const BAD_SAVE: u32 = 4714;
+    /// No review request with that id in `.argus/reviews/` (phase 4 item 4).
+    pub const NO_REVIEW: u32 = 4715;
+    /// A review request that cannot be asked (its frames are gone from the
+    /// ring) or answered (it was answered already).
+    pub const BAD_REVIEW: u32 = 4716;
     /// The renderer's: this machine has no graphics adapter at all, not
     /// even a software one (argus-render's 5001, here for clients that
     /// build without the renderer).

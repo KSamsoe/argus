@@ -128,13 +128,22 @@ Decisions taken while building it:
 
 ## 4. Agent panel
 
-**Status: to do.**
+**Status: done** (2026-09-30) in the editor (`agent.rs`), the daemon (`reviews.rs`: `obs.review`, `review.list`, `review.get`, `review.answer`, the `reviews` topic), and the MCP server (the `review` tool). The right panel's Agent tab, with a count of what waits for the person in its name and a button in the bar ("The agent asks: 1 question, 1 proposal"): the agent's questions, each with its clip to play or scrub frame by frame and its choices on keys 1 to 9, or a sentence; its proposals, to try (A and each variant at the same moment), switch, keep, or turn down; the person's open marks with their pictures and notes, to reword, reproduce, close, or take back; and what the agent did, newest first, as notes. The Change feed tab filters by author. Traces: `crates/argus-editor/SPEC-TRACE.md`, the daemon's, and `argus-cli`'s.
 
 - §11: the agent panel shows "pending proposals, review requests, marks, the change feed".
 - §10 proposals: the human plays with F9 toggling between the current world and a fork with the proposal applied, "at the same replay point, with the same inputs"; variants cycle on one key; "the pick is the commit".
 - §10 review requests (carried in): `obs.review {clip, question}` queues a clip and a question; the human answers with one keystroke or a sentence; the queue "drains at the human's pace"; the clip is rendered from a deterministic replay, so the human can scrub its exact frame range.
 - §10 marks: each is a reproducible report, with its note.
 - §10 the change feed: author-tagged, so the human returning after an hour reads what the agent did as a sequence of notes.
+
+Decisions taken while building it:
+
+- **A review request is a file, like a mark.** `.argus/reviews/<id>/`: `review.json` (the question, the choices, the frames, who asked, the answer once there is one), the clip, and its contact sheet. The queue outlives the daemon, and the agent reads the answers whenever it next looks (`review.list`, or the `review` tool with `list`).
+- **The clip is exact frames, replayed.** `frames: [from, to]` (the last two seconds by default, ten at most), drawn from the keyframe ring's replay as a mark's clip is, so the live run is untouched; frames older than the ring are refused. The panel's scrubber names each picture's frame.
+- **One answer.** A request is answered once, by a choice or a sentence; the agent asks again for another look. Asking and answering are events, feed rows with their authors, and `reviews` notifications, so the editor shows a question the moment it is asked.
+- **The clip is drawn at the person's view.** A mark's frame and a clip were drawn at 960 x 540 when there was no game window; with the editor's viewport streaming they are its size, so the clip frames the scene as the person sees it (found by looking at a Swarm review in the panel).
+- **The editor reads the clip from disk.** It runs beside the daemon, and the answer names the file; the decoding runs off the UI thread. A remote editor (remote access waits) would need the daemon to send the bytes.
+- **Marks are shown, not only listed.** Their frame, note, and state are there, and the person can reword a note, reproduce the moment, close a mark they no longer care about, or take one back; closing with what was done stays the agent's.
 
 ## 5. Replay scrubber
 

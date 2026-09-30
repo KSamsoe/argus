@@ -29,6 +29,8 @@ mod marks;
 mod nav;
 #[path = "proposals.rs"]
 mod proposals;
+#[path = "reviews.rs"]
+mod reviews;
 #[path = "saves.rs"]
 mod saves;
 #[path = "strings.rs"]
@@ -610,6 +612,10 @@ impl Daemon {
             "mark.import" => self.mark_import(params),
             "mark.pull" => self.mark_pull(params),
             "replay.save" => self.replay_save(params),
+            "obs.review" => self.obs_review(params),
+            "review.list" => self.review_list(params),
+            "review.get" => self.review_get(params),
+            "review.answer" => self.review_answer(params),
             "edit.propose" => self.edit_propose(params),
             "proposal.list" => self.proposal_list(params),
             "proposal.get" => self.proposal_get(params),
@@ -4755,9 +4761,9 @@ impl Daemon {
     fn obs_subscribe(&mut self, conn: ConnId, params: &Json) -> Result<Json> {
         let topics = json::str_list(params, "topics")?;
         for t in &topics {
-            if t != "events" && t != "edits" && t != "tune" {
+            if t != "events" && t != "edits" && t != "tune" && t != "reviews" {
                 return Err(bad_params(format!(
-                    "unknown topic {t:?}; topics are events, edits, and tune"
+                    "unknown topic {t:?}; topics are events, edits, tune, and reviews"
                 )));
             }
         }

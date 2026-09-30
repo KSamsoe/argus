@@ -4,6 +4,7 @@
 //! human learns the agent's language by using the editor and can paste a
 //! command into a chat instead of describing a click".
 
+use crate::agent::Agent;
 use crate::hierarchy::{Ask, Hierarchy};
 use crate::inspector::{Do, Inspector};
 use crate::link::{Answer, Link, State, Want};
@@ -29,6 +30,9 @@ const GET_STILL: Duration = Duration::from_secs(1);
 const LOCKS_EVERY: Duration = Duration::from_secs(1);
 /// How often the tuning panel reads its fields and the session's paths.
 const TUNE_EVERY: Duration = Duration::from_millis(500);
+/// How often the agent panel reads the questions, proposals, and marks
+/// (the bar counts them, so also while it is not shown).
+const AGENT_EVERY: Duration = Duration::from_secs(1);
 
 /// The right panel's tab.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -37,6 +41,8 @@ pub enum Tab {
     Inspector,
     /// The tune fields' sliders.
     Tuning,
+    /// What the agent waits on the person for, and what it did.
+    Agent,
     /// The change feed.
     Feed,
 }
@@ -107,6 +113,10 @@ pub struct Editor {
     pub tab: Tab,
     /// The tune fields, a slider each.
     pub tuning: Tuning,
+    /// Review requests, proposals, marks.
+    pub agent: Agent,
+    /// The change feed shows only this author's rows.
+    pub feed_author: Option<String>,
     txs: HashMap<u64, TxRun>,
     described: bool,
     last_status: Option<Instant>,
@@ -114,6 +124,7 @@ pub struct Editor {
     last_get: Option<Instant>,
     last_locks: Option<Instant>,
     last_tune: Option<Instant>,
+    last_agent: Option<Instant>,
 }
 
 impl Editor {
@@ -136,6 +147,8 @@ impl Editor {
             selected: None,
             tab: Tab::Inspector,
             tuning: Tuning::default(),
+            agent: Agent::default(),
+            feed_author: None,
             txs: HashMap::new(),
             described: false,
             last_status: None,
@@ -143,6 +156,7 @@ impl Editor {
             last_get: None,
             last_locks: None,
             last_tune: None,
+            last_agent: None,
         }
     }
 
@@ -263,6 +277,9 @@ impl Editor {
                 self.last_get = None;
             } else if method == "render.frame" {
                 self.viewport.on_frame(row);
+            } else if method.starts_with("review.") {
+                // Asked or answered: the queue, again.
+                self.last_agent = None;
             }
         }
         if !self.link.is_up() {
@@ -341,6 +358,18 @@ impl Editor {
                 }
             }
         }
+        if due(self.last_agent, AGENT_EVERY) {
+            self.last_agent = Some(now);
+            for (method, want) in [
+                ("review.list", Want::Reviews),
+                ("proposal.list", Want::Proposals),
+                ("mark.list", Want::Marks),
+            ] {
+                if !self.link.waiting(&want) {
+                    self.link.send(method, json!({}), want);
+                }
+            }
+        }
         if due(self.last_locks, LOCKS_EVERY) && !self.link.waiting(&Want::Locks) {
             self.last_locks = Some(now);
             self.link.send("edit.locks", json!({}), Want::Locks);
@@ -371,6 +400,7 @@ impl Editor {
                 self.last_get = None;
                 self.last_locks = None;
                 self.last_tune = None;
+                self.last_agent = None;
                 self.hierarchy.stale();
             }
             (Want::Action(line), Err(e)) => self.problem = Some(Problem::from_error(&line, &e)),
@@ -464,6 +494,11 @@ impl Editor {
                     .collect();
             }
             (Want::TuneSet, Ok(_)) => {}
+            (Want::Reviews, Ok(v)) => self.agent.take_reviews(&v),
+            (Want::Proposals, Ok(v)) => self.agent.proposals = v,
+            (Want::Marks, Ok(v)) => self.agent.take_marks(&v),
+            // No project open yet: nothing to list.
+            (Want::Reviews | Want::Proposals | Want::Marks, Err(_)) => {}
             (w, Err(e)) => {
                 self.problem = Some(Problem::from_error(&format!("{w:?}"), &e));
             }
@@ -522,6 +557,13 @@ impl Editor {
                 ui.horizontal(|ui| {
                     ui.selectable_value(&mut self.tab, Tab::Inspector, "Inspector");
                     ui.selectable_value(&mut self.tab, Tab::Tuning, "Tuning");
+                    let n = self.agent.waiting();
+                    let agent = if n == 0 {
+                        "Agent".to_string()
+                    } else {
+                        format!("Agent ({n})")
+                    };
+                    ui.selectable_value(&mut self.tab, Tab::Agent, agent);
                     ui.selectable_value(&mut self.tab, Tab::Feed, "Change feed");
                 });
                 ui.separator();
@@ -536,6 +578,12 @@ impl Editor {
                         let author = self.author.clone();
                         for t in self.tuning.ui(ui, &author) {
                             self.tuned(t);
+                        }
+                    }
+                    Tab::Agent => {
+                        let author = self.author.clone();
+                        for (method, params) in self.agent.ui(ui, &author, &self.feed) {
+                            self.act(&method, params);
                         }
                     }
                     Tab::Feed => self.feed_ui(ui),
@@ -563,6 +611,27 @@ impl Editor {
                 self.done(Do::Redo);
             } else if undo {
                 self.done(Do::Undo);
+            }
+            // A review's choices, a key each, while the question shows.
+            if self.tab == Tab::Agent {
+                const KEYS: [egui::Key; 9] = [
+                    egui::Key::Num1,
+                    egui::Key::Num2,
+                    egui::Key::Num3,
+                    egui::Key::Num4,
+                    egui::Key::Num5,
+                    egui::Key::Num6,
+                    egui::Key::Num7,
+                    egui::Key::Num8,
+                    egui::Key::Num9,
+                ];
+                let n = ctx.input_mut(|i| {
+                    KEYS.iter()
+                        .position(|k| i.consume_key(egui::Modifiers::NONE, *k))
+                });
+                if let Some((method, params)) = n.and_then(|n| self.agent.choice(n + 1)) {
+                    self.act(&method, params);
+                }
             }
         }
         // A click in the viewport selected something.
@@ -659,6 +728,20 @@ impl Editor {
             ui.separator();
             ui.checkbox(&mut self.show_commands, "Show as command");
             ui.weak(format!("as {}", self.author));
+            // What the agent waits on the person for, one click away.
+            if let Some(line) = self.agent.waiting_line() {
+                ui.separator();
+                if ui
+                    .button(
+                        RichText::new(format!("The agent asks: {line}"))
+                            .color(Color32::from_rgb(240, 170, 60)),
+                    )
+                    .on_hover_text("Show the agent panel")
+                    .clicked()
+                {
+                    self.tab = Tab::Agent;
+                }
+            }
         });
     }
 
@@ -707,13 +790,38 @@ impl Editor {
     fn feed_ui(&mut self, ui: &mut egui::Ui) {
         ui.strong("Change feed");
         ui.weak("every change, by whom, as a command");
+        // Only one author's rows: what the agent did while you were away.
+        let mut authors: Vec<String> = self
+            .feed
+            .iter()
+            .filter_map(|r| r["author"].as_str().map(str::to_string))
+            .collect();
+        authors.sort();
+        authors.dedup();
+        ui.horizontal(|ui| {
+            ui.label("By");
+            egui::ComboBox::from_id_salt("feed-author")
+                .selected_text(self.feed_author.as_deref().unwrap_or("everyone"))
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut self.feed_author, None, "everyone");
+                    for a in authors {
+                        let label = a.clone();
+                        ui.selectable_value(&mut self.feed_author, Some(a), label);
+                    }
+                });
+        });
         ui.separator();
+        let only = self.feed_author.clone();
         egui::ScrollArea::vertical()
             .id_salt("feed")
             .stick_to_bottom(true)
             .auto_shrink([false, false])
             .show(ui, |ui| {
-                for r in &self.feed {
+                for r in self
+                    .feed
+                    .iter()
+                    .filter(|r| only.as_deref().is_none_or(|a| r["author"] == a))
+                {
                     let id = r["id"].as_u64().unwrap_or(0);
                     ui.push_id(id, |ui| {
                         let author = r["author"].as_str().unwrap_or("?");

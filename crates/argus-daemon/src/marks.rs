@@ -72,7 +72,7 @@ pub(super) struct Prompt {
 }
 
 /// Ticks of lead-in, ticks of clip, and ticks between clip pictures.
-fn spans(kind: ClockKind, hz: f64) -> (u64, u64, u64, f64) {
+pub(super) fn spans(kind: ClockKind, hz: f64) -> (u64, u64, u64, f64) {
     match kind {
         ClockKind::Continuous => {
             let hz = hz.max(1.0);
@@ -86,6 +86,14 @@ fn spans(kind: ClockKind, hz: f64) -> (u64, u64, u64, f64) {
         }
         ClockKind::Discrete => (DISCRETE_LEAD, DISCRETE_CLIP, 1, DISCRETE_FPS),
     }
+}
+
+/// A clip's size for a frame's: `CLIP_HEIGHT` high, the frame's shape.
+#[cfg(feature = "render")]
+pub(super) fn clip_size((fw, fh): (u32, u32)) -> (u32, u32) {
+    let ch = CLIP_HEIGHT.min(fh);
+    let cw = ((fw as u64 * ch as u64) / fh.max(1) as u64).max(2) as u32;
+    (cw, ch)
 }
 
 fn marks_dir(root: &Path) -> PathBuf {
@@ -376,13 +384,7 @@ impl Daemon {
     ) {
         #[cfg(feature = "render")]
         {
-            let (fw, fh) = self
-                .render
-                .window
-                .as_ref()
-                .map(|(h, _)| h.size())
-                .filter(|(w, h)| *w > 1 && *h > 1)
-                .unwrap_or(FRAME_SIZE);
+            let (fw, fh) = self.frame_size();
             self.refresh_assets();
             match self
                 .draw_offscreen((fw, fh), software)
@@ -397,8 +399,7 @@ impl Daemon {
                 mark["clip"] = json!({ "skipped": "clip: false" });
                 return;
             }
-            let ch = CLIP_HEIGHT.min(fh);
-            let cw = ((fw as u64 * ch as u64) / fh.max(1) as u64).max(2) as u32;
+            let (cw, ch) = clip_size((fw, fh));
             let from = frame.saturating_sub(clip_len).max(start.tick);
             let t = std::time::Instant::now();
             mark["clip"] = match self
@@ -452,10 +453,24 @@ impl Daemon {
         r.capture()
     }
 
+    /// The frame's size: the window's, else the editor's viewport's (the
+    /// stream's, phase 4), or `FRAME_SIZE` with neither, so a mark or a
+    /// review's clip frames the scene as the person saw it.
+    #[cfg(feature = "render")]
+    pub(super) fn frame_size(&self) -> (u32, u32) {
+        self.render
+            .window
+            .as_ref()
+            .map(|(h, _)| h.size())
+            .or_else(|| self.render.stream.as_ref().map(|s| s.writer.size()))
+            .filter(|(w, h)| *w > 1 && *h > 1)
+            .unwrap_or(FRAME_SIZE)
+    }
+
     /// Pictures of `from..=to`, one every `every` ticks, replayed quietly
     /// from `start`; the live state is put back after, whatever happened.
     #[cfg(feature = "render")]
-    fn render_clip(
+    pub(super) fn render_clip(
         &mut self,
         start: &crate::ring::Keyframe,
         from: u64,

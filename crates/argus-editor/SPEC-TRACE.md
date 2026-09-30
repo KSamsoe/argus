@@ -47,11 +47,22 @@ Every statement in the design document (v0.3) that constrains the editor (§11, 
 | "When the human ends the session, the final values are committed as an ordinary transaction with the human as author." | Done | Keep (`tune.end`, with an optional note) and Put back (`commit: false`). The session's area is the same height open or not, so no slider moves under a hand; each slider's id is its row's. | `tuning` (the colony's file and `defs/items.toml` written; the feed's row with the note) |
 | (§10) Outpost's tune fields: job priorities, consumption rates, growth curves. | Done | The colony's fields, the def rows (a meal's food, each job's priority and work), and the job kinds made at run time are all rows. | `tuning`; argus-daemon `tune_defs` |
 
+## §10, §11 The agent panel (item 4)
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§11) The agent panel shows "pending proposals, review requests, marks, the change feed". | Done | `agent.rs`, the Agent tab (a count of questions and proposals in its name; the bar's "The agent asks: ..." button): `review.list`, `proposal.list`, and `mark.list` read once a second, and at once on a `reviews` notification. | `agent::a_person_answers_the_agent_tries_its_proposal_and_closes_a_mark` |
+| (§10) Review requests: "the human answers with one keystroke or a sentence"; the queue "drains at the human's pace". | Done | The oldest question shows, the rest a line each; its choices are buttons and keys 1 to 9 (while the Agent tab shows and neither the game nor a text field has the keys); a sentence and Send, or Enter. `review.answer`, by the person. | `agent` (key 3; a sentence) |
+| (§10) "The agent can attach the exact frame range and the human can scrub it." | Done | The clip (an animated PNG the daemon drew from the replay) decoded off the UI thread; Play clip loops it at its rate; the scrubber moves a picture at a time and names its frame. | `agent` (frame 280, frame 340, playing); `agent::tests::an_animated_png_decodes_to_every_frame` |
+| (§10) Proposals: F9 toggles, variants cycle, "the pick is the commit". | Done | Try it (`proposal.try`, then B), a button per world (`proposal.show`), Keep (`proposal.pick` by the person), Stop trying, Turn down; the trial's switches counted. | `agent` (A and B switched, B kept, `Health.max` 5, the feed's pick) |
+| (§10) Marks, with their notes. | Done | Each open mark with its frame's picture, its note to reword (`mark.note`), Reproduce (`mark.open`), Close, and Take back (`mark.cancel`). | `agent` (the note, closed) |
+| (§10) "The human returning after an hour reads what the agent did as a sequence of notes." | Done | What the agent did: every other author's feed rows, newest first, the note or, without one, the command. The Change feed tab filters by author. | `agent` (the agent's rows only, then the person's) |
+
 ## The phase 4 gate, first half
 
 | Spec | Status | Where | Test |
 |---|---|---|---|
-| "Everything the editor does appears in the change feed as a command the agent could have issued." | Partial (items 0 to 3) | The daemon writes a feed row for every call that changes something, from any client, with its author and its `argus` line (`argus-daemon` `feed.rs`); a commit's line is the whole transaction as the agent's `edit` tool. The viewport's keys are the input log's, and what F8, F9, and F10 stand for is a feed row by the person (`argus-daemon` `stream`). Each item's panel adds its actions to the editor test; the gate drives every panel and replays the feed through the CLI. | `editor`; `argus-cli` `feed::every_change_is_a_command_the_agent_could_have_issued` |
+| "Everything the editor does appears in the change feed as a command the agent could have issued." | Partial (items 0 to 4) | The daemon writes a feed row for every call that changes something, from any client, with its author and its `argus` line (`argus-daemon` `feed.rs`); a commit's line is the whole transaction as the agent's `edit` tool. The viewport's keys are the input log's, and what F8, F9, and F10 stand for is a feed row by the person (`argus-daemon` `stream`). Each item's panel adds its actions to the editor test; the gate drives every panel and replays the feed through the CLI. | `editor`; `argus-cli` `feed::every_change_is_a_command_the_agent_could_have_issued` |
 
 ## Known limitations, stated so they are decisions
 

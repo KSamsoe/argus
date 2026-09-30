@@ -257,6 +257,18 @@ pub fn run(c: &mut dyn Caller, name: &str, args: &Json) -> Result<Json, Json> {
             let errors = c.call("script.errors", json!({}))?;
             Ok(json!({ "scripts": scripts, "assets": assets, "errors": errors }))
         }
+        "review" => {
+            if args.get("list").and_then(Json::as_bool) == Some(true)
+                || args.get("question").is_none()
+            {
+                let all = args.get("all").and_then(Json::as_bool).unwrap_or(true);
+                return c.call("review.list", json!({ "all": all }));
+            }
+            c.call(
+                "obs.review",
+                pick(args, &["question", "frames", "options", "note"]),
+            )
+        }
         "marks" => {
             let action = args.get("action").and_then(Json::as_str).unwrap_or("list");
             match action {
