@@ -222,6 +222,58 @@ fn a_trial_runs_every_variant_on_the_same_input_and_the_pick_is_the_commit() {
     );
 }
 
+/// Found by the phase 4 gate: after a variant was picked, the run before
+/// the trial was gone (the picked world's ring began where the trial did,
+/// and its event log had started again), so the scrubber could not go back
+/// past it. The picked world goes on as the run, its past included.
+#[test]
+fn the_run_before_a_trial_stays_when_a_variant_is_picked() {
+    let t = temp("proposals-graft");
+    project_with_speed(t.path());
+    let mut d = open(t.path());
+    ok(
+        &mut d,
+        "input.inject",
+        json!({ "action": "move", "value": [1, 0], "frames": 100 }),
+    );
+    ok(&mut d, "sim.step", json!({ "n": 200 }));
+    let walked = x(&mut d);
+    let seen = ok(&mut d, "obs.events", json!({}))["last_seq"]
+        .as_u64()
+        .unwrap();
+    propose(&mut d, 3.0, "speed 3", None);
+    ok(&mut d, "proposal.try", json!({ "id": 1 }));
+    ok(&mut d, "proposal.show", json!({ "variant": "B" }));
+    ok(&mut d, "sim.step", json!({ "n": 30 }));
+    ok(&mut d, "proposal.pick", json!({ "id": 1, "variant": "B" }));
+    assert_eq!(speed(&mut d), 3.0, "the game goes on in B");
+    let ring = ok(&mut d, "sim.ring", json!({}));
+    assert_eq!(ring["floor"], 0, "{ring}");
+    assert_eq!(ring["oldest"], 0, "{ring}");
+    // The log reaches back past the trial (the bat died at frame 2), and is
+    // numbered on from what a reader had seen.
+    let ev = ok(&mut d, "obs.events", json!({ "limit": 5000 }));
+    let rows = ev["rows"].as_array().unwrap();
+    let deaths: Vec<&serde_json::Value> = rows.iter().filter(|r| r["name"] == "death").collect();
+    assert!(
+        deaths
+            .iter()
+            .any(|r| r["frame"].as_u64().is_some_and(|f| f < 10)),
+        "{deaths:?}"
+    );
+    let seqs: Vec<u64> = rows.iter().map(|r| r["seq"].as_u64().unwrap()).collect();
+    assert!(seqs.windows(2).all(|w| w[1] > w[0]), "{seqs:?}");
+    assert!(ev["last_seq"].as_u64().unwrap() > seen, "{ev}");
+    let since = ok(&mut d, "obs.events", json!({ "since": seen }));
+    assert!(
+        since["rows"].as_array().is_some_and(|r| !r.is_empty()),
+        "{since}"
+    );
+    // A frame from before the trial, as it was then (before the edit).
+    ok(&mut d, "sim.seek", json!({ "frame": 150 }));
+    assert_eq!((x(&mut d), speed(&mut d)), (walked, 2.0));
+}
+
 /// Found in the phase 2 gate: a variant's world has its own clock, which
 /// starts stopped, so the game stood still in B until A came back. The
 /// world switched in plays, or waits paused, as the one before it did, and

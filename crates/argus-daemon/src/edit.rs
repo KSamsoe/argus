@@ -454,6 +454,19 @@ impl Editing {
         id
     }
 
+    /// What outlives the world at a scene load: the change feed and the
+    /// id counters. Undo, open transactions, and locks are about the world
+    /// that goes.
+    pub fn feed_only(&mut self) -> Editing {
+        Editing {
+            next_tx: self.next_tx,
+            next_commit: self.next_commit,
+            next_lock: self.next_lock,
+            feed: std::mem::take(&mut self.feed),
+            ..Default::default()
+        }
+    }
+
     /// The open transaction with this id.
     pub fn tx_mut(&mut self, id: u32) -> Result<&mut Tx> {
         self.open.get_mut(&id).ok_or_else(|| {

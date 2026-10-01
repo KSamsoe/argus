@@ -582,7 +582,20 @@ impl Daemon {
             for sc in report["scenarios"].as_array().into_iter().flatten() {
                 for r in sc["seeds"].as_array().into_iter().flatten() {
                     if r["ok"] == false && failing.len() < 20 {
-                        failing.push(json!({ "scenario": sc["name"], "seed": r["seed"], "error": r["error"] }));
+                        // Which expectations failed, in words: what the
+                        // agent reads to say a candidate starves (a death
+                        // count) rather than runs low (a stock).
+                        let failed: Vec<Json> = r["expectations"]
+                            .as_array()
+                            .into_iter()
+                            .flatten()
+                            .filter(|e| e["ok"] == false)
+                            .map(|e| {
+                                let m = e["message"].as_str().filter(|m| !m.is_empty());
+                                json!(m.or(e["desc"].as_str()).unwrap_or(""))
+                            })
+                            .collect();
+                        failing.push(json!({ "scenario": sc["name"], "seed": r["seed"], "error": r["error"], "failed": failed }));
                     }
                 }
             }

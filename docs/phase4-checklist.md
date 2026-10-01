@@ -239,8 +239,18 @@ Decisions taken while building it:
 
 ## The gate
 
-**Status: to do.**
+**Status: met** (2026-10-01), recorded in [phase4-gate.md](phase4-gate.md). Every panel driven headless in one session, its 53 feed rows typed into the CLI on a fresh daemon over a fresh copy: the same world digest, clock, and files (`crates/argus-editor/tests/gate.rs`). Outpost tuned at 10x with the slider, the path read by the agent's own tools, its four candidates swept over twenty seeds of thirty days, and the report: 1.5 (the value kept) starves one seed in twenty and leaves the rest short of food, 2.0 starves all twenty (`tests/gate_outpost.rs`, release). Kevin's own tuning session is the hand check.
 
 - Everything the editor does appears in the change feed as a command the agent could have issued. Checked by driving every panel headless, then running the feed's commands through the CLI on a fresh daemon and getting the same world.
 - Kevin tunes Outpost's food economy at 10× with the sliders. The agent reads the slider path from the tuning log, sweeps the candidates (20 seeds, 30 days each), and reports which ones starve.
 - Every earlier gate's tests still pass.
+
+Found by the gate, and fixed (each in phase4-gate.md):
+
+- **Keeping a proposal erased the run before it.** The world picked goes on as the run now, its past included.
+- **A scene load emptied the change feed**, so a replay opened from the scrubber cut the session's record short. The feed outlives a load.
+- **The profiler offered ticks of a run that was gone** (taken back by Stop). Only ticks the run can reach are offered.
+- **The agent could not read the tuning log.** `query {tuning}`.
+- **A sweep did not say why a run failed.** Each failing run lists its failed expectations.
+- **No call answered with the world's digest.** `sim.status {digest}`.
+- **Three lists had no accessible name**: the hierarchy's filters and the inspector's add list.

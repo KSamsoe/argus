@@ -263,6 +263,15 @@ Phase 0 item 4, "JSON-RPC daemon with session, world, edit, sim (play, pause, st
 | (Kevin's second play) The sound plays only while the game does. | Done | `Daemon::sync_audio`, every frame a window or a stream is open and when either opens a device: the audio engine is held while the clock is stopped or paused (`AudioEngine::set_hold`: the device's callback sends silence and leaves the mixer where it is). `audio.status` says `held` and the music's `seconds`. | `stream::the_music_waits_for_play` (a real device, the master bus muted) |
 | (P1) Escape at a mark's note prompt had no command. | Done | `mark.cancel {id}`: the mark's files go, `mark.cancelled` says so, and a prompt open for it closes. | `stream` |
 
+## The phase 4 gate: what it needed and found
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (The gate) Two worlds compared through the protocol. | Done | `sim.status {digest: true}`: the world's digest as a mark records it, every field of every live entity. | `argus-editor` `gate` |
+| (The gate) The feed holds every change of the session. | Done | A scene load (and so a replay or a mark opened) emptied the change feed; `open_scene` keeps it now (`Editing::feed_only`), and its ids count on. Undo, open transactions, and locks still go with the world they were about. | `scrub::the_change_feed_outlives_a_scene_load_and_a_replay_opened` |
+| (§6, §10) A variant picked keeps the run. | Done | After a trial, the game goes on in the world picked (phase 2's decision), whose ring began where the trial did: the run before it was gone and the scrubber could not reach it. The picked world takes on the run's keyframes before it forked (`Ring::graft`) and its events, its own numbered on (`graft_run`). | `proposals::the_run_before_a_trial_stays_when_a_variant_is_picked` |
+| (§10) A sweep says which ones starve. | Done | Each failing run lists the expectations that failed, in words (`failing[].failed`), so a starvation count is told from a low stock. | `argus-editor` `gate_outpost` |
+
 ## Phase 4, item 9: timelines edited, played, and scrubbed
 
 | Spec | Status | Where | Test |

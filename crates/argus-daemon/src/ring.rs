@@ -171,6 +171,26 @@ impl Ring {
         self.keys.iter().map(|k| k.bytes).sum()
     }
 
+    /// Take on the keyframes of the run this branch came from, those before
+    /// it began: a proposal's world picked goes on as the run (found by the
+    /// phase 4 gate: after Keep B the run before the trial was gone, and
+    /// the scrubber could not reach it).
+    pub fn graft(&mut self, before: &Ring) {
+        let floor = self.floor;
+        let mut keys: Vec<Keyframe> = before
+            .keys
+            .iter()
+            .filter(|k| k.tick < floor)
+            .cloned()
+            .collect();
+        if keys.is_empty() {
+            return;
+        }
+        keys.append(&mut self.keys);
+        self.keys = keys;
+        self.floor = before.floor.min(floor);
+    }
+
     /// Is there a barrier keyframe (a change made between ticks) at `tick`?
     pub fn barrier_at(&self, tick: u64) -> bool {
         self.keys.iter().any(|k| k.barrier && k.tick == tick)

@@ -181,6 +181,7 @@ effects = \"actor:Health.cur = 4\"
         ("describe", json!({ "systems": true })),
         ("observe", json!({})),
         ("marks", json!({})),
+        ("query", json!({ "tuning": true })),
     ] {
         let (is_err, rerun, got, _) = m.tool(name, args.clone());
         assert!(!is_err, "{name} {args}: {got}");

@@ -362,6 +362,7 @@ dependencies = [
 name = "argus-editor"
 version = "0.0.1"
 dependencies = [
+ "argus-cli",
  "argus-client",
  "argus-daemon",
  "argus-ecs",

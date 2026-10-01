@@ -280,3 +280,55 @@ fn a_failing_tests_replay_is_listed_for_the_editor_to_open() {
     assert!(r["floor"].as_u64().unwrap() <= 60, "the lead-in: {r}");
     assert_eq!(r["end"], 120);
 }
+
+/// Found by the phase 4 gate: a scene load, and so a replay or a mark
+/// opened, emptied the change feed, and a session's feed no longer held
+/// every change it made (nor made the same world typed into the CLI).
+#[test]
+fn the_change_feed_outlives_a_scene_load_and_a_replay_opened() {
+    let t = temp("scrub-feed-load");
+    project(t.path());
+    let mut d = open(t.path());
+    let call = |d: &mut Daemon, m: &str, p: Json| d.call(1, m, &p).unwrap();
+    call(&mut d, "session.identify", json!({ "author": "human" }));
+    call(&mut d, "sim.step", json!({ "n": 30 }));
+    call(&mut d, "scene.load", json!({}));
+    call(&mut d, "sim.step", json!({ "n": 20 }));
+    call(
+        &mut d,
+        "replay.save",
+        json!({ "dir": ".argus/replays/feed/seed1" }),
+    );
+    call(
+        &mut d,
+        "replay.open",
+        json!({ "path": ".argus/replays/feed/seed1" }),
+    );
+    call(&mut d, "sim.step", json!({ "n": 5 }));
+    let feed = ok(&mut d, "edit.feed", json!({}));
+    let lines: Vec<&str> = feed["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["command"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        lines,
+        [
+            "argus sim step n=30",
+            "argus scene load",
+            "argus sim step n=20",
+            "argus replay save dir=.argus/replays/feed/seed1",
+            "argus replay open path=.argus/replays/feed/seed1",
+            "argus sim step n=5",
+        ],
+        "{feed}"
+    );
+    let ids: Vec<u64> = feed["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["id"].as_u64().unwrap())
+        .collect();
+    assert!(ids.windows(2).all(|w| w[1] > w[0]), "{ids:?}");
+}

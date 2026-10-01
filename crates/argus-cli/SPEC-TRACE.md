@@ -90,6 +90,13 @@ Phase 0 item 9, "CLI": this crate, plus `argus_daemon::launch` (shared with `arg
 | (§15) Mod packs. | Done | `argus build --mod <id>`: the mod's pack in `dist/mods/` (or `--out`), after checking that it loads with the game (the mods it requires first), nothing left out, and that the game plays the same with the mod from its pack as from its directory. | Hollow's `lanterns` and `brighter` built and checked |
 | (§16) About a dozen tools. | Done | No new tool: `query {mods: true}` reads `mods.list`, `reload {mods: [...]}` loads the scene again with those mods. | `tools.rs` |
 
+## The phase 4 gate: the slider path for the agent
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§10) "The agent sees the slider path as data." | Done | No tool read the tuning log; `query {tuning: true or a field, since}` calls `tune.log`: each field's search path in a line, and every move with its frame. | `mcp` (the reading tools); `argus-editor` `gate_outpost` |
+| (The gate) The editor's changes typed into the CLI. | Done | Every row of a session that drove every panel ran through `argus_cli::run` on a fresh daemon. | `argus-editor` `gate` |
+
 ## Phase 4, item 9: a timeline's rows and plays
 
 | Spec | Status | Where | Test |

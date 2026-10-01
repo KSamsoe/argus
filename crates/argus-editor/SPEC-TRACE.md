@@ -107,11 +107,14 @@ Every statement in the design document (v0.3) that constrains the editor (§11, 
 | Undoable per author. | Done | Ctrl+Z: the file as it was, byte for byte. | `timeline` |
 | (§13) Customers: cutscenes, boss intros, Outpost's event vignettes. | Done | Any timeline of the game's: Hollow's outro (a cut, two tweens on one track, a line that waits) and room fade, Outpost's `lost`. | Hollow's outro in the editor (headless: played with the hero, the hermit's call dragged sooner, scrubbed back, undone byte for byte) |
 
-## The phase 4 gate, first half
+## The phase 4 gate
 
 | Spec | Status | Where | Test |
 |---|---|---|---|
-| "Everything the editor does appears in the change feed as a command the agent could have issued." | Partial (items 0 to 9) | The daemon writes a feed row for every call that changes something, from any client, with its author and its `argus` line (`argus-daemon` `feed.rs`); a commit's line is the whole transaction as the agent's `edit` tool. The viewport's keys are the input log's, and what F8, F9, and F10 stand for is a feed row by the person (`argus-daemon` `stream`). Each item's panel adds its actions to the editor test; the gate drives every panel and replays the feed through the CLI. | `editor`; `argus-cli` `feed::every_change_is_a_command_the_agent_could_have_issued` |
+| "Everything the editor does appears in the change feed as a command the agent could have issued." | Done | Every panel driven in one session over a real socket, the agent working beside the person: the bar, the hierarchy and the inspector, the tuning panel, the agent panel, the viewport (F8 and its note while playing), the scrubber (a drag, a world tried and left, a replay opened), the profiler, the tiles, the animator, the timeline. The whole feed, every author's rows in order, typed into the CLI against a fresh daemon on a fresh copy of the project: the same world digest (`sim.status {digest}`), clock, and world in use, and every file the same byte for byte. See `docs/phase4-gate.md`. | `gate::every_panels_changes_are_the_feeds_commands_and_make_the_same_world` |
+| "A human tunes Outpost's food economy at 10× with sliders; the agent sees the slider path as data, sweeps the candidates, and reports which ones starve." | Done, headless (Kevin's own session is the hand check) | The person drags the colony's hunger three times while Outpost runs at 10x and keeps it; the agent, through its own tools (`argus_cli::tools`), reads the path (`query {tuning}`), takes where the session began and where the person let go, sweeps them over §9's scenario (twenty seeds, thirty days), and reports which starve and which only run short. | `gate_outpost::a_person_tunes_outpost_at_10x_and_the_agent_sweeps_the_path` (release, `--ignored`) |
+| Lists a person and a test can find by name. | Done | The hierarchy's filters ("Only entities with", "Only the room") and the inspector's "Component to add" had no accessible name (found by the gate, as the World list was by item 5). | `gate` |
+| The profiler goes only where the run can. | Done | "Go there" is offered for a slow tick inside the run's reach (`sim.ring`'s floor to end); one from a run that went (play stopped, a branch) says so (found by the gate: the seek was refused). | `gate` |
 
 ## Known limitations, stated so they are decisions
 

@@ -97,7 +97,12 @@ impl Profile {
     }
 
     /// Draw it; the calls the person made (a capture, a seek to a slow tick).
-    pub fn ui(&mut self, ui: &mut egui::Ui, discrete: bool) -> Vec<(String, Json)> {
+    pub fn ui(
+        &mut self,
+        ui: &mut egui::Ui,
+        discrete: bool,
+        run: (u64, u64),
+    ) -> Vec<(String, Json)> {
         let mut out = Vec::new();
         if self.targets.is_null() {
             ui.weak("Reading the profile...");
@@ -114,7 +119,7 @@ impl Profile {
                 ui.add_space(4.0);
                 self.systems_ui(ui);
                 ui.add_space(4.0);
-                self.worst_ui(ui, discrete, &mut out);
+                self.worst_ui(ui, discrete, run, &mut out);
                 ui.add_space(4.0);
                 self.capture_ui(ui, &mut out);
                 ui.add_space(4.0);
@@ -323,7 +328,15 @@ impl Profile {
             });
     }
 
-    fn worst_ui(&self, ui: &mut egui::Ui, discrete: bool, out: &mut Vec<(String, Json)>) {
+    /// `run` is the ticks a seek can reach, floor to end: a slow tick from
+    /// a run that went (play stopped, or a branch) is not one to go to.
+    fn worst_ui(
+        &self,
+        ui: &mut egui::Ui,
+        discrete: bool,
+        run: (u64, u64),
+        out: &mut Vec<(String, Json)>,
+    ) {
         let rows: Vec<&Json> = self.worst["rows"]
             .as_array()
             .into_iter()
@@ -355,9 +368,13 @@ impl Profile {
                         ui.horizontal_wrapped(|ui| {
                             ui.label(RichText::new(format!("tick {tick}")).strong());
                             ui.label(format!("{} ms", ms(&r["total_ms"])));
+                            let here = (run.0..=run.1).contains(&tick);
                             if ui
-                                .small_button("Go there")
+                                .add_enabled(here, egui::Button::new("Go there").small())
                                 .on_hover_text("Seek to this tick, to see what the game was doing")
+                                .on_disabled_hover_text(
+                                    "This tick was in a run that is gone (play was stopped, or the run branched)",
+                                )
                                 .clicked()
                             {
                                 let p = if discrete {

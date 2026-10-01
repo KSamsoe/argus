@@ -725,7 +725,15 @@ impl Daemon {
                 Ok(self.sim_status())
             }
             "sim.run_until" => self.sim_run_until(params),
-            "sim.status" => Ok(self.sim_status()),
+            "sim.status" => {
+                let mut s = self.sim_status();
+                // The world's digest: two worlds with the same one are the
+                // same world (the phase 4 gate compares a feed's replay).
+                if json::bool_param(params, "digest", false)? {
+                    s["digest"] = json!(format!("{:016x}", self.world.digest()));
+                }
+                Ok(s)
+            }
             "sim.set" => self.sim_set(params),
             "script.reload" => {
                 self.mutations += 1;
@@ -1239,6 +1247,10 @@ impl Daemon {
         self.mods_asked = json::str_list(params, "mods")?;
         self.forks.clear();
         self.active = "main".to_string();
+        // Another project, another feed.
+        if self.session.as_ref().is_some_and(|s| s.root != root) {
+            self.edits = Default::default();
+        }
         self.open_scene(root, &cfg, &scene_name, seed)
     }
 
@@ -1327,8 +1339,13 @@ impl Daemon {
         self.mutations += 1;
         // Fresh world and scheduler, assembled as every player assembles
         // them (argus-player, phase 2 item 7); the daemon's own parts go
-        // around it. A random seed policy takes the clock's.
+        // around it. A random seed policy takes the clock's. The change
+        // feed is the session's record of every change, a load among them,
+        // so it stays (found by the phase 4 gate: a replay opened from the
+        // scrubber emptied it, and the feed no longer made the same world).
+        let kept = self.edits.feed_only();
         self.close();
+        self.edits = kept;
         let random_seed = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_nanos() as u64)

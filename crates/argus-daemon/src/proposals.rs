@@ -616,6 +616,7 @@ impl Daemon {
         let field_edits = ops.iter().all(Op::is_field_edit);
         // In a trial: commit in A, where the files and undo belong.
         let mut go_on_in = None;
+        let mut came_from = None;
         let mut toggles = 0;
         let mut shown = Vec::new();
         if let Some(t) = &self.trial {
@@ -625,6 +626,7 @@ impl Daemon {
                 self.sync_trial()?;
                 let t = self.trial.as_ref().expect("still trying");
                 let a = t.worlds[0].1.clone();
+                came_from = Some(a.clone());
                 if field_edits {
                     go_on_in = t
                         .worlds
@@ -646,6 +648,9 @@ impl Daemon {
         if let Some(name) = go_on_in {
             if self.forks.contains_key(&name) {
                 self.switch_to(&name)?;
+                if let Some(a) = &came_from {
+                    self.graft_run(a);
+                }
             }
         }
         self.end_trial(false);
@@ -659,6 +664,51 @@ impl Daemon {
             v["note"].as_str().unwrap_or(""),
         );
         Ok(json!({ "proposal": row(&p), "commit": commit }))
+    }
+
+    /// The world in use goes on as the run of the world `from` (parked):
+    /// the keyframes and the events from before it forked are its too, so
+    /// the scrubber and the event log reach back past the trial. Its own
+    /// events are numbered on from the run's, as a client reading the log
+    /// `since` a seq expects.
+    fn graft_run(&mut self, from: &str) {
+        let Some(a) = self.forks.get(from) else {
+            return;
+        };
+        let (Some(asess), Some(bsess)) = (a.session.as_ref(), self.session.as_ref()) else {
+            return;
+        };
+        let floor = bsess.ring.borrow().floor;
+        bsess.ring.borrow_mut().graft(&asess.ring.borrow());
+        let mut records = VecDeque::new();
+        let mut ticked = VecDeque::new();
+        for ((seq, r), t) in a.events.records.iter().zip(a.events.ticked.iter()) {
+            let before = if *t {
+                r.frame < floor
+            } else {
+                r.frame <= floor
+            };
+            if before {
+                records.push_back((*seq, r.clone()));
+                ticked.push_back(*t);
+            }
+        }
+        let mut next = a.events.next_seq.max(1);
+        let own: Vec<(EventRecord, bool)> = self
+            .events
+            .records
+            .drain(..)
+            .map(|(_, r)| r)
+            .zip(self.events.ticked.drain(..))
+            .collect();
+        for (r, t) in own {
+            records.push_back((next, r));
+            ticked.push_back(t);
+            next += 1;
+        }
+        self.events.records = records;
+        self.events.ticked = ticked;
+        self.events.next_seq = next;
     }
 
     /// `proposal.reject {id}`: turn it down; the world is as it was.

@@ -301,6 +301,14 @@ impl Inspector {
                                     ui.selectable_value(&mut self.add, name.clone(), name);
                                 }
                             }
+                        })
+                        .response
+                        .widget_info(|| {
+                            egui::WidgetInfo::labeled(
+                                egui::WidgetType::ComboBox,
+                                true,
+                                "Component to add",
+                            )
                         });
                     if ui
                         .add_enabled(!self.add.is_empty(), egui::Button::new("Add"))

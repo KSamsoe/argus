@@ -94,6 +94,16 @@ pub fn run(c: &mut dyn Caller, name: &str, args: &Json) -> Result<Json, Json> {
                 c.call("strings.list", p)
             } else if args.get("mods").and_then(Json::as_bool) == Some(true) {
                 c.call("mods.list", json!({}))
+            } else if let Some(t) = args.get("tuning").filter(|v| !v.is_null()) {
+                // The person's search path, as data (section 10).
+                let mut p = json!({ "limit": 1000 });
+                if let Some(field) = t.as_str() {
+                    p["path"] = json!(field);
+                }
+                if let Some(s) = args.get("since").filter(|v| !v.is_null()) {
+                    p["since"] = s.clone();
+                }
+                c.call("tune.log", p)
             } else if let Some(t) = args.get("timelines").filter(|v| !v.is_null()) {
                 match t.as_str() {
                     Some(name) => c.call("timeline.list", json!({ "name": name })),

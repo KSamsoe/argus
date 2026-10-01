@@ -271,8 +271,7 @@ fn a_person_plays_drags_and_scrubs_a_timeline() {
     // A cue added at the playhead, its effects typed.
     // The new cue's field, not the flare's (a field of many lines).
     h.get_all_by_label("effects")
-        .filter(|n| n.role() == egui::accesskit::Role::TextInput)
-        .next_back()
+        .rfind(|n| n.role() == egui::accesskit::Role::TextInput)
         .expect("the new cue's effects")
         .type_text("actor:Light.intensity = 2; emit dimmed");
     h.step();

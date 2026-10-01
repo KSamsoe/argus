@@ -221,7 +221,9 @@ impl Hierarchy {
                     for c in components {
                         ui.selectable_value(&mut self.has, c.clone(), c);
                     }
-                });
+                })
+                .response
+                .widget_info(|| named_combo("Only entities with"));
             if !self.rooms.is_empty() {
                 egui::ComboBox::from_id_salt("hier-room")
                     .selected_text(if self.room.is_empty() {
@@ -235,7 +237,9 @@ impl Hierarchy {
                         for r in &self.rooms {
                             ui.selectable_value(&mut self.room, r.clone(), r);
                         }
-                    });
+                    })
+                    .response
+                    .widget_info(|| named_combo("Only the room"));
             }
             if (self.has.clone(), self.room.clone()) != before {
                 self.top = Page::default();
@@ -325,4 +329,10 @@ impl Hierarchy {
             }
         }
     }
+}
+
+/// A list's accessible name: its words say what it filters, not what it
+/// holds now (a screen reader's, and the tests' way to it).
+fn named_combo(name: &str) -> eframe::egui::WidgetInfo {
+    eframe::egui::WidgetInfo::labeled(eframe::egui::WidgetType::ComboBox, true, name)
 }

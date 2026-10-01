@@ -1005,7 +1005,12 @@ impl Editor {
                     }
                     Tab::Profile => {
                         let discrete = self.status["driver"] == "discrete";
-                        for (method, params) in self.profile.ui(ui, discrete) {
+                        let ring = &self.scrubber.ring;
+                        let run = (
+                            ring["floor"].as_u64().unwrap_or(0),
+                            ring["end"].as_u64().unwrap_or(u64::MAX),
+                        );
+                        for (method, params) in self.profile.ui(ui, discrete, run) {
                             if method == "prof.capture" {
                                 // Its answer says where the file will be.
                                 self.commands.push(command::line(&method, &params));
