@@ -111,6 +111,12 @@ Phase 0 item 5, "TOML scenes, rooms, defs, and prefab overrides": this crate.
 |---|---|---|---|
 | (§10) A def row's tune field moved by a slider, and kept. | Done | `Defs::value_of` and `Defs::set_value` (checked against the table's schema, as an entity's field is: its type and range); `defs::write_value` writes one value into the row's table in its file, keeping the file's layout and comments and the old value's own comment, an f32 through its shortest text. | argus-daemon `tune_defs` |
 
+## Phase 4, item 9: whole def rows written
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§4, §13) A timeline's cue added, replaced, or taken out in its table's file. | Done | `defs::write_row(root, table, key, fields)`: the row built from its fields (an f32 written through its shortest text; a field the schema does not have refused), a replaced row's comment kept, the rest of the file as it was; `None` takes the row out. It answers the file and its text before, for undo. | `argus-daemon` `timeline::a_timeline_is_edited_row_by_row_and_played_from_the_editor` |
+
 ## Known limitations, stated so they are decisions
 
 - A child entity that exists only because a prefab declares it is not an "instance" of that prefab (`instances_of`), but it is counted among the entities a prefab change touched (`reapply_prefab`).

@@ -479,6 +479,69 @@ pub fn write_value(
     Ok(rel)
 }
 
+/// Write a whole def row into its table's file, or with `None` take it out
+/// (phase 4 item 9: a timeline's cue added, replaced, or removed), keeping
+/// the rest of the file as it is; a replaced row keeps its header's
+/// comment. The project-relative path, and the file's text before.
+pub fn write_row(
+    root: &Path,
+    table: &DefTable,
+    key: &str,
+    fields: Option<&[(String, Value)]>,
+) -> Result<(String, String)> {
+    let rel = table
+        .file
+        .clone()
+        .unwrap_or_else(|| format!("defs/{}.toml", table.name));
+    let path = root.join(&rel);
+    let old = if path.exists() {
+        tomlv::read(&path)?
+    } else {
+        String::new()
+    };
+    let mut doc = tomlv::parse_mut(&rel, &old)?;
+    match fields {
+        None => {
+            if doc.remove(key).is_none() {
+                return Err(no_row(&format!("{}:{key}", table.prefix)));
+            }
+        }
+        Some(fields) => {
+            let mut t = toml_edit::Table::new();
+            for (name, v) in fields {
+                if *name == table.key {
+                    continue;
+                }
+                let fs = table
+                    .schema
+                    .fields
+                    .iter()
+                    .find(|f| f.name == *name)
+                    .ok_or_else(|| no_field(table, name))?;
+                let tv = match (fs.ty, v) {
+                    (FieldType::F32, Value::Float(f)) => {
+                        let short: f64 = format!("{}", *f as f32).parse().unwrap_or(*f);
+                        toml_edit::Value::from(short)
+                    }
+                    _ => tomlv::from_value(v)?,
+                };
+                t.insert(name, toml_edit::Item::Value(tv));
+            }
+            if let Some(was) = doc.get(key).and_then(|i| i.as_table()) {
+                t.decor_mut().clone_from(was.decor());
+            }
+            doc.insert(key, toml_edit::Item::Table(t));
+        }
+    }
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)
+            .map_err(|e| ArgusError::new(codes::MISSING_FILE, format!("{}: {e}", dir.display())))?;
+    }
+    std::fs::write(&path, doc.to_string())
+        .map_err(|e| ArgusError::new(codes::MISSING_FILE, format!("{rel}: {e}")))?;
+    Ok((rel, old))
+}
+
 fn parse_row(
     table: &DefTable,
     key: &str,

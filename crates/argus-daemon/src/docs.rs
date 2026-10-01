@@ -164,18 +164,18 @@ pub const TOOLS: &[ToolDoc] = &[
     },
     ToolDoc {
         name: "edit",
-        doc: "Change the game's authored state (its files) in one transaction by an author with a note, so the change feed says who and why and undo takes it back. ops run in order and all are kept or none: each is {op: set|add|remove|spawn|despawn|tiles|text|def|asset, ...} with that edit method's parameters, e.g. {op: \"set\", entity: \"@player\", path: \"CharacterController.jump_height\", value: 3.4}, or {op: \"asset\", asset: \"anim/hero\", path: \"states.run.fps\", value: 10} for an animator's clip rate. undo: take back the author's last transaction instead.",
+        doc: "Change the game's authored state (its files) in one transaction by an author with a note, so the change feed says who and why and undo takes it back. ops run in order and all are kept or none: each is {op: set|add|remove|spawn|despawn|tiles|text|def|def_row|asset, ...} with that edit method's parameters, e.g. {op: \"set\", entity: \"@player\", path: \"CharacterController.jump_height\", value: 3.4}, or {op: \"asset\", asset: \"anim/hero\", path: \"states.run.fps\", value: 10} for an animator's clip rate. undo: take back the author's last transaction instead.",
         params: &[
-            opt("ops", ARRAY, "one of ops, undo; [{op, ...}]: set {entity, path, value}, add {entity, component}, remove {entity, component}, spawn {id, room, prefab, tags, components}, despawn {entity}, tiles {file, layer, rect, cells | tile | terrain | erase}, text {lang, key, text} (a string in strings/<lang>.toml; text null removes it), def {def, path, value} (a def table row's field), asset {asset, path, value | remove} (a value in an asset's sidecar)"),
+            opt("ops", ARRAY, "one of ops, undo; [{op, ...}]: set {entity, path, value}, add {entity, component}, remove {entity, component}, spawn {id, room, prefab, tags, components}, despawn {entity}, tiles {file, layer, rect, cells | tile | terrain | erase}, text {lang, key, text} (a string in strings/<lang>.toml; text null removes it), def {def, path, value} (a def table row's field), def_row {def, fields | remove} (a whole row: a timeline's cue), asset {asset, path, value | remove} (a value in an asset's sidecar)"),
             opt("undo", BOOLEAN, "one of ops, undo; undo the author's last transaction"),
             opt("note", STRING, "why, for the change feed"),
             opt("author", STRING, "default \"agent:claude\""),
         ],
-        calls: &["edit.begin", "edit.set", "edit.add", "edit.remove", "edit.spawn", "edit.despawn", "edit.tiles", "edit.text", "edit.def", "edit.asset", "edit.commit", "edit.abort", "edit.undo"],
+        calls: &["edit.begin", "edit.set", "edit.add", "edit.remove", "edit.spawn", "edit.despawn", "edit.tiles", "edit.text", "edit.def", "edit.def_row", "edit.asset", "edit.commit", "edit.abort", "edit.undo"],
     },
     ToolDoc {
         name: "run",
-        doc: "Advance the simulation: step ticks, run until something happens, take turns, play, pause, or stop; load a save first, save the game last. step: that many ticks; until: run until an event, a time, or a tick count; turns: take turns on a discrete clock; play, pause, speed, and stop (back to where play started); load and save: a save game by name, in .argus/saves/, through the migrations its components declare. With none, where the sim is. Always answers with sim.status after.",
+        doc: "Advance the simulation: step ticks, run until something happens, take turns, play, pause, or stop; load a save first, save the game last. step: that many ticks; until: run until an event, a time, or a tick count; turns: take turns on a discrete clock; play, pause, speed, and stop (back to where play started); timeline: play a timeline now, as a script does (then step to watch it); load and save: a save game by name, in .argus/saves/, through the migrations its components declare. With none, where the sim is. Always answers with sim.status after.",
         params: &[
             opt("step", INTEGER, "ticks to run"),
             opt("until", OBJECT, "{event: name} | {time: seconds} | {ticks: n}; max_ticks: n (default 100000)"),
@@ -184,10 +184,11 @@ pub const TOOLS: &[ToolDoc] = &[
             opt("pause", BOOLEAN, "pause"),
             opt("stop", BOOLEAN, "stop and go back to the frame play started from"),
             opt("speed", NUMBER, "ticks per real-time frame; 0 pauses"),
+            opt("timeline", OBJECT, "{name, actor, other}: play a timeline before stepping (timeline.play)"),
             opt("load", STRING, "a save's name, loaded before anything else"),
             opt("save", STRING, "save the game under this name, after everything else"),
         ],
-        calls: &["sim.load", "sim.stop", "sim.play", "sim.pause", "sim.speed", "sim.step", "sim.run_until", "sim.advance", "sim.save", "sim.status"],
+        calls: &["sim.load", "sim.stop", "sim.play", "sim.pause", "sim.speed", "timeline.play", "sim.step", "sim.run_until", "sim.advance", "sim.save", "sim.status"],
     },
     ToolDoc {
         name: "seek",
@@ -596,9 +597,20 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "timeline.list",
-        doc: "The game's timelines (section 13): each row of the timeline table without a timeline field, its length, and its cues by track in time order (a tween, an animator state, a camera cut, a conversation, or edits and events, about the actor, the other, the drawing camera, or an @id; whether it waits), and the Timeline entities playing, with their time, next cue, and what they wait for. Rows that do not read are in problems (and script.errors, phase timeline). A timeline plays when a script spawns a Timeline {name, actor, other}.",
+        doc: "The game's timelines (section 13): each row of the timeline table without a timeline field, its length, and its cues by track in time order (a tween, an animator state, a camera cut, a conversation, or edits and events, about the actor, the other, the drawing camera, or an @id; whether it waits), and the Timeline entities playing, with their time, next cue, and what they wait for. Rows that do not read are in problems (and script.errors, phase timeline). Each timeline and cue carries fields: its row as the file writes it (a field left out takes its default, and a tween with no from starts where the field is), which an editor edits with edit.def and edit.def_row; kinds, roles, and easings name what a cue may be. A timeline plays when a script spawns a Timeline {name, actor, other}, or with timeline.play.",
         params: &[opt("name", STRING, "only this timeline")],
-        returns: "{timelines: [{name, length, ref, cue_columns: [n, cue, at, end, kind, who, what, wait, ref], tracks: [{track, cues}]}], playing: [{timeline, name, time, length, next, held, waiting, began, actor, other}], problems: [{ref, message}]}",
+        returns: "{timelines: [{name, length, ref, fields, cue_columns: [n, cue, at, end, kind, who, what, wait, ref, fields], tracks: [{track, cues}]}], playing: [{timeline, name, time, length, next, held, waiting, began, actor, other}], problems: [{ref, message}], kinds, roles, easings}",
+    },
+    MethodDoc {
+        name: "timeline.play",
+        doc: "Play a timeline now, as a script does (phase 4 item 9, the editor's Play): a Timeline entity of the run (not written to the scene's files) with its actor and other, so it can be watched and scrubbed (timeline.seek). A change between ticks.",
+        params: &[
+            req("name", STRING, "the timeline: outro, or timeline:outro"),
+            opt("actor", STRING, "who its cues call actor (an entity)"),
+            opt("other", STRING, "who its cues call other"),
+            opt("speed", NUMBER, "default 1"),
+        ],
+        returns: "{timeline: its entity, name}",
     },
     MethodDoc {
         name: "timeline.seek",
@@ -635,6 +647,17 @@ pub const METHODS: &[MethodDoc] = &[
             opt("force", BOOLEAN, "default false"),
         ],
         returns: "{imported: [name], unchanged, removed: [name], failed: [{name, message, at}], ms}",
+    },
+    MethodDoc {
+        name: "edit.def_row",
+        doc: "Queue a whole def row added, replaced, or taken out (phase 4 item 9: a timeline's cue, or a timeline): fields as {field: value} by the table's schema, or remove. At commit the row is written into its table's file with the rest kept, the tables are read again, and scripts, conversations, and timelines get them; a row the tables refuse, or one that leaves a timeline a problem it did not have, is put back and the commit fails with the problem and its line. Undo puts back the file's exact text. edit.def changes one field of a row there is.",
+        params: &[
+            req("tx", INTEGER, "the transaction, from edit.begin"),
+            req("def", STRING, "the row: prefix:key (timeline:outro.flash)"),
+            opt("fields", OBJECT, "one of fields, remove; {timeline: \"timeline:outro\", kind: \"event\", at: 2, effects: \"emit flash\"}"),
+            opt("remove", BOOLEAN, "one of fields, remove: take the row out"),
+        ],
+        returns: "{queued}",
     },
     MethodDoc {
         name: "asset.sidecar",

@@ -12,6 +12,7 @@ use crate::link::{Answer, Link, State, Want};
 use crate::profile::Profile;
 use crate::scrubber::{Scrub, Scrubber};
 use crate::tiles::{TileDo, Tiles};
+use crate::timeline::{Timelines, TlDo};
 use crate::tuning::{Tune, Tuning};
 use crate::viewport::{Selected, Send, Viewport};
 use argus_client::command;
@@ -51,6 +52,8 @@ const COLLISION_EVERY: Duration = Duration::from_millis(400);
 /// How often the Animator tab reads its machine, and what the entity fired.
 const SIDECAR_EVERY: Duration = Duration::from_secs(1);
 const FIRED_EVERY: Duration = Duration::from_millis(300);
+/// How often the Timeline tab reads the timelines and where they play.
+const TIMELINES_EVERY: Duration = Duration::from_millis(250);
 
 /// The right panel's tab.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -67,6 +70,8 @@ pub enum Tab {
     Tiles,
     /// The selected entity's animator.
     Animator,
+    /// Timelines: tracks against time.
+    Timeline,
     /// The change feed.
     Feed,
 }
@@ -149,6 +154,8 @@ pub struct Editor {
     pub tiles: Tiles,
     /// The animator editor.
     pub animator: Animator,
+    /// The timeline editor.
+    pub timelines: Timelines,
     txs: HashMap<u64, TxRun>,
     described: bool,
     last_status: Option<Instant>,
@@ -167,6 +174,7 @@ pub struct Editor {
     last_collision: Option<Instant>,
     last_sidecar: Option<Instant>,
     last_fired: Option<Instant>,
+    last_timelines: Option<Instant>,
 }
 
 impl Editor {
@@ -195,6 +203,7 @@ impl Editor {
             profile: Profile::default(),
             tiles: Tiles::default(),
             animator: Animator::default(),
+            timelines: Timelines::default(),
             txs: HashMap::new(),
             described: false,
             last_status: None,
@@ -213,6 +222,7 @@ impl Editor {
             last_collision: None,
             last_sidecar: None,
             last_fired: None,
+            last_timelines: None,
         }
     }
 
@@ -269,6 +279,36 @@ impl Editor {
                 self.act("scene.tiles.create", create);
                 self.edit(&note, ops);
                 self.last_tiles = None;
+            }
+        }
+    }
+
+    fn timeline_do(&mut self, d: TlDo) {
+        match d {
+            TlDo::Edit(note, ops) => {
+                self.edit(&note, ops);
+            }
+            TlDo::Play(p) => {
+                self.act("timeline.play", p);
+                self.last_timelines = None;
+            }
+            TlDo::Pause => self.act("sim.pause", json!({})),
+            TlDo::Seek(t) => {
+                if let Some(t) = self.timelines.want_seek(t) {
+                    let p = self.timelines.seek_params(t);
+                    self.link.send("timeline.seek", p, Want::TimelineSeek);
+                }
+            }
+            TlDo::Let(t, resume) => {
+                // The time let go at is the command the person gave (the
+                // daemon's feed keeps one row for the drag too).
+                self.commands.push(command::line(
+                    "timeline.seek",
+                    &self.timelines.seek_params(t),
+                ));
+                if resume {
+                    self.act("sim.play", json!({}));
+                }
             }
         }
     }
@@ -592,6 +632,14 @@ impl Editor {
                 }
             }
         }
+        if self.tab == Tab::Timeline
+            && due(self.last_timelines, TIMELINES_EVERY)
+            && !self.link.waiting(&Want::TimelineList)
+        {
+            self.last_timelines = Some(now);
+            self.link
+                .send("timeline.list", json!({}), Want::TimelineList);
+        }
         if due(self.last_agent, AGENT_EVERY) {
             self.last_agent = Some(now);
             for (method, want) in [
@@ -630,8 +678,9 @@ impl Editor {
                 }
                 // A stroke landed: the game draws it now.
                 self.tiles.landed(&line);
-                // An animator's edit: its file again.
+                // An animator's edit: its file again; a timeline's, its rows.
                 self.last_sidecar = None;
+                self.last_timelines = None;
                 self.tiles.hover_tile = None;
                 // What changed shows at once, not at the next poll.
                 self.last_status = None;
@@ -799,6 +848,27 @@ impl Editor {
                     .collect();
             }
             (Want::TileAt(_) | Want::TileCollision | Want::TileMaps | Want::Sprites, Err(_)) => {}
+            (Want::TimelineList, Ok(v)) => self.timelines.take(v),
+            (Want::TimelineList, Err(_)) => {}
+            (Want::TimelineSeek, r) => {
+                match &r {
+                    Ok(_) => {
+                        self.last_status = None;
+                        self.last_ring = None;
+                        self.last_timelines = None;
+                        self.hierarchy.stale();
+                        self.last_get = None;
+                    }
+                    Err(e) => {
+                        let line = command::line("timeline.seek", &json!({}));
+                        self.problem = Some(Problem::from_error(&line, e));
+                    }
+                }
+                if let Some(t) = self.timelines.seek_answered(r.as_ref().ok()) {
+                    let p = self.timelines.seek_params(t);
+                    self.link.send("timeline.seek", p, Want::TimelineSeek);
+                }
+            }
             (Want::Replays, Ok(v)) => self.scrubber.replays = v,
             (Want::Events(name), Ok(v)) => self.scrubber.take_events(&name, &v),
             (Want::Seek, r) => {
@@ -910,6 +980,7 @@ impl Editor {
                     ui.selectable_value(&mut self.tab, Tab::Profile, "Profile");
                     ui.selectable_value(&mut self.tab, Tab::Tiles, "Tiles");
                     ui.selectable_value(&mut self.tab, Tab::Animator, "Animator");
+                    ui.selectable_value(&mut self.tab, Tab::Timeline, "Timeline");
                     ui.selectable_value(&mut self.tab, Tab::Feed, "Change feed");
                 });
                 ui.separator();
@@ -958,6 +1029,19 @@ impl Editor {
                         self.animator.take_entity(self.selected.as_deref(), &comps);
                         for (note, ops) in self.animator.ui(ui) {
                             self.edit(&note, ops);
+                        }
+                    }
+                    Tab::Timeline => {
+                        let playing =
+                            self.status["playing"] == true && self.status["paused"] != true;
+                        let selected = self.selected.clone();
+                        let asks = egui::ScrollArea::vertical()
+                            .id_salt("timeline")
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| self.timelines.ui(ui, selected.as_deref(), playing))
+                            .inner;
+                        for d in asks {
+                            self.timeline_do(d);
                         }
                     }
                     Tab::Feed => self.feed_ui(ui),

@@ -263,6 +263,17 @@ Phase 0 item 4, "JSON-RPC daemon with session, world, edit, sim (play, pause, st
 | (Kevin's second play) The sound plays only while the game does. | Done | `Daemon::sync_audio`, every frame a window or a stream is open and when either opens a device: the audio engine is held while the clock is stopped or paused (`AudioEngine::set_hold`: the device's callback sends silence and leaves the mixer where it is). `audio.status` says `held` and the music's `seconds`. | `stream::the_music_waits_for_play` (a real device, the master bus muted) |
 | (P1) Escape at a mark's note prompt had no command. | Done | `mark.cancel {id}`: the mark's files go, `mark.cancelled` says so, and a prompt open for it closes. | `stream` |
 
+## Phase 4, item 9: timelines edited, played, and scrubbed
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§13) A timeline's cues are rows: added, replaced, and taken out through transactions. | Done | `edit.def_row {tx, def, fields | remove}` (`Op::DefRow`, checked when queued: a table there is); at commit the row is written by `argus_scene::defs::write_row`, the tables read again and given to scripts, conversations, and timelines; the inverse is the file's old text (`Op::DefText`). | `timeline::a_timeline_is_edited_row_by_row_and_played_from_the_editor` (a cue added, its comment kept, undone to the exact text) |
+| A row the timelines cannot read is refused. | Done | `apply_def_row`, and `apply_def` for a field: a problem the tables or the timelines did not have before (a kind there is not, an unknown field) puts the row back and fails the commit with it and its line. | `timeline` (a kind "blink" as a row and as a field; an unknown field) |
+| What an editor edits: the rows as the file writes them. | Done | `timeline.list`: each timeline's and cue's `fields` (those its row writes; a tween without `from` starts where the field is), and `kinds`, `roles`, and `easings`. | `timeline` |
+| (§13) Playable from the editor, as from Luau. | Done | `timeline.play {name, actor, other, speed}`: the Timeline entity a script would spawn, a change between ticks (a barrier) and a feed row. | `timeline` (played twice; the second play's cue fires) |
+| (§13) A play begun between ticks is scrubbable. | Done | `timeline_seek` starts at the tick it began when the ring has a barrier there (`Ring::barrier_at`): that keyframe has it, the one before does not. | `timeline` (the second play at 1.5 s and 1.9 s, no divergence) |
+| (Phase 4 gate) A drag along a timeline's ruler is one row. | Done | `feed_command`: `timeline.seek`s in a row by one author on one timeline update one row, as `sim.seek`s do. | `timeline` (two seeks, one row with the last time); `argus-cli` `feed::a_timelines_rows_its_play_and_its_scrub_are_commands_too` |
+
 ## Phase 4, item 8: asset sidecars through transactions
 
 | Spec | Status | Where | Test |

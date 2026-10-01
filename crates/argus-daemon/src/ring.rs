@@ -171,6 +171,11 @@ impl Ring {
         self.keys.iter().map(|k| k.bytes).sum()
     }
 
+    /// Is there a barrier keyframe (a change made between ticks) at `tick`?
+    pub fn barrier_at(&self, tick: u64) -> bool {
+        self.keys.iter().any(|k| k.barrier && k.tick == tick)
+    }
+
     /// Ticks of the keyframes held, oldest first.
     pub fn ticks(&self) -> Vec<u64> {
         self.keys.iter().map(|k| k.tick).collect()

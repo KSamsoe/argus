@@ -29,7 +29,7 @@ The protocol already has most of what the panels call: `world.query`, `world.sea
 - **Data files are not editable through the protocol**, except strings (`edit.text`) and tiles (`edit.tiles`). Def tables (`defs/*.toml`: Outpost's food and job priorities, every game's timelines) and asset sidecars (animator machines) are written by hand today. The tuning panel, the animator editor, and the timeline editor need them as transactions: items 3 and 8.
 - **`tune.fields` covers components on named entities only.** §10 names Outpost's tune fields as "job priorities, consumption rates, and growth curves". Job priorities and food values are def-table fields with `tune = true`, and the panel does not reach them yet: item 3.
 - **The test runner cannot try a value without writing it.** The gate's sweep runs the 20-seed, 30-day scenario against each candidate. Item 3 adds field overrides to a test run.
-- Trace rows waiting for the editor: "show as command" (`argus-cli`, item 0); the timeline scrubber (`argus-timeline`, item 9); a failing test's replay opened in the editor (`argus-test`, item 5); the tuning panel's sliders (phase 2 item 5, item 3); pending proposals shown in the editor (phase 2 item 4, item 4).
+- Trace rows waiting for the editor: "show as command" (`argus-cli`, item 0); the timeline scrubber (`argus-timeline`, item 9, done); a failing test's replay opened in the editor (`argus-test`, item 5); the tuning panel's sliders (phase 2 item 5, item 3); pending proposals shown in the editor (phase 2 item 4, item 4).
 
 ## Decided with Kevin (2026-09-29)
 
@@ -220,11 +220,22 @@ Decisions taken while building it:
 
 ## 9. Timeline editor
 
-**Status: to do.**
+**Status: done** (2026-10-01) in the daemon (`timeline.play`; `edit.def_row`; `timeline.list`'s rows as written, with the kinds, parties, and easings there are; the scrub of a play begun between ticks; a drag along the ruler one feed row), `argus-scene` (`defs::write_row`), the CLI (the `edit` tool's `def_row` op, the `run` tool's `timeline`), and the editor (`timeline.rs`). The right panel's Timeline tab: a timeline's tracks as lanes under a time ruler, its cues as bars from when they fire to when they end, coloured by kind, cues that overlap stacked a row each. A bar dragged moves its cue, its right edge its duration, to a twentieth of a second. The selected cue's fields: its track, time, kind, and who, what its kind takes (a tween's path, from, to, duration, and easing; an anim's state; a cut's duration; a line's node; an event's effects), and any cue's when, sound, and wait. Cues are added at the playhead and taken out; timelines are added with a length and taken out with their cues. Play plays it now with an actor and an other (the selected entity a click away); the playhead follows its latest play, and the ruler scrubs that play. Each change is one transaction by the person in `defs/timeline.toml`, its comments kept and read again at once, so the next play uses it; Ctrl+Z puts back the file's exact text. Traces: `crates/argus-editor/SPEC-TRACE.md`, the daemon's, `argus-scene`'s, `argus-timeline`'s, and `argus-cli`'s.
 
 - §13: a timeline is "a def table of tracks (tweens, animator states, camera cuts, dialogue lines, events) against time, playable from Luau, scrubbable in the editor".
 - The scrub is `timeline.seek` (phase 3 item 5); edits are item 8's data edits.
 - Customers: cutscenes, boss intros, Outpost's event vignettes.
+
+Decisions taken while building it:
+
+- **A cue is a def row, so a new cue is a new row.** `edit.def` changes one field of a row there is; `edit.def_row {tx, def, fields | remove}` adds, replaces, or takes out a whole row (a cue or a timeline), written into the table's file with the rest kept and a replaced row's comment kept. Undo is the file's old text, as for a sidecar (item 8).
+- **The timelines judge, as the importer does for a sidecar.** At commit the tables are read again. A row they refuse, or a field or a row that leaves a timeline a problem it did not have (an event that waits with no `when`, a kind there is not), is put back, and the commit fails with the problem and its line. A new cue must name what its kind needs, so the form asks for it.
+- **The file says what a field left out means.** `timeline.list` gives each row's fields as its file writes them: a tween without `from` starts where the field is, which a default of [0, 0] would hide. The tab's "from: where the field is" box takes `from` out (the row written again without it) or puts it in.
+- **Play is a protocol call.** `timeline.play {name, actor, other, speed}` spawns the Timeline a script would, a change between ticks and a feed row. The agent's `run` tool takes `timeline` too, so it can play one and step to watch it in one call.
+- **Found: a play begun from the editor could not be scrubbed.** `timeline.seek` replayed from the tick before the timeline began, so from a keyframe before the change that spawned it, and the replay never had it. A timeline begun between ticks is in the keyframe its change made, so the seek starts there.
+- **A drag along the ruler is one row**, as the scrubber's is (item 5): `timeline.seek`s in a row by one author on one timeline update one feed row.
+- **Overlapping cues stack.** Hollow's outro pulls and zooms its camera over the same 2.5 s on one track; each cue that overlaps another gets a row of the lane, so each can be clicked and dragged.
+- **A scrub goes over what was played**, as `sim.seek` does. Dragging past the latest play's time stops there, and the tab says so.
 
 ## The gate
 

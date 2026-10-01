@@ -76,6 +76,7 @@ pub const CHANGES: &[&str] = &[
     "tune.end",
     "replay.save",
     "replay.open",
+    "timeline.play",
     "script.reload",
     "test.run",
     "timeline.seek",
@@ -98,6 +99,7 @@ pub const TX_PARTS: &[&str] = &[
     "edit.text",
     "edit.def",
     "edit.asset",
+    "edit.def_row",
     "edit.abort",
 ];
 

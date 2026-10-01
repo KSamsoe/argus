@@ -15,7 +15,8 @@
 //! what it did. Item 5 is the replay scrubber under the viewport. Item 6
 //! is the profiler view, with §17's targets beside what is measured. Item
 //! 7 is tilemap painting, in the viewport. Item 8 is the animator editor,
-//! over asset sidecars edited through transactions.
+//! over asset sidecars edited through transactions. Item 9 is the timeline
+//! editor: tracks against time, its cues dragged, played, and scrubbed.
 
 pub mod agent;
 pub mod animator;
@@ -27,6 +28,7 @@ pub mod link;
 pub mod profile;
 pub mod scrubber;
 pub mod tiles;
+pub mod timeline;
 pub mod tuning;
 pub mod viewport;
 

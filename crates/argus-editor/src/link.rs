@@ -100,6 +100,10 @@ pub enum Want {
     AnimEvents(String),
     /// `asset.list {kind: animator}`.
     Animators,
+    /// `timeline.list`, for the Timeline tab.
+    TimelineList,
+    /// A seek from the Timeline tab's ruler.
+    TimelineSeek,
 }
 
 /// An answer: what it was for, and its result or error.

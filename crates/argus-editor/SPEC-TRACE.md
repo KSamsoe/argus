@@ -95,11 +95,23 @@ Every statement in the design document (v0.3) that constrains the editor (§11, 
 | (§13) Rates, wind-ups, and holds as tune fields: "a human adjusting a wind-up while playing". | Done | A number lands when the drag lets go, and the game plays it at once; a field path shows as a field (the Tuning tab moves it). | `animator`; `argus-daemon` `animation` |
 | Undoable per author. | Done | Ctrl+Z, once a change: the file as it was, byte for byte. | `animator` (five undos) |
 
+## §13 The timeline editor (item 9)
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§13) A timeline is "a def table of tracks (tweens, animator states, camera cuts, dialogue lines, events) against time". | Done | `timeline.rs`, the Timeline tab: from `timeline.list`, a timeline's tracks as lanes under a time ruler (a tick a step that leaves room for its label, the length marked), its cues as bars from `at` to their end coloured by kind (a cut with no duration to the timeline's end; a cue that waits marked at its end), overlapping cues stacked a row each, each bar's tip its kind, what it does, its times, and its file:line. | `timeline::a_person_plays_drags_and_scrubs_a_timeline` (the lanes, the bars, the flare below the glow it overlaps) |
+| Its cues edited. | Done | A bar dragged moves its `at`, its right edge its `duration` (tweens and cuts), snapped to 0.05 s, one change when let go; the selected cue's fields by its kind (track, at, kind, who; path, from or "where the field is", to, duration, easing; state; duration; line; effects; when, sound, wait); a cue added at the playhead with what its kind needs; a cue taken out; a timeline added with a length, its length changed, a timeline taken out with its cues. Each is the person's transaction of `edit.def` or `edit.def_row` ops. | `timeline` (the flare sooner, the glow longer, a cue added; the comment kept; one change a drag) |
+| A row that cannot read is refused with why. | Done | The commit's problem shows in the bar with its line (an event that waits needs a when), and the file is as it was. | `timeline` |
+| (§13) "Playable from Luau": playable from the editor. | Done | Play Timeline: `timeline.play {name, actor, other}`, the selected entity a click away for each; the latest play's time, what it waits for, and whether it is held. | `timeline` (the lamp's glow halfway at a second) |
+| (§13) "Scrubbable in the editor." | Done | The ruler: `timeline.seek {name, time}` over the latest play, one seek in flight and the latest next (as the scrubber's); a drag pauses the game and plays on after if it played; the playhead follows the play, or the time scrubbed to while a seek is on its way; a scrub past what was played says so. | `timeline` (scrubbed back to under a second: the play there, one feed row); `timeline::tests::one_seek_in_flight_and_the_latest_next` |
+| Undoable per author. | Done | Ctrl+Z: the file as it was, byte for byte. | `timeline` |
+| (§13) Customers: cutscenes, boss intros, Outpost's event vignettes. | Done | Any timeline of the game's: Hollow's outro (a cut, two tweens on one track, a line that waits) and room fade, Outpost's `lost`. | Hollow's outro in the editor (headless: played with the hero, the hermit's call dragged sooner, scrubbed back, undone byte for byte) |
+
 ## The phase 4 gate, first half
 
 | Spec | Status | Where | Test |
 |---|---|---|---|
-| "Everything the editor does appears in the change feed as a command the agent could have issued." | Partial (items 0 to 8) | The daemon writes a feed row for every call that changes something, from any client, with its author and its `argus` line (`argus-daemon` `feed.rs`); a commit's line is the whole transaction as the agent's `edit` tool. The viewport's keys are the input log's, and what F8, F9, and F10 stand for is a feed row by the person (`argus-daemon` `stream`). Each item's panel adds its actions to the editor test; the gate drives every panel and replays the feed through the CLI. | `editor`; `argus-cli` `feed::every_change_is_a_command_the_agent_could_have_issued` |
+| "Everything the editor does appears in the change feed as a command the agent could have issued." | Partial (items 0 to 9) | The daemon writes a feed row for every call that changes something, from any client, with its author and its `argus` line (`argus-daemon` `feed.rs`); a commit's line is the whole transaction as the agent's `edit` tool. The viewport's keys are the input log's, and what F8, F9, and F10 stand for is a feed row by the person (`argus-daemon` `stream`). Each item's panel adds its actions to the editor test; the gate drives every panel and replays the feed through the CLI. | `editor`; `argus-cli` `feed::every_change_is_a_command_the_agent_could_have_issued` |
 
 ## Known limitations, stated so they are decisions
 

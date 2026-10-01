@@ -359,6 +359,120 @@ impl Daemon {
         *ses.timelines.borrow_mut() = argus_player::read_timelines(&ses.project.defs, &self.world);
     }
 
+    /// Apply an `edit.def_row` op (or its inverse, the table's file as it
+    /// was): the row written into its table's file, the tables read again,
+    /// and scripts, conversations, and timelines given them. A row the
+    /// tables refuse (a field of the wrong kind), or one that leaves a
+    /// timeline a problem it did not have (a cue on no timeline), is put
+    /// back and the commit fails with the problem and its line.
+    pub(super) fn apply_def_row(
+        &mut self,
+        author: &str,
+        op: &Op,
+        touched: &mut BTreeSet<String>,
+        files: &mut BTreeSet<String>,
+    ) -> Result<Option<Op>> {
+        let root = self.require_session()?.root.clone();
+        let (file, old, what) = match op {
+            Op::DefRow { def, fields } => {
+                self.edits.check_lock(author, def, "")?;
+                let (prefix, key) = def.split_once(':').unwrap_or(("", def));
+                let ses = self.require_session()?;
+                let table = ses
+                    .project
+                    .defs
+                    .table_for_prefix(prefix)
+                    .cloned()
+                    .ok_or_else(|| bad_params(format!("no def table with prefix {prefix:?}")))?;
+                let values = match fields {
+                    None => None,
+                    Some(Json::Object(o)) => {
+                        let mut out = Vec::new();
+                        for (k, v) in o {
+                            if *k == table.key {
+                                continue;
+                            }
+                            let fs = table
+                                .schema
+                                .fields
+                                .iter()
+                                .find(|f| f.name == *k)
+                                .ok_or_else(|| {
+                                    bad_params(format!("{} has no field {k:?}", table.name))
+                                        .hint(format!("Fields: {}", table.columns().join(", ")))
+                                })?;
+                            out.push((k.clone(), json::from_json(&self.world, v, fs.ty)?));
+                        }
+                        Some(out)
+                    }
+                    Some(_) => return Err(bad_params("fields is an object")),
+                };
+                let (file, old) =
+                    argus_scene::defs::write_row(&root, &table, key, values.as_deref())?;
+                (file, old, def.clone())
+            }
+            Op::DefText { file, text } => {
+                let old = std::fs::read_to_string(root.join(file)).unwrap_or_default();
+                std::fs::write(root.join(file), text)
+                    .map_err(|e| ArgusError::new(codes::BAD_PARAMS, format!("{file}: {e}")))?;
+                (file.clone(), old, file.clone())
+            }
+            _ => return Ok(None),
+        };
+        // What the tables and the timelines made of it.
+        let problems = |d: &Daemon| -> Vec<String> {
+            let Some(ses) = d.session.as_ref() else {
+                return Vec::new();
+            };
+            let mut out: Vec<String> = ses
+                .project
+                .issues()
+                .iter()
+                .filter(|e| {
+                    e.code == argus_scene::codes::BAD_DEF
+                        || e.code == argus_scene::codes::MISSING_REFERENCE
+                })
+                .map(|e| format!("{} ({})", e.message, e.r#ref.clone().unwrap_or_default()))
+                .collect();
+            out.extend(
+                ses.timelines
+                    .borrow()
+                    .problems
+                    .iter()
+                    .map(|(at, m)| format!("{m} ({at})")),
+            );
+            out
+        };
+        let before = problems(self);
+        self.session
+            .as_mut()
+            .expect("session")
+            .project
+            .reload_defs();
+        self.defs_changed();
+        let new: Vec<String> = problems(self)
+            .into_iter()
+            .filter(|p| !before.contains(p))
+            .collect();
+        if let Some(first) = new.first() {
+            let _ = std::fs::write(root.join(&file), &old);
+            self.session
+                .as_mut()
+                .expect("session")
+                .project
+                .reload_defs();
+            self.defs_changed();
+            return Err(ArgusError::new(
+                codes::BAD_PARAMS,
+                format!("{what} would not read: {first}"),
+            )
+            .hint("Nothing was kept; the table is as it was."));
+        }
+        files.insert(file.clone());
+        touched.insert(what);
+        Ok(Some(Op::DefText { file, text: old }))
+    }
+
     /// Apply an `edit.def` op: the value in memory, and in the table's file
     /// unless a test's live edits; its inverse.
     pub(super) fn apply_def(
@@ -372,7 +486,23 @@ impl Daemon {
             return Ok(None);
         };
         self.edits.check_lock(author, def, path)?;
+        let before = self.timeline_problems();
         let (old, _) = self.set_def_live(def, path, value)?;
+        // A cue's field a timeline cannot read (effects that do not parse,
+        // a kind there is not): put back, and the commit fails with why.
+        let new: Vec<String> = self
+            .timeline_problems()
+            .into_iter()
+            .filter(|p| !before.contains(p))
+            .collect();
+        if let Some(first) = new.first() {
+            self.set_def_live(def, path, &old)?;
+            return Err(ArgusError::new(
+                codes::BAD_PARAMS,
+                format!("{def} {path} would not read: {first}"),
+            )
+            .hint("Nothing was kept; the row is as it was."));
+        }
         if !self.live_edits {
             let ses = self.require_session()?;
             let root = ses.root.clone();

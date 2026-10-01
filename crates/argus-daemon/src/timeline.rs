@@ -46,6 +46,20 @@ impl Daemon {
         let only = json::opt_str(params, "name")?
             .map(|n| n.strip_prefix("timeline:").unwrap_or(n).to_string());
         let lines = ses.timelines.borrow();
+        // A row's fields as its file writes them (the rest are defaults):
+        // what an editor edits, and what a field left out means.
+        let table = ses.project.defs.table(argus_timeline::table::TABLE);
+        let written = |key: &str| -> Json {
+            let mut out = serde_json::Map::new();
+            if let Some((t, r)) = table.and_then(|t| t.get(key).map(|r| (t, r))) {
+                for (i, f) in t.schema.fields.iter().enumerate() {
+                    if f.name != t.key && r.given.get(i).copied().unwrap_or(false) {
+                        out.insert(f.name.clone(), json::to_json(&self.world, &r.values[i]));
+                    }
+                }
+            }
+            Json::Object(out)
+        };
         let who = |w: &Who| match w {
             Who::Role(i) => ROLES.get(*i).copied().unwrap_or("?").to_string(),
             Who::Id(id) => format!("@{id}"),
@@ -92,7 +106,8 @@ impl Daemon {
                                 who(&c.who),
                                 what,
                                 c.wait,
-                                c.at_ref
+                                c.at_ref,
+                                written(&c.key)
                             ])
                         })
                         .collect();
@@ -103,8 +118,9 @@ impl Daemon {
                 "name": l.key,
                 "length": l.length,
                 "ref": l.at_ref,
-                "cue_columns": ["n", "cue", "at", "end", "kind", "who", "what", "wait", "ref"],
+                "cue_columns": ["n", "cue", "at", "end", "kind", "who", "what", "wait", "ref", "fields"],
                 "tracks": tracks,
+                "fields": written(&l.key),
             }));
         }
         let mut playing = Vec::new();
@@ -137,7 +153,29 @@ impl Daemon {
             .iter()
             .map(|(at, m)| json!({ "ref": at, "message": m }))
             .collect();
-        Ok(json!({ "timelines": timelines, "playing": playing, "problems": problems }))
+        Ok(json!({
+            "timelines": timelines,
+            "playing": playing,
+            "problems": problems,
+            "kinds": ["tween", "anim", "camera", "line", "event"],
+            "roles": ROLES,
+            "easings": argus_tween::ease::NAMES,
+        }))
+    }
+
+    /// The timelines' problems now, each a sentence with where.
+    pub(super) fn timeline_problems(&self) -> Vec<String> {
+        self.session
+            .as_ref()
+            .map(|s| {
+                s.timelines
+                    .borrow()
+                    .problems
+                    .iter()
+                    .map(|(at, m)| format!("{m} ({at})"))
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     /// The latest `timeline.started` in the log for an entity or a name:
@@ -161,6 +199,53 @@ impl Daemon {
             };
             ok.then_some((*t, r.frame))
         })
+    }
+
+    /// `timeline.play`: play a timeline now (phase 4 item 9, the editor's
+    /// Play), as a script does: a Timeline entity of the run, not of the
+    /// scene's files, with its actor and other. A change between ticks.
+    pub(super) fn timeline_play(&mut self, params: &Json) -> Result<Json> {
+        self.require_session()?;
+        let name = json::str_param(params, "name")?;
+        let short = name.strip_prefix("timeline:").unwrap_or(name).to_string();
+        if self
+            .session
+            .as_ref()
+            .expect("session")
+            .timelines
+            .borrow()
+            .line(&short)
+            .is_none()
+        {
+            return Err(
+                ArgusError::new(codes::BAD_PARAMS, format!("no timeline {short:?}"))
+                    .hint("timeline.list lists the game's timelines."),
+            );
+        }
+        let actor = match json::opt_str(params, "actor")? {
+            Some(a) => self.world.entity(a)?,
+            None => Entity::NULL,
+        };
+        let other = match json::opt_str(params, "other")? {
+            Some(a) => self.world.entity(a)?,
+            None => Entity::NULL,
+        };
+        let speed = json::f64_param(params, "speed", 1.0)? as f32;
+        argus_timeline::register(&mut self.world)?;
+        let e = self.world.spawn();
+        let name_id = self.world.strings().intern(&short);
+        self.world.insert(
+            e,
+            Timeline {
+                name: name_id,
+                actor,
+                other,
+                speed,
+                ..Timeline::default()
+            },
+        )?;
+        self.mutations += 1;
+        Ok(json!({ "timeline": json::entity_str(&self.world, e), "name": short }))
     }
 
     pub(super) fn timeline_seek(&mut self, params: &Json) -> Result<Json> {
@@ -205,7 +290,19 @@ impl Daemon {
                 .hint("Play it first (spawn a Timeline, run until timeline.started); a seek goes over frames already played."))
             }
         };
-        let start = began.saturating_sub(1);
+        // The tick before it began, to land on the first frame at the time;
+        // but a timeline started between ticks (timeline.play, the editor's)
+        // is in the keyframe its change made at that tick, which a replay
+        // from before it would not make.
+        let barrier = self
+            .session
+            .as_ref()
+            .is_some_and(|s| s.ring.borrow().barrier_at(began));
+        let start = if barrier {
+            began
+        } else {
+            began.saturating_sub(1)
+        };
         let mut seen = false;
         let mut stop = |w: &World| match w.get::<Timeline>(e) {
             Ok(t) if t.started => {

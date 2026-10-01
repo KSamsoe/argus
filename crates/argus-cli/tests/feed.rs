@@ -166,6 +166,105 @@ fn a_def_and_an_asset_edit_are_commands_too() {
 }
 
 #[test]
+fn a_timelines_rows_its_play_and_its_scrub_are_commands_too() {
+    // Phase 4 item 9: the timeline editor's changes (a cue's field, a cue
+    // added), its Play, and a drag along its ruler (one row), typed back
+    // through the CLI on a fresh copy, make the same table and world.
+    let (ta, tb) = (common::temp("feed-ta"), common::temp("feed-tb"));
+    let table = "# A nudge.
+[\"nudge\"]
+length = 1.0
+
+[\"nudge.hurt\"]
+timeline = \"timeline:nudge\"
+at = 0.25
+kind = \"event\"
+effects = \"actor:Health.cur = 4\"
+";
+    common::write(ta.path(), "defs/timeline.toml", table);
+    common::write(tb.path(), "defs/timeline.toml", table);
+    let a = daemon(ta.path(), "feed-ta");
+    let b = daemon(tb.path(), "feed-tb");
+    let mut h = Client::connect(&a).unwrap();
+    call(&mut h, "session.identify", json!({ "author": "human" }));
+    let mut cb = Client::connect(&b).unwrap();
+    let tx = call(
+        &mut h,
+        "edit.begin",
+        json!({ "author": "human", "note": "sooner, then heal" }),
+    )["tx"]
+        .clone();
+    call(
+        &mut h,
+        "edit.def",
+        json!({ "tx": tx, "def": "timeline:nudge.hurt", "path": "at", "value": 0.1 }),
+    );
+    call(
+        &mut h,
+        "edit.def_row",
+        json!({ "tx": tx, "def": "timeline:nudge.heal", "fields": {
+            "timeline": "timeline:nudge", "at": 0.5, "kind": "event", "effects": "actor:Health.cur = 9",
+        } }),
+    );
+    call(&mut h, "edit.commit", json!({ "tx": tx }));
+    call(
+        &mut h,
+        "timeline.play",
+        json!({ "name": "nudge", "actor": "@player" }),
+    );
+    call(&mut h, "sim.step", json!({ "n": 60 }));
+    for t in [0.3, 0.4] {
+        call(
+            &mut h,
+            "timeline.seek",
+            json!({ "name": "nudge", "time": t }),
+        );
+    }
+    let feed = call(&mut h, "edit.feed", json!({ "limit": 50 }));
+    let lines: Vec<String> = feed["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|r| r["author"] == "human")
+        .map(|r| r["command"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(lines.len(), 4, "edit, play, step, one seek: {lines:#?}");
+    assert!(lines[0].contains("op: def_row"), "{}", lines[0]);
+    assert_eq!(lines[1], "argus timeline play actor=@player name=nudge");
+    assert_eq!(lines[3], "argus timeline seek name=nudge time=0.4");
+    for l in &lines {
+        let mut argv = vec!["--socket".to_string(), b.clone()];
+        argv.extend(command::split(l).unwrap().into_iter().skip(1));
+        let (mut out, mut err) = (Vec::new(), Vec::new());
+        let code = run(&argv, &mut out, &mut err);
+        assert_eq!(
+            code,
+            EXIT_OK,
+            "{l}: {}{}",
+            String::from_utf8_lossy(&out),
+            String::from_utf8_lossy(&err)
+        );
+    }
+    assert_eq!(
+        common::read(ta.path(), "defs/timeline.toml"),
+        common::read(tb.path(), "defs/timeline.toml")
+    );
+    let wa = world(&mut h, ta.path());
+    assert_eq!(wa, world(&mut cb, tb.path()), "the same world");
+    let hp = wa["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| {
+            r[0].as_str()
+                .is_some_and(|i| i.trim_start_matches('@') == "player")
+        })
+        .unwrap_or_else(|| panic!("no player: {wa}"))[1]
+        .clone();
+    assert_eq!(hp, 4, "0.4 s in: hurt at 0.1, not yet healed at 0.5: {wa}");
+}
+
+#[test]
 fn every_change_is_a_command_the_agent_could_have_issued() {
     let (ta, tb) = (common::temp("feed-a"), common::temp("feed-b"));
     let a = daemon(ta.path(), "feed-a");

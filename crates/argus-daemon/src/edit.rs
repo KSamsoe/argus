@@ -121,6 +121,21 @@ pub enum Op {
         /// The value as JSON, or `None` to take it out.
         value: Option<Json>,
     },
+    /// Add or replace a whole def row, or with `None` remove it (phase 4
+    /// item 9: a timeline's cue or a timeline).
+    DefRow {
+        /// The row, `prefix:key` (`timeline:outro.flash`).
+        def: String,
+        /// Its fields as a JSON object, or `None` to take it out.
+        fields: Option<Json>,
+    },
+    /// A def table's whole text as it was: the inverse of a `DefRow` op.
+    DefText {
+        /// Project-relative `defs/<table>.toml`.
+        file: String,
+        /// The file's text.
+        text: String,
+    },
     /// A sidecar's whole text as it was: the inverse of an `Asset` op.
     AssetText {
         /// The asset's name.
@@ -192,6 +207,13 @@ impl Op {
                 "edit.def",
                 json!({ "def": def, "path": path, "value": value }),
             ),
+            Op::DefRow { def, fields } => (
+                "edit.def_row",
+                match fields {
+                    Some(f) => json!({ "def": def, "fields": f }),
+                    None => json!({ "def": def, "remove": true }),
+                },
+            ),
             Op::Asset { asset, path, value } => (
                 "edit.asset",
                 match value {
@@ -235,6 +257,8 @@ impl Op {
             Op::Text { lang, key, text } => json!(["text", lang, key, text]),
             Op::Def { def, path, value } => json!(["def", def, path, value]),
             Op::Asset { asset, path, value } => json!(["asset", asset, path, value]),
+            Op::DefRow { def, fields } => json!(["def_row", def, fields]),
+            Op::DefText { file, .. } => json!(["def_row", file, "(as it was)"]),
             Op::AssetText { asset, .. } => json!(["asset", asset, "(as it was)"]),
             Op::Terrain {
                 file,

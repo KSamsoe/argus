@@ -168,6 +168,9 @@ pub fn run(c: &mut dyn Caller, name: &str, args: &Json) -> Result<Json, Json> {
             if let Some(x) = args.get("speed").filter(|v| !v.is_null()) {
                 step(c, "sim.speed", json!({ "x": x }))?;
             }
+            if let Some(t) = args.get("timeline").filter(|v| !v.is_null()) {
+                step(c, "timeline.play", t.clone())?;
+            }
             if let Some(n) = args.get("step").filter(|v| !v.is_null()) {
                 step(c, "sim.step", json!({ "n": n }))?;
             }
@@ -344,13 +347,13 @@ fn transaction(c: &mut dyn Caller, args: &Json, tool: &str) -> Result<Json, Json
         // def and asset too: a tuning session's commit (item 3) and an
         // animator's edit (item 8) are lines of this tool in the feed.
         if ![
-            "set", "add", "remove", "spawn", "despawn", "tiles", "text", "def", "asset",
+            "set", "add", "remove", "spawn", "despawn", "tiles", "text", "def", "def_row", "asset",
         ]
         .contains(&kind)
         {
             let _ = c.call("edit.abort", json!({ "tx": tx }));
             return Err(bad(format!(
-                "op {i} has op {kind:?}: set, add, remove, spawn, despawn, tiles, text, def, or asset"
+                "op {i} has op {kind:?}: set, add, remove, spawn, despawn, tiles, text, def, def_row, or asset"
             )));
         }
         let mut p = op.as_object().cloned().unwrap_or_default();

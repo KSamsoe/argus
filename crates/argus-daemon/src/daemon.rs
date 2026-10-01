@@ -346,14 +346,18 @@ impl Daemon {
     fn feed_command(&mut self, author: &str, line: String, method: &str, params: &Json) {
         // A seek right after a seek by the same author, in the same world,
         // is the same move: a drag along the editor's scrubber is one row,
-        // the frame it let go at (phase 4 item 5). The row keeps its id and
-        // is announced again.
-        if method == "sim.seek" {
+        // the frame it let go at (phase 4 item 5), and a drag along a
+        // timeline's ruler is one row, the time it let go at (item 9). The
+        // row keeps its id and is announced again.
+        if method == "sim.seek" || method == "timeline.seek" {
             if let Some(last) = self.edits.feed.last_mut() {
                 let same = matches!(last.kind, CommitKind::Command)
                     && last.author == author
                     && last.call.as_ref().is_some_and(|(m, p)| {
-                        m == "sim.seek" && p.get("fork") == params.get("fork")
+                        m == method
+                            && ["fork", "name", "timeline"]
+                                .iter()
+                                .all(|k| p.get(k) == params.get(k))
                     });
                 if same {
                     last.frame = self.world.frame();
@@ -576,7 +580,7 @@ impl Daemon {
             "scene.tiles.collision" => self.tiles_collision(params),
             "scene.tiles.list" => self.tiles_list(),
             "edit.set" | "edit.add" | "edit.remove" | "edit.spawn" | "edit.despawn"
-            | "edit.def" | "edit.asset" => {
+            | "edit.def" | "edit.asset" | "edit.def_row" => {
                 self.edit_queue(method, params)
             }
             "edit.commit" => {
@@ -653,6 +657,7 @@ impl Daemon {
             "strings.list" => self.strings_list(params),
             "timeline.list" => self.timeline_list(params),
             "timeline.seek" => self.timeline_seek(params),
+            "timeline.play" => self.timeline_play(params),
             "sim.save" => self.sim_save(params),
             "sim.load" => self.sim_load(params),
             "mark.drop" => self.mark_drop(params),
@@ -2842,6 +2847,30 @@ impl Daemon {
                 path: json::str_param(params, "path")?.to_string(),
                 value: params.get("value").cloned().unwrap_or(Json::Null),
             },
+            "edit.def_row" => {
+                let def = json::str_param(params, "def")?.to_string();
+                let fields = if json::bool_param(params, "remove", false)? {
+                    None
+                } else {
+                    match params.get("fields") {
+                        Some(f @ Json::Object(_)) => Some(f.clone()),
+                        _ => {
+                            return Err(bad_params("give fields: {field: value}, or remove: true")
+                                .hint("edit.def_row {tx, def: \"timeline:outro.flash\", fields: {timeline: \"timeline:outro\", kind: \"event\", at: 2}}"))
+                        }
+                    }
+                };
+                // The table must be one there is, now.
+                let prefix = def.split_once(':').map(|(p, _)| p).unwrap_or("");
+                let ses = self.require_session()?;
+                if ses.project.defs.table_for_prefix(prefix).is_none() || !def.contains(':') {
+                    return Err(
+                        bad_params(format!("{def:?} is not prefix:key of a def table"))
+                            .hint("A row is prefix:key: timeline:outro.flash, item:meal."),
+                    );
+                }
+                Op::DefRow { def, fields }
+            }
             "edit.asset" => {
                 let asset = json::str_param(params, "asset")?.to_string();
                 let path = json::str_param(params, "path")?.to_string();
@@ -3052,6 +3081,9 @@ impl Daemon {
             Op::Text { .. } => self.apply_text(op, touched, files),
             Op::Def { .. } => self.apply_def(author, op, touched, files),
             Op::Asset { .. } | Op::AssetText { .. } => self.apply_asset(author, op, touched, files),
+            Op::DefRow { .. } | Op::DefText { .. } => {
+                self.apply_def_row(author, op, touched, files)
+            }
             Op::Set {
                 entity,
                 path,

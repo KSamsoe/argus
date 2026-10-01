@@ -121,6 +121,19 @@ impl Drop for StopOnDrop {
 fn argus_mcp_serves_the_tools_of_the_one_schema() {
     let t = common::temp("mcp");
     common::project(t.path());
+    common::write(
+        t.path(),
+        "defs/timeline.toml",
+        "[\"nudge\"]
+length = 1.0
+
+[\"nudge.hurt\"]
+timeline = \"timeline:nudge\"
+at = 0.25
+kind = \"event\"
+effects = \"actor:Health.cur = 4\"
+",
+    );
     let root = t.path().canonicalize().unwrap();
     let _stop = StopOnDrop(root.clone());
     let mut m = Mcp::start(&root);
@@ -222,6 +235,18 @@ fn argus_mcp_serves_the_tools_of_the_one_schema() {
     let (is_err, _, got, _) = m.tool("seek", json!({ "frame": 10 }));
     assert!(!is_err, "{got}");
     assert_eq!(got["tick"], 10);
+    // A timeline played and watched in one call, as the editor's Play.
+    let (is_err, _, got, _) = m.tool(
+        "run",
+        json!({ "timeline": { "name": "nudge", "actor": "@player" }, "step": 30 }),
+    );
+    assert!(!is_err, "{got}");
+    assert_eq!(got["did"], json!(["timeline.play", "sim.step"]));
+    let (_, _, p, _) = m.tool("query", json!({ "entity": "@player" }));
+    assert_eq!(
+        p["components"]["Health"]["cur"], 4,
+        "its cue fired on the actor"
+    );
     let (is_err, _, got, _) = m.tool("events", json!({ "limit": 5 }));
     assert!(!is_err && got["rows"].is_array(), "{got}");
     let (is_err, _, got, _) = m.tool("reload", json!({}));
