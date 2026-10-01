@@ -25,3 +25,4 @@ interprocess = "2"
 
 [dev-dependencies]
 argus-ecs = { path = "../argus-ecs", version = "0.0.1" }
+argus-assets = { path = "../argus-assets", version = "0.0.1" }

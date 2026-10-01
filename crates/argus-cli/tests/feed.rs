@@ -61,6 +61,110 @@ fn world(c: &mut Client, root: &Path) -> Json {
     json!({ "tick": st["tick"], "frame": st["frame"], "speed": st["speed"], "rows": q["rows"], "files": files })
 }
 
+/// A tileset sprite with a sidecar, in both copies.
+fn sprite(root: &Path) {
+    argus_assets::encode_png(
+        &root.join("assets/tiles/rock.png"),
+        4,
+        4,
+        &[90, 80, 70, 255].repeat(16),
+    )
+    .unwrap();
+    common::write(
+        root,
+        "assets/tiles/rock.toml",
+        "# Rock.\ngrid = [1, 1]\n\n[[frames]]\nindex = 0\nproperties = { solid = true }\n",
+    );
+}
+
+#[test]
+fn a_def_and_an_asset_edit_are_commands_too() {
+    // Found building phase 4 item 8: the edit tool took neither a def op
+    // (a tuning session's commit, item 3) nor an asset op, so those feed
+    // lines were not commands the agent could issue.
+    let (ta, tb) = (common::temp("feed-da"), common::temp("feed-db"));
+    common::project(ta.path());
+    common::project(tb.path());
+    sprite(ta.path());
+    sprite(tb.path());
+    let a = daemon(ta.path(), "feed-da");
+    let mut h = Client::connect(&a).unwrap();
+    call(&mut h, "session.identify", json!({ "author": "human" }));
+    let tx = call(
+        &mut h,
+        "edit.begin",
+        json!({ "author": "human", "note": "lighter keys, a one-way rock" }),
+    )["tx"]
+        .clone();
+    call(
+        &mut h,
+        "edit.def",
+        json!({ "tx": tx, "def": "item:key.brass", "path": "weight", "value": 0.05 }),
+    );
+    call(
+        &mut h,
+        "edit.asset",
+        json!({ "tx": tx, "asset": "tiles/rock", "path": "frames[0].properties", "value": { "one_way": true } }),
+    );
+    call(&mut h, "edit.commit", json!({ "tx": tx }));
+    let feed = call(&mut h, "edit.feed", json!({ "limit": 50 }));
+    let line = feed["rows"].as_array().unwrap().last().unwrap()["command"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(
+        line.contains("op: def") && line.contains("op: asset"),
+        "{line}"
+    );
+    let b = daemon(tb.path(), "feed-db");
+    let mut argv = vec!["--socket".to_string(), b.clone()];
+    argv.extend(command::split(&line).unwrap().into_iter().skip(1));
+    let (mut out, mut err) = (Vec::new(), Vec::new());
+    let code = run(&argv, &mut out, &mut err);
+    assert_eq!(
+        code,
+        EXIT_OK,
+        "{line}: {}{}",
+        String::from_utf8_lossy(&out),
+        String::from_utf8_lossy(&err)
+    );
+    for f in ["defs/items.toml", "assets/tiles/rock.toml"] {
+        assert_eq!(
+            common::read(ta.path(), f),
+            common::read(tb.path(), f),
+            "{f}"
+        );
+    }
+    assert!(common::read(tb.path(), "assets/tiles/rock.toml").starts_with("# Rock."));
+    assert!(common::read(tb.path(), "assets/tiles/rock.toml").contains("one_way = true"));
+    // A def row can be fenced now too: the agent's edit of it is refused.
+    call(
+        &mut h,
+        "edit.lock",
+        json!({ "author": "human", "defs": ["item:key.brass"], "note": "mine" }),
+    );
+    let mut agent = Client::connect(&a).unwrap();
+    let tx = call(
+        &mut agent,
+        "edit.begin",
+        json!({ "author": "agent:claude", "note": "heavier" }),
+    )["tx"]
+        .clone();
+    call(
+        &mut agent,
+        "edit.def",
+        json!({ "tx": tx, "def": "item:key.brass", "path": "weight", "value": 1 }),
+    );
+    let r = agent.call("edit.commit", json!({ "tx": tx })).unwrap();
+    assert!(
+        r["error"]["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("mine"),
+        "{r}"
+    );
+}
+
 #[test]
 fn every_change_is_a_command_the_agent_could_have_issued() {
     let (ta, tb) = (common::temp("feed-a"), common::temp("feed-b"));

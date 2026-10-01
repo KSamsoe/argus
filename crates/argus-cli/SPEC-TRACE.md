@@ -90,6 +90,12 @@ Phase 0 item 9, "CLI": this crate, plus `argus_daemon::launch` (shared with `arg
 | (§15) Mod packs. | Done | `argus build --mod <id>`: the mod's pack in `dist/mods/` (or `--out`), after checking that it loads with the game (the mods it requires first), nothing left out, and that the game plays the same with the mod from its pack as from its directory. | Hollow's `lanterns` and `brighter` built and checked |
 | (§16) About a dozen tools. | Done | No new tool: `query {mods: true}` reads `mods.list`, `reload {mods: [...]}` loads the scene again with those mods. | `tools.rs` |
 
+## Phase 4, item 8: the edit tool's def and asset ops
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (Phase 4 gate) Every change in the feed is a command the agent could issue. | Done | The `edit` tool takes `def` and `asset` ops (it took neither: a tuning session's commit, a `def` op since item 3, was a feed line the CLI refused). | `feed::a_def_and_an_asset_edit_are_commands_too` (typed back through the CLI on a fresh copy: the same files) |
+
 ## Phase 4, item 6: the profile tool
 
 | Spec | Status | Where | Test |

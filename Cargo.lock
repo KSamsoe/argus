@@ -274,6 +274,7 @@ dependencies = [
 name = "argus-cli"
 version = "0.0.1"
 dependencies = [
+ "argus-assets",
  "argus-client",
  "argus-daemon",
  "argus-ecs",

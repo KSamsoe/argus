@@ -35,6 +35,8 @@ mod proposals;
 mod reviews;
 #[path = "saves.rs"]
 mod saves;
+#[path = "sidecar.rs"]
+mod sidecar;
 #[path = "strings.rs"]
 mod strings;
 #[path = "timeline.rs"]
@@ -527,6 +529,7 @@ impl Daemon {
             }
             "asset.move" => self.asset_move(params),
             "asset.list" => self.asset_list(params),
+            "asset.sidecar" => self.asset_sidecar(params),
             "asset.get" => {
                 let name = json::str_param(params, "name")?;
                 match self.require_session()?.assets.get(name) {
@@ -573,7 +576,7 @@ impl Daemon {
             "scene.tiles.collision" => self.tiles_collision(params),
             "scene.tiles.list" => self.tiles_list(),
             "edit.set" | "edit.add" | "edit.remove" | "edit.spawn" | "edit.despawn"
-            | "edit.def" => {
+            | "edit.def" | "edit.asset" => {
                 self.edit_queue(method, params)
             }
             "edit.commit" => {
@@ -2839,6 +2842,23 @@ impl Daemon {
                 path: json::str_param(params, "path")?.to_string(),
                 value: params.get("value").cloned().unwrap_or(Json::Null),
             },
+            "edit.asset" => {
+                let asset = json::str_param(params, "asset")?.to_string();
+                let path = json::str_param(params, "path")?.to_string();
+                let value = if json::bool_param(params, "remove", false)? {
+                    None
+                } else {
+                    Some(params.get("value").cloned().ok_or_else(|| {
+                        bad_params("give value, or remove: true")
+                            .hint("edit.asset {tx, asset, path, value}")
+                    })?)
+                };
+                // Checked now, so a path that cannot be made is refused
+                // when queued, not at commit.
+                let (_, _, text) = self.sidecar_of(&asset)?;
+                crate::daemon::sidecar::edit_text(&text, &path, value.as_ref())?;
+                Op::Asset { asset, path, value }
+            }
             _ => Op::Despawn {
                 entity: json::str_param(params, "entity")?.to_string(),
             },
@@ -3031,6 +3051,7 @@ impl Daemon {
             Op::Tiles { .. } | Op::Terrain { .. } => self.apply_tiles(op, touched, files),
             Op::Text { .. } => self.apply_text(op, touched, files),
             Op::Def { .. } => self.apply_def(author, op, touched, files),
+            Op::Asset { .. } | Op::AssetText { .. } => self.apply_asset(author, op, touched, files),
             Op::Set {
                 entity,
                 path,
@@ -3370,6 +3391,27 @@ impl Daemon {
         for r in json::str_list(params, "entities")? {
             let e = self.world.entity(&r)?;
             entities.push(json::entity_str(&self.world, e));
+        }
+        // An asset or a def row, whole (phase 4 item 8: their edits checked
+        // locks, and nothing could lock them).
+        let ses = self.require_session()?;
+        for a in json::str_list(params, "assets")? {
+            if !ses.assets.entries().contains_key(&a) {
+                return Err(
+                    ArgusError::new(codes::BAD_PARAMS, format!("no asset {a:?}"))
+                        .hint("asset.list shows every asset."),
+                );
+            }
+            entities.push(a);
+        }
+        for r in json::str_list(params, "defs")? {
+            if ses.project.defs.resolve(&r).is_none() {
+                return Err(
+                    ArgusError::new(codes::BAD_PARAMS, format!("no def row {r:?}"))
+                        .hint("A row is prefix:key, item:meal; world.defs lists them."),
+                );
+            }
+            entities.push(r);
         }
         let paths = json::str_list(params, "paths")?;
         for p in &paths {

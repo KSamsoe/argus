@@ -201,12 +201,22 @@ Decisions taken while building it:
 
 ## 8. Data edits and the animator editor
 
-**Status: to do.**
+**Status: done** (2026-09-30) in the daemon (`sidecar.rs`: `edit.asset` and `asset.sidecar`; locks on assets and def rows), `argus-assets` (where a sidecar is), the CLI (the `edit` tool takes `def` and `asset` ops), and the editor (`animator.rs`). The right panel's Animator tab: the selected entity's animator live (its state, its clip's frame of how many, seconds in it, loops, blending) and what it fires (the states it enters, its events by frame); its machine edited (where it starts, each state's clip, loop, rate, wind-up, anticipation, and hold, its events by frame on a strip of the clip's frames with the live one lit, its transitions with their conditions and blends, the transitions from any state, new states). Each change is one transaction by the person in the sidecar, written with its comments kept and imported again, so the game plays it at once; Ctrl+Z puts back the file's exact text. Traces: `crates/argus-editor/SPEC-TRACE.md`, the daemon's, `argus-anim`'s, `argus-assets`', and `argus-cli`'s.
 
 - Carried in: asset sidecars edited through transactions, with layout and comments kept, undoable per author, in the feed, reloaded at commit (as `edit.text` does for strings, and `edit.def` for def tables since item 3).
 - §13: an animator is a state machine in TOML: states reference clips, transitions have conditions on fields and blend windows, and states carry events by frame ("hitbox enabled at frame 4 of slash").
 - §13: clip rates, anticipation frame counts, and hold frames are tune fields: "a human adjusting a wind-up while playing is the canonical tuning session".
 - The editor shows a selected entity's animator live: its state, its frame, the events it fires.
+
+Decisions taken while building it:
+
+- **One edit for every sidecar.** `edit.asset {tx, asset, path, value | remove}` names a value by its path in the file (dotted keys, `[n]` for an element: `states.run.events[0].frame`, `any[1].to`); tables on the way are made, `[n]` one past the end appends, an object for a table's key makes a table of its own (a new `[states.dash]`). Animators first, but sprites' frames and clips, emitters, and materials take it the same way. `asset.sidecar` reads one as data by the same paths.
+- **The importer judges.** At commit the file is written and imported again; a sidecar it refuses (a condition that does not parse) is put back and the commit fails with the importer's sentence and line. A path that cannot be made is refused when queued.
+- **Undo is the old text.** The inverse of a sidecar edit is the file as it was, so undo restores the layout, the comments, and the order exactly (checked byte for byte), however many values the transaction changed.
+- **Rates, wind-ups, and holds as tune fields.** They already may be a field path instead of a number (phase 1); the tab shows a path as a field to edit, and the Tuning tab's slider moves the field while the game plays. A number is dragged and lands when let go: one change a drag.
+- **States open by hand.** A state's section does not follow the live state, which changes many times a second while the game plays; the live state's name is lit, and its frame on the strip.
+- **Found: the `edit` tool took no `def` op.** A tuning session's commit (item 3) is a `def` op in the feed's `argus edit` line, which the CLI refused, so that line was not a command the agent could issue; the tool takes `def` and `asset` now, and a test types both back through the CLI.
+- **Found: nothing could lock a def row or an asset.** Their edits checked locks, but `edit.lock` took only entities. It takes `assets` and `defs` now, each locked whole.
 
 ## 9. Timeline editor
 

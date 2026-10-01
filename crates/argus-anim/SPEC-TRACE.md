@@ -33,6 +33,12 @@ Every statement in the design document (v0.3) that constrains sprite animation a
 | Phase 1: sprite animation state machines with frame events. | Done | This crate. | |
 | Gate: the player has a run, jump, and land animation with a footstep event that fires a sound. | Done (the mechanism) | A physics player whose machine goes idle, fall, land, idle, run, jump, fall, land from its body's fields, with footsteps that fire `sfx/step` and are answered by the mixer. The three-room slice is the gate's work. | `argus-daemon/tests/animation.rs::the_player_runs_jumps_and_lands_and_its_footsteps_fire_a_sound` |
 
+## Phase 4, item 8: the animator editor
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§13) A machine edited while the game plays. | Done | The daemon's `edit.asset` writes the sidecar and imports it; `AnimStore::set_assets` takes the new machine, so a running Animator plays it from the next tick (a renamed event fires, an added one too). | `argus-daemon` `animation::an_animator_is_edited_in_a_transaction_and_the_running_game_uses_it`; `argus-editor` `animator` |
+
 ## Known limitations, stated so they are decisions
 
 - `anim.update` declares its writes (`Animator`, `Sprite`) when installed and the reads its conditions name once it has compiled them (item 9's `SystemCtx::declare`), so `world.describe KinematicBody` lists it as a reader only after its first tick with a machine that reads it.

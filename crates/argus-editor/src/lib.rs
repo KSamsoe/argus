@@ -14,9 +14,11 @@
 //! is the agent panel: its questions, proposals, the person's marks, and
 //! what it did. Item 5 is the replay scrubber under the viewport. Item 6
 //! is the profiler view, with §17's targets beside what is measured. Item
-//! 7 is tilemap painting, in the viewport.
+//! 7 is tilemap painting, in the viewport. Item 8 is the animator editor,
+//! over asset sidecars edited through transactions.
 
 pub mod agent;
+pub mod animator;
 pub mod app;
 pub mod hierarchy;
 pub mod inspector;

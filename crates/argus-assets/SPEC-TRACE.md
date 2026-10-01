@@ -46,6 +46,12 @@ Every statement in the design document (v0.3) that constrains the asset importer
 |---|---|---|---|
 | (§15) Mods add assets; retrofitting mods "costs a rewrite of asset loading". | Done | `Importer::layered`: each mod's `assets/` scanned after the game's, a file named from the game's root in errors (`mods/<id>/assets/...`); a mod's asset named in its namespace is added, one with the name of an asset before it replaces it whole (reported in `changes`), any other is a failed import. A mod sound's WAV is given by its whole path. `Importer::packed_layers`: each layer's catalog where it has one (a release's game pack and mod packs), knowing every earlier layer's names, catalog or files. `owner(name)` says which mod an asset came from. | argus-player `mods::a_mod_pack_from_a_players_folder_is_one_more_layer_over_the_games_packs`; `mods::a_mod_adds_under_its_id_and_changes_what_came_before` |
 
+## Phase 4, item 8: where a sidecar is
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| A sidecar edited through the protocol is written in the layer it came from. | Done | `Importer::sidecar_file(name)`: the asset's sidecar (or `<name>.toml` beside its source, for one with none yet) in the game's `assets/` or its mod's, and its path from the game's root. | `argus-daemon` `animation`; `argus-cli` `feed` |
+
 ## Known limitations, stated so they are decisions
 
 - The watcher polls file metadata twice a second rather than using OS notifications. It is deterministic, has no dependency, and costs one metadata read per file.

@@ -111,6 +111,23 @@ pub enum Op {
         /// The value as JSON.
         value: Json,
     },
+    /// Set one value in an asset's sidecar, or with `None` remove it
+    /// (phase 4 item 8): its path in the file, `states.run.fps`.
+    Asset {
+        /// The asset's name (`anim/hero`).
+        asset: String,
+        /// Dotted keys, `[n]` for an element.
+        path: String,
+        /// The value as JSON, or `None` to take it out.
+        value: Option<Json>,
+    },
+    /// A sidecar's whole text as it was: the inverse of an `Asset` op.
+    AssetText {
+        /// The asset's name.
+        asset: String,
+        /// The file's text.
+        text: String,
+    },
     /// Paint a terrain over a rect (or erase it) and re-pick the tiles
     /// around it by the tileset's auto-tiling rules.
     Terrain {
@@ -175,6 +192,13 @@ impl Op {
                 "edit.def",
                 json!({ "def": def, "path": path, "value": value }),
             ),
+            Op::Asset { asset, path, value } => (
+                "edit.asset",
+                match value {
+                    Some(v) => json!({ "asset": asset, "path": path, "value": v }),
+                    None => json!({ "asset": asset, "path": path, "remove": true }),
+                },
+            ),
             _ => return None,
         })
     }
@@ -210,6 +234,8 @@ impl Op {
             } => json!(["tiles", file, layer, rect]),
             Op::Text { lang, key, text } => json!(["text", lang, key, text]),
             Op::Def { def, path, value } => json!(["def", def, path, value]),
+            Op::Asset { asset, path, value } => json!(["asset", asset, path, value]),
+            Op::AssetText { asset, .. } => json!(["asset", asset, "(as it was)"]),
             Op::Terrain {
                 file,
                 layer,

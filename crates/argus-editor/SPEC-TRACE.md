@@ -86,11 +86,20 @@ Every statement in the design document (v0.3) that constrains the editor (§11, 
 | A map made in the editor. | Done | New tilemap: `scene.tiles.create`, then its entity spawned (in a room, for a room scene) at the view's top left. | `tiles` (the file, its entity's file, the person's commit) |
 | P1: the painting is commands. | Done | A stroke's line is `argus edit author=human note='painted N cells of ground with tile 16' ops='[{op: tiles, ...}]'`. | `tiles` |
 
+## §13 The animator editor (item 8)
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| The editor shows a selected entity's animator live: its state, its frame, the events it fires. | Done | `animator.rs`, the Animator tab: the selected entity's `Animator` (from the inspector's `world.get`): its state, frame of the clip's frames, seconds, loops, blending; what it fired (`obs.events {entity}`: `anim.entered`, its events by frame) newest first; a strip of the state's clip frames with its events marked and the live frame lit. | `animator::a_person_shapes_the_heros_run_while_it_plays` (idle, then run and a footstep) |
+| (§13) States reference clips; transitions have conditions on fields and blend windows; states carry events by frame. | Done | Each state's clip, loop, rate, wind-up, anticipation, hold, events (frame, name, sound), transitions (to, when, blend; a window shown), the transitions from any state, where it starts, new states, each taken out with x. Each change is `edit.asset` ops in one transaction by the person (`asset.sidecar` read again after). | `animator` (rate dragged, an event, a transition, the loop, a state; the comment kept; one change a drag) |
+| (§13) Rates, wind-ups, and holds as tune fields: "a human adjusting a wind-up while playing". | Done | A number lands when the drag lets go, and the game plays it at once; a field path shows as a field (the Tuning tab moves it). | `animator`; `argus-daemon` `animation` |
+| Undoable per author. | Done | Ctrl+Z, once a change: the file as it was, byte for byte. | `animator` (five undos) |
+
 ## The phase 4 gate, first half
 
 | Spec | Status | Where | Test |
 |---|---|---|---|
-| "Everything the editor does appears in the change feed as a command the agent could have issued." | Partial (items 0 to 7) | The daemon writes a feed row for every call that changes something, from any client, with its author and its `argus` line (`argus-daemon` `feed.rs`); a commit's line is the whole transaction as the agent's `edit` tool. The viewport's keys are the input log's, and what F8, F9, and F10 stand for is a feed row by the person (`argus-daemon` `stream`). Each item's panel adds its actions to the editor test; the gate drives every panel and replays the feed through the CLI. | `editor`; `argus-cli` `feed::every_change_is_a_command_the_agent_could_have_issued` |
+| "Everything the editor does appears in the change feed as a command the agent could have issued." | Partial (items 0 to 8) | The daemon writes a feed row for every call that changes something, from any client, with its author and its `argus` line (`argus-daemon` `feed.rs`); a commit's line is the whole transaction as the agent's `edit` tool. The viewport's keys are the input log's, and what F8, F9, and F10 stand for is a feed row by the person (`argus-daemon` `stream`). Each item's panel adds its actions to the editor test; the gate drives every panel and replays the feed through the CLI. | `editor`; `argus-cli` `feed::every_change_is_a_command_the_agent_could_have_issued` |
 
 ## Known limitations, stated so they are decisions
 

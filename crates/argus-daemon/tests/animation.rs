@@ -114,6 +114,155 @@ fn project(root: &Path) {
     );
 }
 
+/// The player on a floor it can run on (the first test's).
+fn floor(d: &mut argus_daemon::Daemon) {
+    let file = "scenes/room/room.tilemap.toml";
+    ok(
+        d,
+        "scene.tiles.create",
+        json!({ "file": file, "width": 30, "height": 8, "chunk": 8,
+                "layers": [{ "name": "ground", "tileset": "tiles/rock", "collision": true }] }),
+    );
+    commit(
+        d,
+        "agent:claude",
+        "floor",
+        &[(
+            "edit.tiles",
+            json!({ "file": file, "layer": "ground", "rect": { "x": 0, "y": 7, "w": 30, "h": 1 }, "tile": 1 }),
+        )],
+    );
+}
+
+fn edit(
+    d: &mut argus_daemon::Daemon,
+    note: &str,
+    ops: &[Json],
+) -> Result<Json, argus_ecs::ArgusError> {
+    let tx = d.call(1, "edit.begin", &json!({ "author": "human", "note": note }))?["tx"].clone();
+    for op in ops {
+        let mut p = op.clone();
+        p["tx"] = tx.clone();
+        if let Err(e) = d.call(1, "edit.asset", &p) {
+            let _ = d.call(1, "edit.abort", &json!({ "tx": tx }));
+            return Err(e);
+        }
+    }
+    d.call(1, "edit.commit", &json!({ "tx": tx }))
+}
+
+#[test]
+fn an_animator_is_edited_in_a_transaction_and_the_running_game_uses_it() {
+    let t = temp("animation-edit");
+    project(t.path());
+    let original = format!("# The hero's feet.\n{ANIMATOR}");
+    write(t.path(), "assets/anim/hero.toml", &original);
+    let mut d = open(t.path());
+    d.call(1, "session.identify", &json!({ "author": "human" }))
+        .unwrap();
+    floor(&mut d);
+    ok(&mut d, "sim.step", json!({ "n": 60 }));
+    // The sidecar as data, by the paths edit.asset takes.
+    let s = ok(
+        &mut d,
+        "asset.sidecar",
+        json!({ "name": "anim/hero", "path": "states.run.events[0].name" }),
+    );
+    assert_eq!(s["file"], "assets/anim/hero.toml");
+    assert_eq!(s["kind"], "animator");
+    assert_eq!(s["value"], "footstep");
+    assert_eq!(s["doc"]["states"]["idle"]["transitions"][0]["to"], "run");
+
+    // The run's first step is a stomp, and a new event at frame 2.
+    let c = edit(
+        &mut d,
+        "a heavier step",
+        &[
+            json!({ "asset": "anim/hero", "path": "states.run.events[0].name", "value": "stomp" }),
+            json!({ "asset": "anim/hero", "path": "states.run.events[2]", "value": { "frame": 2, "name": "sway" } }),
+        ],
+    )
+    .unwrap();
+    assert_eq!(c["files"], json!(["assets/anim/hero.toml"]));
+    assert_eq!(
+        c["command"],
+        "argus edit author=human note='a heavier step' ops='[{asset: anim/hero, op: asset, path: \"states.run.events[0].name\", value: stomp}, {asset: anim/hero, op: asset, path: \"states.run.events[2]\", value: {frame: 2, name: sway}}]'"
+    );
+    let text = read(t.path(), "assets/anim/hero.toml");
+    assert!(
+        text.starts_with("# The hero's feet.\n"),
+        "the comment kept: {text}"
+    );
+    assert!(
+        text.contains("name = \"stomp\"") && text.contains("name = \"sway\""),
+        "{text}"
+    );
+    // Imported at commit: the running game stomps and sways.
+    ok(
+        &mut d,
+        "input.inject",
+        json!({ "action": "move", "value": [1, 0], "frames": 60 }),
+    );
+    ok(&mut d, "sim.step", json!({ "n": 40 }));
+    for name in ["stomp", "sway"] {
+        let ev = ok(
+            &mut d,
+            "obs.events",
+            json!({ "name": name, "entity": "@player" }),
+        );
+        assert!(ev["total"].as_u64().unwrap() >= 1, "{name}: {ev}");
+        assert_eq!(ev["rows"][0]["fields"]["state"], "run");
+    }
+
+    // A condition the importer refuses: nothing kept, the line said.
+    let e = edit(
+        &mut d,
+        "broken",
+        &[json!({ "asset": "anim/hero", "path": "states.idle.transitions[0].when", "value": "KinematicBody.grounded >>> 2" })],
+    )
+    .unwrap_err();
+    assert!(e.message.contains("would not import"), "{}", e.message);
+    assert_eq!(read(t.path(), "assets/anim/hero.toml"), text, "as it was");
+    // A path that cannot be made is refused when queued.
+    let e = edit(
+        &mut d,
+        "no",
+        &[json!({ "asset": "anim/hero", "path": "initial.x", "value": 1 })],
+    )
+    .unwrap_err();
+    assert!(e.message.contains("initial.x"), "{}", e.message);
+
+    // Undo puts back the exact text.
+    d.call(1, "edit.undo", &json!({ "author": "human" }))
+        .unwrap();
+    assert_eq!(read(t.path(), "assets/anim/hero.toml"), original);
+    let s = ok(
+        &mut d,
+        "asset.sidecar",
+        json!({ "name": "anim/hero", "path": "states.run.events[0].name" }),
+    );
+    assert_eq!(s["value"], "footstep", "and the game has it back");
+    // A lock on the asset keeps the agent out.
+    ok(
+        &mut d,
+        "edit.lock",
+        json!({ "author": "human", "assets": ["anim/hero"], "note": "my feel" }),
+    );
+    let tx = ok(
+        &mut d,
+        "edit.begin",
+        json!({ "author": "agent:claude", "note": "faster" }),
+    )["tx"]
+        .clone();
+    ok(
+        &mut d,
+        "edit.asset",
+        json!({ "tx": tx, "asset": "anim/hero", "path": "states.run.fps", "value": 20 }),
+    );
+    let e = err(&mut d, "edit.commit", json!({ "tx": tx }));
+    assert_eq!(e.code, argus_daemon::codes::LOCKED, "{}", e.message);
+}
+
 /// The states the player entered, in order.
 fn entered(d: &mut argus_daemon::Daemon) -> Vec<String> {
     ok(

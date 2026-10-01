@@ -97,6 +97,7 @@ pub const TX_PARTS: &[&str] = &[
     "edit.tiles",
     "edit.text",
     "edit.def",
+    "edit.asset",
     "edit.abort",
 ];
 
@@ -109,6 +110,7 @@ pub const READS: &[&str] = &[
     "sim.ring",
     "replay.list",
     "scene.tiles.list",
+    "asset.sidecar",
     "world.summary",
     "world.query",
     "world.get",

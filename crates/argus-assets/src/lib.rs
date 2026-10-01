@@ -483,6 +483,25 @@ struct AssetLayer {
     prefix: String,
 }
 
+impl Importer {
+    /// Where an asset's sidecar is, or would be for one with none yet
+    /// (`<name>.toml` beside its source), in the layer the asset came from:
+    /// the file, and its path from the game's root (phase 4 item 8:
+    /// `edit.asset` writes it).
+    pub fn sidecar_file(&self, name: &str) -> Option<(PathBuf, String)> {
+        let e = self.entries.get(name)?;
+        let layer = match self.owners.get(name) {
+            Some(id) => self
+                .layers
+                .iter()
+                .position(|l| l.id.as_deref() == Some(id.as_str()))?,
+            None => 0,
+        };
+        let rel = e.sidecar.clone().unwrap_or_else(|| format!("{name}.toml"));
+        Some((self.layers[layer].dir.join(&rel), self.shown(layer, &rel)))
+    }
+}
+
 /// The importer: the catalog of `assets/` and its cache.
 pub struct Importer {
     root: PathBuf,

@@ -5,6 +5,7 @@
 //! command into a chat instead of describing a click".
 
 use crate::agent::Agent;
+use crate::animator::Animator;
 use crate::hierarchy::{Ask, Hierarchy};
 use crate::inspector::{Do, Inspector};
 use crate::link::{Answer, Link, State, Want};
@@ -47,6 +48,9 @@ const PROF_EVERY: Duration = Duration::from_secs(2);
 /// How often the Tiles tab reads the maps placed, and what bodies hit.
 const TILES_EVERY: Duration = Duration::from_secs(1);
 const COLLISION_EVERY: Duration = Duration::from_millis(400);
+/// How often the Animator tab reads its machine, and what the entity fired.
+const SIDECAR_EVERY: Duration = Duration::from_secs(1);
+const FIRED_EVERY: Duration = Duration::from_millis(300);
 
 /// The right panel's tab.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -61,6 +65,8 @@ pub enum Tab {
     Profile,
     /// Painting tilemaps.
     Tiles,
+    /// The selected entity's animator.
+    Animator,
     /// The change feed.
     Feed,
 }
@@ -141,6 +147,8 @@ pub struct Editor {
     pub profile: Profile,
     /// Tilemap painting.
     pub tiles: Tiles,
+    /// The animator editor.
+    pub animator: Animator,
     txs: HashMap<u64, TxRun>,
     described: bool,
     last_status: Option<Instant>,
@@ -157,6 +165,8 @@ pub struct Editor {
     last_capture: Option<Instant>,
     last_tiles: Option<Instant>,
     last_collision: Option<Instant>,
+    last_sidecar: Option<Instant>,
+    last_fired: Option<Instant>,
 }
 
 impl Editor {
@@ -184,6 +194,7 @@ impl Editor {
             scrubber: Scrubber::default(),
             profile: Profile::default(),
             tiles: Tiles::default(),
+            animator: Animator::default(),
             txs: HashMap::new(),
             described: false,
             last_status: None,
@@ -200,6 +211,8 @@ impl Editor {
             last_capture: None,
             last_tiles: None,
             last_collision: None,
+            last_sidecar: None,
+            last_fired: None,
         }
     }
 
@@ -540,6 +553,45 @@ impl Editor {
                 }
             }
         }
+        // The Animator tab: the machine, its sprite's clips, and what the
+        // entity fired.
+        if self.tab == Tab::Animator {
+            if due(self.last_sidecar, SIDECAR_EVERY) {
+                self.last_sidecar = Some(now);
+                if let Some(m) = self.animator.machine.clone() {
+                    let want = Want::Sidecar(m.clone());
+                    if !self.link.waiting(&want) {
+                        self.link.send("asset.sidecar", json!({ "name": m }), want);
+                    }
+                }
+                if !self.link.waiting(&Want::Animators) {
+                    self.link.send(
+                        "asset.list",
+                        json!({ "kind": "animator", "limit": 500 }),
+                        Want::Animators,
+                    );
+                }
+                if let (Some(s), true) =
+                    (self.animator.sprite.clone(), self.animator.clips.is_null())
+                {
+                    let want = Want::AnimClips(s.clone());
+                    if !self.link.waiting(&want) {
+                        self.link.send("asset.get", json!({ "name": s }), want);
+                    }
+                }
+            }
+            if let Some(e) = self.animator.entity.clone() {
+                let want = Want::AnimEvents(e.clone());
+                if due(self.last_fired, FIRED_EVERY) && !self.link.waiting(&want) {
+                    self.last_fired = Some(now);
+                    self.link.send(
+                        "obs.events",
+                        json!({ "entity": e, "since": self.animator.since, "limit": 200 }),
+                        want,
+                    );
+                }
+            }
+        }
         if due(self.last_agent, AGENT_EVERY) {
             self.last_agent = Some(now);
             for (method, want) in [
@@ -578,6 +630,8 @@ impl Editor {
                 }
                 // A stroke landed: the game draws it now.
                 self.tiles.landed(&line);
+                // An animator's edit: its file again.
+                self.last_sidecar = None;
                 self.tiles.hover_tile = None;
                 // What changed shows at once, not at the next poll.
                 self.last_status = None;
@@ -705,6 +759,33 @@ impl Editor {
                 }
             }
             (Want::TilePick, Ok(v)) => self.tiles.take_pick(&v),
+            (Want::Sidecar(m), Ok(v)) => {
+                if self.animator.machine.as_deref() == Some(m.as_str()) {
+                    self.animator.sidecar = v;
+                }
+            }
+            (Want::AnimClips(s), Ok(v)) => {
+                if self.animator.sprite.as_deref() == Some(s.as_str()) {
+                    self.animator.clips = v;
+                }
+            }
+            (Want::AnimEvents(e), Ok(v)) => {
+                if self.animator.entity.as_deref() == Some(e.as_str()) {
+                    self.animator.take_events(&v);
+                }
+            }
+            (Want::Animators, Ok(v)) => {
+                self.animator.machines = v["rows"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|r| r[0].as_str().map(str::to_string))
+                    .collect();
+            }
+            (
+                Want::Sidecar(_) | Want::AnimClips(_) | Want::AnimEvents(_) | Want::Animators,
+                Err(_),
+            ) => {}
             (Want::Sprites, Ok(v)) => {
                 self.tiles.sprites = v["rows"]
                     .as_array()
@@ -828,6 +909,7 @@ impl Editor {
                     ui.selectable_value(&mut self.tab, Tab::Agent, agent);
                     ui.selectable_value(&mut self.tab, Tab::Profile, "Profile");
                     ui.selectable_value(&mut self.tab, Tab::Tiles, "Tiles");
+                    ui.selectable_value(&mut self.tab, Tab::Animator, "Animator");
                     ui.selectable_value(&mut self.tab, Tab::Feed, "Change feed");
                 });
                 ui.separator();
@@ -869,6 +951,13 @@ impl Editor {
                         let top_left = self.mapping().map(|m| m.world_of_px([0.0, 0.0]));
                         for d in self.tiles.ui(ui, &scene, &rooms, top_left) {
                             self.tile_do(d);
+                        }
+                    }
+                    Tab::Animator => {
+                        let comps = self.inspector.got["components"].clone();
+                        self.animator.take_entity(self.selected.as_deref(), &comps);
+                        for (note, ops) in self.animator.ui(ui) {
+                            self.edit(&note, ops);
                         }
                     }
                     Tab::Feed => self.feed_ui(ui),

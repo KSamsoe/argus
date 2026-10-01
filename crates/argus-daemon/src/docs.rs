@@ -164,14 +164,14 @@ pub const TOOLS: &[ToolDoc] = &[
     },
     ToolDoc {
         name: "edit",
-        doc: "Change the game's authored state (its files) in one transaction by an author with a note, so the change feed says who and why and undo takes it back. ops run in order and all are kept or none: each is {op: set|add|remove|spawn|despawn|tiles, ...} with that edit method's parameters, e.g. {op: \"set\", entity: \"@player\", path: \"CharacterController.jump_height\", value: 3.4}. undo: take back the author's last transaction instead.",
+        doc: "Change the game's authored state (its files) in one transaction by an author with a note, so the change feed says who and why and undo takes it back. ops run in order and all are kept or none: each is {op: set|add|remove|spawn|despawn|tiles|text|def|asset, ...} with that edit method's parameters, e.g. {op: \"set\", entity: \"@player\", path: \"CharacterController.jump_height\", value: 3.4}, or {op: \"asset\", asset: \"anim/hero\", path: \"states.run.fps\", value: 10} for an animator's clip rate. undo: take back the author's last transaction instead.",
         params: &[
-            opt("ops", ARRAY, "one of ops, undo; [{op, ...}]: set {entity, path, value}, add {entity, component}, remove {entity, component}, spawn {id, room, prefab, tags, components}, despawn {entity}, tiles {file, layer, rect, cells | tile | terrain | erase}, text {lang, key, text} (a string in strings/<lang>.toml; text null removes it)"),
+            opt("ops", ARRAY, "one of ops, undo; [{op, ...}]: set {entity, path, value}, add {entity, component}, remove {entity, component}, spawn {id, room, prefab, tags, components}, despawn {entity}, tiles {file, layer, rect, cells | tile | terrain | erase}, text {lang, key, text} (a string in strings/<lang>.toml; text null removes it), def {def, path, value} (a def table row's field), asset {asset, path, value | remove} (a value in an asset's sidecar)"),
             opt("undo", BOOLEAN, "one of ops, undo; undo the author's last transaction"),
             opt("note", STRING, "why, for the change feed"),
             opt("author", STRING, "default \"agent:claude\""),
         ],
-        calls: &["edit.begin", "edit.set", "edit.add", "edit.remove", "edit.spawn", "edit.despawn", "edit.tiles", "edit.text", "edit.commit", "edit.abort", "edit.undo"],
+        calls: &["edit.begin", "edit.set", "edit.add", "edit.remove", "edit.spawn", "edit.despawn", "edit.tiles", "edit.text", "edit.def", "edit.asset", "edit.commit", "edit.abort", "edit.undo"],
     },
     ToolDoc {
         name: "run",
@@ -637,6 +637,27 @@ pub const METHODS: &[MethodDoc] = &[
         returns: "{imported: [name], unchanged, removed: [name], failed: [{name, message, at}], ms}",
     },
     MethodDoc {
+        name: "asset.sidecar",
+        doc: "An asset's sidecar (its .toml) as data, with the file it is: what edit.asset changes, by the same paths. An animator's states with their clips, rates, wind-ups, holds, events by frame, and transitions; a sprite's frames and clips; an emitter's or a material's parameters.",
+        params: &[
+            req("name", STRING, ""),
+            opt("path", STRING, "also the value at this path: states.run.fps, states.run.events[0].frame"),
+        ],
+        returns: "{name, kind, file, doc, value?}",
+    },
+    MethodDoc {
+        name: "edit.asset",
+        doc: "Queue a change to one value in an asset's sidecar (phase 4 item 8), by its path in the file: dotted keys and [n] for an element (states.run.fps, states.run.events[0].frame, states.idle.transitions[1].when, any[0].to). Tables on the way are made, [n] one past the end appends, remove takes a key or an element out, an object for a table's key makes a table of its own (a new state). At commit the file is written with its layout and comments kept and the asset imported again, so a running game uses it at once; a sidecar the importer refuses is put back and the commit fails with the importer's sentence and line. Undo puts back the file's exact text.",
+        params: &[
+            req("tx", INTEGER, "the transaction, from edit.begin"),
+            req("asset", STRING, "the asset's name: anim/hero"),
+            req("path", STRING, "states.run.fps"),
+            opt("value", ANY, "one of value, remove"),
+            opt("remove", BOOLEAN, "one of value, remove: take the key or element out"),
+        ],
+        returns: "{queued}",
+    },
+    MethodDoc {
         name: "asset.move",
         doc: "Rename a prefab, entity file, def row, or asset and rewrite every reference to it; appends to .argus/moves.log. The only sanctioned way to rename.",
         params: &[
@@ -844,12 +865,14 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "edit.lock",
-        doc: "Fence entities or paths for an author. Another author's write into them fails naming the lock, its owner, and its note.",
+        doc: "Fence entities or paths for an author, or whole assets and def rows. Another author's write into them fails naming the lock, its owner, and its note.",
         params: &[
             req("author", STRING, ""),
             opt("note", STRING, ""),
             opt("entities", ARRAY, "[entity]; optional"),
             opt("paths", ARRAY, "[\"Component\" | \"Component.field\"]; optional"),
+            opt("assets", ARRAY, "[asset name]: its sidecar, whole (edit.asset); optional"),
+            opt("defs", ARRAY, "[prefix:key]: a def row, whole (edit.def, a tuning session's commit); optional"),
         ],
         returns: "{lock}",
     },

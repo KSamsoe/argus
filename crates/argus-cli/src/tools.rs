@@ -341,10 +341,16 @@ fn transaction(c: &mut dyn Caller, args: &Json, tool: &str) -> Result<Json, Json
     let tx = begun.get("tx").cloned().unwrap_or(Json::Null);
     for (i, op) in ops.iter().enumerate() {
         let kind = op.get("op").and_then(Json::as_str).unwrap_or("");
-        if !["set", "add", "remove", "spawn", "despawn", "tiles", "text"].contains(&kind) {
+        // def and asset too: a tuning session's commit (item 3) and an
+        // animator's edit (item 8) are lines of this tool in the feed.
+        if ![
+            "set", "add", "remove", "spawn", "despawn", "tiles", "text", "def", "asset",
+        ]
+        .contains(&kind)
+        {
             let _ = c.call("edit.abort", json!({ "tx": tx }));
             return Err(bad(format!(
-                "op {i} has op {kind:?}: set, add, remove, spawn, despawn, tiles, or text"
+                "op {i} has op {kind:?}: set, add, remove, spawn, despawn, tiles, text, def, or asset"
             )));
         }
         let mut p = op.as_object().cloned().unwrap_or_default();

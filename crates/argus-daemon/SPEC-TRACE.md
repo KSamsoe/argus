@@ -263,6 +263,13 @@ Phase 0 item 4, "JSON-RPC daemon with session, world, edit, sim (play, pause, st
 | (Kevin's second play) The sound plays only while the game does. | Done | `Daemon::sync_audio`, every frame a window or a stream is open and when either opens a device: the audio engine is held while the clock is stopped or paused (`AudioEngine::set_hold`: the device's callback sends silence and leaves the mixer where it is). `audio.status` says `held` and the music's `seconds`. | `stream::the_music_waits_for_play` (a real device, the master bus muted) |
 | (P1) Escape at a mark's note prompt had no command. | Done | `mark.cancel {id}`: the mark's files go, `mark.cancelled` says so, and a prompt open for it closes. | `stream` |
 
+## Phase 4, item 8: asset sidecars through transactions
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| Asset sidecars edited through transactions, layout and comments kept, undoable per author, in the feed, reloaded at commit. | Done | `sidecar.rs`: `edit.asset {tx, asset, path, value | remove}` (`Op::Asset`; checked when queued); at commit the file is written by `toml_edit` (the value's type and comment kept, an integer where it was one) and imported again, and a sidecar the importer refuses is put back with its sentence and line; the inverse is the file's old text (`Op::AssetText`). `asset.sidecar {name, path?}` reads it as data. | `sidecar::tests::edits_keep_the_comments_and_the_layout`; `animation::an_animator_is_edited_in_a_transaction_and_the_running_game_uses_it` |
+| Locks on what an edit checks. | Done | `edit.lock {assets, defs}`: a whole asset or def row (item 3's `edit.def` checked locks nothing could make). | `animation` (the agent's `edit.asset` refused); `argus-cli` `feed::a_def_and_an_asset_edit_are_commands_too` (a def row) |
+
 ## Phase 4, item 7: what a painter needs
 
 | Spec | Status | Where | Test |

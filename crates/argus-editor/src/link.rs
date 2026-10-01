@@ -92,6 +92,14 @@ pub enum Want {
     TilePick,
     /// `asset.list {kind: sprite}`: tilesets for a new map.
     Sprites,
+    /// `asset.sidecar` of the animator edited.
+    Sidecar(String),
+    /// `asset.get` of the sprite whose clips it plays.
+    AnimClips(String),
+    /// `obs.events {entity}`: what the animated entity fired.
+    AnimEvents(String),
+    /// `asset.list {kind: animator}`.
+    Animators,
 }
 
 /// An answer: what it was for, and its result or error.
