@@ -8,7 +8,7 @@ Every statement in the design document (v0.3) that constrains the scheduler, clo
 |---|---|---|---|
 | "Editing" is the world with the simulation stages disabled; "playing" is with them enabled. Entering play takes a snapshot; stopping restores it. | Done | `Scheduler::play` snapshots world + sim state on the first call from edit mode; `stop` restores both; frames in edit mode run only `present`. | `clocks::play_snapshots_and_stop_restores`, `clocks::continuous_clock_runs_speed_ticks_per_frame` |
 | A script or plugin fault must not take the daemon down. A panic in a system is caught at the system boundary, the system is disabled, and the fault is reported through the protocol as an event. The world remains intact and inspectable. | Done | `Scheduler::run_system` wraps every system in `catch_unwind`; on panic or `Err` the system is disabled and `Event::SystemFault` plus `Event::SystemDisabled` are emitted with the message and the declaration's `file:line`. Later systems in the same tick still run. | `faults::a_panicking_system_is_disabled_and_reported_and_others_keep_running`, `faults::an_erroring_system_is_disabled_with_the_structured_error` |
-| Multiple concurrent play sessions are forked worlds inside the same daemon. | Partial | `Scheduler` is per world; `SimSnapshot` (world + sim state) is what a fork starts from. The daemon holds one scheduler per fork. | `prof_snapshot::full_snapshot_carries_world_and_sim_state` |
+| Multiple concurrent play sessions are forked worlds inside the same daemon. | Done | `Scheduler` is per world; `SimSnapshot` (world + sim state) is what a fork starts from. The daemon holds one scheduler per fork. (finished in phase 2 item 0: argus-daemon's trace, the forked-worlds row, `sim.fork`) | `prof_snapshot::full_snapshot_carries_world_and_sim_state` |
 
 ## §3 Systems and stages
 
@@ -67,13 +67,13 @@ Every statement in the design document (v0.3) that constrains the scheduler, clo
 
 | Spec | Status | Where |
 |---|---|---|
-| `t:run_until { event, max_frames }`, `{ sim_time, speed = "max" }`, `t:advance { by = "turn", n }`, `t.expect:perf("sim"):p95_ms()`. | Partial | `run_until_event`, `run_until_time`, `advance`, `prof_tick_p95_ms` are the calls the runner (item 10) wraps. |
+| `t:run_until { event, max_frames }`, `{ sim_time, speed = "max" }`, `t:advance { by = "turn", n }`, `t.expect:perf("sim"):p95_ms()`. | Done | `run_until_event`, `run_until_time`, `advance`, `prof_tick_p95_ms` are the calls the runner (item 10) wraps. (finished in item 10: argus-test's trace, the §9 `t:run_until` and `perf` rows) |
 
 ## §15 Shipping
 
 | Spec | Status | Where |
 |---|---|---|
-| Nothing in the sim stage may read from a device, the wall clock, or a local-player singleton. | Partial | The context exposes none of these. The lint over Luau source is the binding's. |
+| Nothing in the sim stage may read from a device, the wall clock, or a local-player singleton. | Done | The context exposes none of these. The lint over Luau source is the binding's. (finished in argus-luau: its trace's §15 row, the sandbox exposes no `os`, `io`, or clock) |
 
 ## §17 Performance targets the scheduler owns
 

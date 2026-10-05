@@ -42,7 +42,7 @@ Every statement in the design document (v0.3) that constrains action maps and th
 
 | Spec | Status | Where | Test |
 |---|---|---|---|
-| `t.input:hold("move", {1, 0}, frames = 60)`, `t.input:tap("fire")`. | Partial | `inject {frames}` and `inject` with the default single frame are exactly these; the Luau wrappers are piece 10. | `input::injected_actions_reach_gameplay_and_never_name_keys` |
+| `t.input:hold("move", {1, 0}, frames = 60)`, `t.input:tap("fire")`. | Done | `inject {frames}` and `inject` with the default single frame are exactly these; the Luau wrappers are piece 10. (finished in piece 10: argus-test's trace, the §9 `t.input` row) | `input::injected_actions_reach_gameplay_and_never_name_keys` |
 
 ## Phase 1 item 2: real devices
 

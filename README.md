@@ -218,6 +218,10 @@ docs/
   playtest.md                     the playtest server on klab: the link, reports into marks, new builds (phase 2, item 7)
 ```
 
+## Phase 5
+
+Phase 5 finishes the engine: Rust plugins that reload while the game runs, systems that run in parallel, 2D lighting, optional rigid bodies, skeletal animation, a platform layer with Steam, the release build's last pieces, an accessibility pass, every §17 timing target gated in CI, Aseprite and Tiled importers, and two spikes (an editor in the browser, and determinism across machines). Its gate: all four games green in CI on this laptop, and an agent given any one of them can add a feature without reading the engine's source. The items, in the order agreed with Kevin, and what each must meet are in [docs/phase5-checklist.md](docs/phase5-checklist.md). Decided at the start: CI runs on this laptop as a GitHub runner, skeletons are our own runtime reading Spine's JSON, and Steam is tested against Valve's test app on Kevin's Steam.
+
 ## Phase 4
 
 Phase 4 is the editor: a separate program that reaches the game only through the protocol, as the agent does, so everything a person does in it is a command the agent could have issued. Its items, in the order agreed with Kevin, are in [docs/phase4-checklist.md](docs/phase4-checklist.md). Done so far:

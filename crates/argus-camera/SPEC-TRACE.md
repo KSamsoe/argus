@@ -32,7 +32,7 @@ Every statement in the design document (v0.3) that constrains cameras as phase 1
 | Phase 1: camera component. | Done | This crate. | |
 | (Phase 2 item 1.) The first frame is framed. | Done | `camera.update` also runs when a scene loads (`on_load`): its first update snaps to the target inside the target's room, so the frame drawn before the first tick (or the first turn of a discrete game) shows the room, not the authored camera position. Found by the web spike, whose paused page drew that frame. | `tools/web/check.mjs` start screenshot; the three games' tests |
 | (Phase 2 item 6.) A hit-stop holds the view, and the shake plays on. | Done | `camera.update` is `unfrozen`: on a frozen tick it does not follow, pan, or zoom, so the moment of the hit stays in view, and its `CameraShake` goes on moving and decaying rather than hanging still. | `a_hit_stop_holds_the_view_and_the_shake_plays_on` |
-| Gate: a three-room slice of Hollow with a following camera. | Partial | A camera follows a physics player across two rooms of a room scene through the protocol, keeping to each room's bounds; the slice itself is the gate's work. | `argus-daemon/tests/camera.rs` |
+| Gate: a three-room slice of Hollow with a following camera. | Done | A camera follows a physics player across two rooms of a room scene through the protocol, keeping to each room's bounds; the slice itself is the gate's work. (finished at the phase 1 gate: docs/phase1-gate.md, Hollow's three rooms with `rooms/a/camera.toml`) | `argus-daemon/tests/camera.rs` |
 
 ## Phase 3, item 5: blends
 

@@ -45,7 +45,7 @@ Every statement in the design document (v0.3) that constrains authored content (
 |---|---|---|---|
 | `edit.commit` on an authored entity writes its file (`scenes/arena/spawner.north.toml`). | Done (data side) | `Scene::set_override`, `clear_override`, `add_component`, `remove_component`, `create_entity`, `delete_entity` write files; `Scene::sync_entity` brings the live entity in line. Transactions, authors, and the feed are the daemon. | `moves_edits::overrides_are_written_back_without_disturbing_the_file` |
 | Errors carry code, message, hint, `file:line`. | Done | Every error here has a ref into the TOML; range and type errors from the schema keep the schema's ref and add the TOML location to the message. | `docs_prefabs::schema_errors_carry_both_locations` |
-| Identical result shapes from the live world or the index. | Deferred | Piece 6. `ResolvedEntity` is the shape both will produce. | |
+| Identical result shapes from the live world or the index. | Done | Piece 6. `ResolvedEntity` is the shape both will produce. (finished in piece 6: argus-index's trace, the §4 identical-shapes row) | |
 
 ## §6 Determinism
 

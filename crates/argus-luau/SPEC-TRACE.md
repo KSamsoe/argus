@@ -68,7 +68,7 @@ Every statement in the design document (v0.3) that constrains the Luau binding, 
 | Spec | Status | Where |
 |---|---|---|
 | Nothing in the sim stage may read from a device or the wall clock. | Done | The sandbox exposes no `os`, `io`, or clock; `q.time`, `q.tick`, `q.dt` are sim time. |
-| Release builds precompile Luau to bytecode. | Deferred | Phase 2 `argus build`. |
+| Release builds precompile Luau to bytecode. | Done | Phase 2 `argus build`. (finished in phase 2 item 7: this trace's bytecode row, `compile`; argus-player's trace) |
 
 ## §17 Performance
 
