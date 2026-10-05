@@ -157,6 +157,14 @@ fn prepare(root: &Path, day_seconds: Option<f64>) -> Result<(Lua, Table, Vec<Jso
             .map_err(|e| e.to_string())?,
         )
         .map_err(|e| e.to_string())?;
+    let g3 = goldens.clone();
+    harness_fns
+        .set(
+            "golden_exists",
+            lua.create_function(move |_, rel: String| Ok(g3.join(&rel).is_file()))
+                .map_err(|e| e.to_string())?,
+        )
+        .map_err(|e| e.to_string())?;
     let g2 = goldens.clone();
     harness_fns
         .set(

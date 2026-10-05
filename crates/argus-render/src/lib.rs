@@ -45,6 +45,8 @@ pub mod codes {
     pub const PNG: u32 = 5004;
     /// The window could not be opened.
     pub const WINDOW: u32 = 5005;
+    /// Two pictures of different sizes were compared.
+    pub const SIZES: u32 = 5006;
 }
 
 /// What an entity draws: an atlas frame, or a described shape when
@@ -200,6 +202,49 @@ pub fn contact_sheet(frames: &[Image], labels: &[String]) -> Option<Image> {
     Some(sheet)
 }
 
+/// How a picture differs from its golden ([`Image::compare`]).
+#[derive(Clone, Debug)]
+pub struct Comparison {
+    /// Pixels compared.
+    pub pixels: u64,
+    /// Those whose difference passed the threshold.
+    pub differing: u64,
+    /// The largest difference, on the threshold's scale (0 to 1).
+    pub worst: f64,
+    /// The differences as a picture: the golden faded, differing pixels red.
+    pub diff: Image,
+}
+
+impl Comparison {
+    /// The share of pixels that differ.
+    pub fn fraction(&self) -> f64 {
+        self.differing as f64 / self.pixels.max(1) as f64
+    }
+}
+
+/// A pixel in YIQ, blended over white by its alpha.
+fn yiq(p: &[u8]) -> (f64, f64, f64) {
+    let a = p[3] as f64 / 255.0;
+    let c = |v: u8| 255.0 + (v as f64 - 255.0) * a;
+    let (r, g, b) = (c(p[0]), c(p[1]), c(p[2]));
+    (
+        r * 0.298_895_31 + g * 0.586_622_47 + b * 0.114_482_23,
+        r * 0.595_977_99 - g * 0.274_176_10 - b * 0.321_801_89,
+        r * 0.211_470_17 - g * 0.522_617_11 + b * 0.311_146_94,
+    )
+}
+
+/// pixelmatch's colour difference between two pixels (0 when equal).
+fn yiq_delta(a: &[u8], b: &[u8]) -> f64 {
+    if a == b {
+        return 0.0;
+    }
+    let (y1, i1, q1) = yiq(a);
+    let (y2, i2, q2) = yiq(b);
+    let (y, i, q) = (y1 - y2, i1 - i2, q1 - q2);
+    0.5053 * y * y + 0.299 * i * i + 0.1957 * q * q
+}
+
 /// A frame's pixels, top row first.
 #[derive(Clone, Debug)]
 pub struct Image {
@@ -221,6 +266,58 @@ impl Image {
             self.rgba[i + 2],
             self.rgba[i + 3],
         ]
+    }
+
+    /// How this picture differs from `golden`, as a person would see it
+    /// (§9: image goldens "with a perceptual threshold"). pixelmatch's
+    /// measure: the colour difference in YIQ, which weighs brightness over
+    /// hue as the eye does, translucent pixels blended over white. A pixel
+    /// differs when its difference passes `threshold` (0 to 1, 0.1 for a
+    /// person's eye; 0 counts any change). The difference picture is the
+    /// golden faded towards white with the differing pixels red.
+    pub fn compare(&self, golden: &Image, threshold: f64) -> argus_ecs::Result<Comparison> {
+        if (self.width, self.height) != (golden.width, golden.height) {
+            return Err(argus_ecs::ArgusError::new(
+                codes::SIZES,
+                format!(
+                    "the picture is {}x{} and the golden {}x{}",
+                    self.width, self.height, golden.width, golden.height
+                ),
+            )
+            .hint("Ask for the golden's size (width, height), or record it again."));
+        }
+        let max_delta = 35215.0 * threshold * threshold;
+        let mut diff = Vec::with_capacity(self.rgba.len());
+        let (mut differing, mut worst) = (0u64, 0f64);
+        for (a, b) in self
+            .rgba
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .zip(golden.rgba.as_chunks::<4>().0)
+        {
+            let d = yiq_delta(a, b);
+            worst = worst.max(d);
+            if d > max_delta {
+                differing += 1;
+                diff.extend([255, 0, 0, 255]);
+            } else {
+                // The golden, faded: its brightness at a tenth over white.
+                let y = yiq(b).0;
+                let v = (255.0 + (y - 255.0) * 0.1).clamp(0.0, 255.0) as u8;
+                diff.extend([v, v, v, 255]);
+            }
+        }
+        Ok(Comparison {
+            pixels: (self.width as u64) * (self.height as u64),
+            differing,
+            worst: (worst / 35215.0).sqrt(),
+            diff: Image {
+                width: self.width,
+                height: self.height,
+                rgba: diff,
+            },
+        })
     }
 
     /// Write as PNG.

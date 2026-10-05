@@ -503,6 +503,48 @@ local function make_t(ctx, spec, seed)
     end
     return p
   end
+  -- An image golden (section 9: "an opt-in for rendering work, with a
+  -- perceptual threshold, and expected to be rare"). The frame is drawn
+  -- with the software rasteriser, so it is the same picture on any machine
+  -- CI or a person runs it on; it is compared with
+  -- tests/goldens/<scenario>/<name>.seed<n>.png by obs.frame's golden.
+  -- opts: width, height (640 x 360), threshold (how different a pixel must
+  -- be, 0.1), max (the share of pixels that may differ, 0.001).
+  function expect:image(name, opts)
+    opts = opts or {}
+    local rel = slug(spec.name) .. "/" .. slug(name) .. ".seed" .. tostring(seed) .. ".png"
+    local golden = "tests/goldens/" .. rel
+    local params = { format = "png", width = opts.width or 640, height = opts.height or 360, software = true }
+    local e = { kind = "image", desc = "image " .. name, golden = golden }
+    if not H.golden_exists(rel) or ctx.opts.update then
+      local was = H.golden_exists(rel)
+      params.path = golden
+      callm("obs.frame", params)
+      e.ok = true
+      e.recorded = true
+      e.message = string.format("image %s: %s %s", name, was and "updated" or "recorded", golden)
+      return record(ctx, e)
+    end
+    params.path = ".argus/test-images/" .. rel
+    params.golden = golden
+    params.threshold = opts.threshold or 0.1
+    local r = callm("obs.frame", params)
+    local c = r.compare
+    local max = opts.max or 0.001
+    e.ok = c.fraction <= max
+    e.actual = r.path
+    e.diff = c.diff
+    e.differing = c.differing
+    e.fraction = c.fraction
+    if e.ok then
+      e.message = string.format("image %s: matches %s (%d of %d pixels differ, %.2f%% allowed)",
+        name, golden, c.differing, c.pixels, max * 100)
+    else
+      e.message = string.format("image %s: %.2f%% of its pixels differ from %s (%.2f%% allowed): the picture %s, where they differ %s",
+        name, c.fraction * 100, golden, max * 100, r.path, c.diff)
+    end
+    return record(ctx, e)
+  end
   function expect:snapshot(name, spec_)
     spec_ = spec_ or {}
     local select = { "id" }

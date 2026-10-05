@@ -61,7 +61,9 @@ argus build --target web --release --out target-web/site
 tools/web/deploy.sh target-web/site
 ```
 
-The page is swapped in with one rename; the server needs no restart, and reports already sent stay. If `tools/web/serve.mjs` itself changed, copy it to `~/argus-play/serve.mjs` and restart the service.
+The page is swapped in with one rename; the server needs no restart, and reports already sent stay. If `tools/web/serve.mjs` itself changed, the script copies it to `~/argus-play/serve.mjs` and restarts the service.
+
+The server sends the page brotli-compressed to a browser that takes it: about 2.7 MB instead of 14 MB, so the page loads in under 5 s on a 20 Mbit link (section 17; `tools/web/check.mjs` measures it).
 
 ## Linux builds
 

@@ -171,9 +171,12 @@ impl PostStack {
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStages::FRAGMENT,
+                    // At an offset (a root constant buffer on DirectX 12):
+                    // through the descriptor heap, WARP gave every pass the
+                    // last pass's numbers (see gpu.rs `build`).
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
+                        has_dynamic_offset: true,
                         min_binding_size: None,
                     },
                     count: None,
@@ -356,7 +359,7 @@ impl PostStack {
                 occlusion_query_set: None,
             });
             pass.set_pipeline(pipeline);
-            pass.set_bind_group(0, &bind, &[]);
+            pass.set_bind_group(0, &bind, &[0]);
             pass.draw(0..3, 0..1);
         }
     }

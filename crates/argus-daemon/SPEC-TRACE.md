@@ -299,6 +299,13 @@ Phase 0 item 4, "JSON-RPC daemon with session, world, edit, sim (play, pause, st
 | Which maps are placed where. | Done | `scene.tiles.list`: each Tilemap entity with its origin (tile (0, 0)'s top-left corner), visibility, and `scene.tiles.info`. | `tiles::placed_maps_are_listed_and_a_big_map_edits_without_pauses` |
 | (§17) A 4,096 × 4,096 map of 8 layers edits "without pauses". | Done | Through the protocol in the debug build: 4 × 1 in 1.5 ms, 40 × 24 in 5.3 ms, 512 × 512 in 36.5 ms, only the chunks touched written. | `tiles::placed_maps_are_listed_and_a_big_map_edits_without_pauses` |
 
+## Phase 5, item 0: CI, and every §17 target gated
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§17) "All of them are perf assertions the engine's own test suite runs", green "in CI on the reference laptop". | Done (but Rust plugin reload, phase 5 item 7) | `prof.targets`' gates name the check for every row. CI (`tools/ci/ci.sh`, `.github/workflows/ci.yml`, a runner on this laptop: `docs/ci.md`) runs the release timing tests on every push to main, and the web check. The two rows that had no measure: a web cold load of Hollow's page is 2.6 s on 20 Mbit (2.7 MB, brotli), and an incremental release build after one script changed is 4.7 s. | `perf_*` (release, ignored), `argus-cli` `release`, `tools/web/check.mjs` |
+| (§9) `obs.frame {golden, threshold}` compares the frame it drew. | Done | The golden PNG is read and compared (`Image::compare`); the answer's `compare` holds the golden, the threshold, the pixels, how many differ, the share, the worst, and the difference image beside the frame (`<path>.diff.png`). The harness's `expect:image` uses it. | `argus-test` `runner::an_image_golden_is_recorded_matched_and_fails_with_a_picture` |
+
 ## Phase 4, item 6: §17 beside what is measured
 
 | Spec | Status | Where | Test |

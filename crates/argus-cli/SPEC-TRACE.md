@@ -90,6 +90,12 @@ Phase 0 item 9, "CLI": this crate, plus `argus_daemon::launch` (shared with `arg
 | (§15) Mod packs. | Done | `argus build --mod <id>`: the mod's pack in `dist/mods/` (or `--out`), after checking that it loads with the game (the mods it requires first), nothing left out, and that the game plays the same with the mod from its pack as from its directory. | Hollow's `lanterns` and `brighter` built and checked |
 | (§16) About a dozen tools. | Done | No new tool: `query {mods: true}` reads `mods.list`, `reload {mods: [...]}` loads the scene again with those mods. | `tools.rs` |
 
+## Phase 5, item 0: the incremental release build
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§17) "Release build, incremental < 30 s: content-addressed packs; only changed chunks rebuild." | Done | `argus build --release --since <the last build>` on Hollow after one script is changed and committed: the packs ship only the new blobs, and cargo relinks the player for its new code version. 4.7 s on the reference laptop. | `release::a_release_build_after_one_script_changed_takes_under_30_s` (release, ignored; CI runs it) |
+
 ## The phase 4 gate: the slider path for the agent
 
 | Spec | Status | Where | Test |

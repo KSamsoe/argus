@@ -1,0 +1,44 @@
+# CI on the reference laptop (phase 5 item 0): a self-hosted runner there
+# (docs/ci.md) runs tools/ci/ci.sh for every push to main and every pull
+# request. Section 17's targets are numbers on that laptop, so they are
+# gated there.
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  ci:
+    runs-on: [self-hosted, windows, argus-reference]
+    timeout-minutes: 150
+    defaults:
+      run:
+        # cmd, to start Git's bash by its full path: `shell: bash` can find
+        # WSL's or Cygwin's first on this laptop.
+        shell: cmd
+    steps:
+      # The build caches stay between runs (a cold build is most of an
+      # hour); everything else is cleaned, as a fresh checkout would be.
+      - uses: actions/checkout@v4
+        with:
+          clean: false
+      - name: Clean all but the build caches
+        run: git clean -ffdx -e /target -e /target-web
+      - name: CI
+        run: '"C:\Program Files\Git\bin\bash.exe" tools/ci/ci.sh'
+      - name: Keep the logs and pictures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-${{ github.run_number }}
+          path: |
+            target/ci/
+            target-web/check/
+            examples/*/.argus/test-images/
+            examples/*/.argus/replays/
+          if-no-files-found: ignore
+          retention-days: 14

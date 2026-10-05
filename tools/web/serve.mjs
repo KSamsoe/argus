@@ -7,7 +7,9 @@
 // HTTPS proxy, which players reach, and the tailnet address, which
 // `argus mark pull` reaches over plain HTTP.
 //
-//   GET  /...           the site's files
+//   GET  /...           the site's files, brotli-compressed for a browser
+//                       that takes it (phase 5 item 0: the page cold-loads
+//                       in under 5 s on a 20 Mbit link, section 17)
 //   POST /marks         a report from the page (a replay file, ARGR), at
 //                       most 8 MB; stored as <marks-dir>/<id>.argr
 //   GET  /marks         {marks: [{id, bytes, at}]}, oldest first
@@ -16,6 +18,7 @@
 // `argus mark pull url=http://host:port/` fetches the reports into a
 // project's mark queue (phase 2 item 7).
 import { createServer } from "node:http";
+import { brotliCompressSync, constants as zlib } from "node:zlib";
 import { readFile, writeFile, readdir, stat, mkdir } from "node:fs/promises";
 import { extname, join, normalize, resolve, dirname } from "node:path";
 import { randomBytes } from "node:crypto";
@@ -69,6 +72,20 @@ async function listReports(res) {
   send(res, 200, { marks: rows });
 }
 
+// Each file compressed once, while it is the same file.
+const compressed = new Map();
+async function brotli(file) {
+  const s = await stat(file);
+  const key = `${s.mtimeMs}:${s.size}`;
+  const have = compressed.get(file);
+  if (have?.key === key) return have.body;
+  const body = brotliCompressSync(await readFile(file), {
+    params: { [zlib.BROTLI_PARAM_QUALITY]: 9, [zlib.BROTLI_PARAM_SIZE_HINT]: s.size },
+  });
+  compressed.set(file, { key, body });
+  return body;
+}
+
 const handle = async (req, res) => {
   const path = decodeURIComponent(new URL(req.url, "http://x").pathname);
   try {
@@ -81,8 +98,13 @@ const handle = async (req, res) => {
     if (req.method !== "GET") return send(res, 405, { error: "GET, or POST /marks" });
     const file = normalize(join(root, path.endsWith("/") ? path + "index.html" : path));
     if (!file.startsWith(normalize(root))) return send(res, 403, { error: "outside the site" });
-    const body = await readFile(file);
-    send(res, 200, body, types[extname(file)] ?? "application/octet-stream");
+    const type = types[extname(file)] ?? "application/octet-stream";
+    if (/\bbr\b/.test(req.headers["accept-encoding"] ?? "")) {
+      const body = await brotli(file);
+      res.writeHead(200, { "content-type": type, "content-encoding": "br", "content-length": body.length, "cache-control": "no-store", vary: "accept-encoding" });
+      return res.end(body);
+    }
+    send(res, 200, await readFile(file), type);
   } catch {
     send(res, 404, { error: "not found" });
   }

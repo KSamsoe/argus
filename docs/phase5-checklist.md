@@ -53,7 +53,7 @@ Rows that no phase scheduled, each given a home:
 
 ## 0. CI on the reference laptop, and every §17 target gated
 
-**Status: to do.**
+**Status: done** (2026-10-05) in `tools/ci/ci.sh`, `.github/workflows/ci.yml`, and `docs/ci.md` (the runner Kevin installs), the harness (`expect:image`), `argus-render` (`Image::compare`; every uniform at an offset; `ARGUS_SOFTWARE`, `ARGUS_BACKEND`), the daemon (`obs.frame {golden, threshold}`; `prof.targets`' gates), `argus-cli` (`tests/release.rs`), and the web tools (`check.mjs`'s cold load and verdict, `serve.mjs`'s brotli, `deploy.sh` carrying the server). CI runs six steps on every push to main and every pull request, each to the end, keeping every log, the web check's pictures, an image golden's picture and difference, and a failing scenario's replay: fmt, clippy with no warnings, the workspace's tests and the render tests again on WARP, the four games' suites, the release timing tests (every §17 row but the web page's), and Hollow's page built and checked in headless Chrome. All six pass on this laptop. Every §17 row has its gate but Rust plugin reload (item 7). Traces: `argus-test`'s, `argus-render`'s, the daemon's, `argus-cli`'s, and `argus-web`'s.
 
 - §17: "Each reference game contributes the rows it stresses, and all of them are perf assertions the engine's own test suite runs." 23 rows; three have no measure yet (web cold load, release incremental build, Rust plugin reload, the last item 6's).
 - §17: "Numbers on a mid-range laptop core (one thread for sim unless the scheduler finds parallel stages)": the bounds are this laptop's, in a release build.
@@ -62,6 +62,16 @@ Rows that no phase scheduled, each given a home:
 - §9: image goldens with a perceptual threshold (carried in): a picture expectation in the harness, failing with the difference image.
 - §17: "Web build, cold load < 5 s on a 20 Mbit link" and "Release build, incremental < 30 s": measured and gated.
 - A failure in CI is the same report the agent gets locally: the scenario, the seed, the replay, the system to look at.
+
+Decisions taken while building it:
+
+- **CI is a script the workflow calls.** `tools/ci/ci.sh [step...]` is what CI runs and what a person or the agent runs by hand, so a CI failure reproduces with one command. The workflow only checks out, cleans everything but the build caches (a cold build is most of an hour), runs the script with Git's bash by its full path (this laptop has WSL's and Cygwin's too), and keeps the outputs for 14 days.
+- **The runner runs as Kevin, not as a service.** A service is another Windows account, without his Rust, wasi-sdk, and Chrome, and its reach to the GPU is unreliable; the timing gates are about this laptop as it is used. It starts at log-on (`docs/ci.md`), so a push waits while the laptop is off.
+- **The Outpost hand-tuning gate is left out of CI.** It runs 21 minutes (twenty seeds of thirty days, four values); the other release tests take minutes. It stays a phase gate's.
+- **Image goldens are drawn in software.** `expect:image` draws with WARP on any machine, so a golden recorded on one machine matches on another. Pixels are compared with pixelmatch's YIQ difference (threshold 0.1), and a picture fails when more than 0.1% of its pixels differ.
+- **Found: WARP drew no world.** The first golden was the HUD on black. A uniform bound through DirectX 12's descriptor heap read the one in the next bind group made with the same layout, so the world drew with the UI's view and every post pass with the last pass's numbers. Every uniform is bound at an offset now (a root constant buffer, which bypasses the heap), and WARP draws within 0.1% of the GPU's pixels; a test compares the two, plain and through five post passes. `ARGUS_SOFTWARE=1` sends every renderer to WARP, and CI runs the render tests so a second time.
+- **The page reaches 5 s by compression, not a smaller build.** It took 6.5 s and 14.1 MB. A profile without debug info shrank the raw module from 97 to 13 MB but not the page's, since wasm-bindgen already drops it (11.3 MB either way), so the page is built as before. The server sends brotli (quality 9, each file compressed once while it is unchanged): 2.7 MB, 2.6 s on 20 Mbit with 40 ms each way.
+- **The incremental build is measured as a developer makes one.** A copy of Hollow in a git repository, built, one script changed and committed, built again over the first with `--since`: the code version moves, so cargo relinks the player, and only the new blobs ship. 4.7 s against 30.
 
 ## 1. The release build: recorder, reports, and packs
 

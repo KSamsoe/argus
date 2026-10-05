@@ -514,3 +514,79 @@ fn days_and_hours_are_the_projects() {
     let log = r["scenarios"][0]["seeds"][0]["log"].to_string();
     assert!(log.contains("86400 21600"), "{log}");
 }
+
+/// Phase 5 item 0: an image golden (§9, "an opt-in for rendering work,
+/// with a perceptual threshold"). Recorded the first time, matched the
+/// next, and a change a person would see fails with how much differs and
+/// a picture of where. Drawn with the software rasteriser, so the golden is
+/// the same on any machine.
+#[test]
+fn an_image_golden_is_recorded_matched_and_fails_with_a_picture() {
+    let (t, d) = fixture("runner-image");
+    common::write(
+        t.path(),
+        "scenes/arena/lamp.toml",
+        "[Transform]\npos = [0.0, 0.0]\n\n[Sprite]\nkind = \"rect\"\nsize = [3.0, 3.0]\ncolor = \"#E8703F\"\n",
+    );
+    common::write(
+        t.path(),
+        "tests/look.luau",
+        r#"
+return scenario "the lamp looks as it did" {
+  scene = "arena", seed = 7,
+  run = function(t)
+    t:run_until { frames = 2 }
+    t.expect:image("lamp", { width = 160, height = 90 })
+  end,
+}
+"#,
+    );
+    drop(d);
+    let mut d = Local(common::open(t.path()), t.path().to_path_buf());
+    let image = |r: &Json| r["scenarios"][0]["seeds"][0]["expectations"][0].clone();
+    let golden = t
+        .path()
+        .join("tests/goldens/the_lamp_looks_as_it_did/lamp.seed7.png");
+    let r = run(&mut d, &Options::default()).unwrap();
+    assert!(image(&r)["recorded"] == true, "{}", image(&r));
+    assert!(golden.is_file());
+    let r = run(&mut d, &Options::default()).unwrap();
+    let e = image(&r);
+    assert_eq!(e["ok"], true, "{e}");
+    assert_eq!(e["differing"], 0, "the same picture: {e}");
+    // The lamp another colour: a person would see it.
+    let r = run(
+        &mut d,
+        &Options {
+            set: vec![json!({ "entity": "@lamp", "path": "Sprite.color", "value": "#3FA0E8" })],
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let e = image(&r);
+    assert_eq!(e["ok"], false, "{e}");
+    let msg = e["message"].as_str().unwrap();
+    assert!(
+        msg.contains("of its pixels differ from tests/goldens/"),
+        "{msg}"
+    );
+    assert!(
+        std::path::Path::new(e["diff"].as_str().unwrap()).is_file(),
+        "{e}"
+    );
+    assert!(
+        std::path::Path::new(e["actual"].as_str().unwrap()).is_file(),
+        "{e}"
+    );
+    // And update records the new look.
+    let r = run(
+        &mut d,
+        &Options {
+            update_goldens: true,
+            set: vec![json!({ "entity": "@lamp", "path": "Sprite.color", "value": "#3FA0E8" })],
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert!(image(&r)["recorded"] == true, "{}", image(&r));
+}

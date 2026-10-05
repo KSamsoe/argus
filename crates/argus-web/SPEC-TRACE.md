@@ -43,6 +43,12 @@ Every statement in the design document (v0.3) that constrains the web spike (pha
 |---|---|---|---|
 | (§6) A game's speed controls on the page. | Done | `WebPlayer::frame` owes ticks at the clock's speed, which `q:speed(x)` sets at the end of the tick that asked (the scheduler's). | The page's check (Hollow, at 1x); Outpost by hand |
 
+## Phase 5, item 0: the cold load
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§17) "Web build, cold load < 5 s on a 20 Mbit link." | Done | `tools/web/check.mjs` first loads the page in a fresh profile with the cache off and the network held to 20 Mbit down, 5 up, and 40 ms, until the first frame is drawn, and fails past 5 s; it exits 1 on any failure, which CI gates on. `tools/web/serve.mjs` sends files brotli-compressed to a browser that takes it (each compressed once while it is the same file): Hollow's page went from 14.1 MB and 6.5 s to 2.7 MB and 2.6 s. `tools/web/deploy.sh` copies the server to klab when it changed. | `tools/web/check.mjs` (`cold_load`, `ok`) |
+
 ## Known limitations, stated so they are decisions
 
 - `Player::open` copies the daemon's `open_scene`. Item 7 shares one assembly.

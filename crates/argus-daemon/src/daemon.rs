@@ -5239,6 +5239,34 @@ impl Daemon {
             out["mark_columns"] = json!(["label", "bounds", "labelled"]);
             out["marks"] = Json::Array(marks);
         }
+        // Against a golden picture (§9's image goldens, phase 5 item 0): how
+        // many pixels a person would see differ, and a picture of where.
+        if let Some(g) = json::opt_str(params, "golden")? {
+            let gp = if Path::new(g).is_absolute() {
+                PathBuf::from(g)
+            } else {
+                root.join(g)
+            };
+            let threshold = json::f64_param(params, "threshold", 0.1)?;
+            let (w, h, rgba) = argus_assets::decode_png(&gp)?;
+            let golden = argus_render::Image {
+                width: w,
+                height: h,
+                rgba,
+            };
+            let c = img.compare(&golden, threshold)?;
+            let diff = path.with_extension("diff.png");
+            c.diff.save_png(&diff)?;
+            out["compare"] = json!({
+                "golden": g,
+                "threshold": threshold,
+                "pixels": c.pixels,
+                "differing": c.differing,
+                "fraction": c.fraction(),
+                "worst": (c.worst * 1e4).round() / 1e4,
+                "diff": diff.to_string_lossy(),
+            });
+        }
         Ok(out)
     }
 

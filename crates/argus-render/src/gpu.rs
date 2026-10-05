@@ -122,10 +122,12 @@ pub struct Gpu {
     /// True when the software fallback adapter was chosen.
     pub software: bool,
     format: wgpu::TextureFormat,
+    /// The world's view and the UI's, a slot each, bound at an offset.
     view_buf: wgpu::Buffer,
     view_bind: wgpu::BindGroup,
-    ui_view_buf: wgpu::Buffer,
-    ui_view_bind: wgpu::BindGroup,
+    /// Where the UI's view starts in `view_buf` (the device's offset
+    /// alignment).
+    ui_view_at: u32,
     view_layout: wgpu::BindGroupLayout,
     atlas_layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
@@ -156,12 +158,27 @@ fn err(e: impl std::fmt::Display) -> ArgusError {
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 
+/// A view uniform's size, bound at an offset into the view buffer.
+const VIEW_SIZE: Option<std::num::NonZeroU64> =
+    std::num::NonZeroU64::new(std::mem::size_of::<ViewUniform>() as u64);
+
 impl Gpu {
     #[cfg(not(target_arch = "wasm32"))]
     fn instance(software: bool) -> wgpu::Instance {
         let _ = software;
+        // ARGUS_BACKEND (vulkan, dx12, metal, gl) takes that backend only:
+        // to find which one a picture depends on.
+        let one = std::env::var("ARGUS_BACKEND").ok().and_then(|b| {
+            match b.to_ascii_lowercase().as_str() {
+                "vulkan" => Some(wgpu::Backends::VULKAN),
+                "dx12" => Some(wgpu::Backends::DX12),
+                "metal" => Some(wgpu::Backends::METAL),
+                "gl" => Some(wgpu::Backends::GL),
+                _ => None,
+            }
+        });
         wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::PRIMARY | wgpu::Backends::GL,
+            backends: one.unwrap_or(wgpu::Backends::PRIMARY | wgpu::Backends::GL),
             ..Default::default()
         })
     }
@@ -175,6 +192,11 @@ impl Gpu {
         let _ = software;
         #[cfg(target_arch = "wasm32")]
         let software = false;
+        // ARGUS_SOFTWARE=1 takes the software rasteriser for every renderer:
+        // CI runs the render tests on it as a machine with no GPU would
+        // (section 2; phase 5 item 0).
+        #[cfg(not(target_arch = "wasm32"))]
+        let software = software || std::env::var("ARGUS_SOFTWARE").is_ok_and(|v| v == "1");
         let mut opts = wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::HighPerformance,
             force_fallback_adapter: software,
@@ -348,6 +370,12 @@ impl Gpu {
     ) -> Result<Gpu> {
         let info = adapter.get_info();
         let software = info.device_type == wgpu::DeviceType::Cpu;
+        // Every uniform is bound at an offset (a root constant buffer on
+        // DirectX 12), never through the descriptor heap: on WARP, the
+        // software rasteriser CI draws with (section 9), a constant buffer
+        // bound through the heap read the one in the next bind group made
+        // with the same layout, so the world drew with the UI's view and
+        // nothing showed (found by phase 5 item 0's image goldens).
         let view_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("view"),
             entries: &[wgpu::BindGroupLayoutEntry {
@@ -356,8 +384,8 @@ impl Gpu {
                 visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                 ty: wgpu::BindingType::Buffer {
                     ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
+                    has_dynamic_offset: true,
+                    min_binding_size: VIEW_SIZE,
                 },
                 count: None,
             }],
@@ -383,9 +411,11 @@ impl Gpu {
                 },
             ],
         });
+        let ui_view_at = (std::mem::size_of::<ViewUniform>() as u32)
+            .next_multiple_of(device.limits().min_uniform_buffer_offset_alignment);
         let view_buf = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("view"),
-            size: std::mem::size_of::<ViewUniform>() as u64,
+            size: (ui_view_at as usize + std::mem::size_of::<ViewUniform>()) as u64,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -394,21 +424,11 @@ impl Gpu {
             layout: &view_layout,
             entries: &[wgpu::BindGroupEntry {
                 binding: 0,
-                resource: view_buf.as_entire_binding(),
-            }],
-        });
-        let ui_view_buf = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("ui view"),
-            size: std::mem::size_of::<ViewUniform>() as u64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        let ui_view_bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("ui view"),
-            layout: &view_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: ui_view_buf.as_entire_binding(),
+                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                    buffer: &view_buf,
+                    offset: 0,
+                    size: VIEW_SIZE,
+                }),
             }],
         });
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -427,8 +447,7 @@ impl Gpu {
             format,
             view_buf,
             view_bind,
-            ui_view_buf,
-            ui_view_bind,
+            ui_view_at,
             view_layout,
             atlas_layout,
             sampler,
@@ -502,9 +521,11 @@ impl Gpu {
             wgpu::BindGroupLayoutEntry {
                 binding: 0,
                 visibility: wgpu::ShaderStages::FRAGMENT,
+                // At an offset, as the view is (see `build`): two materials
+                // with the same kinds of parameters share a layout.
                 ty: wgpu::BindingType::Buffer {
                     ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
+                    has_dynamic_offset: true,
                     min_binding_size: None,
                 },
                 count: None,
@@ -911,8 +932,8 @@ impl Gpu {
         );
         if let Some(u) = ui {
             self.queue.write_buffer(
-                &self.ui_view_buf,
-                0,
+                &self.view_buf,
+                self.ui_view_at as u64,
                 bytemuck::bytes_of(&ViewUniform {
                     center: u.center,
                     half: u.half,
@@ -971,7 +992,7 @@ impl Gpu {
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
-            pass.set_bind_group(0, &self.view_bind, &[]);
+            pass.set_bind_group(0, &self.view_bind, &[0]);
             pass.set_vertex_buffer(0, self.instance_buf.slice(..));
             let mut bound = std::collections::HashSet::new();
             let mut drawn_with = std::collections::HashSet::new();
@@ -997,7 +1018,7 @@ impl Gpu {
                         continue;
                     };
                     pass.set_pipeline(&m.pipeline);
-                    pass.set_bind_group(2, bg, &[]);
+                    pass.set_bind_group(2, bg, &[0]);
                     cur_mat = mi;
                 }
                 if r.atlas != cur_atlas {
@@ -1041,7 +1062,7 @@ impl Gpu {
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
-            pass.set_bind_group(0, &self.ui_view_bind, &[]);
+            pass.set_bind_group(0, &self.view_bind, &[self.ui_view_at]);
             pass.set_vertex_buffer(0, self.instance_buf.slice(..));
             let (mut cur_mat, mut cur_atlas) = (usize::MAX, usize::MAX);
             for (r, sc) in &u.runs {
@@ -1064,7 +1085,7 @@ impl Gpu {
                         continue;
                     };
                     pass.set_pipeline(&m.pipeline);
-                    pass.set_bind_group(2, bg, &[]);
+                    pass.set_bind_group(2, bg, &[0]);
                     cur_mat = mi;
                 }
                 if r.atlas != cur_atlas {

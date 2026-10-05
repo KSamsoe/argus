@@ -13,8 +13,10 @@
 // sent the way the page's F8 sends one, through the server and back, and
 // replayed natively (phase 2 item 7), the UI (phase 3 item 1: the pause
 // menu opened by a real key, a button focused by the real mouse and pressed
-// by a click), and the same picture with WebGL2 forced. Node 24 and cargo,
-// no npm packages.
+// by a click), and the same picture with WebGL2 forced. First, a cold load
+// over a playtester's link (phase 5 item 0, section 17: under 5 s on 20
+// Mbit). It exits 1 when anything failed (CI gates on it). Node 24 and
+// cargo, no npm packages.
 import { spawn, spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -47,6 +49,7 @@ const browser = spawn(chrome, [
 let ws, nextId = 1;
 const waiting = new Map();
 const logs = [];
+let bytes = 0;
 function send(method, params = {}) {
   const id = nextId++;
   ws.send(JSON.stringify({ id, method, params }));
@@ -102,6 +105,8 @@ try {
       logs.push(msg.params.args.map((a) => a.value ?? a.description).join(" "));
     } else if (msg.method === "Log.entryAdded") {
       logs.push(msg.params.entry.text);
+    } else if (msg.method === "Network.loadingFinished") {
+      bytes += msg.params.encodedDataLength ?? 0;
     }
   };
   await send("Runtime.enable");
@@ -109,6 +114,21 @@ try {
   await send("Page.enable");
   await send("Emulation.setDeviceMetricsOverride", { width: 1000, height: 700, deviceScaleFactor: 1, mobile: false });
   const base = `http://127.0.0.1:${HTTP}/`;
+
+  // 0. A cold load over a playtester's link (section 17: "Web build, cold
+  //    load < 5 s on a 20 Mbit link"): a fresh profile has nothing cached,
+  //    the cache is off, and the network is held to 20 Mbit down, 5 up, and
+  //    40 ms each way, until the first frame is drawn.
+  await send("Network.enable");
+  await send("Network.setCacheDisabled", { cacheDisabled: true });
+  await send("Network.emulateNetworkConditions", { offline: false, latency: 40, downloadThroughput: 20e6 / 8, uploadThroughput: 5e6 / 8 });
+  bytes = 0;
+  const t0 = performance.now();
+  await open(base + "?paused");
+  for (let i = 0; i < 200 && !((await status()).drawn > 0); i++) await sleep(25);
+  report.cold_load = { ms: Math.round(performance.now() - t0), bytes, link: "20 Mbit/s down, 5 up, 40 ms", bound_ms: 5000 };
+  await send("Network.emulateNetworkConditions", { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+  await send("Network.setCacheDisabled", { cacheDisabled: false });
 
   // 1. The picture, as the browser picks its backend.
   let t = performance.now();
@@ -251,6 +271,25 @@ try {
   report.error = String(e.stack ?? e);
 } finally {
   report.console = logs.slice(-20);
+  // The verdict: an error, a frame that drew nothing, a world or a digest
+  // that is not the same as the native player's, or a slow cold load.
+  const failures = [];
+  if (report.error) failures.push("error");
+  if (!(report.cold_load?.ms <= report.cold_load?.bound_ms)) failures.push(`cold load ${report.cold_load?.ms} ms`);
+  if (!(report.render?.drawn > 0)) failures.push("nothing drawn");
+  if (report.webgl && !(report.webgl.drawn > 0)) failures.push("nothing drawn with WebGL2");
+  const walk = (v, at) => {
+    if (v && typeof v === "object") {
+      for (const [k, x] of Object.entries(v)) {
+        if (k === "same" && x === false) failures.push(`${at}: not the same`);
+        walk(x, at ? `${at}.${k}` : k);
+      }
+    }
+  };
+  walk(report, "");
+  report.ok = failures.length === 0;
+  report.failures = failures;
+  process.exitCode = report.ok ? 0 : 1;
   console.log(JSON.stringify(report, null, 2));
   try {
     await send("Browser.close");

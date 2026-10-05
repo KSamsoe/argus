@@ -1457,8 +1457,10 @@ pub const METHODS: &[MethodDoc] = &[
             opt("annotate", BOOLEAN, "png only"),
             opt("path", STRING, "default .argus/frames/frame-<tick>.png"),
             opt("software", BOOLEAN, "force the software rasteriser"),
+            opt("golden", STRING, "png only: a picture to compare with (an image golden, section 9): compare says how many pixels a person would see differ, and writes a difference picture beside path"),
+            opt("threshold", NUMBER, "with golden: how different a pixel must be to count, 0 to 1 (default 0.1, a person's eye; 0 counts any change)"),
         ],
-        returns: "png: {path, width, height, tick, alpha, sprites, draw_calls, atlases, missing_atlases, interpolated, particles, materials, missing_materials, material_problems, camera, view: {center, half, angle, rect: [x0, y0, x1, y1]}, adapter, ms, marks?}; semantic: {format, size, camera: {id, rect, angle}, hud: [{id, name?, role?, text, bounds?}], columns: [id, name, text, bounds, z, look], entities, groups: [{what, count, bounds, look, ids}], effects, omitted, problems, tick, time, tiles?: {key, maps: [{entity, map, cell, step, at: [x, y, px a cell], rows}]}, bytes}",
+        returns: "png: {path, width, height, tick, alpha, sprites, draw_calls, atlases, missing_atlases, interpolated, particles, materials, missing_materials, material_problems, camera, view: {center, half, angle, rect: [x0, y0, x1, y1]}, adapter, ms, marks?, compare?: {golden, threshold, pixels, differing, fraction, worst, diff}}; semantic: {format, size, camera: {id, rect, angle}, hud: [{id, name?, role?, text, bounds?}], columns: [id, name, text, bounds, z, look], entities, groups: [{what, count, bounds, look, ids}], effects, omitted, problems, tick, time, tiles?: {key, maps: [{entity, map, cell, step, at: [x, y, px a cell], rows}]}, bytes}",
     },
     MethodDoc {
         name: "obs.annotate",

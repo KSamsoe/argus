@@ -119,7 +119,7 @@ const TARGETS: &[Target] = &[
         why: "A playtest link has to open before the tester loses interest",
         live: Live::Test,
         context: Context::None,
-        gate: "not measured yet (phase 5 gates every row in CI); Hollow's page is about 1.5 MB compressed",
+        gate: "tools/web/check.mjs (Hollow's page, 2.7 MB brotli, 2.6 s on the reference laptop)",
     },
     Target {
         game: "all",
@@ -128,7 +128,7 @@ const TARGETS: &[Target] = &[
         why: "Content-addressed packs; only changed chunks rebuild",
         live: Live::Test,
         context: Context::None,
-        gate: "not measured yet (phase 5 gates every row in CI); argus-player packs are content-addressed",
+        gate: "argus-cli release (Hollow, one script changed and committed: 4.7 s on the reference laptop)",
     },
     Target {
         game: "delve",
