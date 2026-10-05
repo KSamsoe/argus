@@ -60,6 +60,24 @@ It took where the session began and each value the person let go at (a move with
 
 "Starve" is a run in which a colonist died of hunger; "short of food only" is one that ended its thirty days under the scenario's sixty meals with nobody lost. So the value the person kept starves the colony on one seed in twenty and leaves the other nineteen short, which is what a person watching one valley at 10x could not have seen. The sweep took 21 minutes in a release build, 80 runs of thirty days.
 
+## Kevin's hand check
+
+On 2026-10-04 Kevin tuned Outpost himself in the editor: Play, 10x, the Tuning tab, one drag of the colony's hunger from 1.0 through 1.2 and 1.3 to 1.5 at about day seven, nine game days watched, then Keep. The agent read his session from the tuning log and swept where it began and where he let go, and the two values he dragged through, on the same scenario and seeds:
+
+| Hunger a day | Runs | Starve | Short of food only |
+|---|---|---|---|
+| 1.0, where it began | 20 | 0 | 0 |
+| 1.2, dragged through | 20 | 0 | 0 |
+| 1.3, dragged through | 20 | 0 | 5 |
+| 1.5, kept | 20 | 1 (seed 15) | 19 |
+
+The rows it shares with the gate's run are the same to the seed. 1.2 is the highest of these that keeps every valley fed and stocked. The sweep took 23 minutes in a release build. On the report Kevin chose to put Outpost back at 1.0.
+
+His session found two more faults, each fixed with a test:
+
+- **Stop undid what was kept while playing.** After Keep wrote 1.5 to the colony's file, Stop put the world back to where play began, hunger 1.0, so the game and the file disagreed. Stop now goes back and then makes again, in the world only, what was committed, undone, or redone while playing.
+- **The editor left minimized grew to 11 GB.** Every frame the game sent was written to the window's GPU texture, and a minimized window does not paint, so the writes waited in the GPU queue until it did; the memory fell back to 0.8 GB when it painted again. Minimized, the viewport takes no frames now, and the newest goes up when the window shows.
+
 ## What the gate found
 
 Building the gate found seven faults, all fixed, each with a test.

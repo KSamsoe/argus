@@ -91,6 +91,10 @@ struct Session {
     sources: crate::ring::Sources,
     /// The tick `sim.play` started from, which `sim.stop` goes back to.
     play_from: Option<u64>,
+    /// What was committed while playing, in order, by whom: `sim.stop`
+    /// puts the world back to where play started and then makes these
+    /// again, world only, since their files already have them.
+    kept_in_play: Vec<(String, Vec<Op>)>,
     /// The key that drops a mark (`[marks] key`, F8 by default).
     mark_key: String,
     /// Keyframes of the ticks that asked for a save (`q:save`), by the
@@ -179,6 +183,10 @@ pub struct Daemon {
     /// must not move the hero in the scene the game ships (found by the web
     /// spike: Hollow's planks scenario had rewritten player.toml).
     live_edits: bool,
+    /// While `sim.stop` makes again what was kept in play: with
+    /// `live_edits`, an authored entity spawned in play comes from its
+    /// scene document, which already has it.
+    replaying_kept: bool,
     /// The window was opened from the command line (`--window`): it is the
     /// person's, and closing it ends the daemon. A window an agent opens
     /// with `render.window` only closes.
@@ -259,6 +267,7 @@ impl Daemon {
             active: "main".to_string(),
             building_fork: false,
             live_edits: false,
+            replaying_kept: false,
             subs: BTreeMap::new(),
             capture_path: None,
             shutdown: false,
@@ -609,6 +618,7 @@ impl Daemon {
                         let k = ses.sources.capture(&self.world, &self.sched, true);
                         ses.ring.borrow_mut().push(k);
                         ses.play_from = Some(self.sched.tick());
+                        ses.kept_in_play.clear();
                     }
                 }
                 self.sched.play(&self.world);
@@ -620,6 +630,11 @@ impl Daemon {
             }
             "sim.stop" => {
                 let from = self.session.as_mut().and_then(|s| s.play_from.take());
+                let kept = self
+                    .session
+                    .as_mut()
+                    .map(|s| std::mem::take(&mut s.kept_in_play))
+                    .unwrap_or_default();
                 self.sched.stop(&mut self.world);
                 // The world went back to before play: its history is of a
                 // run that no longer happened, and so are its keyframes. The
@@ -638,6 +653,7 @@ impl Daemon {
                     }
                     ring.borrow_mut().prune_after(t);
                     self.cut_log(t);
+                    self.make_kept_again(&kept);
                 } else if let Some(s) = &self.session {
                     s.history.borrow_mut().clear();
                 }
@@ -1448,6 +1464,7 @@ impl Daemon {
             ))),
             sources,
             play_from: None,
+            kept_in_play: Vec::new(),
             mark_key: cfg.mark_key.clone().unwrap_or_else(|| "F8".to_string()),
             saves: Rc::new(RefCell::new(Vec::new())),
             ui,
@@ -2983,6 +3000,7 @@ impl Daemon {
         command: String,
     ) -> Result<Json> {
         self.require_session()?;
+        let forward = ops.clone();
         let mut inverse: Vec<Op> = Vec::new();
         let mut summaries = Vec::new();
         let mut touched: BTreeSet<String> = BTreeSet::new();
@@ -3077,6 +3095,16 @@ impl Daemon {
             CommitKind::Redo(_) => "redo",
             _ => "edit",
         };
+        if !self.live_edits
+            && matches!(
+                kind,
+                CommitKind::Normal | CommitKind::Undo(_) | CommitKind::Redo(_)
+            )
+        {
+            if let Some(ses) = self.session.as_mut().filter(|s| s.play_from.is_some()) {
+                ses.kept_in_play.push((author.to_string(), forward));
+            }
+        }
         self.edits.feed.push(commit);
         self.feed_rows += 1;
         self.notify("edits", "edit.committed", row.clone());
@@ -3236,6 +3264,15 @@ impl Daemon {
                         self.fill_entity(e, tags, components)?;
                         e
                     }
+                    Some(local) if self.replaying_kept => {
+                        let full = match room {
+                            Some(r) => format!("{r}/{local}"),
+                            None => local.clone(),
+                        };
+                        let ses = self.session.as_mut().expect("session");
+                        let mut scene = ses.scene.borrow_mut();
+                        scene.spawn_entity(&mut self.world, &full)?
+                    }
                     Some(local) => {
                         self.edits.check_lock(author, &format!("@{local}"), "")?;
                         if self.live_edits {
@@ -3276,6 +3313,20 @@ impl Daemon {
                         self.spawn_doc(local, room.as_deref(), &doc, files)?
                     }
                 };
+                let eref = json::entity_str(&self.world, e);
+                touched.insert(eref.clone());
+                Ok(Some(Op::Despawn { entity: eref }))
+            }
+            Op::SpawnDoc { local, room, .. } if self.replaying_kept => {
+                let full = match room {
+                    Some(r) => format!("{r}/{local}"),
+                    None => local.clone(),
+                };
+                let ses = self.session.as_mut().expect("session");
+                let e = ses
+                    .scene
+                    .borrow_mut()
+                    .spawn_entity(&mut self.world, &full)?;
                 let eref = json::entity_str(&self.world, e);
                 touched.insert(eref.clone());
                 Ok(Some(Op::Despawn { entity: eref }))
@@ -3388,6 +3439,42 @@ impl Daemon {
             files.insert(f.rel.clone());
         }
         scene.spawn_entity(&mut self.world, &full)
+    }
+
+    /// Make again, on the world `sim.stop` put back, what the person kept
+    /// while playing (found by Kevin's hand check of the phase 4 gate:
+    /// Keep wrote the colony's hunger to its file, and Stop put the world
+    /// back to the hunger it had, so the game and the file disagreed). Only
+    /// what the world holds: defs, assets, strings, and tile maps are not
+    /// in keyframes and stayed. World only, since the files have it.
+    fn make_kept_again(&mut self, kept: &[(String, Vec<Op>)]) {
+        if kept.is_empty() {
+            return;
+        }
+        let (live, replaying) = (self.live_edits, self.replaying_kept);
+        self.live_edits = true;
+        self.replaying_kept = true;
+        for (author, ops) in kept {
+            for op in ops {
+                let in_world = matches!(
+                    op,
+                    Op::Set { .. }
+                        | Op::Add { .. }
+                        | Op::Remove { .. }
+                        | Op::Spawn { .. }
+                        | Op::SpawnDoc { .. }
+                        | Op::Despawn { .. }
+                );
+                if in_world {
+                    // Best effort: an entity the change was about may not
+                    // be in the world play started from.
+                    let _ = self.apply_op(author, op, &mut BTreeSet::new(), &mut BTreeSet::new());
+                }
+            }
+        }
+        self.live_edits = live;
+        self.replaying_kept = replaying;
+        self.mutations += 1;
     }
 
     /// Run a scene file edit for an authored entity, if `e` is one.

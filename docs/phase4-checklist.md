@@ -194,7 +194,7 @@ Decisions taken while building it:
 
 - **The protocol had the edits; the editor needed the geometry.** `edit.tiles` already takes a rect with cells, a tile, a terrain, or erase. What a painter lacked was where things are: each `render.frame` now says what the frame shows (its view: centre, half extents, roll, in world units), and `scene.tiles.list` says which maps are placed where. With those the editor turns a pointer into a cell itself; nothing about painting is private.
 - **A stroke is one change.** The cells a pencil stroke covers (every cell on the way, so a quick stroke leaves no gaps) become one `edit.tiles` op per run of a row, all in one transaction, applied when the pointer lets go; a rectangle is one op. The stroke is drawn over the game until its commit lands, so painting feels immediate without a commit per cell.
-- **Outpost has no tilemap.** Its valley is laid out from the seed each run as sprites and a navigation grid, so there is nothing of it to paint. The Tiles tab can make a map in any scene (Outpost's included), placed as an authored entity; whether Outpost's ground should become a tilemap is a game decision, not this item's.
+- **Outpost has no tilemap.** Its valley is laid out from the seed each run as sprites and a navigation grid, so there is nothing of it to paint. The Tiles tab can make a map in any scene (Outpost's included), placed as an authored entity; whether Outpost's ground should become a tilemap is a game decision, not this item's. Kevin decided (2026-10-04) that it stays as it is.
 - **The palette reads the tileset's texture.** `asset.get` names the imported texture and each frame's rect and properties; the editor cuts the tiles out of the file, as it reads a review's clip.
 - **Measured, debug build, a 4,096 × 4,096 map of 8 layers:** a stroke's worth in 1.5 ms, a room's worth (40 × 24) in 5.3 ms, 512 × 512 in 36.5 ms, each only the chunks it touched (`argus-daemon` `tiles`); release numbers are `argus-tiles`' perf gate.
 - **An entity id from a file name.** A new map's entity is named after its file; `room` and `scene` are the scene's own documents, so a map named so gets `-map` after it (found by this item's test).
@@ -254,3 +254,10 @@ Found by the gate, and fixed (each in phase4-gate.md):
 - **A sweep did not say why a run failed.** Each failing run lists its failed expectations.
 - **No call answered with the world's digest.** `sim.status {digest}`.
 - **Three lists had no accessible name**: the hierarchy's filters and the inspector's add list.
+
+Found by Kevin's hand check (2026-10-04), and fixed:
+
+- **Stop undid what was kept while playing.** He tuned the colony's hunger at 10x, kept 1.5 (the file written), and pressed Stop: the game went back to where play began, hunger 1.0, while the file said 1.5. Stop now goes back and then makes again what was kept in play (commits, undos, and redos, in order), in the world only.
+- **The editor left minimized grew to 11 GB.** Each frame went to the GPU texture, and a minimized window paints nothing, so the writes queued until it did. Minimized, the viewport takes no frames; the newest goes up when it shows.
+
+The sweep of his path (1.0, 1.2, and 1.3 feed every valley, 1.5 starves one and leaves all twenty short) is in phase4-gate.md; Outpost stays at 1.0, his choice.

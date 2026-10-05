@@ -896,3 +896,82 @@ fn a_scene_loaded_while_playing_plays_on_and_scenarios_start_stopped() {
     assert_eq!(r["ok"], true, "{r}");
     assert_eq!(ok(&mut d, "sim.status", json!({}))["playing"], true);
 }
+
+/// Found by Kevin's hand check of the phase 4 gate: he kept a tuned value
+/// while Outpost played (its file written), pressed Stop, and the game
+/// went back to the value before it while the file kept his. Stop goes
+/// back to where play started and makes again what was kept meanwhile:
+/// commits, undos, and redos, in order, world only.
+#[test]
+fn what_was_kept_while_playing_stays_after_stop() {
+    let t = temp("stop-keeps");
+    project(t.path());
+    let mut d = open(t.path());
+    let commit = |d: &mut Daemon, note: &str, method: &str, params: serde_json::Value| {
+        let tx = ok(d, "edit.begin", json!({ "author": "human", "note": note }))["tx"].clone();
+        let mut p = params;
+        p["tx"] = tx.clone();
+        ok(d, method, p);
+        ok(d, "edit.commit", json!({ "tx": tx }));
+    };
+    let field = |d: &mut Daemon, id: &str, c: &str, f: &str| {
+        ok(d, "world.get", json!({ "entity": id }))["components"][c][f].clone()
+    };
+    // Before play: the player's hp set to 1, kept.
+    commit(
+        &mut d,
+        "low",
+        "edit.set",
+        json!({ "entity": "@player", "path": "Health.cur", "value": 1 }),
+    );
+    ok(&mut d, "sim.play", json!({}));
+    ok(&mut d, "sim.step", json!({ "n": 30 }));
+    // While playing: the earlier change undone, redone, undone again; a
+    // field kept, a light added, and an entity made with its file.
+    ok(&mut d, "edit.undo", json!({ "author": "human" }));
+    ok(&mut d, "edit.redo", json!({ "author": "human" }));
+    ok(&mut d, "edit.undo", json!({ "author": "human" }));
+    commit(
+        &mut d,
+        "tougher",
+        "edit.set",
+        json!({ "entity": "@player", "path": "Health.max", "value": 7 }),
+    );
+    commit(
+        &mut d,
+        "a light",
+        "edit.add",
+        json!({ "entity": "@player", "component": "Light" }),
+    );
+    commit(
+        &mut d,
+        "a crate",
+        "edit.spawn",
+        json!({ "id": "crate", "components": { "Transform": { "pos": [4.0, 0.0] }, "Health": { "cur": 9 } } }),
+    );
+    let st = ok(&mut d, "sim.stop", json!({}));
+    assert_eq!(
+        (st["playing"].clone(), st["tick"].clone()),
+        (json!(false), json!(0))
+    );
+    // The world is the files: hp back to 3 (the undo), max 7, the light,
+    // the crate.
+    assert!(read(t.path(), "scenes/arena/player.toml").contains("max = 7"));
+    assert_eq!(field(&mut d, "@player", "Health", "max"), 7, "kept in play");
+    assert_eq!(
+        field(&mut d, "@player", "Health", "cur"),
+        3,
+        "undone in play"
+    );
+    assert!(
+        field(&mut d, "@player", "Light", "intensity").is_number(),
+        "added in play"
+    );
+    assert_eq!(field(&mut d, "@crate", "Health", "cur"), 9, "made in play");
+    // And the feed and undo go on as they were: undo takes the crate.
+    ok(&mut d, "edit.undo", json!({ "author": "human" }));
+    assert!(d
+        .call(0, "world.get", &json!({ "entity": "@crate" }))
+        .is_err());
+    assert!(!t.path().join("scenes/arena/crate.toml").exists());
+}

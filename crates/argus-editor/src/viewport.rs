@@ -186,6 +186,14 @@ impl Viewport {
 
     /// Copy the newest frame into the texture, if there is one not shown.
     fn upload(&mut self, ctx: &egui::Context) {
+        // A window that does not paint (minimized) submits nothing to the
+        // GPU, and every frame written to the texture waits in its queue
+        // until it does (found by Kevin's hand check: the editor left
+        // minimized grew to 11 GB, and fell back when it painted). The
+        // newest frame goes up when the window paints again.
+        if ctx.input(|i| i.viewport().minimized == Some(true)) {
+            return;
+        }
         let Some(n) = &self.latest else {
             return;
         };

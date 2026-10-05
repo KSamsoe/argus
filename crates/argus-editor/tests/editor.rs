@@ -10,6 +10,7 @@ mod common;
 use argus_client::Client;
 use argus_daemon::{serve, socket_name_for, Transport};
 use argus_editor::Editor;
+use eframe::egui;
 use egui_kittest::kittest::Queryable;
 use egui_kittest::Harness;
 use serde_json::{json, Value as Json};
@@ -227,4 +228,50 @@ fn a_daemon_that_goes_away_says_so_and_can_be_reconnected() {
     );
     h.get_by_label("Reconnect");
     h.get_by_label_contains("disconnected");
+}
+
+/// Found by Kevin's hand check: the editor left minimized grew to 11 GB,
+/// every frame the game sent written to the GPU and held there until the
+/// window painted again. Minimized, it takes no frames; shown again, the
+/// newest.
+#[test]
+fn a_minimized_editor_holds_no_frames() {
+    let t = common::temp("editor-minimized");
+    let name = daemon(t.path(), "minimized");
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(1200.0, 800.0))
+        .wgpu()
+        .build_state(|ctx, ed: &mut Editor| ed.ui(ctx), {
+            let mut ed = Editor::new(&name, "human");
+            ed.audio = false;
+            ed
+        });
+    until(&mut h, "frames", |ed| ed.viewport.frames_shown > 0);
+    h.get_by_label("Play").click();
+    until(&mut h, "playing", |ed| ed.status["playing"] == true);
+    let minimized = |h: &mut Harness<'_, Editor>, on: bool| {
+        h.input_mut()
+            .viewports
+            .entry(egui::ViewportId::ROOT)
+            .or_default()
+            .minimized = Some(on);
+    };
+    minimized(&mut h, true);
+    h.step();
+    let before = h.state().viewport.frames_shown;
+    let end = Instant::now() + Duration::from_millis(600);
+    while Instant::now() < end {
+        minimized(&mut h, true);
+        h.step();
+        std::thread::sleep(Duration::from_millis(16));
+    }
+    assert_eq!(
+        h.state().viewport.frames_shown,
+        before,
+        "no frames while minimized"
+    );
+    minimized(&mut h, false);
+    until(&mut h, "the newest frame once shown", |ed| {
+        ed.viewport.frames_shown > before
+    });
 }
