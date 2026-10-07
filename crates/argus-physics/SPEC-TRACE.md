@@ -54,7 +54,7 @@ Test: `perf_a_thousand_characters_and_twenty_thousand_contacts` (ignored; `cargo
 | Spec | Status | Where | Test |
 |---|---|---|---|
 | Phase 1: a kinematic character controller. | Done | This crate. | |
-| Gate: a three-room slice of Hollow with tiles, a kinematic player, and one-way platforms. | Partial | The pieces exist and meet through the protocol (a map carved with `edit.tiles`, a player driven by actions, events a script reads); the slice itself is the gate's work, with the camera of item 7. | `argus-daemon/tests/physics.rs` |
+| Gate: a three-room slice of Hollow with tiles, a kinematic player, and one-way platforms. | Done (the phase 1 gate) | `examples/hollow`: the cave, the shaft, and the hall in a tilemap, a kinematic hero driven by actions, planks jumped up through, stood on, and dropped through, and a camera that follows; recorded in `docs/phase1-gate.md`. | Hollow's `tests/run.luau`, `tests/planks.luau`, `tests/pit.luau`; `argus-daemon/tests/physics.rs` |
 
 ## Phase 3, item 5: overlaps across a seek
 

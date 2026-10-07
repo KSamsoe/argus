@@ -325,6 +325,34 @@ fn a_fork_from_a_past_frame_replays_the_same_inputs() {
     );
 }
 
+/// §6: the two clocks are one thing to the replay system. A fork from a
+/// past turn replays the same commands to the same world, counting turns.
+#[test]
+fn a_discrete_run_forks_by_turn() {
+    let (_t, mut d) = busy("fork-turns", "delve");
+    for turn in 0..30u64 {
+        if turn % 7 == 3 {
+            inject(&mut d, "fire", json!(true), Some(1));
+        }
+        ok(&mut d, "sim.advance", json!({ "n": 1, "by": "turn" }));
+    }
+    let main30 = state(&mut d);
+    let made = ok(&mut d, "sim.fork", json!({ "name": "past", "turn": 12 }));
+    assert_eq!(made["made"]["frame"], 12, "{made}");
+    assert_eq!(made["made"]["from"], 10, "a keyframe every ten turns");
+    ok(
+        &mut d,
+        "sim.advance",
+        json!({ "n": 18, "by": "turn", "fork": "past" }),
+    );
+    assert_eq!(
+        state_of(&mut d, "past"),
+        main30,
+        "the same commands, replayed: the same world at the same turn"
+    );
+    assert_eq!(state(&mut d), main30, "main is untouched");
+}
+
 fn state_of(d: &mut Daemon, fork: &str) -> Json {
     let q = ok(
         d,
