@@ -21,14 +21,19 @@
 #![warn(missing_docs)]
 
 pub mod animator;
+pub mod bc7;
 mod catalog;
 pub mod effect;
 pub mod font;
+pub mod pages;
 pub mod sidecar;
 
 pub use animator::{
     AnimatorSpec, Condition, FrameEventSpec, Num, Op, Operand, StateSpec, Term, TransitionSpec,
 };
+/// A sound file's samples from its bytes (WAV or Ogg Vorbis), for a pack's
+/// encoder, which has no mixer of its own.
+pub use argus_audio::sound::{decode as decode_sound, Decoded as DecodedSound};
 use argus_audio::{SoundDef, Source};
 use argus_ecs::layers::{self, Change};
 use argus_ecs::{ArgusError, Layers, Result};
@@ -138,7 +143,7 @@ pub fn parse_slope(s: &str) -> Option<(f32, f32)> {
     }
 }
 
-/// A WAV a sound plays.
+/// A sound file (WAV or Ogg Vorbis) a sound plays.
 #[derive(Clone, Debug, PartialEq)]
 pub struct WavInfo {
     /// Path relative to `assets/`.
@@ -394,6 +399,13 @@ pub fn encode_png(path: &Path, w: u32, h: u32, rgba: &[u8]) -> Result<()> {
     if let Some(d) = path.parent() {
         argus_os::fs::create_dir_all(d).map_err(|x| e(x.to_string()))?;
     }
+    let out = png_bytes(w, h, rgba).map_err(|x| e(x.message))?;
+    argus_os::fs::write(path, out).map_err(|x| e(x.to_string()))
+}
+
+/// RGBA8 as a PNG's bytes.
+pub fn png_bytes(w: u32, h: u32, rgba: &[u8]) -> Result<Vec<u8>> {
+    let e = |m: String| ArgusError::new(codes::CACHE, format!("a PNG: {m}"));
     let mut out = Vec::new();
     {
         let mut enc = png::Encoder::new(&mut out, w, h);
@@ -402,7 +414,7 @@ pub fn encode_png(path: &Path, w: u32, h: u32, rgba: &[u8]) -> Result<()> {
         let mut wr = enc.write_header().map_err(|x| e(x.to_string()))?;
         wr.write_image_data(rgba).map_err(|x| e(x.to_string()))?;
     }
-    argus_os::fs::write(path, out).map_err(|x| e(x.to_string()))
+    Ok(out)
 }
 
 fn fnv(h: &mut u64, bytes: &[u8]) {
@@ -440,7 +452,10 @@ fn group_files<'a>(
             (rel[..n.len()].to_string(), 2)
         } else if let Some(n) = lower.strip_suffix(".png") {
             (rel[..n.len()].to_string(), 0)
-        } else if let Some(n) = lower.strip_suffix(".wav") {
+        } else if let Some(n) = lower
+            .strip_suffix(".wav")
+            .or_else(|| lower.strip_suffix(".ogg"))
+        {
             (rel[..n.len()].to_string(), 1)
         } else if let Some(n) = lower.strip_suffix(".wgsl") {
             (rel[..n.len()].to_string(), 3)
@@ -1460,7 +1475,7 @@ impl Importer {
                 }
                 let bytes = self.read_in(g.layer, &rel)?;
                 fnv(&mut hash, &bytes);
-                let info = probe_wav(&path, &rel, &self.shown(g.layer, &rel))
+                let info = probe_sound(&bytes, &rel, &self.shown(g.layer, &rel))
                     .map_err(|e| e.at(Some(self.shown(g.layer, &rel))))?;
                 let at = self.shown(g.layer, &rel);
                 if info.channels > 1 {
@@ -1578,31 +1593,17 @@ pub fn rasterise(shape: &Shape) -> Vec<u8> {
     out
 }
 
-fn probe_wav(path: &Path, rel: &str, shown: &str) -> Result<WavInfo> {
-    let e = |m: String| ArgusError::new(codes::BAD_SOURCE, format!("{shown}: {m}"));
-    let mut r = hound::WavReader::open(path).map_err(|x| e(x.to_string()))?;
-    let spec = r.spec();
-    let frames = r.duration();
-    let mut peak = 0.0f32;
-    match spec.sample_format {
-        hound::SampleFormat::Float => {
-            for s in r.samples::<f32>() {
-                peak = peak.max(s.map_err(|x| e(x.to_string()))?.abs());
-            }
-        }
-        hound::SampleFormat::Int => {
-            let scale = 1.0 / (1u64 << (spec.bits_per_sample.max(1) - 1)) as f32;
-            for s in r.samples::<i32>() {
-                peak = peak.max((s.map_err(|x| e(x.to_string()))? as f32 * scale).abs());
-            }
-        }
-    }
+/// A sound file's rate, channels, length, and peak, from its bytes (read
+/// through the engine's file system, so a release build's import works).
+fn probe_sound(bytes: &[u8], rel: &str, shown: &str) -> Result<WavInfo> {
+    let d = argus_audio::sound::decode(bytes)
+        .map_err(|m| ArgusError::new(codes::BAD_SOURCE, format!("{shown}: {m}")))?;
     Ok(WavInfo {
         path: rel.to_string(),
-        rate: spec.sample_rate,
-        channels: spec.channels,
-        seconds: frames as f32 / spec.sample_rate.max(1) as f32,
-        peak_db: argus_audio::lin_to_db(peak),
+        rate: d.rate,
+        channels: d.channels,
+        seconds: d.frames() as f32 / d.rate.max(1) as f32,
+        peak_db: argus_audio::lin_to_db(d.peak()),
     })
 }
 

@@ -80,8 +80,32 @@ pub struct Atlas {
     pub frames: Vec<[f32; 4]>,
     /// Each frame's pivot, a fraction of the frame, y up (0.5, 0.5 is the centre).
     pub pivots: Vec<[f32; 2]>,
+    /// The texture it is on, which other atlases may share (a release
+    /// pack's sprite pages, phase 5 item 1).
+    pub page: u64,
     bind_group: wgpu::BindGroup,
     view: wgpu::TextureView,
+}
+
+/// A texture atlases are drawn from: one sprite's, or a page many share.
+#[derive(Clone)]
+pub struct Page {
+    /// Its number, the same for every atlas on it.
+    pub id: u64,
+    /// Pixel size.
+    pub width: u32,
+    /// Pixel size.
+    pub height: u32,
+    bind_group: wgpu::BindGroup,
+    view: wgpu::TextureView,
+}
+
+/// A page's pixels.
+pub enum Texels<'a> {
+    /// RGBA8, sRGB.
+    Rgba(&'a [u8]),
+    /// BC7 blocks, row by row (`argus_assets::bc7`).
+    Bc7(&'a [u8]),
 }
 
 /// Where a frame goes.
@@ -121,7 +145,11 @@ pub struct Gpu {
     pub adapter: String,
     /// True when the software fallback adapter was chosen.
     pub software: bool,
+    /// True when the device samples BC7 textures (`TEXTURE_COMPRESSION_BC`).
+    pub bc: bool,
     format: wgpu::TextureFormat,
+    /// The next page's number.
+    pages: u64,
     /// The world's view and the UI's, a slot each, bound at an offset.
     view_buf: wgpu::Buffer,
     view_bind: wgpu::BindGroup,
@@ -217,7 +245,9 @@ impl Gpu {
             .request_device(
                 &wgpu::DeviceDescriptor {
                     label: Some("argus"),
-                    required_features: wgpu::Features::empty(),
+                    // BC7 sprite pages (phase 5 item 1) where the adapter
+                    // reads them; without, a page is decoded on the CPU.
+                    required_features: adapter.features() & wgpu::Features::TEXTURE_COMPRESSION_BC,
                     // WebGL2 has lower limits than any native backend.
                     required_limits: if adapter.get_info().backend == wgpu::Backend::Gl {
                         wgpu::Limits::downlevel_webgl2_defaults()
@@ -439,12 +469,17 @@ impl Gpu {
         });
         let instance_cap = 4096;
         let instance_buf = Self::make_instance_buffer(&device, instance_cap);
+        let bc = device
+            .features()
+            .contains(wgpu::Features::TEXTURE_COMPRESSION_BC);
         let mut gpu = Gpu {
             device,
             queue,
             adapter: format!("{} ({:?})", info.name, info.backend),
             software,
+            bc,
             format,
+            pages: 0,
             view_buf,
             view_bind,
             ui_view_at,
@@ -794,7 +829,8 @@ impl Gpu {
         self.add_atlas_frames(name, width, height, rgba, frames, pivots);
     }
 
-    /// Register (or replace) an atlas with frame rects and pivots.
+    /// Register (or replace) an atlas with frame rects and pivots, on a
+    /// texture of its own.
     pub fn add_atlas_frames(
         &mut self,
         name: &str,
@@ -804,8 +840,31 @@ impl Gpu {
         frames: Vec<[f32; 4]>,
         pivots: Vec<[f32; 2]>,
     ) {
+        let page = self.add_page(name, width, height, Texels::Rgba(rgba));
+        self.add_atlas_on(name, &page, frames, pivots);
+    }
+
+    /// A texture for atlases to share. BC7 blocks go to the GPU as they
+    /// are where it reads them, and are decoded here where it does not (a
+    /// block this decoder does not read shows magenta).
+    pub fn add_page(&mut self, label: &str, width: u32, height: u32, texels: Texels) -> Page {
+        let decoded;
+        let (format, data, row, rows) = match texels {
+            Texels::Rgba(rgba) => (FORMAT, rgba, 4 * width, height),
+            Texels::Bc7(blocks) if self.bc => (
+                wgpu::TextureFormat::Bc7RgbaUnormSrgb,
+                blocks,
+                16 * (width / 4),
+                height / 4,
+            ),
+            Texels::Bc7(blocks) => {
+                decoded = argus_assets::bc7::decode(width, height, blocks)
+                    .unwrap_or_else(|| [255u8, 0, 255, 255].repeat((width * height) as usize));
+                (FORMAT, decoded.as_slice(), 4 * width, height)
+            }
+        };
         let texture = self.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some(name),
+            label: Some(label),
             size: wgpu::Extent3d {
                 width,
                 height,
@@ -814,7 +873,7 @@ impl Gpu {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: FORMAT,
+            format,
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });
@@ -825,11 +884,11 @@ impl Gpu {
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
             },
-            rgba,
+            data,
             wgpu::TexelCopyBufferLayout {
                 offset: 0,
-                bytes_per_row: Some(4 * width),
-                rows_per_image: Some(height),
+                bytes_per_row: Some(row),
+                rows_per_image: Some(rows),
             },
             wgpu::Extent3d {
                 width,
@@ -838,9 +897,8 @@ impl Gpu {
             },
         );
         let view = texture.create_view(&Default::default());
-        self.atlas_gen += 1;
         let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some(name),
+            label: Some(label),
             layout: &self.atlas_layout,
             entries: &[
                 wgpu::BindGroupEntry {
@@ -853,18 +911,38 @@ impl Gpu {
                 },
             ],
         });
+        self.pages += 1;
+        Page {
+            id: self.pages,
+            width,
+            height,
+            bind_group,
+            view,
+        }
+    }
+
+    /// Register (or replace) an atlas drawn from `page`.
+    pub fn add_atlas_on(
+        &mut self,
+        name: &str,
+        page: &Page,
+        frames: Vec<[f32; 4]>,
+        pivots: Vec<[f32; 2]>,
+    ) {
+        self.atlas_gen += 1;
         if !self.atlases.contains_key(name) {
             self.atlas_order.push(name.to_string());
         }
         self.atlases.insert(
             name.to_string(),
             Atlas {
-                width,
-                height,
+                width: page.width,
+                height: page.height,
                 frames,
                 pivots,
-                bind_group,
-                view,
+                page: page.id,
+                bind_group: page.bind_group.clone(),
+                view: page.view.clone(),
             },
         );
     }

@@ -432,6 +432,103 @@ fn walk_files(dir: &Path, root: &Path, out: &mut Vec<String>) -> Result<()> {
     Ok(())
 }
 
+/// The binary forms a build made, for its report.
+fn forms_report(f: &argus_scene::binary::Packed) -> Json {
+    json!({
+        "entities": f.entities,
+        "bundles": f.bundles,
+        "prefabs": f.prefabs,
+        "def_tables": f.tables,
+        "left_as_toml": f.left_as_toml,
+    })
+}
+
+/// What a build made of its sources, for its report.
+#[derive(Default)]
+struct Made {
+    /// Scripts compiled to bytecode.
+    scripts: usize,
+    /// WAVs encoded as Vorbis: the path, and its bytes before and after.
+    sounds: Vec<(String, usize, usize)>,
+}
+
+impl Made {
+    fn sounds(&self) -> Json {
+        json!({
+            "encoded": self.sounds.len(),
+            "wav_bytes": self.sounds.iter().map(|s| s.1).sum::<usize>(),
+            "vorbis_bytes": self.sounds.iter().map(|s| s.2).sum::<usize>(),
+        })
+    }
+}
+
+/// What a pack holds for a source file (`path` inside the pack, `shown` in
+/// errors): a script as bytecode, a WAV as Ogg Vorbis under its own name,
+/// anything else as it is.
+fn packed(
+    shown: &str,
+    path: &str,
+    bytes: Vec<u8>,
+    made: &mut Made,
+) -> std::result::Result<Vec<u8>, String> {
+    if is_script(path) {
+        let b = argus_luau::compile(shown, &String::from_utf8_lossy(&bytes))
+            .map_err(|e| e.to_string())?;
+        made.scripts += 1;
+        Ok(b)
+    } else if is_wav(path, &bytes) {
+        let b = vorbis(shown, &bytes)?;
+        made.sounds.push((shown.to_string(), bytes.len(), b.len()));
+        Ok(b)
+    } else {
+        Ok(bytes)
+    }
+}
+
+/// A sound a pack holds as Ogg Vorbis: a WAV, under its authored name.
+fn is_wav(path: &str, bytes: &[u8]) -> bool {
+    path.to_ascii_lowercase().ends_with(".wav") && bytes.starts_with(b"RIFF")
+}
+
+/// A WAV as Ogg Vorbis (section 15: "audio in the platform's preferred
+/// codec"; phase 5 item 1), at its authored rate and channels and quality
+/// 0.5 (libvorbis q5, about 160 kbit/s for stereo). The stream's serial
+/// comes from the WAV's bytes, so the same sound packs to the same blob and
+/// a patch leaves it out.
+#[cfg(not(target_arch = "wasm32"))]
+fn vorbis(shown: &str, wav: &[u8]) -> std::result::Result<Vec<u8>, String> {
+    use std::num::{NonZeroU32, NonZeroU8};
+    let err = |m: String| format!("{shown}: {m}");
+    let d = argus_assets::decode_sound(wav).map_err(err)?;
+    let ch = d.channels as usize;
+    let rate = NonZeroU32::new(d.rate).ok_or_else(|| err("a sample rate of 0".into()))?;
+    let channels = u8::try_from(d.channels)
+        .ok()
+        .and_then(NonZeroU8::new)
+        .ok_or_else(|| err(format!("{} channels", d.channels)))?;
+    let h = address(wav);
+    let serial = i32::from_le_bytes([h[0], h[1], h[2], h[3]]);
+    let mut b =
+        vorbis_rs::VorbisEncoderBuilder::new_with_serial(rate, channels, Vec::new(), serial);
+    b.bitrate_management_strategy(vorbis_rs::VorbisBitrateManagementStrategy::QualityVbr {
+        target_quality: 0.5,
+    });
+    let mut enc = b.build().map_err(|e| err(e.to_string()))?;
+    for block in d.samples.chunks(4096 * ch) {
+        let planar: Vec<Vec<f32>> = (0..ch)
+            .map(|c| block.iter().skip(c).step_by(ch).copied().collect())
+            .collect();
+        enc.encode_audio_block(&planar)
+            .map_err(|e| err(e.to_string()))?;
+    }
+    enc.finish().map_err(|e| err(e.to_string()))
+}
+
+#[cfg(target_arch = "wasm32")]
+fn vorbis(shown: &str, _wav: &[u8]) -> std::result::Result<Vec<u8>, String> {
+    Err(format!("{shown}: packs are made natively (argus build)"))
+}
+
 fn is_script(rel: &str) -> bool {
     rel.ends_with(".luau")
         && ["components/", "defs/", "systems/"]
@@ -473,7 +570,7 @@ pub fn build_mod(root: &Path, id: &str, opts: &BuildOptions) -> Result<Built> {
         .collect();
     let sprites = importer.packed_sprites();
     let mut files: Vec<(String, Vec<u8>)> = Vec::new();
-    let mut compiled = 0usize;
+    let mut made = Made::default();
     let mut left_out = Vec::new();
     for rel in &all {
         if sprites.sources.contains(rel) {
@@ -482,22 +579,10 @@ pub fn build_mod(root: &Path, id: &str, opts: &BuildOptions) -> Result<Built> {
         }
         let bytes = argus_os::fs::read(mroot.join(rel))
             .map_err(|e| ArgusError::new(1, format!("mods/{id}/{rel}: {e}")))?;
-        let bytes = if is_script(rel) {
-            let src = String::from_utf8_lossy(&bytes);
-            match argus_luau::compile(&format!("mods/{id}/{rel}"), &src) {
-                Ok(b) => {
-                    compiled += 1;
-                    b
-                }
-                Err(e) => {
-                    problems.push(e.to_string());
-                    continue;
-                }
-            }
-        } else {
-            bytes
-        };
-        files.push((rel.clone(), bytes));
+        match packed(&format!("mods/{id}/{rel}"), rel, bytes, &mut made) {
+            Ok(b) => files.push((rel.clone(), b)),
+            Err(e) => problems.push(e),
+        }
     }
     if !problems.is_empty() {
         return Err(ArgusError::new(
@@ -505,16 +590,14 @@ pub fn build_mod(root: &Path, id: &str, opts: &BuildOptions) -> Result<Built> {
             format!("the mod's build stopped: {}", problems.join("; ")),
         ));
     }
+    let forms = argus_scene::binary::pack(&mut files, &|p| format!("mods/{id}/{p}"));
+    let paged = argus_assets::pages::page(&sprites)?;
     if !sprites.textures.is_empty() {
         files.push((
             argus_assets::CATALOG.to_string(),
-            serde_json::to_vec_pretty(&sprites.catalog).unwrap_or_default(),
+            serde_json::to_vec_pretty(&paged.catalog).unwrap_or_default(),
         ));
-        for (rel, disk) in &sprites.textures {
-            let bytes = argus_os::fs::read(disk)
-                .map_err(|e| ArgusError::new(1, format!("{}: {e}", disk.display())))?;
-            files.push((rel.clone(), bytes));
-        }
+        files.extend(paged.files);
     }
     // The directory's hash, so the pack is the same mod to a replay.
     files.push((
@@ -556,8 +639,11 @@ pub fn build_mod(root: &Path, id: &str, opts: &BuildOptions) -> Result<Built> {
         "build": seq,
         "files": files.len(),
         "bytes": bytes,
-        "scripts_compiled": compiled,
+        "scripts_compiled": made.scripts,
+        "sounds": made.sounds(),
+        "binary": forms_report(&forms),
         "sprites": sprites.textures.len(),
+        "pages": paged.report,
         "sources_left_out": left_out,
     });
     Ok(Built {
@@ -591,7 +677,7 @@ pub fn build(root: &Path, opts: &BuildOptions) -> Result<Built> {
     let sprites = importer.packed_sprites();
     let mut game: Vec<(String, Vec<u8>)> = Vec::new();
     let mut langs: BTreeMap<String, Vec<(String, Vec<u8>)>> = BTreeMap::new();
-    let mut compiled = 0usize;
+    let mut made = Made::default();
     let mut left_out = Vec::new();
     for rel in &all {
         if sprites.sources.contains(rel) {
@@ -613,20 +699,12 @@ pub fn build(root: &Path, opts: &BuildOptions) -> Result<Built> {
                 None => (None, rel.clone()),
             },
         };
-        let bytes = if is_script(&path) {
-            let src = String::from_utf8_lossy(&bytes);
-            match argus_luau::compile(rel, &src) {
-                Ok(b) => {
-                    compiled += 1;
-                    b
-                }
-                Err(e) => {
-                    problems.push(e.to_string());
-                    continue;
-                }
+        let bytes = match packed(rel, &path, bytes, &mut made) {
+            Ok(b) => b,
+            Err(e) => {
+                problems.push(e);
+                continue;
             }
-        } else {
-            bytes
         };
         match target {
             Some(code) => langs.entry(code).or_default().push((path, bytes)),
@@ -640,15 +718,16 @@ pub fn build(root: &Path, opts: &BuildOptions) -> Result<Built> {
         )
         .hint("Fix these and build again; `argus asset list` and `argus script errors` show them in the daemon."));
     }
+    // Defs and scenes in their binary form (section 15; phase 5 item 1).
+    let forms = argus_scene::binary::pack(&mut game, &|p| p.to_string());
+    // Sprites on shared pages, BC7 where it cannot be seen (section 15:
+    // "compressed textures in atlases"; phase 5 item 1).
+    let paged = argus_assets::pages::page(&sprites)?;
     game.push((
         argus_assets::CATALOG.to_string(),
-        serde_json::to_vec_pretty(&sprites.catalog).unwrap_or_default(),
+        serde_json::to_vec_pretty(&paged.catalog).unwrap_or_default(),
     ));
-    for (rel, disk) in &sprites.textures {
-        let bytes = argus_os::fs::read(disk)
-            .map_err(|e| ArgusError::new(1, format!("{}: {e}", disk.display())))?;
-        game.push((rel.clone(), bytes));
-    }
+    game.extend(paged.files);
     game.sort_by(|a, b| a.0.cmp(&b.0));
 
     // Content addressing: a patch carries only what the builds before it lack.
@@ -728,8 +807,11 @@ pub fn build(root: &Path, opts: &BuildOptions) -> Result<Built> {
         "bytes": bytes,
         "blobs_new": packs[0].blobs.len(),
         "bytes_new": shipped,
-        "scripts_compiled": compiled,
+        "scripts_compiled": made.scripts,
+        "sounds": made.sounds(),
+        "binary": forms_report(&forms),
         "sprites": sprites.textures.len(),
+        "pages": paged.report,
         "sources_left_out": left_out,
         "languages": packs[1..].iter().filter_map(|p| match &p.kind { Kind::Lang(l) => Some(l.clone()), _ => None }).collect::<Vec<_>>(),
     });

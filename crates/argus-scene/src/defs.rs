@@ -10,6 +10,7 @@
 //! weight = 0.1
 //! ```
 
+use crate::binary::RowDoc;
 use crate::codes;
 use crate::moves::{self, MoveRecord};
 use crate::tomlv;
@@ -201,7 +202,11 @@ impl Defs {
                     rd.into_iter()
                         .filter(|e| !e.is_dir)
                         .map(|e| e.path)
-                        .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("toml"))
+                        // A release pack holds a table's rows in binary
+                        // (`<table>.bin`, phase 5 item 1).
+                        .filter(|p| {
+                            matches!(p.extension().and_then(|s| s.to_str()), Some("toml" | "bin"))
+                        })
                         .collect()
                 })
                 .unwrap_or_default();
@@ -209,7 +214,26 @@ impl Defs {
             files.extend(here.into_iter().map(|p| (layer.id.map(str::to_string), p)));
         }
         for (owner, path) in files {
-            let rel = moves::rel(root, &path);
+            // The rows, from the TOML or from the binary form of it, which
+            // names the file it was made from.
+            let (rel, rows) = if path.extension().and_then(|s| s.to_str()) == Some("bin") {
+                let shown = moves::rel(root, &path);
+                match argus_os::fs::read(&path)
+                    .map_err(|e| {
+                        ArgusError::new(codes::MISSING_FILE, format!("cannot read {shown}: {e}"))
+                    })
+                    .and_then(|b| crate::binary::decode_rows(&b))
+                {
+                    Ok((source, rows)) => (source, Ok(rows.into_iter().map(Ok).collect())),
+                    Err(e) => (shown, Err(vec![e])),
+                }
+            } else {
+                let rel = moves::rel(root, &path);
+                let rows = tomlv::read(&path)
+                    .map_err(|e| vec![e])
+                    .and_then(|text| row_docs(&rel, &text).map_err(|e| vec![e]));
+                (rel, rows)
+            };
             let name = path
                 .file_stem()
                 .and_then(|s| s.to_str())
@@ -228,17 +252,17 @@ impl Defs {
             if owner.is_none() || table.file.is_none() {
                 table.file = Some(rel.clone());
             }
-            match tomlv::read(&path) {
-                Ok(text) => match &owner {
-                    None => load_rows(table, &rel, &text, &mut errors),
+            match rows {
+                Ok(rows) => match &owner {
+                    None => load_rows(table, rows, &mut errors),
                     Some(id) => {
                         let mut mine = table.clone();
                         mine.rows.clear();
-                        load_rows(&mut mine, &rel, &text, &mut errors);
+                        load_rows(&mut mine, rows, &mut errors);
                         lay_over(table, mine.rows, id, &mut errors, &mut changes);
                     }
                 },
-                Err(e) => errors.push(e),
+                Err(e) => errors.extend(e),
             }
         }
         // Second pass: references between tables.
@@ -370,30 +394,51 @@ fn lay_over(
     }
 }
 
-fn load_rows(table: &mut DefTable, rel: &str, text: &str, errors: &mut Vec<ArgusError>) {
-    let im = match tomlv::parse(rel, text) {
-        Ok(d) => d,
-        Err(e) => {
-            errors.push(e);
-            return;
-        }
-    };
-    for (key, item) in im.as_table().iter() {
-        let at = tomlv::item_ref(rel, text, item);
-        let Some(row) = item.as_table_like() else {
-            errors.push(
+/// A def file's rows as written, in file order: each a row, or why it is
+/// not one. The whole is an error when the file is not TOML. What a row's
+/// values mean is the table's to say ([`load_rows`]); a release pack holds
+/// these rows in binary (`crate::binary`).
+pub fn row_docs(rel: &str, text: &str) -> Result<Vec<Result<RowDoc>>> {
+    let im = tomlv::parse(rel, text)?;
+    let name = Path::new(rel)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or_default()
+        .to_string();
+    Ok(im
+        .as_table()
+        .iter()
+        .map(|(key, item)| {
+            let at = tomlv::item_ref(rel, text, item);
+            let row = item.as_table_like().ok_or_else(|| {
                 ArgusError::new(
                     codes::BAD_DEF,
-                    format!(
-                        "{}: {key:?} must be a row table like [\"{key}\"]",
-                        table.name
-                    ),
+                    format!("{name}: {key:?} must be a row table like [\"{key}\"]"),
                 )
-                .at(Some(at)),
-            );
-            continue;
-        };
-        match parse_row(table, key, row, rel, text, &at) {
+                .at(Some(at.clone()))
+            })?;
+            let fields = row
+                .iter()
+                .map(|(f, it)| {
+                    (
+                        f.to_string(),
+                        it.as_value().cloned(),
+                        tomlv::item_ref(rel, text, it),
+                    )
+                })
+                .collect();
+            Ok(RowDoc {
+                key: key.to_string(),
+                at,
+                fields,
+            })
+        })
+        .collect())
+}
+
+fn load_rows(table: &mut DefTable, rows: Vec<Result<RowDoc>>, errors: &mut Vec<ArgusError>) {
+    for row in rows {
+        match row.and_then(|r| parse_row(table, &r)) {
             Ok(r) => table.rows.push(r),
             Err(e) => errors.push(e),
         }
@@ -542,23 +587,17 @@ pub fn write_row(
     Ok((rel, old))
 }
 
-fn parse_row(
-    table: &DefTable,
-    key: &str,
-    row: &dyn toml_edit::TableLike,
-    rel: &str,
-    text: &str,
-    at: &str,
-) -> Result<DefRow> {
+fn parse_row(table: &DefTable, row: &RowDoc) -> Result<DefRow> {
+    let (key, at) = (row.key.as_str(), row.at.as_str());
     let schema = &table.schema;
     let mut values: Vec<Option<Value>> = vec![None; schema.fields.len()];
-    for (fname, item) in row.iter() {
-        let fat = tomlv::item_ref(rel, text, item);
+    for (fname, raw, fat) in &row.fields {
+        let fat = fat.clone();
         let (i, fs) = schema
             .fields
             .iter()
             .enumerate()
-            .find(|(_, f)| f.name == fname)
+            .find(|(_, f)| f.name == *fname)
             .ok_or_else(|| {
                 ArgusError::new(
                     argus_ecs::codes::UNKNOWN_FIELD,
@@ -578,7 +617,7 @@ fn parse_row(
             .hint("Defs are scene-independent data. Use a str or ref field.")
             .at(Some(fat)));
         }
-        let raw = item.as_value().ok_or_else(|| {
+        let raw = raw.as_ref().ok_or_else(|| {
             ArgusError::new(
                 codes::BAD_DEF,
                 format!("{}.{key}.{fname} must be a value", table.name),

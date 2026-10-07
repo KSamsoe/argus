@@ -12,7 +12,7 @@ The workflow is `.github/workflows/ci.yml`. It runs `tools/ci/ci.sh`, which can 
 | clippy | No clippy warnings, in any crate or test. |
 | test | The workspace's tests. Then the render tests again on the software rasteriser (WARP), as a machine with no GPU would draw. |
 | games | The test suites of Swarm, Delve, Hollow, and Outpost. A failing run's clip is drawn with the software rasteriser. |
-| perf | The release-build timing tests: every section 17 target except the web page's, which the next step checks. The Outpost hand-tuning gate (21 minutes) is left to phase gates. |
+| perf | The release-build timing tests: every section 17 target except the web page's, which the next step checks. They run one at a time, since a timing test that shares the machine with another reads slow. The Outpost hand-tuning gate (21 minutes) is left to phase gates. |
 | web | Hollow's web page is built and played in headless Chrome. This includes a cold load over a 20 Mbit link, which must finish in under 5 seconds. |
 
 Every step runs even if an earlier one failed. The run fails if any step failed, and the Actions page shows the last 40 lines of each failing step.

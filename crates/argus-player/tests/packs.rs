@@ -199,14 +199,16 @@ fn a_patch_carries_only_what_changed_and_a_language_lays_over_the_game() {
     assert_eq!(second.packs[0].file_name(), "patch-2.pack");
     assert_eq!(second.packs[1].file_name(), "lang-fr.pack");
     // Only what changed, manifest included (phase 3 item 6: at Hollow's
-    // 10,000 files a whole manifest was most of a one-file patch).
+    // 10,000 files a whole manifest was most of a one-file patch): the
+    // sign's room, whose entities a release pack holds in one bundle (phase
+    // 5 item 1).
     assert_eq!(
         second.packs[0]
             .files
             .iter()
             .map(|f| f.0.as_str())
             .collect::<Vec<_>>(),
-        ["scenes/hollow/rooms/b/sign.toml"]
+        ["scenes/hollow/rooms/b/entities.bin"]
     );
     assert!(second.packs[0].removed.is_empty());
     assert!(second.packs[0].encode().len() < first.packs[0].encode().len() / 100);
@@ -220,19 +222,37 @@ fn a_patch_carries_only_what_changed_and_a_language_lays_over_the_game() {
 
     let mut all = first.packs.clone();
     all.extend(second.packs.iter().cloned());
-    let sign_text = |files: &[(String, Vec<u8>)]| {
-        let (_, b) = files
+    let file = |files: &[(String, Vec<u8>)], path: &str| {
+        files
             .iter()
-            .find(|(p, _)| p == "scenes/hollow/rooms/b/sign.toml")
-            .unwrap();
-        String::from_utf8(b.clone()).unwrap()
+            .find(|(p, _)| p == path)
+            .map(|(_, b)| b.clone())
     };
     let (files, report) = pack::resolve(&all, None).unwrap();
-    assert!(sign_text(&files).contains("but the wind"));
+    let bundle = file(&files, "scenes/hollow/rooms/b/entities.bin").unwrap();
+    let docs = argus_scene::binary::decode_entities(&bundle, &|stem| {
+        format!("scenes/hollow/rooms/b/{stem}.toml")
+    })
+    .unwrap();
+    let (_, sign) = docs.iter().find(|(stem, _)| stem == "sign").unwrap();
+    let describe = sign
+        .components
+        .iter()
+        .find(|c| c.name == "Describe")
+        .unwrap();
+    let text = describe.fields.iter().find(|f| f.name == "text").unwrap();
+    assert!(
+        text.raw.to_string().contains("but the wind"),
+        "{:?}",
+        text.raw
+    );
     assert_eq!(report["build"], 2);
     assert_eq!(report["languages"], json!(["fr"]));
     let (files, report) = pack::resolve(&all, Some("fr")).unwrap();
-    assert!(sign_text(&files).contains("Rien ici que la vue"));
+    let fr = file(&files, "scenes/hollow/rooms/b/sign.toml").unwrap();
+    assert!(String::from_utf8(fr)
+        .unwrap()
+        .contains("Rien ici que la vue"));
     assert_eq!(report["language"], "fr");
 
     // Played in French: the sign says so.

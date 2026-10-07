@@ -804,7 +804,7 @@ impl Daemon {
                 .hint("The server is tools/web/serve.mjs; pull from its LAN or tailnet address, http://host:port/.")
         };
         let list: Json = serde_json::from_slice(
-            &crate::http::get(&format!("{url}marks"), timeout).map_err(net)?,
+            &argus_player::http::get(&format!("{url}marks"), timeout).map_err(net)?,
         )
         .map_err(|e| net(format!("{url}marks: {e}")))?;
         let seen_file = root.join(".argus").join("marks").join("pulled.json");
@@ -825,7 +825,8 @@ impl Daemon {
                 already += 1;
                 continue;
             }
-            let bytes = crate::http::get(&format!("{url}marks/{rid}"), timeout).map_err(net)?;
+            let bytes =
+                argus_player::http::get(&format!("{url}marks/{rid}"), timeout).map_err(net)?;
             let incoming = root.join(".argus").join("marks").join("incoming");
             std::fs::create_dir_all(&incoming)
                 .map_err(|e| ArgusError::new(codes::BAD_MARK, e.to_string()))?;

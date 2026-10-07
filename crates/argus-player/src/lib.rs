@@ -16,6 +16,7 @@
 pub mod assemble;
 #[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
 pub mod desktop;
+pub mod http;
 pub mod keyframe;
 pub mod mods;
 pub mod pack;
@@ -23,6 +24,7 @@ pub mod pack;
 mod player;
 pub mod recorder;
 pub mod replay;
+pub mod reports;
 pub mod save;
 pub mod savegame;
 pub mod sha256;

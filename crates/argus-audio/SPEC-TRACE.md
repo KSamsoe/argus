@@ -81,6 +81,12 @@ The first run of Swarm's first wave with sound read `sfx peak +18 dB` in `audio.
 |---|---|---|---|
 | (Kevin's play in the editor) The music does not play before Play. | Done | `AudioEngine::set_hold`: while held, the device's callback (`device.rs`) fills its buffer with silence and does not pull the mixer, so voices and music stay where they are and go on from there. The daemon holds it while its clock is stopped or paused. Headless the mixer follows sim time and is never held. | argus-daemon `stream::the_music_waits_for_play` |
 
+## Phase 5, item 1: sounds from memory, and Vorbis
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§15) "Audio in the platform's preferred codec." | Done | `sound::decode`: a WAV or Ogg Vorbis (`lewton`) from its bytes, told apart by them; `sound::load` reads through `argus_os::fs`, so a release build's sounds, in memory, load (they did not: `hound` opened the disk). `.ogg` files under `assets/` are sounds as WAVs are. | `argus-player` `tests/release_audio.rs` |
+
 ## Known limitations, stated so they are decisions
 
 - WAV only; OGG and other formats come with the importer.

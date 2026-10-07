@@ -54,6 +54,11 @@ pub struct ProjectConfig {
     /// don't want mods set one flag"; phase 3 item 8). True when the
     /// project does not say: modding is intended.
     pub mods_enabled: bool,
+    /// `[reports] url`: the playtest server a desktop build sends its
+    /// players' reports to (`<url>marks`, as the web page posts to its
+    /// own), an `http://` address (phase 5 item 1). `None`: they stay in
+    /// the player's save location.
+    pub reports_url: Option<String>,
 }
 
 /// A day, when a project does not say how long its days are.
@@ -182,6 +187,27 @@ impl ProjectConfig {
                 .at(Some(at("mods")))
             })?,
         };
+        let reports_url = match t
+            .get("reports")
+            .and_then(|i| i.as_table_like())
+            .and_then(|m| m.get("url"))
+        {
+            None => None,
+            Some(i) => match i.as_str().map(str::trim) {
+                Some(u) if u.starts_with("http://") && u.len() > 7 => {
+                    // `<url>marks` is the server's report path.
+                    Some(if u.ends_with('/') { u.to_string() } else { format!("{u}/") })
+                }
+                _ => {
+                    return Err(ArgusError::new(
+                        codes::BAD_SCENE,
+                        "argus.toml [reports] url must be the playtest server's http:// address, like \"http://100.70.114.55:8765/\"",
+                    )
+                    .hint("A desktop build speaks plain HTTP, so the server's LAN or tailnet address, not its https:// link.")
+                    .at(Some(at("reports"))))
+                }
+            },
+        };
         Ok(ProjectConfig {
             name,
             clock,
@@ -193,6 +219,7 @@ impl ProjectConfig {
             day_seconds,
             strings_base,
             mods_enabled,
+            reports_url,
         })
     }
 
@@ -310,6 +337,7 @@ impl Project {
                 day_seconds: DAY_SECONDS,
                 strings_base: "en".to_string(),
                 mods_enabled: true,
+                reports_url: None,
             };
             argus_os::fs::write(&cfg, c.to_toml()).map_err(|e| {
                 ArgusError::new(codes::MISSING_FILE, format!("cannot write argus.toml: {e}"))

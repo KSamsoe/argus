@@ -38,8 +38,8 @@ use argus_sim::ClockKind;
 use serde_json::json;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::sync::{mpsc, Mutex};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// The code this executable was built from (`argus build` sets it), which
 /// every report records.
@@ -175,7 +175,9 @@ fn run(args: Args) -> Result<(), String> {
     }
     let key = cfg.mark_key.unwrap_or_else(|| "F8".to_string());
     let left_out = p.mods.left_out_line();
-    let mut game = Game::open(p, key, save)?;
+    let mut game = Game::open(p, key, save, cfg.reports_url.clone())?;
+    // Reports that did not go last time go now.
+    game.send_later();
     // Mods that did not load, or a load order that did not read.
     if let Some(line) = left_out.or(mods_said) {
         game.toast = Some((line, Instant::now()));
@@ -192,7 +194,8 @@ fn run(args: Args) -> Result<(), String> {
                     .take()
                     .unwrap_or_default();
                 let saved = game.save_report(&msg, "crash");
-                return Err(format!("The game stopped: {msg}\n\n{saved}"));
+                let sent = game.send_now();
+                return Err(format!("The game stopped: {msg}\n\n{saved}{sent}"));
             }
         }
     }
@@ -212,10 +215,18 @@ struct Game {
     toast: Option<(String, Instant)>,
     bar: Option<(String, u32)>,
     save: Option<PathBuf>,
+    /// Where reports go (`[reports] url`), and the try under way.
+    reports: Option<String>,
+    sending: Option<mpsc::Receiver<argus_player::reports::Sent>>,
 }
 
 impl Game {
-    fn open(mut p: Player, key: String, save: Option<PathBuf>) -> Result<Game, String> {
+    fn open(
+        mut p: Player,
+        key: String,
+        save: Option<PathBuf>,
+        reports: Option<String>,
+    ) -> Result<Game, String> {
         let host = WindowHost::open(&p.name, 1280, 720).map_err(|e| e.message)?;
         let window = host.window().ok_or("the window did not open")?;
         let mut r = Renderer::windowed(window, false).map_err(|e| e.message)?;
@@ -235,7 +246,67 @@ impl Game {
             toast: None,
             bar: None,
             save,
+            reports,
+            sending: None,
         })
+    }
+
+    /// Where reports wait: the save location's `reports/`.
+    fn reports_dir(&self) -> Option<PathBuf> {
+        Some(self.save.as_ref()?.join("reports"))
+    }
+
+    /// Send the waiting reports in the background; the bottom line says
+    /// what became of them ([`Game::sent`]).
+    fn send_later(&mut self) {
+        let (Some(url), Some(dir)) = (self.reports.clone(), self.reports_dir()) else {
+            return;
+        };
+        if self.sending.is_some() || argus_player::reports::waiting(&dir).is_empty() {
+            return;
+        }
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(argus_player::reports::send_waiting(
+                &dir,
+                &url,
+                Duration::from_secs(10),
+            ));
+        });
+        self.sending = Some(rx);
+    }
+
+    /// Send the waiting reports now, briefly (the game is stopping); what
+    /// to add to what the player is told.
+    fn send_now(&mut self) -> String {
+        let (Some(url), Some(dir)) = (self.reports.clone(), self.reports_dir()) else {
+            return String::new();
+        };
+        let r = argus_player::reports::send_waiting(&dir, &url, Duration::from_secs(3));
+        match r.failed {
+            None => "\nIt was sent to the team.".to_string(),
+            Some(_) => "\nIt is sent the next time the game starts.".to_string(),
+        }
+    }
+
+    /// What became of a background send, once it is over.
+    fn sent(&mut self) {
+        let Some(rx) = &self.sending else {
+            return;
+        };
+        let Ok(r) = rx.try_recv() else {
+            return;
+        };
+        self.sending = None;
+        let said = match (r.sent.len(), r.failed) {
+            (0, Some(e)) => {
+                format!("Report not sent yet ({e}); it goes the next time the game starts")
+            }
+            (1, None) => "Report sent to the team".to_string(),
+            (n, None) => format!("{n} reports sent to the team"),
+            (n, Some(e)) => format!("{n} reports sent; the rest wait ({e})"),
+        };
+        self.toast = Some((said, Instant::now()));
     }
 
     /// One frame: devices in, the ticks the time owes, a picture. False
@@ -368,6 +439,10 @@ impl Game {
     /// player about it.
     fn save_report(&mut self, note: &str, kind: &str) -> String {
         let said = match self.write_report(note, kind) {
+            Ok(path) if self.reports.is_some() => {
+                self.send_later();
+                format!("Report saved: {}; sending it to the team", path.display())
+            }
             Ok(path) => format!("Report saved: {}", path.display()),
             Err(e) => format!("The report could not be saved: {e}"),
         };
@@ -403,6 +478,7 @@ impl Game {
     /// The bottom line: the report prompt, or a few seconds of what became
     /// of a report.
     fn overlay(&mut self) {
+        self.sent();
         if self
             .toast
             .as_ref()

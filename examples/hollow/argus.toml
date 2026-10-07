@@ -2,3 +2,8 @@ name = "hollow"
 clock = "continuous@60"
 default_scene = "hollow"
 plugins = []
+
+# Where a desktop build sends its players' reports: klab's playtest server,
+# by its tailnet address (docs/playtest.md), as the web page posts to it.
+[reports]
+url = "http://100.70.114.55:8765/"

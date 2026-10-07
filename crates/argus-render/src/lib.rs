@@ -30,7 +30,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
 pub use annotate::{annotate, Mark};
-pub use gpu::{DrawStats, Gpu, Instance, Run, UiDraw};
+pub use gpu::{DrawStats, Gpu, Instance, Page, Run, Texels, UiDraw};
 pub use semantic::{semantic, Describe, FrameSpec, SemanticFrame, View};
 
 /// Error codes this crate adds (50xx).
@@ -710,6 +710,9 @@ impl Renderer {
         imp: &argus_assets::Importer,
         names: &[String],
     ) -> argus_ecs::Result<()> {
+        // A release pack's sprites share pages (phase 5 item 1): each
+        // texture is loaded once.
+        let mut pages: HashMap<std::path::PathBuf, Page> = HashMap::new();
         for name in names {
             if let Some(f) = imp.fonts().find(|(n, _)| *n == name).map(|(_, f)| f) {
                 let (tw, th) = (f.atlas[0].max(1) as f32, f.atlas[1].max(1) as f32);
@@ -734,8 +737,15 @@ impl Renderer {
                 self.gpu.remove_atlas(name);
                 continue;
             };
-            let (w, h, rgba) = argus_assets::decode_png(&s.texture)?;
-            let (tw, th) = (w.max(1) as f32, h.max(1) as f32);
+            let page = match pages.get(&s.texture) {
+                Some(p) => p.clone(),
+                None => {
+                    let p = self.load_page(&s.texture)?;
+                    pages.insert(s.texture.clone(), p.clone());
+                    p
+                }
+            };
+            let (tw, th) = (page.width.max(1) as f32, page.height.max(1) as f32);
             let frames: Vec<[f32; 4]> = s
                 .frames
                 .iter()
@@ -749,9 +759,26 @@ impl Renderer {
                 })
                 .collect();
             let pivots: Vec<[f32; 2]> = s.frames.iter().map(|f| f.pivot).collect();
-            self.gpu.add_atlas_frames(name, w, h, &rgba, frames, pivots);
+            self.gpu.add_atlas_on(name, &page, frames, pivots);
         }
         Ok(())
+    }
+
+    /// A sprite texture on the GPU: a cached PNG, or a release pack's page
+    /// (a PNG, or BC7 blocks).
+    fn load_page(&mut self, path: &std::path::Path) -> argus_ecs::Result<Page> {
+        let label = path.to_string_lossy().into_owned();
+        if path.extension().is_some_and(|x| x == "bc7") {
+            let bytes = argus_os::fs::read(path)
+                .map_err(|e| argus_ecs::ArgusError::new(codes::PNG, format!("{label}: {e}")))?;
+            let (w, h, blocks) = argus_assets::pages::read_bc7(&bytes).ok_or_else(|| {
+                argus_ecs::ArgusError::new(codes::PNG, format!("{label} is not a BC7 page"))
+                    .hint("Rebuild the game with `argus build`.")
+            })?;
+            return Ok(self.gpu.add_page(&label, w, h, Texels::Bc7(blocks)));
+        }
+        let (w, h, rgba) = argus_assets::decode_png(path)?;
+        Ok(self.gpu.add_page(&label, w, h, Texels::Rgba(&rgba)))
     }
 
     /// The last frame's report.
@@ -910,6 +937,17 @@ impl Renderer {
                 .collect();
             let rect = atlas_index["rect"];
             let circle = atlas_index["circle"];
+            // Atlases on one page draw as one run: each is keyed by the
+            // first atlas on its page.
+            let mut first_on: HashMap<u64, u32> = HashMap::new();
+            let run_of: Vec<u32> = names
+                .iter()
+                .enumerate()
+                .map(|(i, n)| {
+                    let page = self.gpu.atlas(n).map_or(u64::MAX - i as u64, |a| a.page);
+                    *first_on.entry(page).or_insert(i as u32)
+                })
+                .collect();
             let strings = world.strings();
             // StrId -> atlas index (u32::MAX for a missing atlas), resolved once per name.
             let mut atlas_of: HashMap<StrId, u32> = HashMap::new();
@@ -969,7 +1007,12 @@ impl Renderer {
                             0
                         };
                         let pivot = a.pivots.get(f).copied().unwrap_or([0.5, 0.5]);
-                        (ai, a.frames[f], pivot, [1.0, 1.0, 1.0, 1.0])
+                        (
+                            run_of[ai as usize],
+                            a.frames[f],
+                            pivot,
+                            [1.0, 1.0, 1.0, 1.0],
+                        )
                     }
                 };
                 if s.color != StrId::EMPTY {

@@ -52,6 +52,12 @@ Every statement in the design document (v0.3) that constrains the asset importer
 |---|---|---|---|
 | A sidecar edited through the protocol is written in the layer it came from. | Done | `Importer::sidecar_file(name)`: the asset's sidecar (or `<name>.toml` beside its source, for one with none yet) in the game's `assets/` or its mod's, and its path from the game's root. | `argus-daemon` `animation`; `argus-cli` `feed` |
 
+## Phase 5, item 1: BC7 and sprite pages
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§15) Compressed textures in atlases. | Done | `bc7`: an encoder for BC7's modes 5 and 6 (a line fitted by principal axis, the ends refitted by least squares, exact alpha at 0 and 255 a hard rule), a decoder for them, and `looks_same`; `pages::page` packs a catalog's sprites onto pages (see argus-player's trace). Sounds are probed from their bytes, WAV or Vorbis. | `bc7::tests` (soft art compresses unseen, two colours and clear are exact, three colours in a block are refused) |
+
 ## Known limitations, stated so they are decisions
 
 - The watcher polls file metadata twice a second rather than using OS notifications. It is deterministic, has no dependency, and costs one metadata read per file.

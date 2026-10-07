@@ -211,15 +211,28 @@ fn round3(x: f32) -> f64 {
     ((x as f64) * 1000.0).round() / 1000.0
 }
 
-fn wav_files(dir: &Path, base: &Path, out: &mut Vec<String>) {
+/// A sound file's name: its path without the extension.
+fn sound_name(f: &str) -> &str {
+    let lower = f.to_ascii_lowercase();
+    match lower.rfind('.') {
+        Some(i) if matches!(&lower[i..], ".wav" | ".ogg") => &f[..i],
+        _ => f,
+    }
+}
+
+/// The sound files (WAV and Ogg Vorbis) under `dir`, relative to `base`.
+fn sound_files(dir: &Path, base: &Path, out: &mut Vec<String>) {
     let Ok(rd) = argus_os::fs::read_dir(dir) else {
         return;
     };
     for e in rd {
         let p = e.path;
         if e.is_dir {
-            wav_files(&p, base, out);
-        } else if p.extension().is_some_and(|x| x.eq_ignore_ascii_case("wav")) {
+            sound_files(&p, base, out);
+        } else if p
+            .extension()
+            .is_some_and(|x| x.eq_ignore_ascii_case("wav") || x.eq_ignore_ascii_case("ogg"))
+        {
             if let Ok(rel) = p.strip_prefix(base) {
                 out.push(rel.to_string_lossy().replace('\\', "/"));
             }
@@ -344,29 +357,20 @@ impl AudioEngine {
             }
             defs.push(d);
         }
-        // Every WAV under assets/ is a sound by its path, unless defined;
-        // a mod's, when named in its namespace, by its whole path.
+        // Every sound file under assets/ is a sound by its path, unless
+        // defined; a mod's, when named in its namespace, by its whole path.
         let mut files = Vec::new();
-        wav_files(&assets, &assets, &mut files);
+        sound_files(&assets, &assets, &mut files);
         let mut named: Vec<(String, String)> = files
             .into_iter()
-            .map(|f| {
-                let name = f
-                    .trim_end_matches(".wav")
-                    .trim_end_matches(".WAV")
-                    .to_string();
-                (name, f)
-            })
+            .map(|f| (sound_name(&f).to_string(), f))
             .collect();
         for l in self.layers.each().into_iter().skip(1) {
             let dir = l.root.join("assets");
             let mut mine = Vec::new();
-            wav_files(&dir, &dir, &mut mine);
+            sound_files(&dir, &dir, &mut mine);
             for f in mine {
-                let name = f
-                    .trim_end_matches(".wav")
-                    .trim_end_matches(".WAV")
-                    .to_string();
+                let name = sound_name(&f).to_string();
                 if l.id.is_some_and(|id| argus_ecs::layers::owns(id, &name)) {
                     named.push((name, dir.join(&f).to_string_lossy().into_owned()));
                 }
@@ -408,7 +412,7 @@ impl AudioEngine {
             for v in &def.variations {
                 match v {
                     Source::Tone(_) => clips.extend(made.next()),
-                    Source::File(f) => match sound::load_wav(&assets.join(f), self.rate) {
+                    Source::File(f) => match sound::load(&assets.join(f), self.rate) {
                         Ok(c) => clips.push(c),
                         Err(e) => self.warnings.push(format!("{}: {}", def.at, e.message)),
                     },

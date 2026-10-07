@@ -117,6 +117,12 @@ Phase 0 item 5, "TOML scenes, rooms, defs, and prefab overrides": this crate.
 |---|---|---|---|
 | (§4, §13) A timeline's cue added, replaced, or taken out in its table's file. | Done | `defs::write_row(root, table, key, fields)`: the row built from its fields (an f32 written through its shortest text; a field the schema does not have refused), a replaced row's comment kept, the rest of the file as it was; `None` takes the row out. It answers the file and its text before, for undo. | `argus-daemon` `timeline::a_timeline_is_edited_row_by_row_and_played_from_the_editor` |
 
+## Phase 5, item 1: defs and scenes in binary
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§15) "Defs and scenes in a binary form of the same schema." | Done | `binary`: an entity file's `EntityDoc` and a def table's rows (`binary::RowDoc`, which `defs::row_docs` reads from TOML and the binary form both, so one function types them), each value still a TOML value and each place its line in the entry's own file. Each bundle keeps its names and strings once, in a table. `binary::pack` replaces a pack's entity files, prefabs, and tables; `Scene::scan_entities`, the prefab library, and `Defs::load_layers` read the bundles beside any TOML, a file laying over a bundle's entry of its name. Found: with every place written in full, Hollow's bundles were three times its TOML. | `tests/binary.rs` |
+
 ## Known limitations, stated so they are decisions
 
 - A child entity that exists only because a prefab declares it is not an "instance" of that prefab (`instances_of`), but it is counted among the entities a prefab change touched (`reapply_prefab`).

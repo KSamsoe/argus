@@ -24,6 +24,12 @@ The release executable (§15, phase 2 item 7): what a player double-clicks. The 
 |---|---|---|---|
 | (§15) "A release build can load mod packs ... from a user directory, in a declared load order." | Done | The executable reads the `mods/` folder of the save location (`--mods <dir>` for another, `--no-mods` for none), plans and mounts its mods over the game, and says on the bottom line which mods did not load and why. `--headless` prints the mods report. | Hollow's release run headless: both packs by id, `brighter` after `lanterns`; a load order putting `brighter` first leaves it out; `--no-mods` |
 
+## Phase 5, item 1: reports reach the team
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§15) A report "the team can open": a desktop player's goes to them as the page's does. | Done | With `[reports] url`, a saved report is posted in the background (`argus_player::reports`), the waiting ones when the game starts, and a crash's for up to three seconds before the game stops; the bottom line says whether it went. Without, it stays in the save location as before. | `argus-player` `tests/release_reports.rs` |
+
 ## Known limitations, stated so they are decisions
 
 - The window opens at 1280x720 and can be resized. It fills the screen (borderless) while the game's `UiSettings.fullscreen` says so, read each frame (phase 3 item 1); a game's settings screen is its own UI (Hollow's pause menu has one). Settings last for the session; keeping them between launches is phase 5's accessibility pass.

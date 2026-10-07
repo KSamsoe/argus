@@ -1,5 +1,6 @@
-//! Sample data: WAV files decoded to mono at the mixer rate, and described
-//! tones synthesised the same way, so every variation is one `Clip`.
+//! Sample data: sound files (WAV, Ogg Vorbis) decoded to mono at the mixer
+//! rate, and described tones synthesised the same way, so every variation
+//! is one `Clip`.
 
 use crate::config::{Tone, Wave};
 use argus_ecs::{ArgusError, Result};
@@ -9,34 +10,89 @@ use std::sync::Arc;
 /// Mono samples at the mixer rate.
 pub type Clip = Arc<[f32]>;
 
-/// Decode a WAV (8/16/24/32-bit integer or 32-bit float, any channel
-/// count, any rate) to mono at `rate`.
-pub fn load_wav(path: &Path, rate: u32) -> Result<Clip> {
+/// A sound file's samples as authored.
+pub struct Decoded {
+    /// Sample rate.
+    pub rate: u32,
+    /// Channels, interleaved in `samples`.
+    pub channels: u16,
+    /// Interleaved samples in [-1, 1].
+    pub samples: Vec<f32>,
+}
+
+impl Decoded {
+    /// Frames (samples per channel).
+    pub fn frames(&self) -> usize {
+        self.samples.len() / self.channels.max(1) as usize
+    }
+
+    /// The loudest sample, linear.
+    pub fn peak(&self) -> f32 {
+        self.samples.iter().fold(0.0, |m, s| m.max(s.abs()))
+    }
+}
+
+/// Decode a sound file's bytes: a WAV (8/16/24/32-bit integer or 32-bit
+/// float) or Ogg Vorbis, told apart by their first bytes. A release pack
+/// keeps a sound's authored path and holds it as Vorbis (phase 5 item 1),
+/// so a name says nothing about the format.
+pub fn decode(bytes: &[u8]) -> std::result::Result<Decoded, String> {
+    if bytes.starts_with(b"RIFF") {
+        let mut r =
+            hound::WavReader::new(std::io::Cursor::new(bytes)).map_err(|x| x.to_string())?;
+        let spec = r.spec();
+        let samples = match spec.sample_format {
+            hound::SampleFormat::Float => r
+                .samples::<f32>()
+                .collect::<std::result::Result<_, _>>()
+                .map_err(|x| x.to_string())?,
+            hound::SampleFormat::Int => {
+                let scale = 1.0 / (1u64 << (spec.bits_per_sample.max(1) - 1)) as f32;
+                r.samples::<i32>()
+                    .map(|s| s.map(|v| v as f32 * scale))
+                    .collect::<std::result::Result<_, _>>()
+                    .map_err(|x| x.to_string())?
+            }
+        };
+        Ok(Decoded {
+            rate: spec.sample_rate,
+            channels: spec.channels.max(1),
+            samples,
+        })
+    } else if bytes.starts_with(b"OggS") {
+        let mut r = lewton::inside_ogg::OggStreamReader::new(std::io::Cursor::new(bytes))
+            .map_err(|x| format!("not Ogg Vorbis: {x}"))?;
+        let mut samples = Vec::new();
+        while let Some(p) = r.read_dec_packet_itl().map_err(|x| x.to_string())? {
+            samples.extend(p.iter().map(|&s| s as f32 / 32768.0));
+        }
+        Ok(Decoded {
+            rate: r.ident_hdr.audio_sample_rate,
+            channels: r.ident_hdr.audio_channels.max(1) as u16,
+            samples,
+        })
+    } else {
+        Err("neither a WAV nor Ogg Vorbis".to_string())
+    }
+}
+
+/// Decode a sound file (see [`decode`]) to mono at `rate`. It is read
+/// through the engine's file system, so a release build's sounds, which
+/// are in memory, load too.
+pub fn load(path: &Path, rate: u32) -> Result<Clip> {
     let e = |m: String| {
         ArgusError::new(crate::codes::BAD_SOUND, format!("{}: {m}", path.display()))
-            .hint("Sounds are WAV files under assets/; a described tone in audio.toml works as a placeholder.")
+            .hint("Sounds are WAV or Ogg Vorbis files under assets/; a described tone in audio.toml works as a placeholder.")
     };
-    let mut r = hound::WavReader::open(path).map_err(|x| e(x.to_string()))?;
-    let spec = r.spec();
-    let ch = spec.channels.max(1) as usize;
-    let interleaved: Vec<f32> = match spec.sample_format {
-        hound::SampleFormat::Float => r
-            .samples::<f32>()
-            .collect::<std::result::Result<_, _>>()
-            .map_err(|x| e(x.to_string()))?,
-        hound::SampleFormat::Int => {
-            let scale = 1.0 / (1u64 << (spec.bits_per_sample.max(1) - 1)) as f32;
-            r.samples::<i32>()
-                .map(|s| s.map(|v| v as f32 * scale))
-                .collect::<std::result::Result<_, _>>()
-                .map_err(|x| e(x.to_string()))?
-        }
-    };
-    let mono: Vec<f32> = interleaved
+    let bytes = argus_os::fs::read(path).map_err(|x| e(x.to_string()))?;
+    let d = decode(&bytes).map_err(e)?;
+    let ch = d.channels as usize;
+    let mono: Vec<f32> = d
+        .samples
         .chunks(ch)
         .map(|f| f.iter().sum::<f32>() / ch as f32)
         .collect();
-    Ok(resample(&mono, spec.sample_rate, rate).into())
+    Ok(resample(&mono, d.rate, rate).into())
 }
 
 /// Linear resampling; good enough for effects, and music is authored at

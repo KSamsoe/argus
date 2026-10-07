@@ -14,6 +14,7 @@
 
 #![warn(missing_docs)]
 
+pub mod binary;
 pub mod bulk;
 pub mod defs;
 pub mod doc;

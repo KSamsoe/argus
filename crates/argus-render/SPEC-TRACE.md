@@ -71,6 +71,12 @@ Every statement in the design document (v0.3) that constrains the renderer as ph
 |---|---|---|---|
 | (§12) A translation's words drawn in the built-in font. | Done | `annotate.rs`: 35 letters after printable ASCII in the pixel font's atlas (5 x 7, an accent above a lowercase letter or above a capital a row shorter), in `argus_ui::text::PIXEL_EXTRA`'s order; annotations draw them too. | `annotate::tests::the_letters_past_ascii_are_in_the_uis_order_and_drawn` |
 
+## Phase 5, item 1: sprite pages
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§15) Compressed textures in atlases, drawn. | Done | `Gpu::add_page` (`Texels::Rgba` or `Texels::Bc7`) and `Gpu::add_atlas_on`: atlases share a page's texture. The device asks for `TEXTURE_COMPRESSION_BC` where the adapter has it (`Gpu::bc`); without, a BC7 page is decoded on the CPU. `reload_sprites` loads each texture path once; the sprites on one page draw as one run. | `pages::bc7_blocks_draw_as_they_decode_here` (both modes, every adapter here that reads BC7: the GPU's decode and ours, pixel for pixel) |
+
 ## Known limitations, stated so they are decisions
 
 - The tests that need a GPU skip only when the machine has no adapter at all. Before item 11 they skipped on any failure to start the renderer, so a renderer that could not build its pipeline passed every test; item 11 found that when a binding change broke the pipeline and every render test still passed.

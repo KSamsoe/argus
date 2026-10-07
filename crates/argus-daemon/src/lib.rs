@@ -24,7 +24,6 @@ pub mod docs;
 pub mod edit;
 pub mod feed;
 pub mod history;
-mod http;
 pub mod json;
 pub mod launch;
 pub mod query;

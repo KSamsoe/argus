@@ -60,8 +60,10 @@ step_games() {
   done
   return $failed
 }
+# One test at a time: a test binary's tests otherwise share the machine,
+# and a timing gate measured beside its siblings missed by a fifth.
 step_perf() {
-  cargo test --release --workspace --no-fail-fast -q -- --ignored \
+  cargo test --release --workspace --no-fail-fast -q -- --ignored --test-threads=1 \
     --skip a_person_tunes_outpost_at_10x_and_the_agent_sweeps_the_path
 }
 step_web() {

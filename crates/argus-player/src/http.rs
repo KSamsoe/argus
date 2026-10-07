@@ -1,7 +1,8 @@
-//! A small HTTP/1.1 client for `mark.pull` (phase 2 item 7): GET over plain
-//! TCP from the server that hosts a playtest build (klab), where browsers
-//! post their reports. There is no TLS: marks are pulled over the local
-//! network or the tailnet, not through the public link the players use.
+//! A small HTTP/1.1 client over plain TCP, for the server that hosts a
+//! playtest build (klab): the daemon's `mark.pull` GETs the reports players
+//! sent (phase 2 item 7), and a desktop build POSTs its players' reports
+//! there as the web page does (phase 5 item 1). There is no TLS: it speaks
+//! to the server's local network or tailnet address, not the public link.
 
 use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
@@ -52,6 +53,25 @@ fn unchunk(mut b: &[u8]) -> Result<Vec<u8>, String> {
 
 /// GET a URL; the body of a 200 response, or why not.
 pub fn get(url: &str, timeout: Duration) -> Result<Vec<u8>, String> {
+    exchange("GET", url, None, timeout)
+}
+
+/// POST a body to a URL; the body of a 2xx response, or why not.
+pub fn post(
+    url: &str,
+    content_type: &str,
+    body: &[u8],
+    timeout: Duration,
+) -> Result<Vec<u8>, String> {
+    exchange("POST", url, Some((content_type, body)), timeout)
+}
+
+fn exchange(
+    method: &str,
+    url: &str,
+    body: Option<(&str, &[u8])>,
+    timeout: Duration,
+) -> Result<Vec<u8>, String> {
     let (host, port, path) = split(url)?;
     let addr = (host.as_str(), port)
         .to_socket_addrs()
@@ -62,11 +82,20 @@ pub fn get(url: &str, timeout: Duration) -> Result<Vec<u8>, String> {
     let _ = s.set_read_timeout(Some(timeout));
     let _ = s.set_write_timeout(Some(timeout));
     // One write: a server may read the request in one go.
-    let req = format!(
-        "GET {path} HTTP/1.1\r\nHost: {host}:{port}\r\nUser-Agent: argus\r\nAccept: */*\r\nConnection: close\r\n\r\n"
-    );
-    s.write_all(req.as_bytes())
-        .map_err(|e| format!("{url}: {e}"))?;
+    let mut req = format!(
+        "{method} {path} HTTP/1.1\r\nHost: {host}:{port}\r\nUser-Agent: argus\r\nAccept: */*\r\nConnection: close\r\n"
+    )
+    .into_bytes();
+    match body {
+        Some((ty, b)) => {
+            req.extend(
+                format!("Content-Type: {ty}\r\nContent-Length: {}\r\n\r\n", b.len()).bytes(),
+            );
+            req.extend_from_slice(b);
+        }
+        None => req.extend(b"\r\n"),
+    }
+    s.write_all(&req).map_err(|e| format!("{url}: {e}"))?;
     let mut raw = Vec::new();
     s.read_to_end(&mut raw).map_err(|e| format!("{url}: {e}"))?;
     let end = raw
@@ -80,7 +109,12 @@ pub fn get(url: &str, timeout: Duration) -> Result<Vec<u8>, String> {
         .nth(1)
         .and_then(|c| c.parse::<u16>().ok())
         .unwrap_or(0);
-    if status != 200 {
+    let ok = if method == "GET" {
+        status == 200
+    } else {
+        (200..300).contains(&status)
+    };
+    if !ok {
         return Err(format!("{url}: the server answered {status}"));
     }
     let lower = head.to_ascii_lowercase();

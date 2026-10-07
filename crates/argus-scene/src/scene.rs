@@ -393,8 +393,10 @@ const FLAT: &str = "";
 /// remember them, since the next tick would.
 pub const DERIVED: &[&str] = &["Parent", "GlobalTransform", "UiRect", "UiText.shown"];
 
-/// One entity file to read: room, file stem, absolute path, project-relative path.
-type Listed = (Option<String>, String, PathBuf, String);
+/// One entity file to read: room, file stem, absolute path, project-relative
+/// path, and its document when a release pack's bundle already holds it
+/// (`crate::binary`).
+type Listed = (Option<String>, String, PathBuf, String, Option<EntityDoc>);
 
 impl Scene {
     // ----- opening ----------------------------------------------------------
@@ -647,9 +649,7 @@ impl Scene {
                 mine.extend(t);
             }
             for it in mine {
-                let at = todo
-                    .iter()
-                    .position(|(r, s, _, _)| *r == it.0 && *s == it.1);
+                let at = todo.iter().position(|(r, s, ..)| *r == it.0 && *s == it.1);
                 match at {
                     Some(i) => {
                         let full = match &it.0 {
@@ -758,12 +758,41 @@ impl Scene {
 
     /// List a directory's entity files (`stem`, path, project-relative
     /// path) and its bulk index files. Parsing happens in [`Scene::ingest`].
+    /// A release pack's `entities.bin` there holds them parsed already
+    /// (phase 5 item 1); a file that did not parse when it was made is
+    /// still TOML beside it.
     fn scan_entities(
-        &self,
+        &mut self,
         project: &Project,
         dir: &Path,
         room: Option<&str>,
     ) -> (Vec<Listed>, Vec<String>) {
+        let mut todo = Vec::new();
+        let bundle = dir.join(crate::binary::ENTITIES);
+        if argus_os::fs::is_file(&bundle) {
+            let read = argus_os::fs::read(&bundle)
+                .map_err(|e| {
+                    ArgusError::new(
+                        codes::MISSING_FILE,
+                        format!("cannot read {}: {e}", project.rel(&bundle)),
+                    )
+                })
+                .and_then(|b| {
+                    crate::binary::decode_entities(&b, &|stem| {
+                        project.rel(&dir.join(format!("{stem}.toml")))
+                    })
+                });
+            match read {
+                Ok(docs) => {
+                    for (stem, doc) in docs {
+                        let path = dir.join(format!("{stem}.toml"));
+                        let rel = project.rel(&path);
+                        todo.push((room.map(str::to_string), stem, path, rel, Some(doc)));
+                    }
+                }
+                Err(e) => self.issues.push(e),
+            }
+        }
         let mut files: Vec<PathBuf> = argus_os::fs::read_dir(dir)
             .map(|rd| {
                 rd.into_iter()
@@ -774,7 +803,6 @@ impl Scene {
             })
             .unwrap_or_default();
         files.sort();
-        let mut todo = Vec::new();
         let mut bulk = Vec::new();
         for path in files {
             let stem = path
@@ -790,7 +818,13 @@ impl Scene {
                 bulk.push(rel);
                 continue;
             }
-            todo.push((room.map(str::to_string), stem, path, rel));
+            // A file beside the bundle lays over its entry: a language pack
+            // replaces an entity file this way.
+            let listed = (room.map(str::to_string), stem, path, rel, None);
+            match todo.iter().position(|t: &Listed| t.1 == listed.1) {
+                Some(i) => todo[i] = listed,
+                None => todo.push(listed),
+            }
         }
         (todo, bulk)
     }
@@ -799,14 +833,15 @@ impl Scene {
     /// is thousands of small files and the file system is the slow part,
     /// §17), then file each one under its room. Order is by room, then id.
     fn ingest(&mut self, todo: Vec<Listed>) {
-        let parsed = parallel_map(&todo, |(_, _, path, rel)| {
-            let text = tomlv::read(path)?;
-            EntityDoc::parse(rel, &text)
+        let parsed = parallel_map(&todo, |(_, _, path, rel, bundled)| match bundled {
+            Some(_) => Ok(None),
+            None => EntityDoc::parse(rel, &tomlv::read(path)?).map(Some),
         });
-        for ((room, stem, path, rel), doc) in todo.into_iter().zip(parsed) {
-            let doc = match doc {
-                Ok(d) => d,
-                Err(e) => {
+        for ((room, stem, path, rel, bundled), doc) in todo.into_iter().zip(parsed) {
+            let doc = match (bundled, doc) {
+                (Some(d), _) | (None, Ok(Some(d))) => d,
+                (None, Ok(None)) => continue,
+                (None, Err(e)) => {
                     self.issues.push(e);
                     continue;
                 }

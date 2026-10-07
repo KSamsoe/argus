@@ -18,3 +18,4 @@ argus-camera = { path = "../argus-camera", version = "0.0.1" }
 toml_edit = "0.22"
 hound = "3"
 cpal = { version = "0.15", optional = true }
+lewton = "0.10"

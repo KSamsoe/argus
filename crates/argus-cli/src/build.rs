@@ -131,11 +131,19 @@ fn read_packs(data: &Path) -> Result<Vec<(String, Pack)>, String> {
     Ok(out)
 }
 
-/// The world's digest after `CHECK_TICKS` of the project's own scene.
-fn digest_after(root: &Path) -> Result<String, String> {
+/// The world after `CHECK_TICKS` of the project's own scene: its digest,
+/// and a frame of it drawn in software (`None` on a machine with no
+/// adapter at all).
+fn after(root: &Path) -> Result<(String, Option<argus_render::Image>), String> {
     let mut p = argus_player::Player::open(root, None, None).map_err(|e| e.message)?;
     p.step(CHECK_TICKS).map_err(|e| e.message)?;
-    Ok(format!("{:016x}", p.digest()))
+    let frame = (|| {
+        let mut r = argus_render::Renderer::offscreen(640, 360, true).ok()?;
+        r.load_catalog(&p.assets).ok()?;
+        r.render(&p.world, 0, 1.0).ok()?;
+        r.capture().ok()
+    })();
+    Ok((format!("{:016x}", p.digest()), frame))
 }
 
 /// `argus build`.
@@ -184,6 +192,21 @@ fn summary(r: &Json) -> String {
         r["packs"]["blobs_new"],
         r["packs"]["bytes_new"],
     );
+    let (pages, binary, sounds) = (
+        &r["packs"]["pages"],
+        &r["packs"]["binary"],
+        &r["packs"]["sounds"],
+    );
+    s.push_str(&format!(
+        "\n  release forms: {} sprites on {} pages ({} BC7), {} entity files in {} bundles, {} def tables, {} sounds as Vorbis",
+        pages["sprites"],
+        pages["pages"].as_array().map_or(0, Vec::len),
+        pages["compressed"],
+        binary["entities"],
+        binary["bundles"],
+        binary["def_tables"],
+        sounds["encoded"],
+    ));
     if let Some(e) = r["executable"].as_str() {
         s.push_str(&format!("\n  executable: {e}"));
     }
@@ -253,16 +276,28 @@ fn build(inv: &Invocation, err: &mut dyn Write) -> Result<Json, String> {
         written.push(json!({ "file": format!("data/{}", p.file_name()), "bytes": bytes.len() }));
     }
 
-    // The same world from the packs as from the project.
-    let expect = digest_after(&root)?;
+    // The same world from the packs as from the project, and the same
+    // picture of it: the packs' sprites are on pages, some in BC7 (phase 5
+    // item 1), which must not show.
+    let (expect, project_look) = after(&root)?;
     let mount = std::env::temp_dir().join(format!("argus-build-check-{}", std::process::id()));
     pack::mount_dir(&data, &mount, None).map_err(|e| e.message)?;
-    let from_packs = digest_after(&mount)?;
+    let (from_packs, packs_look) = after(&mount)?;
     let mut check = json!({
         "ticks": CHECK_TICKS,
         "project": expect,
         "packs": from_packs,
     });
+    if let (Some(a), Some(b)) = (&project_look, &packs_look) {
+        let c = b.compare(a, 0.1).map_err(|e| e.message)?;
+        check["looks"] = json!({ "pixels": c.pixels, "differing": c.differing });
+        if c.differing > 0 {
+            // The two pictures and where they differ, beside build.json.
+            let _ = a.save_png(&out_dir.join("look-project.png"));
+            let _ = b.save_png(&out_dir.join("look-build.png"));
+            let _ = c.diff.save_png(&out_dir.join("look-diff.png"));
+        }
+    }
 
     let mut report = json!({
         "game": cfg.name,
@@ -299,13 +334,21 @@ fn build(inv: &Invocation, err: &mut dyn Write) -> Result<Json, String> {
             report["executable"] = json!(plain(&exe));
         }
     }
-    let same = check["packs"] == check["project"]
+    let plays = check["packs"] == check["project"]
         && (check["executable"].is_null() || check["executable"] == check["project"]);
+    let looks = check["looks"]["differing"].as_u64().unwrap_or(0) == 0;
+    let same = plays && looks;
     check["same"] = json!(same);
-    check["said"] = json!(if same {
-        format!("the build plays as the project does (the same world after {CHECK_TICKS} ticks)")
-    } else {
-        format!("the build does NOT play as the project does after {CHECK_TICKS} ticks")
+    check["said"] = json!(match (plays, looks) {
+        (true, true) => format!(
+            "the build plays and looks as the project does (the same world after {CHECK_TICKS} ticks{})",
+            if check["looks"].is_null() { "" } else { ", drawn the same" }
+        ),
+        (false, _) => format!("the build does NOT play as the project does after {CHECK_TICKS} ticks"),
+        (true, false) => format!(
+            "the build plays as the project does but does NOT look the same after {CHECK_TICKS} ticks: {} of its pixels differ (look-project.png, look-build.png, and look-diff.png beside build.json)",
+            check["looks"]["differing"]
+        ),
     });
     report["check"] = check;
     let _ = std::fs::write(

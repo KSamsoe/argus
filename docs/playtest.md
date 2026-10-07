@@ -31,6 +31,17 @@ systemctl --user status argus-play
 journalctl --user -u argus-play -n 50
 ```
 
+## Reports from a desktop build
+
+A desktop build of a project whose `argus.toml` names the server sends its players' reports here too:
+
+```toml
+[reports]
+url = "http://100.70.114.55:8765/"
+```
+
+F8 and a note, or a crash, saves the report in the player's save location and posts it to the server at once. A report that does not go (the player is off the tailnet, or klab is down) waits there, and goes the next time the game starts. Hollow names klab's server this way.
+
 ## Reports into marks
 
 From a machine on the tailnet:

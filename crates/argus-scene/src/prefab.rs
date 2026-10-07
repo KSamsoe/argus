@@ -51,10 +51,33 @@ impl PrefabLibrary {
         let mut errors = Vec::new();
         let mut changes = Vec::new();
         for layer in layers.each() {
-            let mut files = Vec::new();
-            walk(&layer.root.join("prefabs"), &mut files);
-            files.sort();
-            for p in files {
+            let dir = layer.root.join("prefabs");
+            let mut on_disk = Vec::new();
+            walk(&dir, &mut on_disk);
+            let mut files: Vec<(PathBuf, Option<EntityDoc>)> =
+                on_disk.into_iter().map(|p| (p, None)).collect();
+            // A release pack's bundle holds them parsed (phase 5 item 1).
+            let bundle = layer.root.join(crate::binary::PREFABS);
+            if argus_os::fs::is_file(&bundle) {
+                let read = argus_os::fs::read(&bundle)
+                    .map_err(|e| {
+                        ArgusError::new(
+                            codes::MISSING_FILE,
+                            format!("cannot read {}: {e}", moves::rel(&lib.root, &bundle)),
+                        )
+                    })
+                    .and_then(|b| {
+                        crate::binary::decode_entities(&b, &|name| {
+                            moves::rel(&lib.root, &dir.join(name))
+                        })
+                    });
+                match read {
+                    Ok(docs) => files.extend(docs.into_iter().map(|(n, d)| (dir.join(n), Some(d)))),
+                    Err(e) => errors.push(e),
+                }
+            }
+            files.sort_by(|a, b| a.0.cmp(&b.0));
+            for (p, doc) in files {
                 if let Some(id) = layer.id {
                     let file = moves::rel(&lib.root, &p);
                     let path = prefab_path(&file);
@@ -69,7 +92,14 @@ impl PrefabLibrary {
                         None => {}
                     }
                 }
-                if let Err(e) = lib.load_file(&p) {
+                let loaded = match doc {
+                    Some(doc) => {
+                        lib.insert(&p, doc);
+                        Ok(())
+                    }
+                    None => lib.load_file(&p),
+                };
+                if let Err(e) = loaded {
                     errors.push(e);
                 }
             }
@@ -79,12 +109,16 @@ impl PrefabLibrary {
 
     fn load_file(&mut self, abs: &Path) -> Result<()> {
         let file = moves::rel(&self.root, abs);
+        let doc = EntityDoc::parse(&file, &tomlv::read(abs)?)?;
+        self.insert(abs, doc);
+        Ok(())
+    }
+
+    fn insert(&mut self, abs: &Path, doc: EntityDoc) {
+        let file = moves::rel(&self.root, abs);
         let path = prefab_path(&file);
-        let text = tomlv::read(abs)?;
-        let doc = EntityDoc::parse(&file, &text)?;
         self.prefabs
             .insert(path.clone(), PrefabFile { path, file, doc });
-        Ok(())
     }
 
     /// Re-read one prefab by reference path (after an edit), or drop it if

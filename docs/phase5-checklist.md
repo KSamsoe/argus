@@ -75,14 +75,25 @@ Decisions taken while building it:
 
 ## 1. The release build: recorder, reports, and packs
 
-**Status: to do.**
+**Status: done** (2026-10-07) in `argus-player` (`reports`, `http` moved from the daemon, `pack::build`'s Vorbis, binary forms, and pages), `argus-assets` (`bc7`, `pages`), `argus-scene` (`binary`; `[reports] url`), `argus-render` (pages, BC7 on the GPU), `argus-audio` (`sound::decode`), `argus-game` (sending), and `argus-cli` (the build's look check, the release-forms line). Hollow's packs: 8 sprites on 2 pages (6 BC7), 10,078 entity files in 201 bundles, 2 def tables in binary; 1,372 files where there were 11,255. Hollow drawn from its packs is pixel for pixel Hollow drawn from its folder; its scene opens 2.7 times faster; its page still loads in 2.5 s. Traces: `argus-player`'s, `argus-scene`'s, `argus-render`'s, `argus-audio`'s, `argus-assets`'s, `argus-game`'s, the daemon's.
 
 - §15: "The recorder stays, in a bounded form: the last thirty seconds of actions and a keyframe, so that a player pressing a report key or hitting a crash produces a replay file the team can open with `sim.seek`. A player bug report becomes a mark." Built in phase 2; what is left: a desktop report reaching the team as the page's does.
 - §15: "save migrations stay, because they are how a patched game loads an old save." Built; kept under CI.
 - §15: "A release pack is built from the import cache, not the source tree: compressed textures in atlases, audio in the platform's preferred codec, defs and scenes in a binary form of the same schema. Packs are content-addressed so a patch ships only changed chunks. Localization packs are separate." The first three are carried in.
 - §10: a mark's note "spoken or typed": the spoken half needs a speech-to-text model, Kevin's choice.
 
-## 2. Accessibility pass
+Decisions taken while building it:
+
+- **Typed notes only (Kevin, 2026-10-07).** Of Whisper on this laptop, Whisper on klab, Windows' speech recognition, or none, Kevin chose none. A mark's note is typed, in the window, the editor, or `mark.note`.
+- **A desktop report goes where the page's goes.** The project names its playtest server in `argus.toml` (`[reports] url`, Hollow's is klab's tailnet address); the game posts each report there as the page does, and a report that did not go waits in the save location for the next start. Plain HTTP, the client the daemon already had, moved to `argus-player`: no TLS crate for a tailnet address.
+- **Sounds keep their names.** A release pack holds a WAV as Ogg Vorbis at the WAV's path, and the decoder goes by the first bytes, so nothing that names a sound changes. Vorbis because a pure-Rust decoder exists (the page needs one) and the reference encoder builds with the GCC here. Building it found that a release build could not load a sound file at all: the WAV reader opened the disk, and a release build's files are in memory.
+- **Binary is the loaders' documents, not typed values.** The schemas come from scripts at load, so the bundles hold what the loaders made of the TOML before typing, and the same function types both. Every value keeps its line; a file that did not parse stays TOML. A room's entities are one bundle, which is the unit a patch ships.
+- **Found: the first bundles were three times the TOML.** Each value carried its file's whole path; a bundle now keeps its strings once and a place as a line in its entry's file. The packs are 3.3 MB where the TOML was 2.6 (numbers are full width) and 2.5 MB over the wire.
+- **Atlases always, BC7 only where nobody can see it.** Hollow's sprites are 3,840 pixels in all, so compression saves nothing measurable for the reference games; pages save textures and draw calls. A sprite ships BC7 only when every pixel of it compressed passes the image goldens' test over black and over white, with exact alpha at 0 and 255; otherwise its page is lossless.
+- **Our own BC7 encoder, two modes, checked on the GPU.** Modes 5 and 6 need none of BC7's partition tables, which nothing here holds and which a wrong entry would break only on a GPU. A test draws the blocks with the GPU's decoder and with ours and requires every pixel the same; ours is also what a device without BC7 uses.
+- **Found: CI's timing tests competed with each other.** A test binary runs its tests on parallel threads, so `argus-scene`'s cold open (3 tests in one file) and `argus-index`'s resync (2) read a fifth slow and missed their bounds now and then, here and on the runner. The perf step runs them one at a time (`--test-threads=1`), in the same seven and a half minutes.
+- **`argus build` checks the look too.** It drew nothing before; it now draws a frame of the project and of the build in software and refuses a build whose pixels differ, leaving the two pictures and a difference image beside `build.json`.
+
 
 **Status: to do.**
 
