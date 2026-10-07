@@ -1,6 +1,6 @@
 # CI on the reference laptop
 
-Every push to `main`, and every pull request, is checked on this laptop by a GitHub Actions runner that Kevin installs once (phase 5 item 0). The design's performance targets (section 17) are numbers on this laptop, so this is where they are checked.
+CI runs on this laptop, on a GitHub Actions runner Kevin installs once (phase 5 item 0). It runs when started by hand: open the repository's Actions tab, choose "ci", and click "Run workflow". Running it on every push was turned off (Kevin, 2026-10-07): a run takes about forty minutes, too slow for private work. It goes back on with public builds, by adding `push` and `pull_request` to the `on:` list in `.github/workflows/ci.yml`. `bash tools/ci/ci.sh` runs the same checks without the runner. The design's performance targets (section 17) are numbers on this laptop, so this is where they are checked.
 
 The workflow is `.github/workflows/ci.yml`. It runs `tools/ci/ci.sh`, which can also be run by hand.
 

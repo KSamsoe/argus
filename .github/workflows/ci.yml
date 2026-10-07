@@ -1,12 +1,11 @@
 # CI on the reference laptop (phase 5 item 0): a self-hosted runner there
-# (docs/ci.md) runs tools/ci/ci.sh for every push to main and every pull
-# request. Section 17's targets are numbers on that laptop, so they are
-# gated there.
+# (docs/ci.md) runs tools/ci/ci.sh. Section 17's targets are numbers on
+# that laptop, so they are gated there. It runs when started by hand
+# (Actions, ci, Run workflow): Kevin decided (2026-10-07) that a run on
+# every push, about forty minutes, slows private work too much, and that
+# pushes run it again once there are public builds.
 name: ci
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
 concurrency:
   group: ci-${{ github.ref }}

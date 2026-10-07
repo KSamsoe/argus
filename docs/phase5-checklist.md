@@ -71,6 +71,7 @@ Decisions taken while building it:
 - **Image goldens are drawn in software.** `expect:image` draws with WARP on any machine, so a golden recorded on one machine matches on another. Pixels are compared with pixelmatch's YIQ difference (threshold 0.1), and a picture fails when more than 0.1% of its pixels differ.
 - **Found: WARP drew no world.** The first golden was the HUD on black. A uniform bound through DirectX 12's descriptor heap read the one in the next bind group made with the same layout, so the world drew with the UI's view and every post pass with the last pass's numbers. Every uniform is bound at an offset now (a root constant buffer, which bypasses the heap), and WARP draws within 0.1% of the GPU's pixels; a test compares the two, plain and through five post passes. `ARGUS_SOFTWARE=1` sends every renderer to WARP, and CI runs the render tests so a second time.
 - **The page reaches 5 s by compression, not a smaller build.** It took 6.5 s and 14.1 MB. A profile without debug info shrank the raw module from 97 to 13 MB but not the page's, since wasm-bindgen already drops it (11.3 MB either way), so the page is built as before. The server sends brotli (quality 9, each file compressed once while it is unchanged): 2.7 MB, 2.6 s on 20 Mbit with 40 ms each way.
+- **CI runs by hand until there are public builds (Kevin, 2026-10-07).** A run on every push takes about forty minutes, which slows private work too much. The workflow runs from the Actions tab (`workflow_dispatch`); `tools/ci/ci.sh` is the same checks locally; the per-push trigger returns with public builds.
 - **The incremental build is measured as a developer makes one.** A copy of Hollow in a git repository, built, one script changed and committed, built again over the first with `--since`: the code version moves, so cargo relinks the player, and only the new blobs ship. 4.7 s against 30.
 
 ## 1. The release build: recorder, reports, and packs
@@ -96,6 +97,7 @@ Decisions taken while building it:
 - **Found: the runner's cache guard emptied CI's logs.** Past its size the guard ran `cargo clean`, which took the log folder the script had just made, and every step failed to write; and at 60 GB it would have emptied a working cache (debug and release, about 85 GB) nearly every run. The logs are made after the cleaning, the line is 100 GB, and the size comes from robocopy's listing (a second) where du took minutes.
 - **`argus build` checks the look too.** It drew nothing before; it now draws a frame of the project and of the build in software and refuses a build whose pixels differ, leaving the two pictures and a difference image beside `build.json`.
 
+## 2. Accessibility pass
 
 **Status: to do.**
 
