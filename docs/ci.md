@@ -31,11 +31,11 @@ Each run keeps an artifact named `ci-<run number>` for 14 days, holding:
 3. Configure it with the token the page shows, adding the label the workflow asks for:
 
    ```powershell
-   ./config.cmd --url https://github.com/KSamsoe/argus --token <the page's token> --name reference-laptop --labels argus-reference --work _work
+   ./config.cmd --url https://github.com/KSamsoe/argus --token <the page's token> --name reference-laptop --labels argus-reference --work _work --unattended --replace
    ```
 
-   When it asks whether to run as a service, answer N. As a service it would run as another Windows account, without your Rust, wasi-sdk, and Chrome, and with unreliable access to the GPU.
-4. Start it:
+   `--unattended` answers its questions with the defaults: the default runner group, and not a service. Without it, config stops to ask, and whatever you type next becomes the answer. It should run as you, not as a service: a service runs as another Windows account, without your Rust, wasi-sdk, and Chrome, and with unreliable access to the GPU. `--replace` takes over a runner of the same name if an earlier attempt registered one. The token lasts an hour; if config refuses it, reload the page for a new one. Config ends with "Settings Saved."
+4. When config has finished, start the runner:
 
    ```powershell
    ./run.cmd
