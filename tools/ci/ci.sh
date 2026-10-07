@@ -68,7 +68,9 @@ step_perf() {
 }
 step_web() {
   bash tools/web/build.sh || return 1
-  node tools/web/check.mjs > "$LOGS/web-check.json" || { cat "$LOGS/web-check.json"; return 1; }
+  # The check stops itself in five minutes; ten is the last word (a run
+  # once waited two hours on a Chrome that did not answer).
+  timeout 600 node tools/web/check.mjs > "$LOGS/web-check.json" || { cat "$LOGS/web-check.json"; return 1; }
   node -e 'const r = JSON.parse(require("fs").readFileSync(process.argv[1])); console.log(`cold load ${r.cold_load.ms} ms, ${r.cold_load.bytes} bytes (${r.cold_load.link})`)' "$LOGS/web-check.json"
 }
 

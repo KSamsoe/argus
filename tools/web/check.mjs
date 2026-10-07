@@ -15,10 +15,14 @@
 // menu opened by a real key, a button focused by the real mouse and pressed
 // by a click), and the same picture with WebGL2 forced. First, a cold load
 // over a playtester's link (phase 5 item 0, section 17: under 5 s on 20
-// Mbit). It exits 1 when anything failed (CI gates on it). Node 24 and
-// cargo, no npm packages.
+// Mbit). It exits 1 when anything failed (CI gates on it). It cannot hang
+// or meet another run (phase 5 item 1: a CI run waited two hours here): its
+// ports are free ones, every DevTools call has a minute, the whole check
+// five, and Chrome's own output is kept in <out-dir>/chrome.log. Node 24
+// and cargo, no npm packages.
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, openSync, readFileSync, existsSync } from "node:fs";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -26,16 +30,27 @@ const site = process.argv[2] ?? "target-web/site";
 const out = process.argv[3] ?? "target-web/check";
 const project = process.argv[4] ?? "examples/hollow";
 const chrome = process.env.CHROME ?? "C:/Program Files/Google/Chrome/Application/chrome.exe";
-const HTTP = 8765;
-const DEBUG = 9334;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 mkdirSync(out, { recursive: true });
+// A port nobody is using, so a check never meets another one (the runner's
+// and a person's) or a playtest server on the default port.
+const freePort = () =>
+  new Promise((ok) => {
+    const s = createServer();
+    s.listen(0, "127.0.0.1", () => {
+      const port = s.address().port;
+      s.close(() => ok(port));
+    });
+  });
+const HTTP = await freePort();
 
 const server = spawn(process.execPath, ["tools/web/serve.mjs", site, String(HTTP), "127.0.0.1", join(out, "marks")], { stdio: "ignore" });
 const profile = mkdtempSync(join(tmpdir(), "argus-chrome-"));
+const chromeLog = openSync(join(out, "chrome.log"), "w");
+// Chrome picks its own debugging port and writes it in the profile.
 const browser = spawn(chrome, [
   "--headless=new",
-  `--remote-debugging-port=${DEBUG}`,
+  "--remote-debugging-port=0",
   `--user-data-dir=${profile}`,
   "--no-first-run",
   "--no-default-browser-check",
@@ -44,16 +59,37 @@ const browser = spawn(chrome, [
   // The audio runs, but nothing reaches the speakers of whoever's machine this is.
   "--mute-audio",
   "about:blank",
-], { stdio: "ignore" });
+], { stdio: ["ignore", chromeLog, chromeLog] });
+// A Chrome that cannot start is a failed check with a report, not a crash.
+let chromeError = null;
+browser.on("error", (e) => (chromeError = e));
 
 let ws, nextId = 1;
 const waiting = new Map();
 const logs = [];
 let bytes = 0;
-function send(method, params = {}) {
+// Where the check is, for a report that stops part way.
+let stage = "starting Chrome";
+// A DevTools call: its answer, or an error after `ms` (Chrome gone quiet).
+function send(method, params = {}, ms = 60000) {
   const id = nextId++;
-  ws.send(JSON.stringify({ id, method, params }));
-  return new Promise((ok, fail) => waiting.set(id, { ok, fail, method }));
+  return new Promise((ok, fail) => {
+    const timer = setTimeout(() => {
+      waiting.delete(id);
+      fail(new Error(`${method}: no answer from Chrome in ${ms / 1000} s`));
+    }, ms);
+    const done = (f) => (v) => {
+      clearTimeout(timer);
+      f(v);
+    };
+    waiting.set(id, { ok: done(ok), fail: done(fail), method });
+    try {
+      ws.send(JSON.stringify({ id, method, params }));
+    } catch (e) {
+      waiting.delete(id);
+      done(fail)(e);
+    }
+  });
 }
 async function evaluate(expr) {
   const r = await send("Runtime.evaluate", { expression: expr, awaitPromise: true, returnByValue: true });
@@ -82,19 +118,65 @@ async function key(code, keyText, vk, down) {
 }
 
 const report = {};
+// The verdict: an error, a frame that drew nothing, a world or a digest
+// that is not the same as the native player's, or a slow cold load.
+function verdict() {
+  report.console = logs.slice(-20);
+  const failures = [];
+  if (report.error) failures.push("error");
+  if (!(report.cold_load?.ms <= report.cold_load?.bound_ms)) failures.push(`cold load ${report.cold_load?.ms} ms`);
+  if (!(report.render?.drawn > 0)) failures.push("nothing drawn");
+  if (report.webgl && !(report.webgl.drawn > 0)) failures.push("nothing drawn with WebGL2");
+  const walk = (v, at) => {
+    if (v && typeof v === "object") {
+      for (const [k, x] of Object.entries(v)) {
+        if (k === "same" && x === false) failures.push(`${at}: not the same`);
+        walk(x, at ? `${at}.${k}` : k);
+      }
+    }
+  };
+  walk(report, "");
+  report.ok = failures.length === 0;
+  report.failures = failures;
+  process.exitCode = report.ok ? 0 : 1;
+  console.log(JSON.stringify(report, null, 2));
+}
+// The whole check has five minutes; it usually takes under one.
+const watchdog = setTimeout(() => {
+  report.error = `${stage}: the check took over five minutes (see chrome.log)`;
+  verdict();
+  browser.kill();
+  server.kill();
+  process.exit(1);
+}, 300000);
 try {
-  for (let i = 0; i < 100; i++) {
+  for (let i = 0; i < 100 && !ws && !chromeError; i++) {
     await sleep(100);
     try {
-      const list = await (await fetch(`http://127.0.0.1:${DEBUG}/json/list`)).json();
+      const file = join(profile, "DevToolsActivePort");
+      if (!existsSync(file)) continue;
+      const port = readFileSync(file, "utf8").split("\n")[0].trim();
+      const list = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
       const page = list.find((t) => t.type === "page");
       if (page) {
-        ws = new WebSocket(page.webSocketDebuggerUrl);
-        await new Promise((r) => (ws.onopen = r));
-        break;
+        const sock = new WebSocket(page.webSocketDebuggerUrl);
+        await new Promise((ok, fail) => {
+          sock.onopen = ok;
+          sock.onerror = () => fail(new Error("Chrome's DevTools socket did not open"));
+          setTimeout(() => fail(new Error("Chrome's DevTools socket did not open in 10 s")), 10000);
+        });
+        ws = sock;
       }
     } catch {}
   }
+  if (chromeError) throw new Error(`Chrome did not start: ${chromeError.message}`);
+  if (!ws) throw new Error("Chrome did not start in 10 s (see chrome.log)");
+  // Chrome gone: whatever waits on it fails now, not in a minute.
+  ws.onclose = () => {
+    for (const w of waiting.values()) w.fail(new Error(`${w.method}: Chrome closed the connection`));
+    waiting.clear();
+  };
+  stage = "connecting";
   ws.onmessage = (m) => {
     const msg = JSON.parse(m.data);
     if (msg.id && waiting.has(msg.id)) {
@@ -115,6 +197,7 @@ try {
   await send("Emulation.setDeviceMetricsOverride", { width: 1000, height: 700, deviceScaleFactor: 1, mobile: false });
   const base = `http://127.0.0.1:${HTTP}/`;
 
+  stage = "0. the cold load";
   // 0. A cold load over a playtester's link (section 17: "Web build, cold
   //    load < 5 s on a 20 Mbit link"): a fresh profile has nothing cached,
   //    the cache is off, and the network is held to 20 Mbit down, 5 up, and
@@ -130,6 +213,7 @@ try {
   await send("Network.emulateNetworkConditions", { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
   await send("Network.setCacheDisabled", { cacheDisabled: false });
 
+  stage = "1. the picture";
   // 1. The picture, as the browser picks its backend.
   let t = performance.now();
   await open(base + "?paused");
@@ -139,6 +223,7 @@ try {
   let s = await status();
   report.render = { backend: s.backend, frames: s.frames, drawn: s.drawn, tick: s.tick, screenshot: await screenshot("start.png") };
 
+  stage = "2. determinism";
   // 2. Determinism: Hollow's run scenario, stepped exactly.
   const lines = [await evaluate("argus.player.status()")];
   await evaluate(`argus.player.inject("move", "[1,0]", 450)`);
@@ -158,6 +243,7 @@ try {
   await sleep(300);
   report.hall_screenshot = await screenshot("hall.png");
 
+  stage = "3. keys";
   // 3. Keys: the page running in real time, the right arrow held.
   await open(base);
   await evaluate("document.getElementById('game').focus()");
@@ -181,6 +267,7 @@ try {
   report.mark.native = replay.stdout.trim() ? JSON.parse(replay.stdout) : { error: replay.stderr || String(replay.error) };
   report.keys_screenshot = await screenshot("keys.png");
 
+  stage = "4. the post stack";
   // 4. The post stack (phase 2 item 6): the run goes on into the hall's pit,
   // whose fall flashes red, shakes, and stops the game for six ticks. Marked
   // inside the stop, where the flash, the shake, and the ticks left are all
@@ -227,6 +314,7 @@ try {
     report.pit.report = { id: last.id, bytes: last.bytes, native: rr.stdout.trim() ? JSON.parse(rr.stdout) : { error: rr.stderr || String(rr.error) } };
   }
 
+  stage = "5. the UI";
   // 5. The UI (phase 3 item 1): Escape opens the pause menu over the game,
   // drawn as on the desktop; the mouse over a button focuses it and a click
   // presses it, found through the semantic frame.
@@ -262,37 +350,19 @@ try {
     report.ui.clicked = { menu_open: seen.some((u) => u.id.endsWith("pause.restart")), tick_before: tick, tick_after: s.tick, player: s.player };
   }
 
+  stage = "6. WebGL2";
   // 6. WebGL2 forced.
   await open(base + "?paused&webgl");
   await sleep(1500);
   s = await status();
   report.webgl = { backend: s.backend, frames: s.frames, drawn: s.drawn, screenshot: await screenshot("webgl.png") };
 } catch (e) {
-  report.error = String(e.stack ?? e);
+  report.error = `${stage}: ${e.stack ?? e}`;
 } finally {
-  report.console = logs.slice(-20);
-  // The verdict: an error, a frame that drew nothing, a world or a digest
-  // that is not the same as the native player's, or a slow cold load.
-  const failures = [];
-  if (report.error) failures.push("error");
-  if (!(report.cold_load?.ms <= report.cold_load?.bound_ms)) failures.push(`cold load ${report.cold_load?.ms} ms`);
-  if (!(report.render?.drawn > 0)) failures.push("nothing drawn");
-  if (report.webgl && !(report.webgl.drawn > 0)) failures.push("nothing drawn with WebGL2");
-  const walk = (v, at) => {
-    if (v && typeof v === "object") {
-      for (const [k, x] of Object.entries(v)) {
-        if (k === "same" && x === false) failures.push(`${at}: not the same`);
-        walk(x, at ? `${at}.${k}` : k);
-      }
-    }
-  };
-  walk(report, "");
-  report.ok = failures.length === 0;
-  report.failures = failures;
-  process.exitCode = report.ok ? 0 : 1;
-  console.log(JSON.stringify(report, null, 2));
+  clearTimeout(watchdog);
+  verdict();
   try {
-    await send("Browser.close");
+    if (ws) await send("Browser.close", {}, 2000);
   } catch {}
   browser.kill();
   server.kill();
