@@ -20,26 +20,35 @@ cd "$(dirname "$0")/../.."
 
 export PATH="${CARGO_HOME:-$USERPROFILE/.cargo}/bin:$PATH" CARGO_TERM_COLOR=never
 LOGS=target/ci
-mkdir -p "$LOGS"
 EXE=""
 [ "${OS:-}" = "Windows_NT" ] && EXE=.exe
 
-# On the runner the build cache is cleaned past 60 GB: stale builds of
-# every test binary pile up (target/debug once reached 213 GB);
-# and the daemons of a run that was cancelled (a newer push cancels it) are
-# stopped, since a running one locks its binary against the next build.
+# On the runner the build cache is cleaned past 100 GB: stale builds of
+# every test binary pile up (target/debug once reached 213 GB), and a
+# working cache, debug and release, is about 85. And the daemons of a run
+# that was cancelled (a newer push cancels it) are stopped, since a running
+# one locks its binary against the next build.
 if [ "${CI:-}" = true ]; then
   if [ -x "target/debug/argus$EXE" ]; then
     for g in swarm delve hollow outpost; do
       "target/debug/argus$EXE" --project "examples/$g" daemon stop > /dev/null 2>&1
     done
   fi
-  mb=$(du -sm target 2>/dev/null | cut -f1)
-  if [ "${mb:-0}" -gt 61440 ]; then
+  # robocopy's listing on Windows: du takes minutes over the cache's
+  # half a million files.
+  if [ -n "$EXE" ]; then
+    mb=$(MSYS_NO_PATHCONV=1 robocopy target 'C:\__nowhere__' /L /S /NJH /BYTES /NFL /NDL /NP /R:0 /W:0 /XJ 2>/dev/null |
+      awk '/Bytes :/ { print int($3 / 1048576); exit }')
+  else
+    mb=$(du -sm target 2>/dev/null | cut -f1)
+  fi
+  if [ "${mb:-0}" -gt 102400 ]; then
     echo "--- the build cache is $((mb / 1024)) GB: cleaned (this run builds cold)"
     cargo clean -q
   fi
 fi
+# After the cleaning, which takes the whole of target/ with it.
+mkdir -p "$LOGS"
 
 step_fmt() { cargo fmt --all -- --check --color never; }
 step_clippy() { cargo clippy --workspace --all-targets -q -- -D warnings; }
