@@ -4,8 +4,9 @@
 //! [--since dir]` makes one directory:
 //!
 //! - desktop: the executable, named for the game (argus-game, which links
-//!   no protocol, index, or daemon), and `data/` with the game's pack and
-//!   one pack per language;
+//!   no protocol, index, or daemon), `data/` with the game's pack and one
+//!   pack per language, and `plugins/` with the game's Rust plugins, each
+//!   built optimised (phase 5 item 6);
 //! - web: the page, the wasm module, and the same packs in `data/`.
 //!
 //! Packs come from `argus_player::pack::build`: the import cache and
@@ -133,9 +134,19 @@ fn read_packs(data: &Path) -> Result<Vec<(String, Pack)>, String> {
 
 /// The world after `CHECK_TICKS` of the project's own scene: its digest,
 /// and a frame of it drawn in software (`None` on a machine with no
-/// adapter at all).
-fn after(root: &Path) -> Result<(String, Option<argus_render::Image>), String> {
-    let mut p = argus_player::Player::open(root, None, None).map_err(|e| e.message)?;
+/// adapter at all). Its Rust plugins are the build's (`plugins`).
+fn after(root: &Path, plugins: &Path) -> Result<(String, Option<argus_render::Image>), String> {
+    let mut p = argus_player::Player::open_from(
+        root,
+        None,
+        None,
+        argus_player::mods::Report::default(),
+        argus_plugins::Source::Prebuilt(plugins.to_path_buf()),
+    )
+    .map_err(|e| e.message)?;
+    if let Some(e) = p.plugins.errors.first() {
+        return Err(format!("{}: {}", e.at(), e.message));
+    }
     p.step(CHECK_TICKS).map_err(|e| e.message)?;
     let frame = (|| {
         let mut r = argus_render::Renderer::offscreen(640, 360, true).ok()?;
@@ -210,6 +221,13 @@ fn summary(r: &Json) -> String {
     if let Some(e) = r["executable"].as_str() {
         s.push_str(&format!("\n  executable: {e}"));
     }
+    for p in r["plugins"].as_array().into_iter().flatten() {
+        s.push_str(&format!(
+            "\n  plugin: {} ({} bytes)",
+            p["file"].as_str().unwrap_or("?"),
+            p["bytes"]
+        ));
+    }
     s.push_str(&format!(
         "\n  check: {}",
         r["check"]["said"].as_str().unwrap_or("not run")
@@ -245,6 +263,17 @@ fn build(inv: &Invocation, err: &mut dyn Write) -> Result<Json, String> {
         .unwrap_or_else(|| root.join("dist").join(target.name()));
     let code = argus_daemon::daemon::code_version(&root);
     let profile = if inv.release { "release" } else { "debug" };
+    if target == Target::Web && !cfg.plugins.is_empty() {
+        return Err(format!(
+            "{} has Rust plugins ({}), and the page cannot load a library, so the game has no web build: the browser runs its Luau only",
+            cfg.name,
+            cfg.plugins.join(", ")
+        ));
+    }
+    // The Rust plugins, built optimised whatever the profile (a hot path is
+    // why a plugin exists), beside the executable.
+    let plugins_dir = out_dir.join("plugins");
+    let plugins = plugins(&root, &cfg.plugins, &plugins_dir)?;
 
     // Packs, and the build they patch.
     let since: Vec<(String, Pack)> = match &inv.since {
@@ -279,10 +308,10 @@ fn build(inv: &Invocation, err: &mut dyn Write) -> Result<Json, String> {
     // The same world from the packs as from the project, and the same
     // picture of it: the packs' sprites are on pages, some in BC7 (phase 5
     // item 1), which must not show.
-    let (expect, project_look) = after(&root)?;
+    let (expect, project_look) = after(&root, &plugins_dir)?;
     let mount = std::env::temp_dir().join(format!("argus-build-check-{}", std::process::id()));
     pack::mount_dir(&data, &mount, None).map_err(|e| e.message)?;
-    let (from_packs, packs_look) = after(&mount)?;
+    let (from_packs, packs_look) = after(&mount, &plugins_dir)?;
     let mut check = json!({
         "ticks": CHECK_TICKS,
         "project": expect,
@@ -307,6 +336,7 @@ fn build(inv: &Invocation, err: &mut dyn Write) -> Result<Json, String> {
         "code": code,
         "packs": built.report,
         "written": written,
+        "plugins": plugins,
     });
     match target {
         Target::Web => {
@@ -487,6 +517,42 @@ fn build_mod(inv: &Invocation, id: &str) -> Result<Json, String> {
             .to_string());
     }
     Ok(report)
+}
+
+/// Build each Rust plugin `names` lists and put its library in `dir` as
+/// `<name>.<dll extension>`, where the game's executable looks for it. A
+/// compile error stops the build with its file and line.
+fn plugins(root: &Path, names: &[String], dir: &Path) -> Result<Vec<Json>, String> {
+    let _ = std::fs::remove_dir_all(dir);
+    if names.is_empty() {
+        return Ok(Vec::new());
+    }
+    std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let mut out = Vec::new();
+    for name in names {
+        let b = argus_plugins::build(root, name, true);
+        if let Some(e) = b.errors(name).first() {
+            return Err(format!(
+                "plugin {name} does not build: {}: {}",
+                e.at(),
+                e.message
+            ));
+        }
+        let built = b
+            .dll
+            .ok_or_else(|| format!("plugin {name} built no library"))?;
+        let to = dir.join(format!("{name}.{}", std::env::consts::DLL_EXTENSION));
+        std::fs::copy(&built, &to)
+            .map_err(|e| format!("{} to {}: {e}", built.display(), to.display()))?;
+        let bytes = std::fs::metadata(&to).map(|m| m.len()).unwrap_or(0);
+        out.push(json!({
+            "plugin": name,
+            "file": format!("plugins/{name}.{}", std::env::consts::DLL_EXTENSION),
+            "bytes": bytes,
+            "build_ms": b.ms,
+        }));
+    }
+    Ok(out)
 }
 
 /// Build the release executable and put it in `out` under the game's name.

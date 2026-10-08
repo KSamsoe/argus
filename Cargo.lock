@@ -293,6 +293,7 @@ dependencies = [
  "argus-ecs",
  "argus-os",
  "argus-player",
+ "argus-plugins",
  "argus-render",
  "argus-scene",
  "argus-sim",
@@ -330,6 +331,7 @@ dependencies = [
  "argus-particles",
  "argus-physics",
  "argus-player",
+ "argus-plugins",
  "argus-post",
  "argus-render",
  "argus-scene",
@@ -394,6 +396,7 @@ version = "0.0.1"
 dependencies = [
  "argus-input",
  "argus-player",
+ "argus-plugins",
  "argus-render",
  "argus-scene",
  "argus-sim",
@@ -520,6 +523,7 @@ dependencies = [
  "argus-os",
  "argus-particles",
  "argus-physics",
+ "argus-plugins",
  "argus-post",
  "argus-render",
  "argus-scene",
@@ -532,6 +536,21 @@ dependencies = [
  "serde_json",
  "toml_edit 0.22.27",
  "vorbis_rs",
+]
+
+[[package]]
+name = "argus-plugin"
+version = "0.0.1"
+
+[[package]]
+name = "argus-plugins"
+version = "0.0.1"
+dependencies = [
+ "argus-ecs",
+ "argus-plugin",
+ "argus-sim",
+ "libloading",
+ "serde_json",
 ]
 
 [[package]]

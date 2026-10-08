@@ -153,8 +153,14 @@ fn run(args: Args) -> Result<(), String> {
     let cfg = argus_scene::ProjectConfig::load(&root).map_err(|e| e.message)?;
     // The player's mods, over the game in memory (phase 3 item 8).
     let (mods, mods_said) = player_mods(&root, &cfg, &args);
-    let mut p = Player::open_with(&root, args.scene.as_deref(), args.seed, mods)
+    // The game's Rust plugins are libraries beside the executable (phase 5
+    // item 6), built by `argus build`.
+    let plugins = argus_plugins::Source::Prebuilt(dir.join("plugins"));
+    let mut p = Player::open_from(&root, args.scene.as_deref(), args.seed, mods, plugins)
         .map_err(|e| format!("{} {}", e.message, e.hint))?;
+    if let Some(e) = p.plugins.errors.first() {
+        return Err(format!("{}: {}", e.at(), e.message));
+    }
     let save = argus_player::save::save_dir(&p.name);
     // The player's settings (phase 5 item 2), before the first tick and the
     // recorder's first keyframe, so a report replays with them.

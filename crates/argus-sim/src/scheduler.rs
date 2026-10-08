@@ -320,6 +320,11 @@ pub struct Scheduler {
     parallel_floor: Duration,
     /// Whether each batch ran on threads last time, by batch number.
     threaded: Vec<bool>,
+    /// An `after` naming no registered system is a warning, not an error
+    /// (`tolerate_missing`): a plugin that did not build is missing.
+    tolerate_missing: bool,
+    /// The `after` names no system had at the last ordering: (system, name).
+    dangling: Vec<(String, String)>,
 }
 
 /// Something that reads the world at the end of every tick and cannot
@@ -374,7 +379,24 @@ impl Scheduler {
             threads,
             parallel_floor: PARALLEL_FLOOR,
             threaded: Vec::new(),
+            tolerate_missing: false,
+            dangling: Vec::new(),
         }
+    }
+
+    /// Let an `after` name a system that is not registered, as a warning
+    /// ([`Scheduler::dangling_after`]) rather than an error: the systems
+    /// of a plugin that did not build are missing, and the game runs
+    /// without them, ordering what it can (phase 5 item 6).
+    pub fn tolerate_missing(&mut self, yes: bool) {
+        self.tolerate_missing = yes;
+        self.order_dirty = true;
+    }
+
+    /// `(system, name)` for each `after` the last ordering found no system
+    /// for, when they are tolerated.
+    pub fn dangling_after(&self) -> &[(String, String)] {
+        &self.dangling
     }
 
     /// Threads a batch of parallel systems may use: 1 keeps every batch on
@@ -596,6 +618,16 @@ impl Scheduler {
         Ok(())
     }
 
+    /// A registered system's declaration site: `Some(None)` for one
+    /// declared nowhere in particular (the engine's own), `None` when no
+    /// system has the name.
+    pub fn source_of(&self, name: &str) -> Option<Option<&str>> {
+        self.systems
+            .iter()
+            .find(|s| s.desc.name == name)
+            .map(|s| s.desc.source.as_deref())
+    }
+
     /// Re-enable a system (after a fault, or a `disable`).
     pub fn enable(&mut self, name: &str) -> Result<()> {
         let i = self.slot_index(name)?;
@@ -702,6 +734,7 @@ impl Scheduler {
             .map(|(i, s)| (s.desc.name.as_str(), i))
             .collect();
         let mut order: [Vec<usize>; 5] = Default::default();
+        let mut dangling = Vec::new();
         for stage in Stage::ALL {
             let members: Vec<usize> = (0..self.systems.len())
                 .filter(|&i| self.systems[i].desc.stage == stage)
@@ -713,6 +746,10 @@ impl Scheduler {
             let mut edges: HashMap<usize, Vec<usize>> = HashMap::new();
             for &i in &members {
                 for dep in &self.systems[i].desc.after {
+                    if self.tolerate_missing && !by_name.contains_key(dep.as_str()) {
+                        dangling.push((self.systems[i].desc.name.clone(), dep.clone()));
+                        continue;
+                    }
                     let &j = by_name.get(dep.as_str()).ok_or_else(|| {
                         ArgusError::new(
                             crate::codes::UNKNOWN_SYSTEM,
@@ -774,6 +811,7 @@ impl Scheduler {
             order[stage.index()] = out;
         }
         self.order = order;
+        self.dangling = dangling;
         self.plan_batches();
         self.order_dirty = false;
         Ok(())

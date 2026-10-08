@@ -1,0 +1,11 @@
+[package]
+name = "argus-plugin"
+description = "Rust systems for an Argus game: the plugin side of the engine's plugin boundary"
+# Written out rather than taken from the workspace: a plugin crate is a
+# workspace of its own and depends on this one by path.
+version = "0.0.1"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/KSamsoe/argus"
+
+[dependencies]

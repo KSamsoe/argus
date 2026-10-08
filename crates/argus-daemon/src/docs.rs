@@ -257,7 +257,7 @@ pub const TOOLS: &[ToolDoc] = &[
     },
     ToolDoc {
         name: "reload",
-        doc: "Take changes made on disk now: scripts are recompiled and swapped in while the world goes on from the current frame, and assets are reimported. Answers with what changed and every script error. With mods: the scene loaded again from its start with those mods from the project's mods/ laid over the game, in that order ([] for none), answering with mods.list.",
+        doc: "Take changes made on disk now: scripts are recompiled and swapped in while the world goes on from the current frame, Rust plugins (plugins/<name>/) are rebuilt and the changed ones swapped in the same way, and assets are reimported. Answers with what changed and every script error. With mods: the scene loaded again from its start with those mods from the project's mods/ laid over the game, in that order ([] for none), answering with mods.list.",
         params: &[opt("mods", ARRAY, "mod ids in load order: load the scene again with them (the world starts over)")],
         calls: &["script.reload", "asset.import", "script.errors", "scene.load", "mods.list"],
     },
@@ -1407,24 +1407,24 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "script.reload",
-        doc: "Recompile changed Luau files, rebind their systems in place, keep world state, tick, and RNG streams, and re-read def tables.",
+        doc: "Recompile changed Luau files, rebind their systems in place, keep world state, tick, and RNG streams, and re-read def tables. Then build each Rust plugin argus.toml lists (plugins/<name>/, with cargo) and, when its library changed, swap it in: snapshot, unload the old library, load the new one, restore, continue. A plugin that does not build keeps its old library running; its errors are in script.errors with file and line. reload_ms is from the build's end to the new code running.",
         params: &[],
-        returns: "{reloaded: [file], removed: [file], errors: integer}",
+        returns: "{reloaded: [file], removed: [file], errors: integer, plugins: [{plugin, swapped, build_ms, reload_ms}]}",
     },
     MethodDoc {
         name: "script.systems",
-        doc: "Every system with stage, ordering, declared reads and writes, clock, RNG stream, enabled state, and source. A parallel system (a Rust system the scheduler may run beside others) has its batch: the systems of one batch run at once, on threads when that saves time (sim.threads).",
+        doc: "Every system with stage, ordering, declared reads and writes, clock, RNG stream, enabled state, and source. A system from a Rust plugin names it (plugin) and its source is the plugin's file and line. A parallel system (a Rust system the scheduler may run beside others) has its batch: the systems of one batch run at once, on threads when that saves time (sim.threads).",
         params: &[
             opt("limit", INTEGER, "rows per page"),
             opt("cursor", STRING, "the next page, from a previous answer's cursor"),
         ],
-        returns: "{total, rows: [{name, stage, after, reads, writes, clock, rng, enabled, disabled_reason, source, doc, parallel, batch}], next}",
+        returns: "{total, rows: [{name, stage, after, reads, writes, clock, rng, enabled, disabled_reason, source, doc, parallel, batch, plugin}], next}",
     },
     MethodDoc {
         name: "script.errors",
-        doc: "Outstanding script errors as file:line data, never a crash. A system a fault disabled is a row with phase \"run\", the system, and the frame, while it stays disabled. Materials are code too: a shader that does not compile, or a material sidecar that does not read, is a row with phase \"material\", the file and line of the mistake, and the asset.",
+        doc: "Outstanding script errors as file:line data, never a crash. A system a fault disabled is a row with phase \"run\", the system, and the frame, while it stays disabled. A Rust plugin that does not compile is a row with phase \"compile\" (the compiler's message at its file and line), one that does not load or check against the game a row with phase \"load\" or \"install\", each with the plugin; a system ordered after one that is missing because its plugin did not build is a row with phase \"order\". Materials are code too: a shader that does not compile, or a material sidecar that does not read, is a row with phase \"material\", the file and line of the mistake, and the asset.",
         params: &[],
-        returns: "{total, rows: [{file, line, message, phase, ref, system?, frame?, asset?}]}",
+        returns: "{total, rows: [{file, line, message, phase, ref, system?, frame?, asset?, plugin?}]}",
     },
     MethodDoc {
         name: "obs.events",

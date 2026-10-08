@@ -57,6 +57,10 @@ struct Session {
     scene: Rc<RefCell<Scene>>,
     scene_name: String,
     host: ScriptHost,
+    /// The project's Rust plugins (phase 5 item 6), and the names
+    /// `argus.toml` lists, in its order.
+    plugins: argus_plugins::Plugins,
+    plugin_names: Vec<String>,
     seed: u64,
     /// The world was instantiated (no issues).
     loaded: bool,
@@ -1393,6 +1397,7 @@ impl Daemon {
                 random_seed,
                 audio: !self.building_fork,
                 mods,
+                plugins: argus_plugins::Source::default(),
             },
         )?;
         let argus_player::Assembly {
@@ -1407,6 +1412,7 @@ impl Daemon {
             particles,
             contacts,
             host,
+            plugins,
             project,
             scene,
             issues,
@@ -1488,6 +1494,8 @@ impl Daemon {
             scene,
             scene_name: scene_name.to_string(),
             host,
+            plugins,
+            plugin_names: cfg.plugins.clone(),
             seed,
             loaded: issues.is_empty(),
             index,
@@ -4481,6 +4489,16 @@ impl Daemon {
             .as_mut()
             .ok_or_else(|| ArgusError::new(codes::NO_PROJECT, "no project is open"))?;
         let report = ses.host.reload(&mut self.world, &mut self.sched)?;
+        // Rust plugins after the scripts, whose components they read: each
+        // built again, and swapped in (snapshot, swap, restore) when its
+        // library changed (§7).
+        let plugins = argus_plugins::reload(
+            &ses.root,
+            &ses.plugin_names,
+            &mut ses.plugins,
+            &mut self.world,
+            &mut self.sched,
+        );
         let schemas: Vec<DefSchema> = ses
             .host
             .defs()
@@ -4506,10 +4524,20 @@ impl Daemon {
         self.reload_dialogue();
         self.reload_timelines();
         self.sync_index(true);
+        let plugin_errors = self.session.as_ref().map_or(0, |s| s.plugins.errors.len());
         Ok(json!({
             "reloaded": report.reloaded,
             "removed": report.removed,
-            "errors": report.errors,
+            "errors": report.errors + plugin_errors,
+            "plugins": plugins
+                .iter()
+                .map(|r| json!({
+                    "plugin": r.plugin,
+                    "swapped": r.swapped,
+                    "build_ms": r.build_ms,
+                    "reload_ms": (r.reload_ms * 10.0).round() / 10.0,
+                }))
+                .collect::<Vec<_>>(),
         }))
     }
 
@@ -4544,11 +4572,13 @@ impl Daemon {
     }
 
     fn script_systems(&mut self, params: &Json) -> Result<Json> {
+        let plugins = self.session.as_ref().map(|s| &s.plugins);
         let rows: Vec<Json> = self
             .sched
             .systems(self.world.registry())?
             .iter()
             .map(|s| {
+                let plugin = plugins.and_then(|p| p.of_system(&s.name));
                 json!({
                     "name": s.name,
                     "stage": s.stage.name(),
@@ -4563,6 +4593,7 @@ impl Daemon {
                     "doc": s.doc,
                     "parallel": s.parallel,
                     "batch": s.batch,
+                    "plugin": plugin,
                 })
             })
             .collect();
@@ -4593,6 +4624,30 @@ impl Daemon {
                 })
             })
             .collect();
+        // A system ordered after one that is missing, since the plugin it
+        // is in did not build (phase 5 item 6): it runs, unordered there.
+        for (system, name) in self.sched.dangling_after() {
+            rows.push(json!({
+                "file": "",
+                "line": null,
+                "message": format!("{system} runs after {name}, which is not registered; it runs without that order until {name} is"),
+                "phase": "order",
+                "ref": "",
+                "system": system,
+            }));
+        }
+        // Rust plugins that did not build, load, or check (phase 5 item 6):
+        // the compiler's message at its file and line.
+        for e in &ses.plugins.errors {
+            rows.push(json!({
+                "file": e.file,
+                "line": e.line,
+                "message": e.message,
+                "phase": e.phase,
+                "ref": e.at(),
+                "plugin": e.plugin,
+            }));
+        }
         // Dialogue rows and string tables that do not read (phase 3 item 4):
         // content, but code-like enough to be listed with the scripts.
         rows.extend(self.text_errors());

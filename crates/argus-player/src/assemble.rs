@@ -27,6 +27,9 @@ pub struct Options {
     /// The mods to lay over the game, in load order, and those already
     /// left out (phase 3 item 8): [`crate::mods::choose`] makes it.
     pub mods: crate::mods::Report,
+    /// Where the project's Rust plugins come from (phase 5 item 6): built
+    /// from `plugins/` by default, or a release build's own libraries.
+    pub plugins: argus_plugins::Source,
 }
 
 impl Default for Options {
@@ -35,6 +38,7 @@ impl Default for Options {
             random_seed: 1,
             audio: true,
             mods: crate::mods::Report::default(),
+            plugins: argus_plugins::Source::default(),
         }
     }
 }
@@ -69,6 +73,9 @@ pub struct Assembly {
     pub contacts: Rc<RefCell<argus_physics::Contacts>>,
     /// The Luau host (scripts, defs).
     pub host: ScriptHost,
+    /// The Rust plugins `argus.toml` lists, loaded and installed, and what
+    /// went wrong with any (phase 5 item 6).
+    pub plugins: argus_plugins::Plugins,
     /// The project.
     pub project: Project,
     /// The scene (rooms, streaming), shared with `rooms.stream`, which
@@ -471,6 +478,12 @@ fn assemble_layers(
     // the input stage, before the physics moves anything.
     let scene = Rc::new(RefCell::new(scene));
     argus_scene::stream::install(&mut world, &mut sched, scene.clone())?;
+    // The project's Rust plugins (§7), after the scripts whose components
+    // they read and whose systems they order themselves after. One that
+    // does not build or check is reported and left out, as a script that
+    // does not compile is.
+    let plugins =
+        argus_plugins::load_all(root, &cfg.plugins, &opts.plugins, &mut world, &mut sched);
     apply_system_groups(
         &mut sched,
         &scene_doc.enable,
@@ -509,6 +522,7 @@ fn assemble_layers(
         particles,
         contacts,
         host,
+        plugins,
         project,
         scene,
         issues,

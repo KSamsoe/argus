@@ -74,7 +74,7 @@ const TARGETS: &[Target] = &[
         why: "Leaves headroom inside a 16.6 ms frame for present and render",
         live: Live::Tick(6.0),
         context: Context::Entities,
-        gate: "argus-sim perf (the engine's share, a Rust swarm)",
+        gate: "argus-daemon perf_swarm_stress_tick_under_6_ms_with_its_chase_in_rust (Swarm's stress scene, 50,000 enemies, its chase a Rust plugin); argus-sim perf (the engine's share)",
     },
     Target {
         game: "swarm",
@@ -254,7 +254,7 @@ const TARGETS: &[Target] = &[
         why: "Compile time is the cost; reload itself must not add to it",
         live: Live::Test,
         context: Context::None,
-        gate: "phase 5 (Rust plugin crates)",
+        gate: "argus-daemon perf_rust_plugin_reload_under_2_s_after_compile (Swarm's chase changed and swapped in through script.reload)",
     },
     Target {
         game: "all",

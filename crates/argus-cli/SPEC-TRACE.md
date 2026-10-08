@@ -146,6 +146,12 @@ Phase 0 item 9, "CLI": this crate, plus `argus_daemon::launch` (shared with `arg
 |---|---|---|---|
 | (§3) The agent changes a prefab as a transaction. | Done | The `edit` tool takes `{op: "prefab", prefab, path, value \| remove, child}`, as the daemon's `edit.prefab`. | `argus-daemon` `prefab_edit` |
 
+## Phase 5, item 6: plugins in a release build
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§15) Plugins are the release build's. | Done | `argus build` builds each of the game's plugins optimised and puts it beside the executable as `plugins/<name>.dll` (`.so`, `.dylib`); the game's executable loads them from there (argus-game), and both of the build's checks (the packs, and the executable run headless) run with them. A compile error stops the build with its file and line. A web build of a game with plugins is refused: the page cannot load a library. Swarm: `swarm.exe`, its packs, and `plugins/swarm-hot.dll` (1.2 MB), the same world after 300 ticks from the project, the packs, and the executable. | `argus build` of Swarm |
+
 ## Known limitations, stated so they are decisions
 
 - A daemon started by the CLI outlives the shell; `argus daemon stop` ends it, and `.argus/daemon.json` is removed on a clean exit. `stop` returns once the daemon is gone (its record removed and its socket silent), not when it agreed to go: a command right after it used to reach the daemon on its way out and fail with "connection lost" (found after the phase-1 gate; `cli::the_binary_finds_starts_and_stops_a_project_daemon`). A daemon killed otherwise leaves a stale record, which `argus daemon status` reports and a method call replaces.

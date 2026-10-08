@@ -50,9 +50,14 @@ fn every_rows_target_is_there_and_the_rows_for_every_game_are_measured() {
         (json!("swarm"), json!(false))
     );
     assert!(tick["value"].is_null());
-    assert_eq!(
-        tick["gate"],
-        "argus-sim perf (the engine's share, a Rust swarm)"
+    // Gated on Swarm itself since its chase is a Rust plugin (phase 5 item 6).
+    assert!(
+        tick["gate"]
+            .as_str()
+            .unwrap()
+            .starts_with("argus-daemon perf_swarm_stress_tick_under_6_ms"),
+        "{}",
+        tick["gate"]
     );
     // A row only a test measures says which.
     let post = row(&before, "Post stack, 5 passes at 1080p");

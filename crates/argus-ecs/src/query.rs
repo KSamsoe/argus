@@ -329,6 +329,20 @@ impl<'a> DynColumn<'a> {
     pub fn len(&self) -> usize {
         self.col.len()
     }
+    /// The first row's bytes, for code that reads the column as rows of a
+    /// type laid out as the schema (a plugin, phase 5 item 6). Valid while
+    /// this borrow lives; written through only when it is writable.
+    pub fn as_ptr(&self) -> *mut u8 {
+        if self.col.is_empty() || self.col.stride() == 0 {
+            core::ptr::NonNull::<u64>::dangling().as_ptr().cast()
+        } else {
+            self.col.row_ptr_mut(0)
+        }
+    }
+    /// Whether the borrow is exclusive.
+    pub fn is_writable(&self) -> bool {
+        self.writable
+    }
     /// True if no rows.
     pub fn is_empty(&self) -> bool {
         self.col.is_empty()

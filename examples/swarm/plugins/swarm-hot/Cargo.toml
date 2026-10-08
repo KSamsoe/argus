@@ -1,0 +1,22 @@
+[package]
+name = "swarm-hot"
+version = "0.1.0"
+edition = "2021"
+description = "Swarm's hot path in Rust: the chase every enemy runs every tick"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# The engine writes the plugin SDK it was built with here before it builds
+# the plugin, so the plugin is always built against the engine that loads it.
+argus-plugin = { path = "../../.argus/plugins/sdk" }
+
+# A plugin is a workspace of its own; the engine builds it into
+# .argus/plugins/target.
+[workspace]
+
+[profile.release]
+# A one-line change rebuilds in about a second.
+incremental = true

@@ -303,7 +303,7 @@ Phase 0 item 4, "JSON-RPC daemon with session, world, edit, sim (play, pause, st
 
 | Spec | Status | Where | Test |
 |---|---|---|---|
-| (§17) "All of them are perf assertions the engine's own test suite runs", green "in CI on the reference laptop". | Done (but Rust plugin reload, phase 5 item 7) | `prof.targets`' gates name the check for every row. CI (`tools/ci/ci.sh`, `.github/workflows/ci.yml`, a runner on this laptop: `docs/ci.md`) runs the release timing tests on every push to main, and the web check. The two rows that had no measure: a web cold load of Hollow's page is 2.6 s on 20 Mbit (2.7 MB, brotli), and an incremental release build after one script changed is 4.7 s. | `perf_*` (release, ignored), `argus-cli` `release`, `tools/web/check.mjs` |
+| (§17) "All of them are perf assertions the engine's own test suite runs", green "in CI on the reference laptop". | Done | `prof.targets`' gates name the check for every row (Rust plugin reload's since phase 5 item 6). CI (`tools/ci/ci.sh`, `.github/workflows/ci.yml`, a runner on this laptop: `docs/ci.md`) runs the release timing tests on every push to main, and the web check. The two rows that had no measure: a web cold load of Hollow's page is 2.6 s on 20 Mbit (2.7 MB, brotli), and an incremental release build after one script changed is 4.7 s. | `perf_*` (release, ignored), `argus-cli` `release`, `tools/web/check.mjs` |
 | (§9) `obs.frame {golden, threshold}` compares the frame it drew. | Done | The golden PNG is read and compared (`Image::compare`); the answer's `compare` holds the golden, the threshold, the pixels, how many differ, the share, the worst, and the difference image beside the frame (`<path>.diff.png`). The harness's `expect:image` uses it. | `argus-test` `runner::an_image_golden_is_recorded_matched_and_fails_with_a_picture` |
 
 ## Phase 5, item 2: seeing as a colour-blind eye, and rebinds in the run
@@ -378,6 +378,15 @@ Phase 0 item 4, "JSON-RPC daemon with session, world, edit, sim (play, pause, st
 | Spec | Status | Where | Test |
 |---|---|---|---|
 | (§3, §5) The scheduler's parallelism is visible and set through the protocol. | Done | `script.systems` rows carry `parallel` and `batch`; `sim.threads {n}` sets how many threads a batch may use (0 is one per core) and lists the batches, each with its stage, its systems in run order, and whether it ran on threads last time. Not part of the run: the world after a tick is the same for any number (§6), so a change makes no keyframe. A feed row, like `sim.speed`. The four games' systems are all serial (Luau, and engine systems holding the daemon's stores), so their batch lists are empty. | `protocol::scripts_reload_in_place_and_errors_are_data`, `schema` |
+
+## Phase 5, item 6: Rust plugins through the protocol
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§7) A plugin's compile error is "a structured `script.errors` response with file:line and the compiler's message, never as a crash." | Done | The session keeps its plugins (`argus_plugins::Plugins`). `script.errors` lists each plugin error with its phase (`compile`, `load`, `install`), file, line, and plugin, and a system ordered after one that is missing because its plugin never built (phase `order`). A plugin that does not build keeps its last good library; one that never built leaves the session open and the game running without it. | `plugins::a_plugin_s_systems_errors_and_reload_go_through_the_protocol`, `plugins::a_plugin_that_never_built_leaves_the_game_running_without_it` |
+| (§7) "The daemon snapshots, unloads the old dylib, loads the new one, restores, and continues." | Done | `script.reload` reloads the scripts, then builds each plugin and swaps in the ones whose library changed (`argus_plugins::reload`); its answer has `plugins: [{plugin, swapped, build_ms, reload_ms}]`. The world's digest is the same before and after a swap, and the next tick runs the new code. | `plugins::a_plugin_s_systems_errors_and_reload_go_through_the_protocol` |
+| (§5) A plugin's systems are visible to the agent. | Done | `script.systems` rows carry `plugin`, and their `source` is the plugin's `file:line`; `prof.*`, `world.who_writes`, and `obs.why` see them as any system. | same |
+| (§17) "Rust plugin reload < 2 s after compile." | Done | `prof.targets`' row names its gate: Swarm's chase changed three times and swapped in through `script.reload`, each `reload_ms` under 2 s (38 to 43 ms, after builds of 0.34 to 0.40 s). The Swarm sim tick row's gate is now the game's own stress scene, its chase a plugin: 2.5 ms p95 with 50,000 enemies, where the Luau chase alone took 37 ms. | `perf_rust_plugin_reload_under_2_s_after_compile`, `perf_swarm_stress_tick_under_6_ms_with_its_chase_in_rust` (release, ignored) |
 
 ## Known limitations, stated so they are decisions
 

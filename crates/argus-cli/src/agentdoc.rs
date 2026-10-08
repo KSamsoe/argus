@@ -125,7 +125,12 @@ Regenerate it after changing components, systems, prefabs, or scenes; do not edi
     o.push_str(
         "\nChanges to files: scripts are Luau in `components/`, `defs/`, and `systems/`; entities are TOML under \
 `scenes/`; assets and their sidecars are in `assets/`. `reload` takes them in while the game runs. \
-Change entities with `edit`, so the change feed records who and why and undo works.\n\n",
+Change entities with `edit`, so the change feed records who and why and undo works.\n\n\
+A hot path can be Rust instead: a crate in `plugins/<name>/` that `argus.toml`'s `plugins` lists, declaring its \
+systems as Luau does (`System::new(name, stage).after(..).reads(&[..]).writes(&[..]).run(f)`, from the \
+`argus-plugin` crate the engine writes to `.argus/plugins/sdk`) and its components as `component!` structs, \
+field for field as the game declares them. `reload` builds and swaps it in; a compile error is an `errors` row \
+with its file and line, and the last good build keeps running.\n\n",
     );
 
     o.push_str("## Scenes\n\n");

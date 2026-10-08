@@ -136,6 +136,13 @@ Every statement in the design document (v0.3) that constrains a game as players 
 |---|---|---|---|
 | (§6) A run stays a value with a map its scripts wrote. | Done | A keyframe holds the runtime maps' cells (`Keyframe.tiles`, from the session's map store, `Sources.tiles`) and a seek puts them back; replay files from version 5 (at the keyframe and at the end) and save files from version 3 carry them (older files read with none). `Player::digest` and a report's `same` are the run's digest (`run_digest`): the world's and the cells'. | `argus-daemon` `runtime_map`; Delve's floors |
 
+## Phase 5, item 6: Rust plugins in every assembly
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§7) The project's plugins run wherever the game runs. | Done | `assemble` loads `argus.toml`'s plugins after the scripts (`argus_plugins::load_all`), so the daemon, a test, and a release build run the same systems in the same order; `Options::plugins` says where libraries come from (built from `plugins/`, or a release build's). `Assembly::plugins` and `Player::plugins` keep them and their errors; `Player::open_from` takes the source, and a save's load opens with it again. | `release_swarm_plugin` |
+| (§19) A Luau system promoted to Rust changes nothing around it. | Done | Swarm's chase, a Luau system until this item, is its plugin's: the same systems in the same order, and the same world, bit for bit, every tick, as with the Luau chase it replaced (600 ticks of the arena, 40 of the 50,000-enemy stress scene). | `release_swarm_plugin::the_rust_chase_is_the_luau_chase_to_the_bit`, `release_swarm_plugin::the_stress_scenes_fifty_thousand_chase_alike` |
+
 ## Known limitations, stated so they are decisions
 
 - A desktop report goes over plain HTTP to the server's tailnet address (`[reports] url`): a player off the tailnet keeps theirs, and it goes when they are on it, or they send the file.

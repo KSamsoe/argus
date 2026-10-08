@@ -335,6 +335,13 @@ impl<'a> SystemCtx<'a> {
         self.access
     }
 
+    /// The world, the declaration, and the stream at once, for a host
+    /// that hands them to code of its own (a plugin, phase 5 item 6). The
+    /// world's columns are reached through queries bound to the access set.
+    pub fn split(&mut self) -> (&World, &Access, Option<&mut Pcg32>) {
+        (self.world, self.access, self.rng.as_deref_mut())
+    }
+
     /// A query bound to the declared access set.
     pub fn query(&self) -> Query<'_> {
         self.world.query().access_ref(self.access)

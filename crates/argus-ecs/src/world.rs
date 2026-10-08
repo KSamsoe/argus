@@ -805,6 +805,28 @@ impl World {
             .flat_map(|a| a.entities().iter().copied())
     }
 
+    /// Change one component's row as bytes, the column borrowed
+    /// exclusively while `f` runs: a plugin's typed write (phase 5 item 6).
+    /// Bytes written must be a valid row of the schema.
+    pub fn with_row_mut<R>(
+        &self,
+        e: Entity,
+        c: ComponentId,
+        f: impl FnOnce(&mut [u8]) -> R,
+    ) -> Result<R> {
+        let size = self.registry.schema(c).size;
+        let (col, row) = self.locate(e, c)?;
+        if size == 0 {
+            return Ok(f(&mut []));
+        }
+        col.acquire_exclusive()?;
+        // SAFETY: the row is `size` initialised bytes inside the column,
+        // and the exclusive borrow is held while `f` changes them.
+        let r = f(unsafe { std::slice::from_raw_parts_mut(col.row_ptr_mut(row), size) });
+        col.release_exclusive();
+        Ok(r)
+    }
+
     /// Look at one component's row as bytes, fields at their schema
     /// offsets (a tag's row is empty): how history and diffs compare and
     /// keep rows without building values.

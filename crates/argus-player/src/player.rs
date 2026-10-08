@@ -64,6 +64,11 @@ pub struct Player {
     pub mods: crate::mods::Report,
     /// The mods asked for, which a load opens again.
     mods_asked: crate::mods::Report,
+    /// The project's Rust plugins, and what went wrong with any (phase 5
+    /// item 6).
+    pub plugins: argus_plugins::Plugins,
+    /// Where they come from, which a load uses again.
+    plugin_source: argus_plugins::Source,
 }
 
 fn fnv(h: &mut u64, bytes: &[u8]) {
@@ -91,6 +96,18 @@ impl Player {
         seed: Option<u64>,
         mods: crate::mods::Report,
     ) -> Result<Player> {
+        Player::open_from(root, scene, seed, mods, argus_plugins::Source::default())
+    }
+
+    /// [`open_with`](Player::open_with), the Rust plugins from `plugins`: a
+    /// release build's own libraries (phase 5 item 6).
+    pub fn open_from(
+        root: &Path,
+        scene: Option<&str>,
+        seed: Option<u64>,
+        mods: crate::mods::Report,
+        plugins: argus_plugins::Source,
+    ) -> Result<Player> {
         let root = root.to_path_buf();
         let cfg = argus_scene::ProjectConfig::load(&root)?;
         let scene_name = match scene {
@@ -106,6 +123,7 @@ impl Player {
             seed,
             &crate::assemble::Options {
                 mods: mods.clone(),
+                plugins: plugins.clone(),
                 ..crate::assemble::Options::default()
             },
         )?;
@@ -144,6 +162,8 @@ impl Player {
             events_digest: 0xcbf29ce484222325,
             mods: a.mods,
             mods_asked: mods,
+            plugins: a.plugins,
+            plugin_source: plugins,
         };
         let (saves, sources) = (p.saves.clone(), p.sources.clone());
         p.sched.on_tick_end(Box::new(move |world, sched| {
@@ -195,11 +215,12 @@ impl Player {
     /// what was migrated.
     pub fn load(&mut self, bytes: &[u8]) -> Result<Json> {
         let file = crate::savegame::decode(bytes)?;
-        let mut next = Player::open_with(
+        let mut next = Player::open_from(
             &self.root,
             Some(file.scene()),
             file.seed(),
             self.mods_asked.clone(),
+            self.plugin_source.clone(),
         )?;
         let back = {
             let store = next.particles.borrow();

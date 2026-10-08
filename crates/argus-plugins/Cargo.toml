@@ -1,0 +1,16 @@
+[package]
+name = "argus-plugins"
+description = "Loads, checks, builds, and reloads a project's Rust plugin crates"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+argus-plugin = { path = "../argus-plugin" }
+argus-ecs = { path = "../argus-ecs" }
+argus-sim = { path = "../argus-sim" }
+serde_json = "1"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+libloading = "0.8"

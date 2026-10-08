@@ -115,6 +115,12 @@ impl<'a> ParCtx<'a> {
         self.access
     }
 
+    /// [`crate::SystemCtx::split`]: the world (to be read through queries
+    /// bound to the access set), the declaration, and the stream at once.
+    pub fn split(&mut self) -> (&World, &Access, Option<&mut Pcg32>) {
+        (self.world, self.access, self.rng.as_deref_mut())
+    }
+
     /// The component registry.
     pub fn registry(&self) -> &Registry {
         self.world.registry()

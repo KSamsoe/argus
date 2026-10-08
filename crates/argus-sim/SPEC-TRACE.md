@@ -137,6 +137,13 @@ Release build, one thread, development laptop. Gates in `tests/perf.rs`.
 | (§17) "One thread for sim unless the scheduler finds parallel stages." | Done | A batch runs on threads (`std::thread::scope`, longest system first onto the least loaded thread, the sim thread one of them) when its systems' last runs promise to save at least 0.2 ms beyond its longest; a lighter batch runs on the sim thread. `SchedulerConfig::threads` (0, the default, is one per core) and `Scheduler::set_threads`. Four systems each folding a hash over 50k rows: 6.7 ms a tick on one thread, 2.0 ms on four, the same world. | `perf::perf_four_heavy_systems_in_one_batch_on_threads` |
 | (§5) Parallelism is visible to the agent. | Done | `script.systems` gives each system `parallel` and its `batch`; `sim.threads {n}` sets the threads and lists the batches with whether each ran on threads last time; every system of a batch is timed and allocation-counted on the thread it ran on, so `prof.systems` and `prof.alloc` keep one row each, and a capture puts a batch's other threads on their own rows. Batches also run at load (`on_load`) and in `present`. | `parallel::a_threaded_batch_shows_its_threads_in_a_capture`, `parallel::a_parallel_system_runs_at_load_and_in_present`, argus-daemon `protocol::scripts_reload_in_place_and_errors_are_data` |
 
+## Phase 5, item 6: what plugins needed from the scheduler
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| A plugin's code reaches the world through the system's own context. | Done | `SystemCtx::split` and `ParCtx::split` give the world (read through queries bound to the access set), the declaration, and the stream at once, so the plugin host can hand them across the boundary; `Scheduler::source_of` says where a system is declared, so a plugin system cannot take a Luau system's name. | argus-plugins `plugins` |
+| A game runs when a plugin did not build. | Done | `Scheduler::tolerate_missing`: an `after` naming no registered system is a warning (`dangling_after`), not an error, so a missing plugin's systems leave the rest ordered as well as they can be. Off unless a plugin failed; a typo in a game without failed plugins is still the structured error. | argus-daemon `plugins::a_plugin_that_never_built_leaves_the_game_running_without_it`, `stages::ordering_errors_are_structured` |
+
 ## §18 Build plan
 
 Phase 0 item 2, "scheduler with stages, declared write sets, and both clock drivers", plus the `prof.*` data of item 8 that depends on it: this crate.
