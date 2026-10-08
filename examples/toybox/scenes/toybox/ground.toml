@@ -1,0 +1,13 @@
+[Transform]
+pos = [0.0, -1.0]
+
+[Collider]
+size = [40.0, 2.0]
+
+[RigidBody]
+fixed = true
+
+[Sprite]
+kind = "rect"
+size = [40.0, 2.0]
+color = "#3A3F4B"

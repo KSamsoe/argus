@@ -34,6 +34,7 @@ fn base() -> argus_daemon::ring::Keyframe {
         scene: None,
         contacts: Rc::new(RefCell::new(argus_physics::Contacts::default())),
         tiles: None,
+        rigid: Default::default(),
     };
     src.capture(&w, &s, false)
 }

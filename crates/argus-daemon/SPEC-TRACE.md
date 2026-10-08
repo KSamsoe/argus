@@ -388,6 +388,13 @@ Phase 0 item 4, "JSON-RPC daemon with session, world, edit, sim (play, pause, st
 | (§5) A plugin's systems are visible to the agent. | Done | `script.systems` rows carry `plugin`, and their `source` is the plugin's `file:line`; `prof.*`, `world.who_writes`, and `obs.why` see them as any system. | same |
 | (§17) "Rust plugin reload < 2 s after compile." | Done | `prof.targets`' row names its gate: Swarm's chase changed three times and swapped in through `script.reload`, each `reload_ms` under 2 s (38 to 43 ms, after builds of 0.34 to 0.40 s). The Swarm sim tick row's gate is now the game's own stress scene, its chase a plugin: 2.5 ms p95 with 50,000 enemies, where the Luau chase alone took 37 ms. | `perf_rust_plugin_reload_under_2_s_after_compile`, `perf_swarm_stress_tick_under_6_ms_with_its_chase_in_rust` (release, ignored) |
 
+## Phase 5, item 7: rigid bodies through the protocol
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§6) A seek replays rigid bodies to the same world. | Done | The ring's keyframes carry the rigid store's state (argus-player's `Sources::rigid`); `sim.seek` back into a toybox run and stepping on reaches the digest the run reached, its replayed events checked against the log. | `rigid::a_seek_replays_the_rigid_bodies_to_the_same_world` |
+| (§3, §5) The module's components and system are the world's like any. | Done | `world.describe RigidBody` (and `Joint`, `RigidWorld`) with their docs and tune fields; `physics.rigid` in `script.systems` between `physics.move` and `physics.overlap`. A game that does not name the module has none of it. | `rigid::the_modules_components_are_described_and_its_system_is_listed`, `rigid::a_game_that_does_not_list_the_module_has_none_of_it` |
+
 ## Known limitations, stated so they are decisions
 
 - A tuning session's values live in this daemon until its end: a fork made during one, and a mark's or a replay's file, start from the files, without the session's def rows or effects.

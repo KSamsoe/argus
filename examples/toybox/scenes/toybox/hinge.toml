@@ -1,0 +1,6 @@
+# The pendulum's hinge: the bob, 3 units from a point in the world.
+[Joint]
+a = "@bob"
+kind = "revolute"
+anchor_a = [-3.0, 0.0]
+anchor_b = [8.0, 12.0]

@@ -12,7 +12,10 @@
 //!   and jump, with coyote time, jump buffering, and corner correction as
 //!   tune fields. `physics.move` reports landings, walls, ceilings, corner
 //!   corrections, and crushes as events.
-//! - **Dynamic** rigid bodies are the optional module of phase 5.
+//! - **Dynamic.** A [`Collider`] plus argus-rigid's `RigidBody`: the
+//!   optional rigid-body module (phase 5 item 7), on Rapier, for a game
+//!   whose `argus.toml` lists `modules = ["rigid"]`. `physics.rigid` runs
+//!   between `physics.move` and `physics.overlap`.
 //!
 //! The order in a tick: `physics.control` runs first in the sim stage and
 //! turns this tick's actions into velocities; gameplay systems then read

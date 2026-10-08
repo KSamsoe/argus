@@ -136,6 +136,7 @@ impl Player {
             scene: Some(a.scene.clone()),
             contacts: a.contacts.clone(),
             tiles: Some(a.tiles.clone()),
+            rigid: a.rigid.clone(),
         };
         let mut p = Player {
             world: a.world,

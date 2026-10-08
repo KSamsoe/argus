@@ -21,6 +21,17 @@ use argus_ecs::{ArgusError, Layers, Registry, Result};
 use argus_sim::Clock;
 use std::path::{Path, PathBuf};
 
+/// The engine's optional modules, as `argus.toml`'s `modules` names them.
+pub const MODULES: &[&str] = &["rigid"];
+
+/// Whether the project uses an optional module.
+impl ProjectConfig {
+    /// `modules` lists `name`.
+    pub fn uses(&self, name: &str) -> bool {
+        self.modules.iter().any(|m| m == name)
+    }
+}
+
 /// Contents of `argus.toml`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ProjectConfig {
@@ -30,8 +41,12 @@ pub struct ProjectConfig {
     pub clock: String,
     /// Scene opened by `session.open` when none is given.
     pub default_scene: Option<String>,
-    /// Plugin crate names (phase 5; parsed now so the file shape is fixed).
+    /// Plugin crate names, each a crate in `plugins/` (phase 5 item 6).
     pub plugins: Vec<String>,
+    /// The engine's optional modules the game uses (phase 5 item 7):
+    /// `rigid` for rigid bodies and joints. A release build carries only
+    /// these, and the daemon installs only these, so the two agree.
+    pub modules: Vec<String>,
     /// `[ring] every`: ticks between keyframes for seek (phase 2). `None`:
     /// one second of the continuous clock, ten turns of the discrete one.
     pub ring_every: Option<u64>,
@@ -107,6 +122,18 @@ impl ProjectConfig {
             Some(i) => tomlv::string_list(i, "plugins", &at("plugins"))?,
             None => Vec::new(),
         };
+        let modules = match t.get("modules") {
+            Some(i) => tomlv::string_list(i, "modules", &at("modules"))?,
+            None => Vec::new(),
+        };
+        if let Some(m) = modules.iter().find(|m| !MODULES.contains(&m.as_str())) {
+            return Err(ArgusError::new(
+                codes::BAD_SCENE,
+                format!("argus.toml lists the module {m:?}, which the engine does not have"),
+            )
+            .hint(format!("The optional modules are: {}.", MODULES.join(", ")))
+            .at(Some(at("modules"))));
+        }
         let ring = t.get("ring").and_then(|i| i.as_table_like());
         let positive = |key: &str| -> Result<Option<u64>> {
             match ring.and_then(|r| r.get(key)) {
@@ -213,6 +240,7 @@ impl ProjectConfig {
             clock,
             default_scene,
             plugins,
+            modules,
             ring_every,
             ring_budget_mb,
             mark_key,
@@ -233,6 +261,11 @@ impl ProjectConfig {
         doc["plugins"] = toml_edit::value(toml_edit::Array::from_iter(
             self.plugins.iter().map(String::as_str),
         ));
+        if !self.modules.is_empty() {
+            doc["modules"] = toml_edit::value(toml_edit::Array::from_iter(
+                self.modules.iter().map(String::as_str),
+            ));
+        }
         doc.to_string()
     }
 }
@@ -331,6 +364,7 @@ impl Project {
                 clock: "continuous@60".to_string(),
                 default_scene: None,
                 plugins: Vec::new(),
+                modules: Vec::new(),
                 ring_every: None,
                 ring_budget_mb: None,
                 mark_key: None,

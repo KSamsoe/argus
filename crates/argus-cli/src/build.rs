@@ -340,11 +340,27 @@ fn build(inv: &Invocation, err: &mut dyn Write) -> Result<Json, String> {
     });
     match target {
         Target::Web => {
-            web(&engine, &out_dir, &built.packs, &code, inv.release, err)?;
+            web(
+                &engine,
+                &out_dir,
+                &built.packs,
+                &code,
+                inv.release,
+                &cfg.modules,
+                err,
+            )?;
             report["site"] = json!(plain(&out_dir));
         }
         _ => {
-            let exe = desktop(&engine, &out_dir, &game, &code, inv.release, err)?;
+            let exe = desktop(
+                &engine,
+                &out_dir,
+                &game,
+                &code,
+                inv.release,
+                &cfg.modules,
+                err,
+            )?;
             // The executable, headless: the same world again.
             let o = Command::new(&exe)
                 .arg("--headless")
@@ -556,12 +572,14 @@ fn plugins(root: &Path, names: &[String], dir: &Path) -> Result<Vec<Json>, Strin
 }
 
 /// Build the release executable and put it in `out` under the game's name.
+#[allow(clippy::too_many_arguments)]
 fn desktop(
     engine: &Path,
     out: &Path,
     game: &str,
     code: &str,
     release: bool,
+    modules: &[String],
     err: &mut dyn Write,
 ) -> Result<PathBuf, String> {
     let mut c = Command::new("cargo");
@@ -570,6 +588,11 @@ fn desktop(
         .env("ARGUS_CODE", code);
     if release {
         c.args(["--profile", "ship"]);
+    }
+    // The engine's optional modules the game names, and no others (phase 5
+    // item 7): a game without rigid bodies does not carry Rapier.
+    if !modules.is_empty() {
+        c.args(["--features", &modules.join(",")]);
     }
     run(&mut c, "cargo build -p argus-game", err)?;
     let ext = if cfg!(windows) { ".exe" } else { "" };
@@ -626,12 +649,14 @@ fn wasm_env(c: &mut Command) -> Result<(), String> {
 
 /// The web page: the wasm module, the page, and `data/packs.json` listing
 /// the packs the page loads.
+#[allow(clippy::too_many_arguments)]
 fn web(
     engine: &Path,
     out: &Path,
     packs: &[Pack],
     code: &str,
     release: bool,
+    modules: &[String],
     err: &mut dyn Write,
 ) -> Result<(), String> {
     let tdir = engine.join("target-web");
@@ -653,6 +678,9 @@ fn web(
         .env("ARGUS_CODE", code);
     if release {
         c.arg("--release");
+    }
+    if !modules.is_empty() {
+        c.args(["--features", &modules.join(",")]);
     }
     wasm_env(&mut c)?;
     run(&mut c, "cargo rustc -p argus-web (wasm)", err)?;

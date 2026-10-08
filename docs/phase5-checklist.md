@@ -214,11 +214,22 @@ Decisions taken while building it:
 
 ## 7. Optional rigid-body module
 
-**Status: to do.**
+**Status: done** (2026-10-08) in a new crate, `argus-rigid` (`RigidBody`, `Joint`, and `RigidWorld` on Rapier 0.36; `physics.rigid` between the kinematic move and the overlap pass; contacts and broken joints as events; Rapier's own state in every keyframe), and in `argus-scene` (`argus.toml`'s `modules`), `argus-sim` (`order_after`), `argus-player` (the `rigid` feature, keyframes and replay files from version 6), the daemon, `argus-cli` (`argus build` passes the game's modules as features), `argus-game` and `argus-web` (the feature), and a new example, `examples/toybox`: a stack, a pendulum, a plank bridge pinned at both ends, and balls a Luau system drops, with three scenarios. A seek, a replay file, and a run from the same start all reach the same world. 500 boxes cost about 1 ms a tick. Traces: `argus-rigid`'s (new), `argus-physics`', `argus-player`'s, `argus-scene`'s, `argus-sim`'s, `argus-cli`'s, the daemon's.
 
 - §12: "Dynamic: real rigid bodies with joints, from an optional Rapier module for the games that need a physics toy, not a default." Three tiers "chosen per entity, sharing one broadphase".
 - §6: the same run reaches the same world.
 - §12: costs nothing for a game that does not attach the components; a release without it does not carry it.
+
+Decisions taken while building it:
+
+- **Rapier, as the design says (Kevin, 2026-10-08).** Asked before downloading anything, Kevin chose Rapier over a solver of our own. It came as 29 crates and 6.6 MB of source (rapier2d 0.36, parry2d, nalgebra, simba, glam and glamx, spade, wide, and their dependencies), more than the 3 to 4 MB estimated in the question. Looking up its version first, `cargo info` downloaded rapier2d itself before Kevin had answered; he was told.
+- **Optional is a line in `argus.toml`.** A game names the module (`modules = ["rigid"]`); the daemon installs it only then and `argus build` builds the executable and the page with the `rigid` feature only then. So the daemon and a release agree, a release of a game without rigid bodies has no Rapier in it, and a game that uses the module without naming it is refused with the reason. The daemon and the CLI always have it compiled in, since they run any game.
+- **Rapier's own state is the run's.** Its contact caches and solver warm-start carry from tick to tick outside the ECS, and a run replayed without them parts from the original within ticks (a test shows it). Every keyframe clones the store (seek, fork, the recorder), and a replay file or a player's report carries it as bytes from version 6 of the format. Saves keep only the components: a loaded game goes on from the same positions and velocities, its contacts found again.
+- **The same on every platform, as far as Rapier can make it.** Its `enhanced-determinism` feature (libm for every transcendental) is on, so a toybox run in the browser should reach the native world; item 11 measures it.
+- **The three tiers in one world.** The kinematic tier's bodies are kinematic bodies in Rapier, moved to where `physics.move` put them, so platforms and characters push rigid bodies; every Tilemap's solid tiles are fixed colliders, merged into as few boxes as rows allow. The world's spatial hash indexes rigid bodies like any entity, and the overlap pass, ordered after this tier, reports them. A one-way tile is solid to a rigid body, and the kinematic tier does not see rigid bodies (a character pushes a crate but is not stopped by one); both are stated limitations.
+- **Gameplay speaks through components.** A script throws a body by writing its velocity and teleports it by writing its Transform: the tier tells those from its own writes by what it wrote last tick. Joints are entities with a `Joint` component, so they are authored in TOML, edited live, and listed like anything.
+- **Found: a joint's force was a quarter of the truth.** Rapier keeps the impulse of a tick's last substep, and it takes four; a joint's breaking force is worked out over the substep's time.
+- **A new example, not a reference game.** The design gives no reference game a physics toy, so `examples/toybox` exercises the module end to end (its scenarios run in CI's games step with the four games), and none of the four games changed.
 
 ## 8. Skeletal 2D module
 

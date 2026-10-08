@@ -9,6 +9,11 @@ license.workspace = true
 name = "argus-game"
 path = "src/main.rs"
 
+[features]
+# The rigid-body module, for a game whose argus.toml lists it (argus build
+# passes it).
+rigid = ["argus-player/rigid"]
+
 [dependencies]
 argus-player = { path = "../argus-player", version = "0.0.1", features = ["desktop"] }
 argus-plugins = { path = "../argus-plugins", version = "0.0.1" }

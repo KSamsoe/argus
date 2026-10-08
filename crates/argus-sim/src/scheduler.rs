@@ -618,6 +618,20 @@ impl Scheduler {
         Ok(())
     }
 
+    /// Order an installed system after another of its stage, as if its
+    /// declaration said so: a module that slots its system between two
+    /// of the engine's (the rigid tier between the kinematic move and the
+    /// overlap pass, phase 5 item 7).
+    pub fn order_after(&mut self, system: &str, after: &str) -> Result<()> {
+        let i = self.slot_index(system)?;
+        let a = &mut self.systems[i].desc.after;
+        if !a.iter().any(|x| x == after) {
+            a.push(after.to_string());
+            self.order_dirty = true;
+        }
+        Ok(())
+    }
+
     /// A registered system's declaration site: `Some(None)` for one
     /// declared nowhere in particular (the engine's own), `None` when no
     /// system has the name.

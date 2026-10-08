@@ -1411,6 +1411,7 @@ impl Daemon {
             anims,
             particles,
             contacts,
+            rigid,
             host,
             plugins,
             project,
@@ -1475,6 +1476,7 @@ impl Daemon {
             scene: Some(scene.clone()),
             contacts: contacts.clone(),
             tiles: Some(tiles.clone()),
+            rigid,
         };
         self.session = Some(Session {
             ring: Rc::new(RefCell::new(crate::ring::Ring::new(

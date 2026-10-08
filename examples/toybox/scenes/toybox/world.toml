@@ -1,0 +1,11 @@
+# The toy's gravity, and the dropper.
+[RigidWorld]
+gravity = [0.0, -15.0]
+
+[Dropper]
+every = 90
+max = 12
+
+[Describe]
+role = "hud"
+text = "Toybox: {Dropper.dropped} balls dropped."

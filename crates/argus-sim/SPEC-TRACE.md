@@ -144,6 +144,12 @@ Release build, one thread, development laptop. Gates in `tests/perf.rs`.
 | A plugin's code reaches the world through the system's own context. | Done | `SystemCtx::split` and `ParCtx::split` give the world (read through queries bound to the access set), the declaration, and the stream at once, so the plugin host can hand them across the boundary; `Scheduler::source_of` says where a system is declared, so a plugin system cannot take a Luau system's name. | argus-plugins `plugins` |
 | A game runs when a plugin did not build. | Done | `Scheduler::tolerate_missing`: an `after` naming no registered system is a warning (`dangling_after`), not an error, so a missing plugin's systems leave the rest ordered as well as they can be. Off unless a plugin failed; a typo in a game without failed plugins is still the structured error. | argus-daemon `plugins::a_plugin_that_never_built_leaves_the_game_running_without_it`, `stages::ordering_errors_are_structured` |
 
+## Phase 5, item 7: a module's system between two of the engine's
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| The rigid tier runs between the kinematic move and the overlap pass. | Done | `Scheduler::order_after(system, after)` adds an `after` to an installed system's declaration: argus-rigid orders `physics.overlap` after `physics.rigid` without the physics crate knowing about it. | argus-rigid `rigid::rigid_bodies_are_in_the_shared_broadphase_and_the_overlap_pass` |
+
 ## §18 Build plan
 
 Phase 0 item 2, "scheduler with stages, declared write sets, and both clock drivers", plus the `prof.*` data of item 8 that depends on it: this crate.

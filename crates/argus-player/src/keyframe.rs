@@ -19,6 +19,73 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
+/// Where the rigid bodies' state lives (phase 5 item 7): the module's
+/// store when the game uses it, nothing in a build without the module.
+#[cfg(feature = "rigid")]
+pub type RigidSource = Option<Rc<RefCell<argus_rigid::RigidStore>>>;
+/// Where the rigid bodies' state lives: a build without the module has none.
+#[cfg(not(feature = "rigid"))]
+pub type RigidSource = ();
+
+/// The rigid bodies' state in a keyframe: Rapier's contact caches and
+/// solver warm-start, without which a replay parts from its run.
+#[derive(Clone, Default)]
+pub struct RigidKeep(#[cfg(feature = "rigid")] pub Option<argus_rigid::RigidState>);
+
+impl RigidKeep {
+    /// Taken from the store.
+    #[allow(unused_variables)]
+    pub fn capture(src: &RigidSource) -> RigidKeep {
+        #[cfg(feature = "rigid")]
+        return RigidKeep(src.as_ref().map(|s| s.borrow().state()));
+        #[cfg(not(feature = "rigid"))]
+        RigidKeep()
+    }
+
+    /// Put back into the store.
+    #[allow(unused_variables)]
+    pub fn restore(&self, src: &RigidSource) {
+        #[cfg(feature = "rigid")]
+        if let (Some(s), Some(k)) = (src, &self.0) {
+            s.borrow_mut().restore(k);
+        }
+    }
+
+    /// Bytes held.
+    pub fn bytes(&self) -> usize {
+        #[cfg(feature = "rigid")]
+        return self.0.as_ref().map_or(0, |s| s.bytes());
+        #[cfg(not(feature = "rigid"))]
+        0
+    }
+
+    /// As bytes, for a replay file: none without bodies.
+    pub fn encode(&self) -> Option<Vec<u8>> {
+        #[cfg(feature = "rigid")]
+        return self.0.as_ref().map(|s| s.encode());
+        #[cfg(not(feature = "rigid"))]
+        None
+    }
+
+    /// From a replay file's bytes.
+    #[allow(unused_variables)]
+    pub fn decode(bytes: Option<&[u8]>) -> argus_ecs::Result<RigidKeep> {
+        #[cfg(feature = "rigid")]
+        return Ok(RigidKeep(match bytes {
+            Some(b) => Some(argus_rigid::RigidState::decode(b)?),
+            None => None,
+        }));
+        #[cfg(not(feature = "rigid"))]
+        match bytes {
+            Some(_) => Err(argus_ecs::ArgusError::new(
+                argus_ecs::codes::BAD_STATE,
+                "the replay holds rigid bodies, and this build has no rigid-body module",
+            )),
+            None => Ok(RigidKeep()),
+        }
+    }
+}
+
 /// Everything a seek restores.
 #[derive(Clone)]
 pub struct Keyframe {
@@ -38,6 +105,8 @@ pub struct Keyframe {
     pub contacts: Vec<(Entity, Entity)>,
     /// The runtime maps' cells.
     pub tiles: argus_tiles::RuntimeCells,
+    /// The rigid bodies' state (phase 5 item 7).
+    pub rigid: RigidKeep,
     /// Taken at a load or after a change between ticks: never thinned.
     pub barrier: bool,
     /// Approximate bytes held.
@@ -71,6 +140,7 @@ impl Keyframe {
             rooms,
             contacts,
             tiles,
+            rigid: RigidKeep::default(),
             barrier: true,
             seq: 0,
         }
@@ -91,6 +161,8 @@ pub struct Sources {
     pub contacts: Rc<RefCell<argus_physics::Contacts>>,
     /// The maps, whose runtime ones' cells a keyframe keeps.
     pub tiles: Option<Rc<RefCell<argus_tiles::MapStore>>>,
+    /// The rigid bodies' store, when the game uses the module.
+    pub rigid: RigidSource,
 }
 
 /// A run's digest (§6, phase 5 item 4): the world's, and the runtime
@@ -126,14 +198,16 @@ impl Sources {
             .as_ref()
             .map(|t| t.borrow().runtime_cells())
             .unwrap_or_default();
+        let rigid = RigidKeep::capture(&self.rigid);
         Keyframe {
             tick: sched.tick(),
             time: sched.driving().time(),
             input: self.input.as_ref().map(|i| i.borrow().snapshot()),
             rooms: self.scene.as_ref().map(|s| s.borrow().stream_state()),
             contacts: self.contacts.borrow().pairs.clone(),
-            bytes: sim.world.bytes() + pool_bytes + cell_bytes(&tiles) + 1024,
+            bytes: sim.world.bytes() + pool_bytes + cell_bytes(&tiles) + rigid.bytes() + 1024,
             tiles,
+            rigid,
             sim,
             pools,
             barrier,
@@ -160,5 +234,6 @@ impl Sources {
         if let Some(t) = &self.tiles {
             t.borrow_mut().set_runtime_cells(&k.tiles);
         }
+        k.rigid.restore(&self.rigid);
     }
 }

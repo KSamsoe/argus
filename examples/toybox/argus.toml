@@ -1,0 +1,7 @@
+name = "toybox"
+clock = "continuous@60"
+default_scene = "toybox"
+plugins = []
+# The rigid-body module (Rapier): a physics toy, the example of the
+# engine's optional dynamic tier.
+modules = ["rigid"]

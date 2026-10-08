@@ -71,6 +71,9 @@ pub struct Assembly {
     /// The colliders overlapping at the end of the last tick, which a
     /// keyframe keeps.
     pub contacts: Rc<RefCell<argus_physics::Contacts>>,
+    /// The rigid bodies' store, when the game uses the module (phase 5
+    /// item 7), which a keyframe keeps.
+    pub rigid: crate::keyframe::RigidSource,
     /// The Luau host (scripts, defs).
     pub host: ScriptHost,
     /// The Rust plugins `argus.toml` lists, loaded and installed, and what
@@ -391,6 +394,7 @@ fn assemble_layers(
     let tiles = Rc::new(RefCell::new(argus_tiles::MapStore::new(root)));
     let contacts = Rc::new(RefCell::new(argus_physics::Contacts::default()));
     argus_physics::install_with(&mut world, &mut sched, tiles.clone(), contacts.clone())?;
+    let rigid = install_rigid(&mut world, &mut sched, &tiles, cfg)?;
     // Navigation over the tilemaps; its agents move after the physics.
     let nav = Rc::new(RefCell::new(argus_nav::NavStore::new(
         root,
@@ -521,6 +525,7 @@ fn assemble_layers(
         anims,
         particles,
         contacts,
+        rigid,
         host,
         plugins,
         project,
@@ -536,6 +541,40 @@ fn assemble_layers(
         audio,
         mods: crate::mods::Report::default(),
     })
+}
+
+/// The rigid-body module, when `argus.toml` lists it (phase 5 item 7).
+#[cfg(feature = "rigid")]
+fn install_rigid(
+    world: &mut World,
+    sched: &mut Scheduler,
+    tiles: &Rc<RefCell<argus_tiles::MapStore>>,
+    cfg: &ProjectConfig,
+) -> Result<crate::keyframe::RigidSource> {
+    if !cfg.uses("rigid") {
+        return Ok(None);
+    }
+    let store = Rc::new(RefCell::new(argus_rigid::RigidStore::new()));
+    argus_rigid::install(world, sched, tiles.clone(), store.clone())?;
+    Ok(Some(store))
+}
+
+/// A build without the rigid-body module cannot run a game that uses it.
+#[cfg(not(feature = "rigid"))]
+fn install_rigid(
+    _: &mut World,
+    _: &mut Scheduler,
+    _: &Rc<RefCell<argus_tiles::MapStore>>,
+    cfg: &ProjectConfig,
+) -> Result<crate::keyframe::RigidSource> {
+    if cfg.uses("rigid") {
+        return Err(ArgusError::new(
+            argus_ecs::codes::BAD_STATE,
+            format!("{} uses the rigid-body module, and this build does not have it", cfg.name),
+        )
+        .hint("argus build includes it for a game whose argus.toml lists modules = [\"rigid\"]; cargo builds it with --features rigid."));
+    }
+    Ok(())
 }
 
 /// Scripts' maps (`q:tiles`, phase 5 item 4): the session's map store, a

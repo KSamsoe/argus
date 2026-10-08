@@ -129,6 +129,12 @@ Phase 0 item 5, "TOML scenes, rooms, defs, and prefab overrides": this crate.
 |---|---|---|---|
 | "Re-inherited when the prefab changes", in a game that is running. | Done | Found: `reapply_prefab` wrote every field of every instance again, so a prefab change while a game ran put each instance's position, wounds, and the rest back to its file's. It now writes only what the change changed: each instance is compared as it resolved before and after, and a field whose value did not move is left as the game has it (a component or tag that came or went still syncs the whole entity). | `argus-daemon` `prefab_edit::a_prefab_changed_through_the_protocol_reaches_every_instance` (a wounded bat keeps its wound) |
 
+## Phase 5, item 7: the engine's optional modules
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§12) An optional module is the game's choice. | Done | `argus.toml`'s `modules` (`ProjectConfig::modules`, `uses`): the engine's optional modules the game uses, `rigid` for now (`MODULES`); a name the engine does not have is refused with the list. The daemon installs, and a release build carries, only those. | argus-daemon `rigid`; the toybox |
+
 ## Known limitations, stated so they are decisions
 
 - A child entity that exists only because a prefab declares it is not an "instance" of that prefab (`instances_of`), but it is counted among the entities a prefab change touched (`reapply_prefab`).

@@ -29,7 +29,7 @@ use serde_json::Value as Json;
 use std::path::Path;
 
 const TAG: &[u8; 4] = b"ARGR";
-const VERSION: u32 = 5;
+const VERSION: u32 = 6;
 
 /// A replay file, read back. The two worlds stay bytes until a live world
 /// (with the components registered) reads them.
@@ -49,6 +49,8 @@ pub struct ReplayFile {
     rooms: Option<StreamState>,
     contacts: Vec<(Entity, Entity)>,
     tiles: argus_tiles::RuntimeCells,
+    /// The rigid bodies' state at the keyframe (from version 6).
+    rigid: Option<Vec<u8>>,
     /// The input commands from the keyframe on.
     pub journal: Vec<JournalEntry>,
     end: Option<Vec<u8>>,
@@ -113,6 +115,7 @@ pub fn encode(
         w.u64(b.to_bits());
     }
     argus_tiles::encode_cells(&k.tiles, &mut w);
+    w.opt(k.rigid.encode().as_ref(), |w, b| w.bytes(b));
     w.count(journal.len());
     for e in journal {
         e.encode(&mut w);
@@ -160,6 +163,11 @@ pub fn decode(bytes: &[u8]) -> Result<ReplayFile> {
     } else {
         Vec::new()
     };
+    let rigid = if version >= 6 {
+        r.opt(|r| r.bytes().map(<[u8]>::to_vec))?
+    } else {
+        None
+    };
     let mut journal = Vec::new();
     for _ in 0..r.count()? {
         journal.push(JournalEntry::decode(&mut r)?);
@@ -186,6 +194,7 @@ pub fn decode(bytes: &[u8]) -> Result<ReplayFile> {
         rooms,
         contacts,
         tiles,
+        rigid,
         journal,
         end,
         end_cells,
@@ -200,7 +209,7 @@ impl ReplayFile {
         let report = world.decode_state(&self.world)?;
         let mut r = Reader::new(&self.pools, "replay file pools");
         let (pools, missing_effects) = store.decode_pools(&mut r)?;
-        let keyframe = Keyframe::read_back(
+        let mut keyframe = Keyframe::read_back(
             self.from,
             self.time,
             SimSnapshot {
@@ -213,6 +222,8 @@ impl ReplayFile {
             self.contacts.clone(),
             self.tiles.clone(),
         );
+        keyframe.rigid = crate::keyframe::RigidKeep::decode(self.rigid.as_deref())?;
+        keyframe.bytes += keyframe.rigid.bytes();
         Ok(ReadBack {
             keyframe,
             world: report,

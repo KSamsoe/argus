@@ -9,6 +9,10 @@ license.workspace = true
 # --crate-type cdylib`); natively it is a library, since a Windows DLL of it
 # would export more symbols than a DLL may hold.
 
+[features]
+# The rigid-body module, for a game whose argus.toml lists it.
+rigid = ["argus-player/rigid"]
+
 [dependencies]
 argus-player = { path = "../argus-player", version = "0.0.1" }
 argus-os = { path = "../argus-os", version = "0.0.1" }

@@ -1,0 +1,7 @@
+# Planks 0 and 1, hinged where they meet.
+[Joint]
+a = "@plank.0"
+b = "@plank.1"
+kind = "revolute"
+anchor_a = [0.5, 0.0]
+anchor_b = [-0.5, 0.0]

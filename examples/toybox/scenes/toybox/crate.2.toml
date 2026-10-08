@@ -1,0 +1,15 @@
+# One of a stack of five crates.
+[Transform]
+pos = [-10.0, 2.5]
+
+[Collider]
+size = [1.0, 1.0]
+
+[RigidBody]
+friction = 0.6
+
+[Sprite]
+kind = "rect"
+size = [1.0, 1.0]
+color = "#C08A4B"
+z = 1.0

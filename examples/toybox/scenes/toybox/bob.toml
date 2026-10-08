@@ -1,0 +1,15 @@
+# A pendulum's bob, hinged to a point in the air (hinge.toml).
+[Transform]
+pos = [11.0, 12.0]
+
+[Collider]
+radius = 0.5
+
+[RigidBody]
+density = 2.0
+
+[Sprite]
+kind = "circle"
+size = [1.0, 1.0]
+color = "#6FB7E9"
+z = 2.0

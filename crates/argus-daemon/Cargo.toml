@@ -48,7 +48,7 @@ argus-test = { path = "../argus-test", version = "0.0.1" }
 # The one scene assembly, keyframes, and replay files, shared with every
 # player (phase 2 item 7).
 argus-plugins = { path = "../argus-plugins", version = "0.0.1" }
-argus-player = { path = "../argus-player", version = "0.0.1", default-features = false }
+argus-player = { path = "../argus-player", version = "0.0.1", default-features = false, features = ["rigid"] }
 argus-render = { path = "../argus-render", version = "0.0.1", optional = true }
 argus-audio = { path = "../argus-audio", version = "0.0.1", optional = true }
 serde_json = "1"

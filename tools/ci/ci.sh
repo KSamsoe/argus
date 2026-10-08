@@ -30,7 +30,7 @@ EXE=""
 # one locks its binary against the next build.
 if [ "${CI:-}" = true ]; then
   if [ -x "target/debug/argus$EXE" ]; then
-    for g in swarm delve hollow outpost; do
+    for g in swarm delve hollow outpost toybox; do
       "target/debug/argus$EXE" --project "examples/$g" daemon stop > /dev/null 2>&1
     done
   fi
@@ -62,7 +62,7 @@ step_test() {
 step_games() {
   cargo build -q -p argus-cli || return 1
   local failed=0
-  for g in swarm delve hollow outpost; do
+  for g in swarm delve hollow outpost toybox; do
     echo "=== $g"
     "target/debug/argus$EXE" --project "examples/$g" test --software || failed=1
     "target/debug/argus$EXE" --project "examples/$g" daemon stop

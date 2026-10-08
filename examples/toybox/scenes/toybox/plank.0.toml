@@ -1,0 +1,15 @@
+# A plank of the rope bridge (pin.*.toml ties them).
+[Transform]
+pos = [-2.5, 4.0]
+
+[Collider]
+size = [0.96, 0.2]
+
+[RigidBody]
+density = 2.0
+
+[Sprite]
+kind = "rect"
+size = [0.96, 0.2]
+color = "#8C6A4F"
+z = 1.0
