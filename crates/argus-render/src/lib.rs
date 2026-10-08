@@ -1010,14 +1010,11 @@ impl Renderer {
                             0
                         };
                         let pivot = a.pivots.get(f).copied().unwrap_or([0.5, 0.5]);
-                        (
-                            run_of[ai as usize],
-                            a.frames[f],
-                            pivot,
-                            [1.0, 1.0, 1.0, 1.0],
-                        )
+                        (ai, a.frames[f], pivot, [1.0, 1.0, 1.0, 1.0])
                     }
                 };
+                // Drawn in its page's run; its frames stay its own atlas's.
+                let run = run_of[ai as usize] as u64;
                 if s.color != StrId::EMPTY {
                     let c = *colors.entry(s.color).or_insert_with(|| {
                         parse_color(&strings.resolve(s.color)).unwrap_or([1.0, 0.0, 1.0, 1.0])
@@ -1072,7 +1069,7 @@ impl Renderer {
                     zb | 0x8000_0000
                 } as u64;
                 instances.push((
-                    (zo << 32) | mk | ai as u64,
+                    (zo << 32) | mk | run,
                     Instance {
                         pos_size: [x, y, s.size.x * scale.x, s.size.y * scale.y],
                         rot_z: [rot, s.z, pivot[0], pivot[1]],
@@ -1093,7 +1090,7 @@ impl Renderer {
                         }
                         let w = s.blend.min(1.0);
                         instances.push((
-                            ((zo + 1) << 32) | mk | ai as u64,
+                            ((zo + 1) << 32) | mk | run,
                             Instance {
                                 pos_size: [x, y, s.size.x * scale.x, s.size.y * scale.y],
                                 rot_z: [rot, s.z, bp[0], bp[1]],

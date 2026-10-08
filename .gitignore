@@ -4,3 +4,4 @@
 **/shots/
 /target-web
 /target-web-small
+/examples/*/dist/

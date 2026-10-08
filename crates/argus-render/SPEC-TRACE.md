@@ -75,7 +75,7 @@ Every statement in the design document (v0.3) that constrains the renderer as ph
 
 | Spec | Status | Where | Test |
 |---|---|---|---|
-| (§15) Compressed textures in atlases, drawn. | Done | `Gpu::add_page` (`Texels::Rgba` or `Texels::Bc7`) and `Gpu::add_atlas_on`: atlases share a page's texture. The device asks for `TEXTURE_COMPRESSION_BC` where the adapter has it (`Gpu::bc`); without, a BC7 page is decoded on the CPU. `reload_sprites` loads each texture path once; the sprites on one page draw as one run. | `pages::bc7_blocks_draw_as_they_decode_here` (both modes, every adapter here that reads BC7: the GPU's decode and ours, pixel for pixel) |
+| (§15) Compressed textures in atlases, drawn. | Done | `Gpu::add_page` (`Texels::Rgba` or `Texels::Bc7`) and `Gpu::add_atlas_on`: atlases share a page's texture. The device asks for `TEXTURE_COMPRESSION_BC` where the adapter has it (`Gpu::bc`); without, a BC7 page is decoded on the CPU. `reload_sprites` loads each texture path once; the sprites on one page draw as one run, each still taking its frames from its own atlas (a crossfade's outgoing frame too: found by Kevin after item 1, when Hollow's hero stopping flashed the exit, the first sprite on its page). | `pages::bc7_blocks_draw_as_they_decode_here` (both modes, every adapter here that reads BC7: the GPU's decode and ours, pixel for pixel) |
 
 ## Phase 5, item 2: a colour-blind eye's view, and the screen reader
 

@@ -108,4 +108,35 @@ fn hollow_on_pages_looks_as_hollow_from_its_folder() {
             c.differing, c.pixels
         );
     }
+
+    // Running, then stopping: the animator fades the run's last frame out
+    // over the idle one, a frame from the hero's own sheet, not from the
+    // first sheet on its page (Kevin saw the exit flash over the hero).
+    for p in [&mut a, &mut b] {
+        p.inject("move", Some(&serde_json::json!([1, 0])), Some(40), false)
+            .unwrap();
+        p.step(40).unwrap();
+    }
+    let blend = |p: &Player| {
+        let e = p.world.entity("@player").unwrap();
+        p.world.get::<argus_render::Sprite>(e).unwrap().blend
+    };
+    let mut faded = 0;
+    for tick in 1..=20 {
+        a.step(1).unwrap();
+        b.step(1).unwrap();
+        if blend(&a) > 0.0 {
+            faded += 1;
+        }
+        let c = frame(&b)
+            .unwrap()
+            .compare(&frame(&a).unwrap(), 0.1)
+            .unwrap();
+        assert_eq!(
+            c.differing, 0,
+            "{tick} ticks after letting go, {} of {} pixels differ",
+            c.differing, c.pixels
+        );
+    }
+    assert!(faded > 0, "the hero's stop crossfaded");
 }
