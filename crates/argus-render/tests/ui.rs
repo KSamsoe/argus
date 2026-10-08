@@ -258,3 +258,113 @@ fn a_font_asset_draws_crisp_from_its_distance_field_at_any_size() {
     assert!(words > 150, "small words: {words} pixels");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn a_stem_thinner_than_a_pixel_keeps_its_ink_wherever_it_falls() {
+    // Outpost's HUD in a 640 x 360 frame (phase 5 item 3's look at the lit
+    // colony): its 15-pixel Liberation Sans at two thirds, where a stem is
+    // under a pixel wide. "colonists" lost the middle of its t, which read
+    // as two letters drawn over each other: the two pixels either side of
+    // the stem both read the field just under the edge, the field rising
+    // and falling again between them, so the edge's blend, measured as the
+    // field's change from one pixel to the next, closed to nothing. An l is
+    // a stem alone: drawn a tenth of a pixel further along each time, every
+    // one keeps its ink all down its height.
+    let dir = std::env::temp_dir().join(format!("argus-render-stem-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("assets/fonts")).unwrap();
+    std::fs::copy(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples/outpost/assets/fonts/LiberationSans-Regular.ttf"),
+        dir.join("assets/fonts/sans.ttf"),
+    )
+    .unwrap();
+    let mut imp = argus_assets::Importer::new(&dir);
+    imp.scan();
+    let (_, f) = imp.fonts().next().unwrap();
+    let font = Rc::new(argus_ui::SdfFont::from_asset("fonts/sans", f));
+    // Sizes whose l is a stem under a pixel wide at two thirds; where its
+    // ink is in its cell, between the field's margins.
+    let sizes = [15.0f32, 13.0, 12.0, 11.0];
+    let ink = |size: f32| {
+        let g = argus_ui::FontFace::glyphs(font.as_ref(), "l", size)[0].clone();
+        let margin = (f.spread.ceil() + 1.0) * size / f.size;
+        (g.y + margin, g.y + g.h - margin)
+    };
+    let (w_px, h_px) = (640u32, 360u32);
+    let k = w_px as f32 / 960.0;
+    let rs: Vec<Renderer> = [false, true]
+        .into_iter()
+        .filter_map(|software| Renderer::offscreen(w_px, h_px, software).ok())
+        .collect();
+    for mut r in rs {
+        let who = r.gpu().adapter.clone();
+        r.load_catalog(&imp).unwrap();
+        let (mut w, mut s, shared) = world();
+        shared.borrow_mut().fonts.add("fonts/sans", font.clone());
+        r.set_ui(Some(shared.clone()));
+        let top = node(&mut w, None, UiNode::default());
+        let (sans, white) = (
+            w.strings().intern("fonts/sans"),
+            w.strings().intern("#FFFFFF"),
+        );
+        let l = w.strings().intern("l");
+        // A row of ls a size, each a tenth of a target pixel further along.
+        let mut labels = Vec::new();
+        for (j, &size) in sizes.iter().enumerate() {
+            for i in 0..10 {
+                let e = node(
+                    &mut w,
+                    Some(top),
+                    UiNode {
+                        absolute: true,
+                        offset: Vec2::new(
+                            60.0 + 80.0 * i as f32 + 0.15 * i as f32,
+                            60.0 + 60.0 * j as f32,
+                        ),
+                        ..UiNode::default()
+                    },
+                );
+                w.insert(
+                    e,
+                    UiText {
+                        text: l,
+                        size,
+                        font: sans,
+                        color: white,
+                        wrap: false,
+                        ..UiText::default()
+                    },
+                )
+                .unwrap();
+                labels.push((size, i, e));
+            }
+        }
+        s.run_load(&mut w).unwrap();
+        let img = shot(&mut r, &w, "stem");
+        let bg = img.pixel(5, 5)[0];
+        let mut lost = Vec::new();
+        for &(size, i, e) in &labels {
+            let rect = w.get::<argus_ui::UiRect>(e).unwrap();
+            let cols =
+                (rect.pos.x * k).floor() as u32..((rect.pos.x + rect.size.x) * k).ceil() as u32;
+            // The middle half of its height, in the target's pixels.
+            let (a, b) = (rect.pos.y + ink(size).0, rect.pos.y + ink(size).1);
+            let rows = ((a + 0.25 * (b - a)) * k) as u32..((a + 0.75 * (b - a)) * k).ceil() as u32;
+            let brightest: Vec<u8> = rows
+                .clone()
+                .map(|y| cols.clone().map(|x| img.pixel(x, y)[0]).max().unwrap_or(0))
+                .collect();
+            println!("{who}: size {size} l {i} rows {rows:?} brightest {brightest:?}");
+            if !brightest.iter().all(|&v| v > bg.saturating_add(60)) {
+                lost.push(format!("size {size}, {i} tenths along: {brightest:?}"));
+            }
+        }
+        assert!(
+            lost.is_empty(),
+            "{who}: ls that lost their stems (the brightest pixel down the middle rows, over {bg}):\n{}",
+            lost.join("\n")
+        );
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}

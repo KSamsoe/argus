@@ -33,7 +33,7 @@ Every statement in the design document (v0.3) that constrains materials as phase
 
 | Spec | Status | Where | Test |
 |---|---|---|---|
-| (§12) SDF text is drawn by a material. | Done | The library's sixth built-in, `sdf_text`: the distance in the atlas's alpha, blended from the four texels around by hand (the atlas sampler is nearest), an edge `fwidth` wide; `edge` moves it (bolder or thinner) and `softness` widens it. | `material::every_parameters_struct_is_a_multiple_of_16_bytes_for_webgl2` compiles it; `argus-render` `ui::a_font_asset_draws_crisp_from_its_distance_field_at_any_size` draws it |
+| (§12) SDF text is drawn by a material. | Done | The library's sixth built-in, `sdf_text`: the distance in the atlas's alpha, blended from the four texels around by hand (the atlas sampler is nearest), an edge a pixel wide (the blend's slope times the texels a pixel spans, not `fwidth`, which closes to nothing across a stem under a pixel wide); `edge` moves it (bolder or thinner) and `softness` widens it. | `material::every_parameters_struct_is_a_multiple_of_16_bytes_for_webgl2` compiles it; `argus-render` `ui::a_font_asset_draws_crisp_from_its_distance_field_at_any_size` and `ui::a_stem_thinner_than_a_pixel_keeps_its_ink_wherever_it_falls` draw it |
 | (§15) Every material works on the web's WebGL2 fallback. | Done | `compose` pads the `Params` struct to the uniform's size, a multiple of 16 bytes. WebGL2 binds nothing between; a material of one or two numbers stopped the page on WebGL2 (found by the web check with `sdf_text`). | `material::every_parameters_struct_is_a_multiple_of_16_bytes_for_webgl2`, the web check's WebGL2 page |
 
 ## Phase 5, item 3: what glows
