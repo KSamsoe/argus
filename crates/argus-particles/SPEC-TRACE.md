@@ -27,7 +27,7 @@ Every statement in the design document (v0.3) that constrains particles as phase
 | (Phase 2 item 2.) The pools in a keyframe on disk. | Done | `ParticleStore::encode_pools` and `decode_pools`: each emitter's effect by name and its particles; a pool whose effect is gone is dropped and named. | `argus-daemon/tests/marks.rs` |
 | Deterministic from the seed (§6). | Done | Randomness comes from the system's own stream (`particles`) of the run's seed; emitters run in entity order. The same seed gives the same particles in the same places; another seed does not. | `the_same_seed_emits_the_same_particles` |
 | Assets are sidecars an agent can write; every import is an event with warnings (§14). | Done | As any sidecar: `asset.imported`, `asset.warning`, `asset.failed`. An emitter naming an effect that does not exist emits `particles.error` once, naming the effects that do. | `an_unknown_effect_is_reported_once`, `argus-daemon/tests/particles.rs` |
-| Every knob feel needs is a field the tuning panel can show (§13 decision). | Partial | `Emitter.rate_scale` is a tune field. The effect's own numbers live in its asset file, which reloads on import; showing them in the tuning panel is phase 2's. | `a_burst_then_the_rate_and_lifetimes_bound_the_pool` |
+| Every knob feel needs is a field the tuning panel can show (§13 decision). | Done (phase 5 item 3) | `Emitter.rate_scale` is a tune field, and so are the effect's own numbers: `argus_assets::KNOBS` names them (rate, burst, duration, lifetime, speed, direction, spread, gravity, drag, radius, box, and the velocity, size, and rotation curves' values) with a slider's span, a default, and a doc; the daemon's `tune.fields` lists them from each sidecar and `tune.set {asset}` moves them. `ParticleStore::tune` plays a sidecar's numbers in place of its file's from the next tick, the particles already out included, and an import in between keeps them, until `untune` puts the file's back; the session's end writes the file. | `a_burst_then_the_rate_and_lifetimes_bound_the_pool`, `tests::a_tuned_effect_plays_until_taken_off_and_an_import_keeps_it`, `argus-daemon/tests/tune_effects.rs`, `argus-editor/tests/tuning.rs` |
 
 ## §18 Build plan
 
@@ -37,7 +37,7 @@ Every statement in the design document (v0.3) that constrains particles as phase
 
 ## Known limitations, stated so they are decisions
 
-- Pools are presentation state. They are not in a world snapshot: a restored world starts with empty pools, and `Emitter.live` catches up on the next tick. A replay from the start reproduces them.
+- Pools are not in the world, but they feed it: `Emitter.live`, `particles.done`, and `auto_despawn` follow the particles' deaths, so an effect's lifetime, rate, burst, and duration steer ticks, and a change to an effect between ticks is a barrier keyframe (the daemon's trace). A world snapshot alone starts with empty pools; a keyframe and a save hold them (phase 2 item 2), each by its effect's name, and the particles put back play on under the effect as it is now. (This line said, until phase 5 item 3, that pools were in no snapshot at all.)
 - Particles go with their emitter's entity; `auto_despawn` waits for the last one before despawning it.
 - Particles collide with nothing.
 - A local effect follows its emitter's position, not its rotation or scale.

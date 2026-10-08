@@ -451,6 +451,8 @@ impl Game {
         let (w, h) = self.r.gpu().size();
         let view = argus_render::view_for(&self.p.world, w, h);
         let extras = self.p.tile_extras(view);
+        let edges = self.p.tile_occluders(view);
+        self.r.set_occluders(edges);
         self.r.set_time(self.p.sched.time() as f32);
         // The player's UI (a load replaces the player, and its UI with it).
         self.r.set_ui(Some(self.p.ui.clone()));

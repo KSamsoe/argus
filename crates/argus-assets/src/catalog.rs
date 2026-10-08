@@ -45,8 +45,8 @@ impl AutoMode {
 }
 
 /// One sprite as the catalog carries it; `texture` is the texture's path in
-/// the pack.
-fn sprite_json(e: &Entry, s: &SpriteAsset, texture: &str) -> Json {
+/// the pack, `normal` its normal map's.
+fn sprite_json(e: &Entry, s: &SpriteAsset, texture: &str, normal: Option<&str>) -> Json {
     let frames: Vec<Json> = s
         .frames
         .iter()
@@ -82,6 +82,7 @@ fn sprite_json(e: &Entry, s: &SpriteAsset, texture: &str) -> Json {
         "size": [s.width, s.height],
         "texture": texture,
         "texture_size": s.texture_size,
+        "normal": normal,
         "pixels_per_unit": s.pixels_per_unit,
         "frames": frames,
         "clips": clips,
@@ -215,6 +216,7 @@ fn sprite_from(j: &Json, root: &Path) -> Result<Entry> {
             height,
             texture: root.join(texture),
             texture_size: u32s::<2>(&j["texture_size"], &what("texture size"))?,
+            normal: j["normal"].as_str().map(|n| root.join(n)),
             frames,
             clips,
             pixels_per_unit: j["pixels_per_unit"].as_f64().unwrap_or(16.0) as f32,
@@ -248,8 +250,20 @@ impl Importer {
                 continue;
             };
             let rel = format!("{TEXTURES}/{name}.png");
-            sprites.push(sprite_json(e, s, &rel));
+            let normal = s
+                .normal
+                .as_ref()
+                .map(|n| (format!("{TEXTURES}/{name}.normal.png"), n));
+            sprites.push(sprite_json(
+                e,
+                s,
+                &rel,
+                normal.as_ref().map(|n| n.0.as_str()),
+            ));
             textures.push((rel, s.texture.clone()));
+            if let Some((rel, path)) = normal {
+                textures.push((rel, path.clone()));
+            }
             sources.extend(s.source.iter().map(|p| format!("assets/{p}")));
             sources.extend(e.sidecar.iter().map(|p| format!("assets/{p}")));
         }

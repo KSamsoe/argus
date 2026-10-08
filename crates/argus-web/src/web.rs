@@ -337,6 +337,7 @@ impl WebPlayer {
         let (w, h) = r.gpu().size();
         let view = argus_render::view_for(&self.p.world, w, h);
         let extras = self.p.tile_extras(view);
+        r.set_occluders(self.p.tile_occluders(view));
         let alpha = self.owed.clamp(0.0, 1.0) as f32;
         r.set_time(self.p.sched.time() as f32);
         r.set_ui(Some(self.p.ui.clone()));

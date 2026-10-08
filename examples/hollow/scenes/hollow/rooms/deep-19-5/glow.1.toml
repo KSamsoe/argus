@@ -12,3 +12,12 @@ z = -1.4
 [Describe]
 name = "glowing crystal"
 text = "A crystal glows violet in the dark, 5 rooms down."
+
+[Emissive]
+amount = 1.0
+
+[Light]
+color = "#E0C8FF"
+intensity = 0.8
+radius = 3.5
+falloff = 1.5

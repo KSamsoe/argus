@@ -1258,11 +1258,12 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "tune.fields",
-        doc: "The tune fields (tune = true) with their values, defaults, ranges, and docs: what the editor\'s tuning panel shows (section 10). Every one of an entity; or every one of the entities with an id, of the runtime entities (one by one while a component has 32 or fewer, as Outpost\'s job kinds; else one row with their count, tuned through what they are made from), and of the def tables\' rows (phase 4 item 3: {def: \"item:meal\", path: \"food\"}). label says what each is.",
+        doc: "The tune fields (tune = true) with their values, defaults, ranges, and docs: what the editor\'s tuning panel shows (section 10). Every one of an entity; or every one of the entities with an id, of the runtime entities (one by one while a component has 32 or fewer, as Outpost\'s job kinds; else one row with their count, tuned through what they are made from), of the def tables\' rows (phase 4 item 3: {def: \"item:meal\", path: \"food\"}), and of every particle effect\'s knobs (phase 5 item 3, section 13: the numbers in its sidecar a person tunes for feel, as the file writes them: {asset: \"fx/pop\", path: \"speed[1]\"}, the speed\'s max; \"size[0][1]\", the size at the curve\'s first point; rate, burst, duration, lifetime, direction, spread, gravity, drag, radius, box, and the velocity, size, and rotation curves\' values; not max, z, the shape, the colours, or a curve\'s t). An effect\'s value is the one it plays now, a session\'s or the file\'s; its range widens to hold the file\'s value. label says what each is.",
         params: &[
             opt("entity", STRING, "optional"),
+            opt("asset", STRING, "optional: one particle effect\'s knobs only, \"fx/pop\""),
         ],
-        returns: "{total, rows: [{entity | def | component, path, value, default, range, doc, label, runtime?, table?}], session: the open tuning session or null}",
+        returns: "{total, rows: [{entity | def | component | asset, path, value, default, range, doc, label, runtime?, table?, name? (an effect\'s: what its slider says, \"speed max\"), file? (an effect\'s sidecar)}], session: the open tuning session or null}",
     },
     MethodDoc {
         name: "tune.begin",
@@ -1275,19 +1276,20 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "tune.set",
-        doc: "The slider (section 10): set a tune field in the live world now, an entity\'s (entity, path Component.field) or a def row\'s (def \"item:meal\", path the field), with no file written, and log it with its frame. Opens a tuning session if none is open; tune.end commits the session\'s final values, to the entities\' files and the def tables\'. A field that is not a tune field is refused.",
+        doc: "The slider (section 10): set a tune field in the live world now, an entity\'s (entity, path Component.field), a def row\'s (def \"item:meal\", path the field), or a particle effect\'s knob (asset \"fx/pop\", path as tune.fields lists it, \"speed[1]\"), with no file written, and log it with its frame. An effect plays its sidecar with the value in it from the next tick, particles already out included; it is project data, like a def row, so the change is a barrier keyframe no replay crosses. Opens a tuning session if none is open; tune.end commits the session\'s final values, to the entities\' files, the def tables\', and the effects\' sidecars (edit.asset, comments kept). A field that is not a tune field is refused, and so is a knob\'s value out of its range or one the effect would not read with (a speed\'s min past its max: set the max first); nothing changes then.",
         params: &[
-            opt("entity", STRING, "one of entity, def"),
-            opt("def", STRING, "one of entity, def: a def row, \"item:meal\""),
-            req("path", STRING, "Component.field for an entity; the field for a def row"),
-            req("value", ANY, ""),
+            opt("entity", STRING, "one of entity, def, asset"),
+            opt("def", STRING, "one of entity, def, asset: a def row, \"item:meal\""),
+            opt("asset", STRING, "one of entity, def, asset: a particle effect, \"fx/pop\""),
+            req("path", STRING, "Component.field for an entity; the field for a def row; the knob\'s path in the sidecar for an effect (\"speed[1]\", \"size[0][1]\", \"drag\")"),
+            req("value", ANY, "an effect\'s knob is a number"),
             opt("author", STRING, "default \"human\", when it opens the session"),
         ],
-        returns: "{entity | def, path, from, to, session}",
+        returns: "{entity | def | asset, path, from, to, session}",
     },
     MethodDoc {
         name: "tune.end",
-        doc: "End the tuning session: its final values are committed as one ordinary transaction by the session's author (one feed row; one undo goes back to where the session started), or with commit: false put back as they were. Closing the game's window, or loading a scene, ends a session and commits it.",
+        doc: "End the tuning session: its final values are committed as one ordinary transaction by the session's author (one feed row; one undo goes back to where the session started), or with commit: false put back as they were. A particle effect's knobs are written into its sidecar as edit.asset ops, its comments and layout kept, and one undo puts back the file's exact text. Closing the game's window, or loading a scene, ends a session and commits it.",
         params: &[
             opt("commit", BOOLEAN, "default true"),
             opt("note", STRING, "the transaction's"),
@@ -1447,7 +1449,7 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "obs.frame",
-        doc: "What the player sees. format \"semantic\" (section 8 L4) is data, about 3 KB, and needs no GPU: the camera and the world rect it shows; hud, the lines of entities on the screen rather than in the world; entities, the described and named ones in view with their Describe text filled in, bounds in pixels (x0, y0, x1, y1, y down) of a width x height frame, z, and how they are drawn, in reading order; groups, everything else by kind (their game components, else their name or look) with a count, bounds, and the first ids; effects on screen (camera shake, particles, materials); tiles, what the tilemaps in view collide with, a character a cell; and bytes. The same frame is a screen-reader feed. format \"png\" (section 8 L5) renders the world as it is now and writes a PNG; with annotate: true the ids and bounds of the semantic frame are drawn over it (yellow for entities, cyan for groups) and returned as marks. Sprites come from the world and the view from the drawing camera (the active Camera with the highest priority, its shake included); described shapes need no asset.",
+        doc: "What the player sees. format \"semantic\" (section 8 L4) is data, about 3 KB, and needs no GPU: the camera and the world rect it shows; hud, the lines of entities on the screen rather than in the world; entities, the described and named ones in view with their Describe text filled in, bounds in pixels (x0, y0, x1, y1, y down) of a width x height frame, z, and how they are drawn, in reading order; groups, everything else by kind (their game components, else their name or look) with a count, bounds, and the first ids; effects on screen (camera shake, post passes, particles, materials); lighting, when the drawing camera has Lighting (phase 5 item 3): the ambient light and its level, and each Light reaching the view with where it is on the screen, how far it reaches in pixels, its colour and strength, a cone's direction and angle; tiles, what the tilemaps in view collide with, a character a cell; and bytes. The same frame is a screen-reader feed. format \"png\" (section 8 L5) renders the world as it is now and writes a PNG; with annotate: true the ids and bounds of the semantic frame are drawn over it (yellow for entities, cyan for groups) and returned as marks. Sprites come from the world and the view from the drawing camera (the active Camera with the highest priority, its shake included); described shapes need no asset.",
         params: &[
             opt("format", STRING, "\"png\" (default) | \"semantic\""),
             opt("width", INTEGER, "default 640"),
@@ -1461,7 +1463,7 @@ pub const METHODS: &[MethodDoc] = &[
             opt("golden", STRING, "png only: a picture to compare with (an image golden, section 9): compare says how many pixels a person would see differ, and writes a difference picture beside path"),
             opt("threshold", NUMBER, "with golden: how different a pixel must be to count, 0 to 1 (default 0.1, a person's eye; 0 counts any change)"),
         ],
-        returns: "png: {path, width, height, tick, see_as, alpha, sprites, draw_calls, atlases, missing_atlases, interpolated, particles, materials, missing_materials, material_problems, camera, view: {center, half, angle, rect: [x0, y0, x1, y1]}, adapter, ms, marks?, compare?: {golden, threshold, pixels, differing, fraction, worst, diff}}; semantic: {format, size, camera: {id, rect, angle}, hud: [{id, name?, role?, text, bounds?}], columns: [id, name, text, bounds, z, look], entities, groups: [{what, count, bounds, look, ids}], effects, omitted, problems, tick, time, tiles?: {key, maps: [{entity, map, cell, step, at: [x, y, px a cell], rows}]}, bytes}",
+        returns: "png: {path, width, height, tick, see_as, alpha, sprites, draw_calls, atlases, missing_atlases, interpolated, particles, lights, shadow_edges, glowing, materials, missing_materials, material_problems, camera, view: {center, half, angle, rect: [x0, y0, x1, y1]}, adapter, ms, marks?, compare?: {golden, threshold, pixels, differing, fraction, worst, diff}}; semantic: {format, size, camera: {id, rect, angle}, hud: [{id, name?, role?, text, bounds?}], columns: [id, name, text, bounds, z, look], entities, groups: [{what, count, bounds, look, ids}], effects, lighting?: {ambient, level, shadows, lights: [{id, kind, at, radius_px, color, intensity, direction?, angle?, shadows?, flicker?}], omitted?}, omitted, problems, tick, time, tiles?: {key, maps: [{entity, map, cell, step, at: [x, y, px a cell], rows}]}, bytes}",
     },
     MethodDoc {
         name: "obs.annotate",

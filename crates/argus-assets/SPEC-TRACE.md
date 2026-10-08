@@ -58,6 +58,15 @@ Every statement in the design document (v0.3) that constrains the asset importer
 |---|---|---|---|
 | (§15) Compressed textures in atlases. | Done | `bc7`: an encoder for BC7's modes 5 and 6 (a line fitted by principal axis, the ends refitted by least squares, exact alpha at 0 and 255 a hard rule), a decoder for them, and `looks_same`; `pages::page` packs a catalog's sprites onto pages (see argus-player's trace). Sounds are probed from their bytes, WAV or Vorbis. | `bc7::tests` (soft art compresses unseen, two colours and clear are exact, three colours in a block are refused) |
 
+## Phase 5, item 3: an effect's knobs, and normal maps
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§12) "Normal-mapped sprites optional": the map. | Done | `<name>.normal.png` beside `<name>.png` is the sprite's normal map, imported with it (`SpriteAsset.normal`, cached and padded as the image is), not a sprite of its own. One of another size, or with no image beside it, is refused with why. A release pack keeps a normal-mapped sprite on a texture of its own, its normal map beside it (`pages`: `normal_mapped`), and its catalog says where. | `argus-player` `tests/release_normals.rs` |
+| (§13) "Every knob it needs must be a field the tuning panel can show": which of an emitter's numbers are knobs. | Done | `effect.rs`: `KNOBS`, beside the parser, each with how it is written (a number, two numbers, a curve), a slider's span, the parser's default, whether it counts (burst), and a doc. `knobs(text)` finds them in a sidecar's text in its own shape, by `edit.asset`'s paths: `drag`, `speed[1]`, `size[0][1]` (the value at a curve's first point). Not knobs: `max`, `z`, `shape`, `space`, `sprite`, `particle`, `frame`, `material`, the colours, and a curve's t. | `effect::tests::the_knobs_are_the_numbers_a_person_tunes_in_the_files_own_shape` |
+| Found: a box wider than tall was refused. | Done | `box = [w, h]` was read as a `[min, max]` range, so `[4, 1]` failed "min first"; it is a size now, each 0 or more, and one number is a square. | `effect::tests::a_box_is_as_wide_as_it_likes_and_a_range_is_min_first` |
+| Found: a file written twice in a moment at one length kept its stamp. | Done | `Importer::touch(name)`: the next scan reads that asset's files whatever their time and length say, and its content decides whether it is an import. The daemon touches a sidecar it writes. | `argus-particles` `tests::a_tuned_effect_plays_until_taken_off_and_an_import_keeps_it` |
+
 ## Known limitations, stated so they are decisions
 
 - The watcher polls file metadata twice a second rather than using OS notifications. It is deterministic, has no dependency, and costs one metadata read per file.

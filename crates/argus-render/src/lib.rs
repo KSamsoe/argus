@@ -16,6 +16,7 @@
 pub mod access;
 pub mod annotate;
 pub mod gpu;
+pub mod light;
 pub mod post;
 pub mod see_as;
 pub mod semantic;
@@ -33,6 +34,7 @@ use std::path::Path;
 
 pub use annotate::{annotate, Mark};
 pub use gpu::{DrawStats, Gpu, Instance, Page, Run, Texels, UiDraw};
+pub use light::{LightFrame, LightInstance};
 pub use see_as::SeeAs;
 pub use semantic::{semantic, Describe, FrameSpec, SemanticFrame, View};
 
@@ -389,6 +391,14 @@ pub struct FrameReport {
     pub camera: Option<Entity>,
     /// Particles drawn (those in view).
     pub particles: usize,
+    /// Lights drawn (2D lighting on: those reaching the view).
+    pub lights: usize,
+    /// Occluder edges the lights' shadows were cast from (tiles' and
+    /// Occluders').
+    pub shadow_edges: usize,
+    /// Sprites and particles drawn after the light, unlit (Emissive, or an
+    /// emissive material).
+    pub glowing: usize,
     /// Sprites naming a material that is not loaded (drawn plain).
     pub missing_materials: Vec<String>,
     /// What stopped a material's parameter from being read this frame: a
@@ -412,6 +422,51 @@ pub struct Extra {
     pub size: [f32; 2],
     /// Draw order.
     pub z: f32,
+}
+
+/// Runs of instances into `flat` and `runs`: back to front by z, runs by
+/// material and atlas within equal z, one draw a run; particle groups go in
+/// after the sprites with the same key. The low 32 bits of a key are the
+/// material (high 16) and the atlas.
+fn runs_of(
+    instances: &mut [(u64, Instance)],
+    groups: &[(u64, usize, usize)],
+    pflat: &[Instance],
+    flat: &mut Vec<Instance>,
+    runs: &mut Vec<Run>,
+) {
+    instances.sort_unstable_by_key(|x| x.0);
+    let mut run_key = u64::MAX;
+    let mut open = |k: u64, n: usize, at: usize, runs: &mut Vec<Run>| {
+        if k == run_key {
+            if let Some(r) = runs.last_mut() {
+                r.count += n;
+                return;
+            }
+        }
+        run_key = k;
+        runs.push(Run {
+            atlas: (k & 0xffff) as usize,
+            material: ((k >> 16) & 0xffff) as usize,
+            start: at,
+            count: n,
+        });
+    };
+    let mut g = 0;
+    for (key, inst) in instances.iter() {
+        while g < groups.len() && groups[g].0 < *key {
+            let (k, a, b) = groups[g];
+            open(k & 0xffff_ffff, b - a, flat.len(), runs);
+            flat.extend_from_slice(&pflat[a..b]);
+            g += 1;
+        }
+        open(*key & 0xffff_ffff, 1, flat.len(), runs);
+        flat.push(*inst);
+    }
+    for &(k, a, b) in &groups[g..] {
+        open(k & 0xffff_ffff, b - a, flat.len(), runs);
+        flat.extend_from_slice(&pflat[a..b]);
+    }
 }
 
 /// The area a `width` x `height` target shows: centre and half extents in
@@ -464,6 +519,10 @@ pub struct Renderer {
     /// Clear colour, linear RGBA.
     pub clear: [f32; 4],
     last: FrameReport,
+    /// Solid tiles' edges for the next frames' shadows (phase 5 item 3).
+    occluders: Vec<argus_light::Edge>,
+    /// Sim seconds: a light's flicker.
+    time: f64,
 }
 
 /// A material the renderer has compiled: where it is on the GPU, and what
@@ -588,6 +647,8 @@ impl Renderer {
             compile_ms: 0.0,
             clear: [0.06, 0.06, 0.08, 1.0],
             last: FrameReport::default(),
+            occluders: Vec::new(),
+            time: 0.0,
         }
     }
 
@@ -671,6 +732,7 @@ impl Renderer {
 
     /// Sim seconds, which every material reads as `in.time`.
     pub fn set_time(&mut self, seconds: f32) {
+        self.time = seconds as f64;
         self.gpu.set_time(seconds);
     }
 
@@ -763,6 +825,19 @@ impl Renderer {
                 .collect();
             let pivots: Vec<[f32; 2]> = s.frames.iter().map(|f| f.pivot).collect();
             self.gpu.add_atlas_on(name, &page, frames, pivots);
+            // Its normal map (phase 5 item 3), the same layout as its texture.
+            if let Some(n) = &s.normal {
+                let (w, h, rgba) = argus_assets::decode_png(n)?;
+                if !self.gpu.set_atlas_normal(name, w, h, &rgba) {
+                    return Err(ArgusError::new(
+                        codes::GPU,
+                        format!(
+                            "{name}: its normal map is {w}x{h}, its texture {}x{}",
+                            page.width, page.height
+                        ),
+                    ));
+                }
+            }
         }
         Ok(())
     }
@@ -798,6 +873,13 @@ impl Renderer {
         alpha: f32,
     ) -> argus_ecs::Result<FrameReport> {
         self.render_with(world, tick, alpha, &[])
+    }
+
+    /// The edges of the solid tiles around the view, for the next frames'
+    /// shadows (`argus_light::tile_edges` over `argus_light::reach`); the
+    /// renderer adds the Occluders' itself. Unused with lighting off.
+    pub fn set_occluders(&mut self, edges: Vec<argus_light::Edge>) {
+        self.occluders = edges;
     }
 
     /// The area this target would show: centre and half extents in world
@@ -924,6 +1006,30 @@ impl Renderer {
             .collect();
         let mut mat_of: HashMap<StrId, usize> = HashMap::new();
 
+        // 2D lighting (phase 5 item 3): only with Lighting on the drawing
+        // camera; then what glows is drawn after the light, unlit.
+        let lighting = argus_light::lighting(world).map(|(_, l)| l);
+        let mut glow_of: HashMap<Entity, f32> = HashMap::new();
+        let mut emissive_mats: std::collections::HashSet<usize> = Default::default();
+        if lighting.is_some() {
+            if let Some(em) = world.component_id_of::<argus_light::Emissive>() {
+                for e in world.query().has(em).entities() {
+                    if let Ok(g) = world.get::<argus_light::Emissive>(e) {
+                        if g.amount > 0.0 {
+                            glow_of.insert(e, g.amount.min(1.0));
+                        }
+                    }
+                }
+            }
+            emissive_mats = self
+                .materials
+                .values()
+                .filter(|m| m.spec.emissive)
+                .map(|m| m.index)
+                .collect();
+        }
+        let mut glow: Vec<(u64, Instance)> = Vec::new();
+
         let mut instances: Vec<(u64, Instance)> = Vec::new();
         let mut missing: Vec<String> = Vec::new();
         let mut interpolated = 0usize;
@@ -960,6 +1066,7 @@ impl Renderer {
             let gpu = &self.gpu;
             let mat_of = &mut mat_of;
             let missing_mats = &mut missing_mats;
+            let (glow_of, glow) = (&glow_of, &mut glow);
             let (sprite_defaults, sprite_reads, mat_by_name) =
                 (&sprite_defaults, &sprite_reads, &mat_by_name);
             let mut push = |e: Entity, x: f32, y: f32, rot: f32, scale: Vec2, s: &Sprite| {
@@ -1068,16 +1175,21 @@ impl Renderer {
                 } else {
                     zb | 0x8000_0000
                 } as u64;
-                instances.push((
-                    (zo << 32) | mk | run,
-                    Instance {
-                        pos_size: [x, y, s.size.x * scale.x, s.size.y * scale.y],
-                        rot_z: [rot, s.z, pivot[0], pivot[1]],
-                        uv,
-                        color,
-                        extra,
-                    },
-                ));
+                let inst = Instance {
+                    pos_size: [x, y, s.size.x * scale.x, s.size.y * scale.y],
+                    rot_z: [rot, s.z, pivot[0], pivot[1]],
+                    uv,
+                    color,
+                    extra,
+                };
+                instances.push(((zo << 32) | mk | run, inst));
+                // Lit, an Emissive sprite again after the light, at its own
+                // colour by its amount.
+                if let Some(&k) = glow_of.get(&e) {
+                    let mut g = inst;
+                    g.color[3] *= k;
+                    glow.push(((zo << 32) | mk | run, g));
+                }
                 // A crossfade: the outgoing frame over this one, fading.
                 if s.blend > 0.0 && s.atlas != StrId::EMPTY && ai != rect && ai != circle {
                     if let Some(a) = gpu.atlas(&names[ai as usize]) {
@@ -1118,6 +1230,104 @@ impl Renderer {
                         push(e, g.pos.x, g.pos.y, g.rot, g.scale, s)
                     })?;
             }
+        }
+        // The lights reaching the view, placed between ticks as sprites
+        // are, each with its shadow (phase 5 item 3).
+        let mut light_frame: Option<LightFrame> = None;
+        let mut shadow_edges = 0usize;
+        if let Some(lit) = lighting {
+            let mut frame = LightFrame::default();
+            let strings = world.strings();
+            let mut col = |id: StrId, default: [f32; 4]| {
+                if id == StrId::EMPTY {
+                    return default;
+                }
+                *self.colors.entry(id).or_insert_with(|| {
+                    parse_color(&strings.resolve(id)).unwrap_or([1.0, 0.0, 1.0, 1.0])
+                })
+            };
+            let a = col(lit.ambient, [0.0, 0.0, 0.0, 1.0]);
+            let level = lit.level.max(0.0);
+            frame.ambient = [a[0] * level, a[1] * level, a[2] * level];
+            let sprites = if lit.shadows {
+                argus_light::occluder_edges(world)
+            } else {
+                Vec::new()
+            };
+            let tiles: &[argus_light::Edge] = if lit.shadows && lit.tiles {
+                &self.occluders
+            } else {
+                &[]
+            };
+            shadow_edges = sprites.len() + tiles.len();
+            let box_half = rolled(half, angle);
+            if let Some(lc) = world.component_id_of::<argus_light::Light>() {
+                for e in world.query().has(lc).entities() {
+                    let Ok(l) = world.get::<argus_light::Light>(e) else {
+                        continue;
+                    };
+                    if !l.on || l.radius <= 0.0 || l.intensity <= 0.0 {
+                        continue;
+                    }
+                    let Some((mut pos, mut rot, scale)) = argus_light::pose(world, e) else {
+                        continue;
+                    };
+                    let idx = e.index() as usize;
+                    if next_prev.len() <= idx {
+                        next_prev.resize(idx + 1, None);
+                    }
+                    next_prev[idx] = Some((e, pos[0], pos[1], rot, tick));
+                    if let Some(Some((pe, px, py, pr, pt))) = self.prev.get(idx) {
+                        if *pe == e && pt + 1 == tick && alpha < 1.0 {
+                            pos = [px + (pos[0] - px) * alpha, py + (pos[1] - py) * alpha];
+                            rot = pr + (rot - pr) * alpha;
+                        }
+                    }
+                    let flipped = argus_light::flipped(world, e);
+                    let (p, dir) = argus_light::aim(pos, rot, scale, flipped, &l);
+                    let r = l.radius;
+                    if (p[0] - center[0]).abs() > box_half[0] + r
+                        || (p[1] - center[1]).abs() > box_half[1] + r
+                    {
+                        continue;
+                    }
+                    let c = col(l.color, [1.0; 4]);
+                    let k = l.intensity * argus_light::flicker(e, self.time, l.flicker);
+                    let cone = if l.angle < 180.0 {
+                        let outer = l.angle.max(0.0).to_radians();
+                        let inner = outer * (1.0 - l.softness.clamp(0.0, 1.0));
+                        [dir.cos(), dir.sin(), outer.cos(), inner.cos()]
+                    } else {
+                        [1.0, 0.0, -2.0, -2.0]
+                    };
+                    frame.lights.push(LightInstance {
+                        pos_radius: [p[0], p[1], r, l.falloff.max(0.01)],
+                        color: [c[0] * k, c[1] * k, c[2] * k, l.height],
+                        cone,
+                    });
+                    let start = frame.shadow.len();
+                    if lit.shadows && l.shadows {
+                        // Not by its own entity's occluder, nor its parent's
+                        // (a hero's lantern, a lamp's post).
+                        let parent = world.get::<argus_ecs::Parent>(e).ok().map(|x| x.entity);
+                        argus_light::shadow(
+                            p,
+                            r,
+                            tiles.iter().copied().chain(
+                                sprites
+                                    .iter()
+                                    .filter(|(o, _)| *o != e && Some(*o) != parent)
+                                    .map(|(_, x)| *x),
+                            ),
+                            &mut frame.shadow,
+                        );
+                    }
+                    frame
+                        .shadow_of
+                        .push((start as u32, (frame.shadow.len() - start) as u32));
+                }
+            }
+            light_frame = Some(frame);
         }
         self.seen = next_prev;
 
@@ -1294,47 +1504,32 @@ impl Renderer {
         }
         let particle_count = pflat.len();
 
-        // Back to front by z, atlas runs within equal z: one draw per run.
-        // Particle groups go in after the sprites with the same key.
-        instances.sort_unstable_by_key(|x| x.0);
+        // Lit, what an emissive material draws glows: after the light.
+        let mut glow_groups: Vec<(u64, usize, usize)> = Vec::new();
+        if !emissive_mats.is_empty() {
+            let is_glow = |k: u64| emissive_mats.contains(&(((k >> 16) & 0xffff) as usize));
+            let (g, keep): (Vec<_>, Vec<_>) = instances.into_iter().partition(|x| is_glow(x.0));
+            instances = keep;
+            glow.extend(g);
+            let (g, keep): (Vec<_>, Vec<_>) = groups.into_iter().partition(|x| is_glow(x.0));
+            groups = keep;
+            glow_groups = g;
+        }
+        let glowing = glow.len() + glow_groups.iter().map(|g| g.2 - g.1).sum::<usize>();
         let mut runs: Vec<Run> = Vec::new();
-        let mut flat: Vec<Instance> = Vec::with_capacity(instances.len() + pflat.len());
-        let mut run_key = u64::MAX;
-        // The low 32 bits of a key are the material (high 16) and the atlas.
-        let mut open = |k: u64, n: usize, at: usize, runs: &mut Vec<Run>| {
-            if k == run_key {
-                if let Some(r) = runs.last_mut() {
-                    r.count += n;
-                    return;
-                }
-            }
-            run_key = k;
-            runs.push(Run {
-                atlas: (k & 0xffff) as usize,
-                material: ((k >> 16) & 0xffff) as usize,
-                start: at,
-                count: n,
-            });
-        };
-        let mut g = 0;
-        for (key, inst) in &instances {
-            while g < groups.len() && groups[g].0 < *key {
-                let (k, a, b) = groups[g];
-                open(k & 0xffff_ffff, b - a, flat.len(), &mut runs);
-                flat.extend_from_slice(&pflat[a..b]);
-                g += 1;
-            }
-            open(*key & 0xffff_ffff, 1, flat.len(), &mut runs);
-            flat.push(*inst);
-        }
-        for &(k, a, b) in &groups[g..] {
-            open(k & 0xffff_ffff, b - a, flat.len(), &mut runs);
-            flat.extend_from_slice(&pflat[a..b]);
-        }
+        let mut flat: Vec<Instance> =
+            Vec::with_capacity(instances.len() + pflat.len() + glow.len());
+        runs_of(&mut instances, &groups, &pflat, &mut flat, &mut runs);
+        let mut glow_runs: Vec<Run> = Vec::new();
+        runs_of(&mut glow, &glow_groups, &pflat, &mut flat, &mut glow_runs);
         // Each material drawn this frame: its uniform (its defaults, what
         // named entities give it now, where its textures' frames are).
         // The runs say which: a handful, however many sprites.
-        let used: std::collections::HashSet<usize> = runs.iter().map(|r| r.material).collect();
+        let used: std::collections::HashSet<usize> = runs
+            .iter()
+            .chain(glow_runs.iter())
+            .map(|r| r.material)
+            .collect();
         for (i, why) in read_problems {
             if used.contains(&i) {
                 problems.push(why);
@@ -1417,6 +1612,11 @@ impl Renderer {
 
         let post = self.post_passes(world, camera);
         self.gpu.set_post(post);
+        let lights = light_frame.as_ref().map_or(0, |f| f.lights.len());
+        self.gpu.set_light(light_frame.map(|mut f| {
+            f.glow = glow_runs;
+            f
+        }));
         let ui = self.ui_draw(world, &mut flat);
         let stats = self
             .gpu
@@ -1430,6 +1630,9 @@ impl Renderer {
             view_angle: angle,
             camera,
             particles: particle_count,
+            lights,
+            shadow_edges,
+            glowing,
             missing_materials: missing_mats,
             material_problems: problems,
             ms: started.elapsed().as_secs_f64() * 1e3,
@@ -1698,6 +1901,16 @@ impl Renderer {
                     f.order,
                     color(f.color, [0.0, 0.0, 0.0, 1.0]),
                     [f.amount, 0.0, 0.0, 0.0],
+                ));
+            }
+        }
+        if let Ok(c) = world.get::<PostCrt>(cam) {
+            if c.amount > 0.0 {
+                out.push(pass(
+                    PostKind::Crt,
+                    c.order,
+                    [c.amount, c.scanlines, c.lines, c.curvature],
+                    [c.bleed, c.mask, 0.0, 0.0],
                 ));
             }
         }

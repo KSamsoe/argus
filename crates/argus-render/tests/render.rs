@@ -641,6 +641,31 @@ fn post_passes_change_the_picture_in_order() {
     w.remove(cam, w.component_id("PostVignette").unwrap())
         .unwrap();
 
+    // CRT (phase 5 item 3): the curved glass leaves the corner black, and
+    // down the middle the rows go light and dark with the scanlines.
+    w.insert(
+        cam,
+        PostCrt {
+            curvature: 0.2,
+            scanlines: 1.0,
+            lines: 20.0,
+            bleed: 0.0,
+            mask: 0.0,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let img = shot(&mut r, &w, "crt");
+    assert_eq!(
+        img.pixel(0, 0)[..3],
+        [0, 0, 0],
+        "the corner, past the glass"
+    );
+    let reds: Vec<u8> = (75..105).map(|y| img.pixel(160, y)[0]).collect();
+    let (lo, hi) = (*reds.iter().min().unwrap(), *reds.iter().max().unwrap());
+    assert!(hi > 220 && lo < 100, "scanlines down the rect: {reds:?}");
+    w.remove(cam, w.component_id("PostCrt").unwrap()).unwrap();
+
     // Palette: red becomes one of the four greens.
     w.insert(cam, PostPalette::default()).unwrap();
     let img = shot(&mut r, &w, "palette");
@@ -776,4 +801,45 @@ fn perf_post_stack_five_passes_at_1080p() {
         r.gpu().adapter
     );
     assert!(cost < 1.5, "five passes took {cost:.3} ms");
+    // Phase 5 item 3: lighting must not break the row. Sixteen lights,
+    // each casting shadows from a hundred boxes, with the five passes.
+    argus_light::register(&mut w).unwrap();
+    w.insert(cam, argus_light::Lighting::default()).unwrap();
+    for i in 0..100 {
+        let e = w.spawn();
+        let at = ((i % 20) as f32 * 1.5 - 15.0, (i / 20) as f32 * 2.0 - 4.0);
+        w.insert(e, Transform::at(at.0, at.1)).unwrap();
+        w.insert(
+            e,
+            argus_light::Occluder {
+                size: Vec2::new(0.5, 0.5),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    }
+    for i in 0..16 {
+        let e = w.spawn();
+        let at = ((i % 8) as f32 * 4.0 - 14.0, (i / 8) as f32 * 6.0 - 3.0);
+        w.insert(e, Transform::at(at.0, at.1)).unwrap();
+        w.insert(
+            e,
+            argus_light::Light {
+                radius: 6.0,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    }
+    let lit = time(&mut r, &w);
+    let rep = r.render(&w, 0, 1.0).unwrap();
+    assert_eq!(rep.lights, 16);
+    let cost = lit - without;
+    println!(
+        "and lit by {} lights over {} occluder edges: {lit:.3} ms a frame, {:.3} ms for the lighting, {cost:.3} ms with the passes",
+        rep.lights,
+        rep.shadow_edges,
+        lit - with
+    );
+    assert!(cost < 1.5, "five passes and the lighting took {cost:.3} ms");
 }

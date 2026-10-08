@@ -11,3 +11,13 @@ z = 2.0
 
 [lanterns_Lantern]
 phase = 0.7
+
+# Its light (phase 5 item 3): out until the keeper lights it, then warm
+# and flickering on the rock around it (systems/flicker.luau).
+[Light]
+color = "#FFC060"
+intensity = 1.0
+radius = 4.5
+falloff = 1.6
+flicker = 0.25
+on = false

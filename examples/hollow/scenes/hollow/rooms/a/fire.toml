@@ -1,0 +1,25 @@
+# The hermit's fire (phase 5 item 3): a few embers at his feet, glowing in
+# the dark of the cave mouth and flickering on the rock around him, so he is
+# seen from across the cave before the lantern reaches him.
+[Transform]
+pos = [8.0, 1.2]
+
+[Sprite]
+kind = "circle"
+size = [0.4, 0.4]
+color = "#FF8A3A"
+z = 4.5
+
+[Emissive]
+amount = 1.0
+
+[Light]
+color = "#FF9A48"
+intensity = 1.1
+radius = 4.0
+falloff = 1.6
+flicker = 0.35
+
+[Describe]
+name = "fire"
+text = "The hermit's fire, a few embers."

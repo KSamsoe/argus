@@ -21,3 +21,17 @@ active = true
 [Describe]
 name = "gem"
 text = "Something glints."
+
+# It glints in the dark of the shaft (phase 5 item 3): drawn at its own
+# colour whatever the light, with a little light of its own on the rock
+# by it, so it is seen from the planks below. Gone with the gem when it is
+# taken (systems/light.luau).
+[Emissive]
+amount = 1.0
+
+[Light]
+color = "#5FE0D0"
+intensity = 0.9
+radius = 2.5
+falloff = 1.5
+shadows = false

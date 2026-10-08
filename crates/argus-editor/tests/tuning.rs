@@ -250,3 +250,130 @@ fn a_person_tunes_the_food_economy_at_10x_and_keeps_it() {
     assert!(story.contains("@colony Colony.hunger_per_day"), "{story}");
     assert!(story.contains("item:meal food"), "{story}");
 }
+
+fn speed_max(agent: &mut Client) -> f64 {
+    result(agent, "tune.fields", json!({ "asset": "fx/pop" }))["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["path"] == "speed[1]")
+        .expect("the sparks' speed max")["value"]
+        .as_f64()
+        .unwrap()
+}
+
+/// Phase 5 item 3: Swarm's sparks in the panel (§13: "every knob it needs
+/// must be a field the tuning panel can show"). Their knobs are sliders in
+/// a group of their own; a drag is `tune.set {asset}`, logged; Put back
+/// leaves the sidecar as it was; Keep writes it, its comments kept.
+#[test]
+fn a_person_tunes_swarms_sparks_and_puts_them_back_then_keeps_them() {
+    let t = common::temp("tuning-effects");
+    copy(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/swarm"),
+        t.path(),
+    );
+    let file = t.path().join("assets/fx/pop.toml");
+    let original = std::fs::read_to_string(&file).unwrap();
+    let name = format!("{}-tuning-fx", socket_name_for(t.path()));
+    let (r, n) = (t.path().to_path_buf(), name.clone());
+    std::thread::spawn(move || {
+        let d = common::open(&r);
+        let _ = serve(d, Transport::Socket(n), Some(&r));
+    });
+    let mut agent = loop {
+        if let Ok(c) = Client::connect(&name) {
+            break c;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    let mut h = Harness::builder()
+        .with_size(egui::vec2(1500.0, 950.0))
+        .wgpu()
+        .build_state(|ctx, ed: &mut Editor| ed.ui(ctx), {
+            let mut ed = Editor::new(&name, "human");
+            ed.audio = false;
+            ed
+        });
+    until(&mut h, "the bar", |ed| ed.status["project"] == "swarm");
+    h.get_by_label("Tuning").click();
+    until(&mut h, "the sparks' knobs", |ed| {
+        ed.tuning
+            .rows
+            .iter()
+            .any(|r| r["asset"] == "fx/pop" && r["path"] == "speed[1]")
+    });
+    h.state_mut().tuning.filter = "pop".into();
+    h.step();
+    h.step();
+    h.get_by_label_contains("fx/pop (effect)");
+
+    // A drag of the speed's max, then Put back: the file as it was. (The
+    // fractions are of the slider with its number and name; its rail is a
+    // little under the first half.)
+    drag(&mut h, "speed max", 0.15, 0.3);
+    until(&mut h, "the sparks' search path", |ed| {
+        ed.tuning
+            .story
+            .iter()
+            .any(|l| l.starts_with("human set fx/pop speed[1] 7→"))
+    });
+    assert!(speed_max(&mut agent) > 7.0, "the sparks fly faster now");
+    let lines: Vec<&String> = h
+        .state()
+        .commands
+        .iter()
+        .filter(|l| l.starts_with("argus tune set"))
+        .collect();
+    assert!(
+        lines.len() == 1 && lines[0].contains("asset=fx/pop"),
+        "one command for the drag, naming the effect: {lines:?}"
+    );
+    h.get_by_label("Put back").click();
+    until(&mut h, "the session put back", |ed| {
+        ed.tuning.session.is_null()
+    });
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), original);
+    assert_eq!(speed_max(&mut agent), 7.0, "the file's sparks again");
+
+    // Again, and Keep: the sidecar written, every comment kept.
+    drag(&mut h, "speed max", 0.15, 0.25);
+    until(&mut h, "a second session", |ed| {
+        !ed.tuning.session.is_null()
+    });
+    let log = result(&mut agent, "tune.log", json!({ "path": "speed[1]" }));
+    let settled = log["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .rev()
+        .find(|r| r["kind"] == "set")
+        .unwrap()["to"]
+        .as_f64()
+        .unwrap();
+    assert!(settled > 7.0, "{settled}");
+    h.step();
+    let img = h.render().expect("drawn");
+    let (w, hh) = img.dimensions();
+    let out = Path::new(env!("CARGO_TARGET_TMPDIR")).join("editor-tuning-effects.png");
+    let f = std::io::BufWriter::new(std::fs::File::create(&out).unwrap());
+    let mut enc = png::Encoder::new(f, w, hh);
+    enc.set_color(png::ColorType::Rgba);
+    enc.set_depth(png::BitDepth::Eight);
+    enc.write_header()
+        .unwrap()
+        .write_image_data(&img.into_raw())
+        .unwrap();
+    h.state_mut().tuning.note = "faster sparks".into();
+    h.get_by_label("Keep").click();
+    until(&mut h, "the session kept", |ed| ed.tuning.session.is_null());
+    assert_eq!(
+        std::fs::read_to_string(&file).unwrap(),
+        original.replace("speed = [3, 7]", &format!("speed = [3, {settled}]"))
+    );
+    let feed = result(&mut agent, "edit.feed", json!({ "limit": 500 }));
+    let last = feed["rows"].as_array().unwrap().last().unwrap().clone();
+    assert_eq!(last["author"], "human");
+    assert_eq!(last["note"], "faster sparks");
+    assert_eq!(last["files"], json!(["assets/fx/pop.toml"]));
+}

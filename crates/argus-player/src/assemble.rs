@@ -395,6 +395,9 @@ fn assemble_layers(
     let zones = Rc::new(RefCell::new(argus_camera::Zones::default()));
     argus_camera::install(&mut world, &mut sched, zones.clone())?;
     argus_post::install(&mut world, &mut sched)?;
+    // 2D lighting's components (phase 5 item 3): no systems, the
+    // renderer reads them.
+    argus_light::register(&mut world)?;
     // After the renderer registered Sprite (which it writes), before
     // scripts, so it runs first in the late stage.
     let anims = Rc::new(RefCell::new(argus_anim::AnimStore::default()));

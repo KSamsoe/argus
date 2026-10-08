@@ -8,7 +8,9 @@
 //! - [`PostFlash`]: the screen flashes a colour on an event and fades back;
 //! - [`PostFade`]: the screen fades to a colour (a room transition, tweened);
 //! - [`PostVignette`], [`PostAberration`], [`PostPalette`]: darkened edges,
-//!   colour fringes, a limited palette.
+//!   colour fringes, a limited palette;
+//! - [`PostCrt`]: an old screen's scanlines, curve, bleed, and phosphor
+//!   mask (phase 5 item 3).
 //!
 //! And [`PostHitStop`]: on its event the game freezes for a few ticks (or runs
 //! slowly) while the post effects play on. Hit-flash, hit-stop, and shake
@@ -212,6 +214,71 @@ impl Default for PostFade {
     }
 }
 
+/// An old screen: scanlines, a curved glass, colours bleeding sideways,
+/// and the phosphor mask (phase 5 item 3).
+#[derive(Component, Clone, Copy, Debug, PartialEq)]
+#[repr(C)]
+#[argus(
+    doc = "CRT, a post pass: the picture as an old screen shows it, with scanlines, a curved glass, colours bleeding sideways, and a phosphor mask"
+)]
+pub struct PostCrt {
+    /// How much.
+    #[argus(
+        doc = "How much, 0 (the picture) to 1 (the old screen)",
+        range(0, 1),
+        tune
+    )]
+    pub amount: f32,
+    /// How dark between the lines.
+    #[argus(doc = "How dark between the scanlines, 0 to 1", range(0, 1), tune)]
+    pub scanlines: f32,
+    /// How many lines.
+    #[argus(
+        doc = "Scanlines across the screen's height; 0 for one every three pixels",
+        range(0, 4000),
+        tune
+    )]
+    pub lines: f32,
+    /// The glass's curve.
+    #[argus(
+        doc = "How curved the glass is: the corners bend in by this share (0.1 is a gentle curve)",
+        range(0, 0.5),
+        tune
+    )]
+    pub curvature: f32,
+    /// Sideways bleed.
+    #[argus(
+        doc = "How far colours bleed sideways, in screen pixels",
+        range(0, 8),
+        tune
+    )]
+    pub bleed: f32,
+    /// The phosphor mask.
+    #[argus(
+        doc = "How strong the phosphor mask is: each pixel column leans red, green, or blue",
+        range(0, 1),
+        tune
+    )]
+    pub mask: f32,
+    /// Place in the stack.
+    #[argus(doc = "Place in the stack: lower runs first")]
+    pub order: i32,
+}
+
+impl Default for PostCrt {
+    fn default() -> Self {
+        PostCrt {
+            amount: 1.0,
+            scanlines: 0.35,
+            lines: 0.0,
+            curvature: 0.08,
+            bleed: 1.0,
+            mask: 0.15,
+            order: 70,
+        }
+    }
+}
+
 /// Darkened edges.
 #[derive(Component, Clone, Copy, Debug, PartialEq)]
 #[repr(C)]
@@ -319,6 +386,7 @@ pub fn register(world: &mut World) -> Result<()> {
     world.register::<PostVignette>()?;
     world.register::<PostAberration>()?;
     world.register::<PostPalette>()?;
+    world.register::<PostCrt>()?;
     Ok(())
 }
 

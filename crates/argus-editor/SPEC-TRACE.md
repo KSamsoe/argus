@@ -123,7 +123,15 @@ Every statement in the design document (v0.3) that constrains the editor (§11, 
 |---|---|---|---|
 | (§12) "A colour-blind simulation ... lets the agent and the human check readability without guessing": the human's half. | Done | The viewport's See as: normal, protanopia, deuteranopia, tritanopia, or achromatopsia, sent as `render.stream {see_as}`; the next frame comes back seen that way, the UI too. | `argus-daemon` `render::obs_frame_sees_as_a_colour_blind_eye_sees` (the same pass) |
 
+## Phase 5, item 3
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| A light's colour is a tune field the panel can tune. | Done | Found: the panel showed every tune field as a number, so a colour (a light's, the ambient's, a flash's) or two numbers (a camera's lookahead) was a box at 0 the daemon refused. A colour is its swatch and its hex, sent as a whole when Enter is pressed or the box is left; words are a text box; two numbers are two to drag; a switch is a box to tick. | `tuning_colour::a_person_types_a_lights_colour_and_keeps_it` |
+| (§13) "Feel is the thing the human tunes; every knob it needs must be a field the tuning panel can show and the recorder can log": a particle effect's numbers. | Done | `tuning.rs`: each effect's knobs are a group of their own, "fx/pop (effect)", after the data tables, a slider each named as the daemon names it ("speed max", "size at 0"), with its doc, its path in the sidecar, and the default on hover. A drag is `tune.set {asset, path, value}`, logged step by step; Put back plays the file's sparks again and leaves the file as it was; Keep writes the sidecar, comments kept, as one change by the person. A value the effect would not read with (the max dragged below the min) is refused for that step and shown, and the drag goes on. | `tuning::a_person_tunes_swarms_sparks_and_puts_them_back_then_keeps_them` (on Swarm over a real socket: put back, then kept; the file's text with one value changed) |
+
 ## Known limitations, stated so they are decisions
 
+- An effect's colours are not knobs: a slider is a number. A component's colour, words, two numbers, and switches have their controls (phase 5 item 3).
 - The editor polls `session.status` five times a second and `world.summary` once a second rather than subscribing to them; the protocol has no status topic, and at these rates a poll is a few hundred bytes.
 - The bar's speeds are 1x, 3x, and 10x, the game's own keys in Outpost; any other speed is `argus sim speed x=...`.

@@ -19,8 +19,20 @@
 //! (`set`), a session begun or ended. It is on disk because the human
 //! tunes, closes the game, and the agent reads the log in another daemon.
 //! `obs.subscribe {topics: ["tune"]}` streams each row as `tune.changed`.
+//!
+//! Effects tune too (phase 5 item 3, §13: "every knob it needs must be a
+//! field the tuning panel can show"): a particle effect's numbers are in
+//! its sidecar, not in a component, so `tune.fields` lists each emitter
+//! asset's knobs (`argus_assets::KNOBS`: lifetime, speed, spread, drag, the
+//! size curve's points, ...) by their paths in the file, and `tune.set
+//! {asset, path, value}` plays the sidecar with the value in it from the
+//! next tick (`ParticleStore::tune`) while the file stays as it was. The
+//! end of the session writes them as `edit.asset` ops; putting them back
+//! takes the live effect off. An effect is project data, like a def row:
+//! a change to one between ticks is a barrier keyframe no replay crosses.
 
 use super::*;
+use argus_assets::KnobAt;
 use argus_ecs::FieldSchema;
 use std::collections::BTreeMap as Map;
 use std::io::Write as _;
@@ -42,6 +54,19 @@ pub(super) struct TuneSession {
     pub start: Map<(String, String), Json>,
     /// Each field's value now.
     pub now: Map<(String, String), Json>,
+    /// The effects among them (asset names, keyed as an entity is, with
+    /// the knob's path in the sidecar).
+    pub assets: BTreeSet<String>,
+}
+
+/// A knob's value as JSON: a whole number for a count, else a float, so a
+/// slider steps by one only where the knob counts.
+fn knob_json(k: &KnobAt, v: f64) -> Json {
+    if k.knob.whole {
+        json!(v.round() as i64)
+    } else {
+        json!(v)
+    }
 }
 
 fn log_path(root: &Path) -> PathBuf {
@@ -167,10 +192,20 @@ impl Daemon {
     /// `tune.fields`: the tune fields with their values, what the editor's
     /// tuning panel shows (§10): every one of an entity; or of every entity
     /// with an id, of the runtime entities (one by one while there are few
-    /// of a component, else one row with their count), and of every def
-    /// table's rows (phase 4 item 3: Outpost's food and job priorities).
+    /// of a component, else one row with their count), of every def
+    /// table's rows (phase 4 item 3: Outpost's food and job priorities),
+    /// and every effect's knobs (phase 5 item 3: Swarm's sparks); or one
+    /// effect's.
     pub(super) fn tune_fields(&self, params: &Json) -> Result<Json> {
         self.require_session()?;
+        if let Some(asset) = json::opt_str(params, "asset")? {
+            self.require_effect(asset)?;
+            let mut rows = Vec::new();
+            self.effect_rows(asset, &mut rows)?;
+            return Ok(
+                json!({ "total": rows.len(), "rows": rows, "session": self.tune_session_json() }),
+            );
+        }
         let one = json::opt_str(params, "entity")?;
         let ents: Vec<Entity> = match one {
             Some(id) => vec![self.world.entity(id)?],
@@ -242,8 +277,143 @@ impl Daemon {
                     }
                 }
             }
+            let effects: Vec<String> = ses.assets.emitters().map(|(n, _)| n.clone()).collect();
+            for name in effects {
+                // One whose sidecar cannot be read now has no rows; the
+                // importer reports it.
+                let _ = self.effect_rows(&name, &mut rows);
+            }
         }
         Ok(json!({ "total": rows.len(), "rows": rows, "session": self.tune_session_json() }))
+    }
+
+    /// Refuse a name that is not a particle effect's.
+    fn require_effect(&self, asset: &str) -> Result<()> {
+        let ses = self.require_session()?;
+        match ses.assets.entries().get(asset).map(|e| e.kind()) {
+            Some("emitter") => Ok(()),
+            Some(kind) => Err(ArgusError::new(
+                codes::BAD_PARAMS,
+                format!("{asset} is a {kind}, not a particle effect"),
+            )
+            .hint("An asset's knobs are a particle effect's (type = \"emitter\"); edit.asset changes any sidecar's values.")),
+            None => Err(
+                ArgusError::new(codes::BAD_PARAMS, format!("no asset {asset:?}"))
+                    .hint("asset.list {kind: \"emitter\"} lists the effects; a name is its path under assets/ without the extension."),
+            ),
+        }
+    }
+
+    /// Is this name a particle effect's?
+    fn is_effect(&self, asset: &str) -> bool {
+        self.session.as_ref().is_some_and(|s| {
+            s.assets
+                .entries()
+                .get(asset)
+                .is_some_and(|e| e.kind() == "emitter")
+        })
+    }
+
+    /// An effect's sidecar: its path from the root, its text in the file,
+    /// and its text as the open session plays it (the file with the
+    /// session's values in it).
+    fn effect_texts(&self, asset: &str) -> Result<(String, String, String)> {
+        let (_, shown, file) = self.sidecar_of(asset)?;
+        let mut live = file.clone();
+        if let Some(s) = self.tuning.as_ref().filter(|s| s.assets.contains(asset)) {
+            for ((a, path), v) in &s.now {
+                if a == asset {
+                    live = super::sidecar::edit_text(&live, path, Some(v))?;
+                }
+            }
+        }
+        Ok((shown, file, live))
+    }
+
+    /// The rows of one effect's knobs: the values it plays now, each range
+    /// widened to hold the file's value.
+    fn effect_rows(&self, asset: &str, rows: &mut Vec<Json>) -> Result<()> {
+        let (shown, file, live) = self.effect_texts(asset)?;
+        let in_file: Map<String, f64> = argus_assets::knobs(&file)
+            .into_iter()
+            .map(|k| (k.path, k.value))
+            .collect();
+        for k in argus_assets::knobs(&live) {
+            let (lo, hi) = k.range_with(in_file.get(&k.path).copied().unwrap_or(k.value));
+            rows.push(json!({
+                "asset": asset,
+                "path": k.path,
+                "name": k.name,
+                "value": knob_json(&k, k.value),
+                "default": knob_json(&k, k.knob.default),
+                "range": [lo, hi],
+                "doc": k.knob.doc,
+                "label": asset,
+                "file": shown,
+            }));
+        }
+        Ok(())
+    }
+
+    /// The knobs a commit changed in an effect's sidecar, for the tuning
+    /// log: the file as it was (`old`) against the file now. Not an
+    /// effect's, none.
+    pub(super) fn knob_changes(&self, asset: &str, old: &str) -> Vec<(String, String, Json, Json)> {
+        if !self.is_effect(asset) {
+            return Vec::new();
+        }
+        let Ok((_, _, now)) = self.sidecar_of(asset) else {
+            return Vec::new();
+        };
+        let mut both: Map<String, (Json, Json)> = Map::new();
+        for k in argus_assets::knobs(old) {
+            both.entry(k.path.clone())
+                .or_insert((Json::Null, Json::Null))
+                .0 = knob_json(&k, k.value);
+        }
+        for k in argus_assets::knobs(&now) {
+            both.entry(k.path.clone())
+                .or_insert((Json::Null, Json::Null))
+                .1 = knob_json(&k, k.value);
+        }
+        both.into_iter()
+            .filter(|(_, (from, to))| from != to)
+            .map(|(path, (from, to))| (asset.to_string(), path, from, to))
+            .collect()
+    }
+
+    /// Every effect the session plays live goes back to its file's.
+    fn untune_effects(&mut self) {
+        if let Some(ses) = &self.session {
+            ses.particles.borrow_mut().untune(&ses.assets);
+        }
+    }
+
+    /// The order to write one effect's knobs in so that every step still
+    /// imports: a range's min may not pass its max on the way, so speed
+    /// [3, 7] to [8, 12] writes the max first. Where no order does, the
+    /// order given, and the commit says why.
+    fn import_order(&self, asset: &str, mut left: Vec<(String, Json)>) -> Vec<(String, Json)> {
+        let Ok((_, shown, mut text)) = self.sidecar_of(asset) else {
+            return left;
+        };
+        let step = |t: &str, p: &str, v: &Json| super::sidecar::edit_text(t, p, Some(v)).ok();
+        let mut out = Vec::new();
+        while !left.is_empty() {
+            let i = left
+                .iter()
+                .position(|(p, v)| {
+                    step(&text, p, v)
+                        .is_some_and(|t| argus_assets::parse_emitter(&shown, &t).is_ok())
+                })
+                .unwrap_or(0);
+            let (p, v) = left.remove(i);
+            if let Some(t) = step(&text, &p, &v) {
+                text = t;
+            }
+            out.push((p, v));
+        }
+        out
     }
 
     /// The rows of one entity's tune fields in one component.
@@ -654,6 +824,7 @@ impl Daemon {
             note: note.to_string(),
             start: Map::new(),
             now: Map::new(),
+            assets: BTreeSet::new(),
         });
         self.tune_row(json!({ "kind": "begin", "session": id, "author": author, "note": note }));
     }
@@ -666,6 +837,10 @@ impl Daemon {
         if let Some(def) = json::opt_str(params, "def")? {
             let def = def.to_string();
             return self.tune_set_def(&root, def, params);
+        }
+        if let Some(asset) = json::opt_str(params, "asset")? {
+            let asset = asset.to_string();
+            return self.tune_set_asset(&root, asset, params);
         }
         let entity = json::str_param(params, "entity")?;
         let path = json::str_param(params, "path")?.to_string();
@@ -747,6 +922,102 @@ impl Daemon {
         Ok(json!({ "def": def, "path": path, "from": old, "to": new, "session": session }))
     }
 
+    /// `tune.set` of an effect's knob (phase 5 item 3): the sidecar with
+    /// the value in it is read as the importer reads it and played from the
+    /// next tick, the file left as it was until the session's end writes
+    /// it; logged as a component's is. A value out of the knob's range, or
+    /// one the effect would not read with (a speed's min past its max), is
+    /// refused, and nothing changes.
+    fn tune_set_asset(&mut self, root: &Path, asset: String, params: &Json) -> Result<Json> {
+        let path = json::str_param(params, "path")?.to_string();
+        let v = params.get("value").and_then(Json::as_f64).ok_or_else(|| {
+            bad_params("give value, a number").hint(
+                "An effect's knob is a number: tune.set {asset: \"fx/pop\", path: \"speed[1]\", value: 9}.",
+            )
+        })?;
+        self.require_effect(&asset)?;
+        let (shown, file, live) = self.effect_texts(&asset)?;
+        let knobs = argus_assets::knobs(&live);
+        let k = knobs
+            .iter()
+            .find(|k| k.path == path)
+            .cloned()
+            .ok_or_else(|| {
+                let all: Vec<&str> = knobs.iter().map(|k| k.path.as_str()).collect();
+                ArgusError::new(
+                    codes::BAD_PARAMS,
+                    format!("{asset} {path} is not one of its knobs"),
+                )
+                .hint(format!(
+                    "{asset}'s knobs: {}. A knob the file leaves out is added with edit.asset; edit.asset changes any value.",
+                    all.join(", ")
+                ))
+            })?;
+        let in_file = argus_assets::knobs(&file)
+            .into_iter()
+            .find(|f| f.path == path)
+            .map_or(k.value, |f| f.value);
+        let (lo, hi) = k.range_with(in_file);
+        if !(lo..=hi).contains(&v) {
+            return Err(ArgusError::new(
+                codes::BAD_PARAMS,
+                format!("{asset} {path} must be in range [{lo}, {hi}]; got {v}"),
+            )
+            .hint(format!("{}. Nothing changed.", k.knob.doc)));
+        }
+        if k.knob.whole && v.fract() != 0.0 {
+            return Err(ArgusError::new(
+                codes::BAD_PARAMS,
+                format!("{asset} {path} counts particles: a whole number, not {v}"),
+            ));
+        }
+        let author = match &self.tuning {
+            Some(s) => s.author.clone(),
+            None => json::opt_str(params, "author")?
+                .unwrap_or("human")
+                .to_string(),
+        };
+        self.edits.check_lock(&author, &asset, &path)?;
+        let value = knob_json(&k, v);
+        let text = super::sidecar::edit_text(&live, &path, Some(&value))?;
+        let (spec, _) = argus_assets::parse_emitter(&shown, &text).map_err(|e| {
+            ArgusError::new(
+                codes::BAD_PARAMS,
+                format!("{asset} would not read with {path} = {v}: {}", e.message),
+            )
+            .hint("Nothing changed; the effect plays as it was.")
+            .at(e.r#ref.clone())
+        })?;
+        if self.tuning.is_none() {
+            self.open_tuning(root, &author, "");
+        }
+        self.session
+            .as_ref()
+            .expect("session")
+            .particles
+            .borrow_mut()
+            .tune(&asset, spec);
+        // A change between ticks that steers them (an effect's lifetime is
+        // when its emitter's last particle dies): a barrier keyframe first.
+        self.mutations += 1;
+        let old = knob_json(&k, k.value);
+        let new = argus_assets::knobs(&text)
+            .iter()
+            .find(|n| n.path == path)
+            .map_or(value.clone(), |n| knob_json(n, n.value));
+        let s = self.tuning.as_mut().expect("open");
+        let key = (asset.clone(), path.clone());
+        s.start.entry(key.clone()).or_insert_with(|| old.clone());
+        s.now.insert(key, new.clone());
+        s.assets.insert(asset.clone());
+        let session = s.id;
+        self.tune_row(json!({
+            "kind": "set", "author": author, "entity": asset, "asset": true, "path": path,
+            "from": old, "to": new, "via": "tune", "session": session,
+        }));
+        Ok(json!({ "asset": asset, "path": path, "from": old, "to": new, "session": session }))
+    }
+
     /// `tune.end`: commit the session's final values as one transaction by
     /// its author (or, with `commit: false`, put the values back as they
     /// were), and log it.
@@ -777,29 +1048,48 @@ impl Daemon {
             .collect();
         // Back to where the session started, so the commit's inverse (and
         // so undo) goes there; then the final values, as one transaction.
+        // An effect goes back by taking the live one off: its file never
+        // changed.
+        self.untune_effects();
         for ((e, p), from, _) in &changed {
-            self.put_field(e, p, from)?;
+            if !s.assets.contains(e) {
+                self.put_field(e, p, from)?;
+            }
         }
         let mut out = json!({ "session": s.id, "fields": changed.len(), "commit": Json::Null });
         if commit && !changed.is_empty() {
-            let ops: Vec<Op> = changed
-                .iter()
-                .map(|((e, p), _, to)| {
-                    if self.is_def(e) {
-                        Op::Def {
-                            def: e.clone(),
-                            path: p.clone(),
-                            value: to.clone(),
-                        }
-                    } else {
-                        Op::Set {
-                            entity: e.clone(),
-                            path: p.clone(),
-                            value: to.clone(),
-                        }
-                    }
-                })
-                .collect();
+            let mut ops: Vec<Op> = Vec::new();
+            let mut effects: Map<String, Vec<(String, Json)>> = Map::new();
+            for ((e, p), _, to) in &changed {
+                if s.assets.contains(e) {
+                    effects
+                        .entry(e.clone())
+                        .or_default()
+                        .push((p.clone(), to.clone()));
+                } else if self.is_def(e) {
+                    ops.push(Op::Def {
+                        def: e.clone(),
+                        path: p.clone(),
+                        value: to.clone(),
+                    });
+                } else {
+                    ops.push(Op::Set {
+                        entity: e.clone(),
+                        path: p.clone(),
+                        value: to.clone(),
+                    });
+                }
+            }
+            // Each effect's knobs into its sidecar, comments and layout kept.
+            for (asset, values) in effects {
+                for (path, value) in self.import_order(&asset, values) {
+                    ops.push(Op::Asset {
+                        asset: asset.clone(),
+                        path,
+                        value: Some(value),
+                    });
+                }
+            }
             self.tune_committing = true;
             let r = self.apply_commit(&s.author, &note, ops, CommitKind::Normal);
             self.tune_committing = false;

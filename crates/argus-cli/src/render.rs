@@ -368,6 +368,50 @@ pub fn semantic(v: &Json) -> String {
         };
         let _ = writeln!(out, "{line}");
     }
+    // 2D lighting (phase 5 item 3): only when the camera has it.
+    let lit = &v["lighting"];
+    if lit.is_object() {
+        let _ = writeln!(
+            out,
+            "Lit: ambient {} at {}{}",
+            cell(&lit["ambient"]),
+            cell(&lit["level"]),
+            if lit["shadows"] == true {
+                ", with shadows"
+            } else {
+                ", no shadows"
+            }
+        );
+        for l in lit["lights"].as_array().into_iter().flatten() {
+            let mut how = format!(
+                "{} {} at ({}, {}), {} px, {} x{}",
+                cell(&l["kind"]),
+                cell(&l["id"]),
+                cell(&l["at"][0]),
+                cell(&l["at"][1]),
+                cell(&l["radius_px"]),
+                cell(&l["color"]),
+                cell(&l["intensity"])
+            );
+            if l["kind"] == "cone" {
+                how.push_str(&format!(
+                    ", pointing {} degrees, {} each side",
+                    cell(&l["direction"]),
+                    cell(&l["angle"])
+                ));
+            }
+            if l["shadows"] == false {
+                how.push_str(", no shadows");
+            }
+            if l.get("flicker").is_some() {
+                how.push_str(&format!(", flickering {}", cell(&l["flicker"])));
+            }
+            let _ = writeln!(out, "Light {how}");
+        }
+        if lit["omitted"].as_u64().unwrap_or(0) > 0 {
+            let _ = writeln!(out, "and {} more lights", cell(&lit["omitted"]));
+        }
+    }
     for m in v["tiles"]["maps"].as_array().into_iter().flatten() {
         let _ = writeln!(
             out,

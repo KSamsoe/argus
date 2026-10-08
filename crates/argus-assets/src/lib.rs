@@ -40,7 +40,10 @@ use argus_ecs::{ArgusError, Layers, Result};
 pub use argus_material::MaterialSpec;
 use argus_os::time::Instant;
 pub use catalog::{PackedSprites, CATALOG, TEXTURES};
-pub use effect::{Area, ColorCurve, Curve, EmitterSpec, Space};
+pub use effect::{
+    knobs, parse_emitter, Area, ColorCurve, Curve, EmitterSpec, Knob, KnobAt, KnobShape, Space,
+    KNOBS,
+};
 pub use font::{BakedGlyph, FontAsset};
 use serde_json::{json, Value as Json};
 pub use sidecar::{AutoMode, AutoTileSpec};
@@ -105,6 +108,9 @@ pub struct SpriteAsset {
     pub texture: PathBuf,
     /// Its size.
     pub texture_size: [u32; 2],
+    /// Its normal map's cached texture, the same size and layout (phase 5
+    /// item 3: `<name>.normal.png` beside the image), for 2D lighting.
+    pub normal: Option<PathBuf>,
     /// Frames.
     pub frames: Vec<Frame>,
     /// Clips by name.
@@ -431,6 +437,8 @@ struct Group {
     /// The layer the files are in (0 is the game's).
     layer: usize,
     png: Option<String>,
+    /// `<name>.normal.png`: the sprite's normal map.
+    normal: Option<String>,
     wav: Option<String>,
     wgsl: Option<String>,
     font: Option<String>,
@@ -438,7 +446,8 @@ struct Group {
 }
 
 /// A layer's files (relative to its `assets/`) grouped into assets by name:
-/// `hero.png` and `hero.toml` are the asset `hero`.
+/// `hero.png` and `hero.toml` are the asset `hero`, and `hero.normal.png`
+/// its normal map.
 fn group_files<'a>(
     layer: usize,
     rels: impl Iterator<Item = &'a String>,
@@ -450,6 +459,8 @@ fn group_files<'a>(
             (rel[..n.len()].to_string(), 2)
         } else if let Some(n) = lower.strip_suffix(".toml") {
             (rel[..n.len()].to_string(), 2)
+        } else if let Some(n) = lower.strip_suffix(".normal.png") {
+            (rel[..n.len()].to_string(), 5)
         } else if let Some(n) = lower.strip_suffix(".png") {
             (rel[..n.len()].to_string(), 0)
         } else if let Some(n) = lower
@@ -476,6 +487,7 @@ fn group_files<'a>(
             1 => g.wav = Some(rel.clone()),
             3 => g.wgsl = Some(rel.clone()),
             4 => g.font = Some(rel.clone()),
+            5 => g.normal = Some(rel.clone()),
             _ => g.sidecar = Some(rel.clone()),
         }
     }
@@ -713,6 +725,18 @@ impl Importer {
             .collect()
     }
 
+    /// Read `name`'s files again at the next scan, whatever their stamps
+    /// say. A stamp is a file's time and length, and a file written twice
+    /// within the clock's resolution at the same length keeps its stamp
+    /// (phase 5 item 3: a kept tuning session and its undo write a sidecar
+    /// moments apart, often at one length, `speed = [3, 9]` then `[3, 7]`;
+    /// on the development laptop two such writes back to back kept one
+    /// stamp in 118 of 200 tries). What it reads is compared by content,
+    /// so a file that did not change is still not an import.
+    pub fn touch(&mut self, name: &str) {
+        self.inputs.remove(name);
+    }
+
     /// Re-import everything, ignoring what is unchanged.
     pub fn rescan_all(&mut self) -> Report {
         self.inputs.clear();
@@ -759,7 +783,7 @@ impl Importer {
             walk(&self.layers[li].dir, &self.layers[li].dir, &mut files);
             for (name, g) in group_files(li, files.keys()) {
                 if let Some(id) = self.layers[li].id.clone() {
-                    let first = [&g.png, &g.wav, &g.wgsl, &g.font, &g.sidecar]
+                    let first = [&g.png, &g.wav, &g.wgsl, &g.font, &g.sidecar, &g.normal]
                         .into_iter()
                         .flatten()
                         .next()
@@ -828,7 +852,7 @@ impl Importer {
             }
             // The files this asset reads: its own, plus a sound's variations
             // (added after the sidecar is parsed, below).
-            let mut files: Vec<String> = [&g.png, &g.wav, &g.wgsl, &g.font, &g.sidecar]
+            let mut files: Vec<String> = [&g.png, &g.wav, &g.wgsl, &g.font, &g.sidecar, &g.normal]
                 .into_iter()
                 .flatten()
                 .map(|f| self.shown(g.layer, f))
@@ -938,6 +962,14 @@ impl Importer {
         }
         if let Some(f) = &g.font {
             return self.import_font(name, g, f, side_text.as_deref(), side_file.as_deref(), hash);
+        }
+        if let (Some(n), None) = (&g.normal, &g.png) {
+            return Err(ArgusError::new(
+                codes::AMBIGUOUS,
+                format!("{} is a normal map, and there is no {name}.png for it to belong to", self.shown(g.layer, n)),
+            )
+            .hint("A normal map sits beside its sprite's image: hero.png and hero.normal.png, the same size.")
+            .at(Some(self.shown(g.layer, n))));
         }
         let kind = match (&g.png, &g.wav, &g.wgsl, &side_text) {
             (Some(_), _, _, _) => SidecarKind::Sprite,
@@ -1374,6 +1406,34 @@ impl Importer {
         }
         let texture = self.cache.join(format!("{name}.png"));
         encode_png(&texture, tw, th, &rgba)?;
+        // Its normal map: the image's size, padded as it is.
+        let normal = match &g.normal {
+            None => None,
+            Some(np) => {
+                let bytes = self.read_in(g.layer, np)?;
+                fnv(&mut hash, &bytes);
+                let shown = self.shown(g.layer, np);
+                let (nw, nh, nrgba) = decode_png(&self.dir(g.layer).join(np))
+                    .map_err(|e| e.at(Some(shown.clone())))?;
+                if (nw, nh) != (w, h) {
+                    return Err(ArgusError::new(
+                        codes::BAD_SIDECAR,
+                        format!("{shown} is {nw}x{nh}; a normal map is its sprite's size, {w}x{h}"),
+                    )
+                    .at(Some(shown)));
+                }
+                let mut padded = vec![0u8; (tw * th * 4) as usize];
+                for y in 0..h {
+                    let src = (y * w * 4) as usize;
+                    let dst = (y * tw * 4) as usize;
+                    padded[dst..dst + (w * 4) as usize]
+                        .copy_from_slice(&nrgba[src..src + (w * 4) as usize]);
+                }
+                let path = self.cache.join(format!("{name}.normal.png"));
+                encode_png(&path, tw, th, &padded)?;
+                Some(path)
+            }
+        };
         Ok((
             Entry {
                 name: name.to_string(),
@@ -1386,6 +1446,7 @@ impl Importer {
                     height: h,
                     texture,
                     texture_size: [tw, th],
+                    normal,
                     frames,
                     clips,
                     pixels_per_unit: sc.pixels_per_unit.unwrap_or(16.0),

@@ -10,3 +10,9 @@ priority = 5
 height = 12.0
 bounded = false
 blend = 1.0
+
+# Lit as the hero's camera is: the hall's light (systems/light.luau keeps
+# its level with the other camera's), so the cut to it does not flash.
+[Lighting]
+ambient = "#8A94B8"
+level = 0.34

@@ -61,10 +61,8 @@ component "Door" {
   key = field.ref { doc = "Key def" },
   locked = field.bool { default = false },
 }
-component "Light" {
-  doc = "A light",
-  intensity = field.f32 { default = 1.0, range = {0, 10}, tune = true, doc = "Brightness" },
-}
+-- Light is the engine's (argus-light, phase 5 item 3): its intensity is
+-- the tune field the tests set.
 "#,
     );
     write(

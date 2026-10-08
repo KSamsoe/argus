@@ -88,6 +88,7 @@ pub fn page(sprites: &PackedSprites) -> Result<Paged> {
     let mut files = Vec::new();
     let mut cells = Vec::new();
     let mut alone = 0usize;
+    let mut normal_mapped = 0usize;
     let mut before = 0u64;
     for (i, s) in list.iter().enumerate() {
         let rel = s["texture"].as_str().unwrap_or_default();
@@ -97,6 +98,21 @@ pub fn page(sprites: &PackedSprites) -> Result<Paged> {
         before += argus_os::fs::read(path)
             .map(|b| b.len() as u64)
             .unwrap_or(0);
+        // A normal-mapped sprite keeps its texture whole, beside its normal
+        // map of the same layout (phase 5 item 3): the lighting samples
+        // both at one place.
+        if let Some(nrel) = s["normal"].as_str() {
+            for r in [rel, nrel] {
+                let p = disk.get(r).ok_or_else(|| {
+                    ArgusError::new(codes::CACHE, format!("{r}: not in the import cache"))
+                })?;
+                let bytes = argus_os::fs::read(p)
+                    .map_err(|e| ArgusError::new(codes::CACHE, format!("{r}: {e}")))?;
+                files.push((r.to_string(), bytes));
+            }
+            normal_mapped += 1;
+            continue;
+        }
         let (tw, th, rgba) = decode_png(path)?;
         // The part the sprite uses: its size, and every frame.
         let (mut w, mut h) = (
@@ -230,6 +246,7 @@ pub fn page(sprites: &PackedSprites) -> Result<Paged> {
         "compressed": cells.iter().filter(|c| c.bc7).count(),
         "lossless": cells.iter().filter(|c| !c.bc7).count(),
         "too_big_for_a_page": alone,
+        "normal_mapped": normal_mapped,
         "pages": report_pages,
         "bytes": bytes,
         "bytes_before": before,

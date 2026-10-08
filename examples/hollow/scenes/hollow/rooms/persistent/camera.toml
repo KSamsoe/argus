@@ -34,3 +34,11 @@ frames = 6
 # A room change dips toward black and back (the rooms.fade timeline tweens
 # its amount; phase 3 item 6).
 [PostFade]
+
+# The hollow is dark (phase 5 item 3): a little cold light everywhere, the
+# most at the cave mouth, the least in the deep (systems/light.luau glides
+# the level to the hero's room), and the hero's lantern for the rest. Rock
+# casts shadows from every light that has them.
+[Lighting]
+ambient = "#8A94B8"
+level = 0.6

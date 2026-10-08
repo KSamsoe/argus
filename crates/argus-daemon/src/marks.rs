@@ -442,11 +442,14 @@ impl Daemon {
     ) -> Result<argus_render::Image> {
         let _ = self.sched.present(&mut self.world);
         let tick = self.sched.tick();
-        let extras = self.tile_extras(argus_render::view_for(&self.world, w, h));
+        let view = argus_render::view_for(&self.world, w, h);
+        let extras = self.tile_extras(view);
+        let edges = self.tile_occluders(view);
         let ses = self.session.as_ref().expect("session");
         let r = self.render.offscreen(w, h, software, &ses.assets)?;
         r.set_time(shader_time(&self.sched, 1.0));
         r.set_ui(Some(ses.ui.clone()));
+        r.set_occluders(edges);
         let store = ses.particles.borrow();
         r.render_frame(&self.world, tick, 1.0, &extras, Some(&store))?;
         drop(store);

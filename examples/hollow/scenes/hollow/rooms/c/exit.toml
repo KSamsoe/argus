@@ -10,6 +10,18 @@ size = [1.5, 2.5]
 [Collider]
 size = [1.0, 2.0]
 
+# Daylight through the arch (phase 5 item 3): the way out shows at its own
+# colours in the dark of the hall, and its light spills over the floor
+# before it, so the end of the hall reads as somewhere to go.
+[Emissive]
+amount = 1.0
+
+[Light]
+color = "#FFF0C8"
+intensity = 1.3
+radius = 6.5
+falloff = 1.5
+
 [Describe]
 name = "exit"
 text = "The way out."

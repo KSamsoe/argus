@@ -15,8 +15,11 @@
 //!
 //! Randomness comes from the system's own stream (`particles`) of the run's
 //! seed, so a replay emits the same particles in the same places. The pools
-//! are presentation state: they are not in a world snapshot, and a restored
-//! world starts with empty pools that fill again from the emitters.
+//! are not in the world, but they feed it: `Emitter.live`, `particles.done`,
+//! and `auto_despawn` follow the particles' deaths, so an effect's lifetime,
+//! rate, burst, and duration steer ticks. A world snapshot alone starts with
+//! empty pools; a keyframe and a save hold them, each by its effect's name,
+//! and the particles put back play on under the effect as it is now.
 
 #![warn(missing_docs)]
 
@@ -479,6 +482,9 @@ pub struct ParticleStore {
     pub pools: BTreeMap<Entity, Pool>,
     /// Bumped whenever the effects change.
     pub generation: u64,
+    /// Effects tuned live, by asset name: played in place of their files'
+    /// until taken off (phase 5 item 3).
+    tuned: BTreeMap<String, EmitterSpec>,
 }
 
 impl ParticleStore {
@@ -560,10 +566,11 @@ impl ParticleStore {
     }
 
     /// Take every effect from an importer. An effect whose file now fails
-    /// to import keeps its last good version.
+    /// to import keeps its last good version; one tuned live keeps that.
     pub fn set_assets(&mut self, assets: &Importer) {
         let mut effects: BTreeMap<String, Rc<Effect>> = BTreeMap::new();
         for (name, spec) in assets.emitters() {
+            let spec = self.tuned.get(name).unwrap_or(spec);
             match self.effects.get(name) {
                 Some(old) if old.spec == *spec => {
                     effects.insert(name.clone(), old.clone());
@@ -595,6 +602,31 @@ impl ParticleStore {
         self.generation += 1;
     }
 
+    /// Play `spec` for the effect `name` in place of its file's from the
+    /// next tick, the particles already out included, until
+    /// [`ParticleStore::untune`]; an import in between keeps it (phase 5
+    /// item 3: the tuning panel moves an effect live, and its file changes
+    /// only when the session is kept).
+    pub fn tune(&mut self, name: &str, spec: EmitterSpec) {
+        self.set_effect(name, &spec);
+        self.tuned.insert(name.to_string(), spec);
+    }
+
+    /// What `name` is tuned to, if it is.
+    pub fn tuned(&self, name: &str) -> Option<&EmitterSpec> {
+        self.tuned.get(name)
+    }
+
+    /// Take every tuned effect off: each plays its file's again, as the
+    /// importer has it.
+    pub fn untune(&mut self, assets: &Importer) {
+        if self.tuned.is_empty() {
+            return;
+        }
+        self.tuned.clear();
+        self.set_assets(assets);
+    }
+
     /// Particles alive in every pool.
     pub fn live(&self) -> usize {
         self.pools.values().map(Pool::len).sum()
@@ -620,4 +652,70 @@ pub fn install(
 ) -> Result<()> {
     register(world)?;
     system::install(world, sched, store)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    /// A project directory removed when the test ends, passed or not.
+    struct Dir(PathBuf);
+
+    impl Drop for Dir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn emitter(burst: u32) -> String {
+        format!("type = \"emitter\"\nburst = {burst}\n")
+    }
+
+    #[test]
+    fn a_tuned_effect_plays_until_taken_off_and_an_import_keeps_it() {
+        let dir = Dir(std::env::temp_dir().join(format!("argus-tuned-{}", std::process::id())));
+        let _ = std::fs::remove_dir_all(&dir.0);
+        std::fs::create_dir_all(dir.0.join("assets/fx")).unwrap();
+        std::fs::write(dir.0.join("assets/fx/a.toml"), emitter(4)).unwrap();
+        std::fs::write(dir.0.join("assets/fx/b.toml"), emitter(1)).unwrap();
+        let mut imp = Importer::new(&dir.0);
+        imp.scan();
+        let mut store = ParticleStore::default();
+        store.set_assets(&imp);
+        let g = store.generation;
+
+        let (spec, _) = argus_assets::parse_emitter("assets/fx/a.toml", &emitter(9)).unwrap();
+        store.tune("fx/a", spec);
+        assert_eq!(store.effects["fx/a"].spec.burst, 9);
+        assert_eq!(store.tuned("fx/a").map(|s| s.burst), Some(9));
+        assert!(
+            store.generation > g,
+            "particles.update takes it on the next tick"
+        );
+        // Another file's import keeps the tuned one. Written at the same
+        // length and given back its time, as two writes inside one step of
+        // the clock are, it keeps its stamp: unread until touched.
+        let b = dir.0.join("assets/fx/b.toml");
+        let was = std::fs::metadata(&b).unwrap().modified().unwrap();
+        std::fs::write(&b, emitter(2)).unwrap();
+        std::fs::File::options()
+            .write(true)
+            .open(&b)
+            .unwrap()
+            .set_modified(was)
+            .unwrap();
+        imp.scan();
+        store.set_assets(&imp);
+        assert_eq!(store.effects["fx/b"].spec.burst, 1, "the stamp hid it");
+        imp.touch("fx/b");
+        imp.scan();
+        store.set_assets(&imp);
+        assert_eq!(store.effects["fx/a"].spec.burst, 9);
+        assert_eq!(store.effects["fx/b"].spec.burst, 2);
+        // Taken off, the file's again.
+        store.untune(&imp);
+        assert_eq!(store.effects["fx/a"].spec.burst, 4);
+        assert!(store.tuned("fx/a").is_none());
+    }
 }

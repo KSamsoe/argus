@@ -1170,7 +1170,9 @@ impl Daemon {
                 .as_ref()
                 .map(|s| s.writer.size())
                 .unwrap_or((1, 1));
-            let extras = self.tile_extras(argus_render::view_for(&self.world, w, h));
+            let view = argus_render::view_for(&self.world, w, h);
+            let extras = self.tile_extras(view);
+            let edges = self.tile_occluders(view);
             let t = shader_time(&self.sched, alpha);
             let (Some(s), Some(ses)) = (&mut self.render.stream, &self.session) else {
                 return;
@@ -1184,6 +1186,7 @@ impl Daemon {
             }
             s.renderer.set_time(t);
             s.renderer.set_ui(Some(ses.ui.clone()));
+            s.renderer.set_occluders(edges);
             let store = ses.particles.borrow();
             let drawn = s
                 .renderer
@@ -2808,6 +2811,20 @@ impl Daemon {
         Ok(Some(inverse))
     }
 
+    /// The solid tiles' edges where they can shadow a view, for the
+    /// renderer's 2D lighting (none with lighting off).
+    #[cfg(feature = "render")]
+    fn tile_occluders(&mut self, view: ([f32; 2], [f32; 2])) -> Vec<argus_light::Edge> {
+        let Some(rect) = argus_light::reach(&self.world, view.0, view.1) else {
+            return Vec::new();
+        };
+        let Some(tiles) = self.session.as_ref().map(|s| s.tiles.clone()) else {
+            return Vec::new();
+        };
+        let mut st = tiles.borrow_mut();
+        argus_light::tile_edges(&self.world, &mut st, rect)
+    }
+
     /// Tiles every visible Tilemap entity puts in a view.
     #[cfg(feature = "render")]
     fn tile_extras(&mut self, view: ([f32; 2], [f32; 2])) -> Vec<argus_render::Extra> {
@@ -3045,6 +3062,10 @@ impl Daemon {
                                 .unwrap_or(Json::Null);
                             tuned.push((def.clone(), path.clone(), value.clone(), now));
                         }
+                    }
+                    // An effect's knobs, from its sidecar as it was (phase 5 item 3).
+                    if let (true, Op::AssetText { asset, text }) = (log_tune, &inv) {
+                        tuned.extend(self.knob_changes(asset, text));
                     }
                     inverse.push(inv)
                 }
@@ -5166,7 +5187,9 @@ impl Daemon {
         // not part way from the tick before, as a window between ticks is.
         let alpha = 1.0;
         self.refresh_assets();
-        let extras = self.tile_extras(argus_render::view_for(&self.world, width, height));
+        let view = argus_render::view_for(&self.world, width, height);
+        let extras = self.tile_extras(view);
+        let edges = self.tile_occluders(view);
         let r = self.render.offscreen(
             width,
             height,
@@ -5176,6 +5199,7 @@ impl Daemon {
         let _ = self.sched.present(&mut self.world);
         r.set_time(shader_time(&self.sched, alpha));
         r.set_ui(self.session.as_ref().map(|s| s.ui.clone()));
+        r.set_occluders(edges);
         // Set every time: the renderer is kept between calls.
         r.gpu_mut().set_see_as(see_as);
         let store = self.session.as_ref().expect("session").particles.borrow();
@@ -5229,6 +5253,9 @@ impl Daemon {
             "missing_atlases": rep.missing_atlases,
             "interpolated": rep.interpolated,
             "particles": rep.particles,
+            "lights": rep.lights,
+            "shadow_edges": rep.shadow_edges,
+            "glowing": rep.glowing,
             "materials": rep.stats.materials,
             "missing_materials": rep.missing_materials,
             "material_problems": rep.material_problems,
@@ -5503,6 +5530,7 @@ impl Daemon {
                 "atlases": l.stats.atlases,
                 "interpolated": l.interpolated,
                 "missing_atlases": l.missing_atlases,
+                "lights": l.lights,
                 "materials": l.stats.materials,
                 "missing_materials": l.missing_materials,
                 "material_problems": l.material_problems,
@@ -5537,12 +5565,15 @@ impl Daemon {
             .as_ref()
             .map(|(h, _)| h.size())
             .unwrap_or((1, 1));
-        let extras = self.tile_extras(argus_render::view_for(&self.world, size.0, size.1));
+        let view = argus_render::view_for(&self.world, size.0, size.1);
+        let extras = self.tile_extras(view);
+        let edges = self.tile_occluders(view);
         let t = shader_time(&self.sched, alpha);
         self.update_bar(size.0);
         if let (Some((_, r)), Some(ses)) = (&mut self.render.window, &self.session) {
             r.set_time(t);
             r.set_ui(Some(ses.ui.clone()));
+            r.set_occluders(edges);
             let store = ses.particles.borrow();
             let _ = r.render_frame(&self.world, tick, alpha, &extras, Some(&store));
         }

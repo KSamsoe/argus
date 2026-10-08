@@ -83,6 +83,16 @@ Every statement in the design document (v0.3) that constrains the renderer as ph
 |---|---|---|---|
 | (§12) "A colour-blind simulation post pass (§13) lets the agent and the human check readability without guessing." | Done | `see_as`: protanopia, deuteranopia, tritanopia (Machado, Oliveira, and Fernandes 2009, full severity, in linear RGB) and achromatopsia. A way of looking, not part of the game: `Gpu::set_see_as` draws the whole frame, the UI included, into a texture of its own and then through the matrix into the target. `obs.frame {see_as}` and `render.stream {see_as}` (the editor viewport's See as) use it. | `see_as::red_and_green_are_seen_as_a_colour_blind_eye_sees_them` (on every adapter here), `argus-daemon` `render::obs_frame_sees_as_a_colour_blind_eye_sees` |
 
+## Phase 5, item 3: 2D lighting, normal maps, the CRT pass
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§12) "2D lighting as a render pass: point and cone lights, occluders derived from tiles and sprites, normal-mapped sprites optional; off by default and zero-cost when off." | Done | `light`: with `Lighting` on the drawing camera, the world goes into the post stack's texture; a light map is cleared to the ambient light; each light adds a quad over its radius with its falloff and cone, a light that casts shadows first drawing them into the stencil with its own number (argus-light sweeps them) and then drawing only where the stencil does not hold it; the picture is multiplied by the map; what glows is drawn over that; then the post passes. Half floats where the device draws and blends them, else sRGB bytes at half the light. `Renderer::set_occluders` takes the solid tiles' edges (the daemon, the player, the web page, and the game give them each frame); the renderer adds the Occluders'. A light moves between ticks as a sprite does. Without `Lighting`: no texture, no pipeline, no pass. | `tests/light.rs` (on the GPU and on WARP) |
+| Normal-mapped sprites. | Done | `Gpu::set_atlas_normal`: an atlas's normal map, a texture of its own the atlas's size. When one is drawn, every sprite is drawn again into a normal buffer (`light.rs` `fs_normal`: the map's normal turned with the sprite's rotation and mirrored with its flip; a sprite without one flat, and saying so), and each light reads it (`fs_light_n`). | `light::a_normal_mapped_sprite_is_lit_by_where_its_normals_face` |
+| (§8) The agent sees the lights. | Done | `semantic`'s `lighting` section; `FrameReport` `lights`, `shadow_edges`, `glowing` (in `obs.frame`). | the daemon's and the games' tests |
+| (§17) "Hollow post stack, 5 passes at 1080p < 1.5 ms GPU", with lighting on. | Done | 0.386 ms for the five passes and sixteen shadowed lights over 400 edges, 0.189 ms of it the lighting (RTX 3070 Ti, Vulkan). | `render::perf_post_stack_five_passes_at_1080p` (release, `--ignored`) |
+| (§13) The CRT pass. | Done | `post.rs` `crt`: `PostCrt`'s curve, scanlines, bleed, and mask. | `render::post_passes_change_the_picture_in_order` |
+
 ## Known limitations, stated so they are decisions
 
 - The tests that need a GPU skip only when the machine has no adapter at all. Before item 11 they skipped on any failure to start the renderer, so a renderer that could not build its pipeline passed every test; item 11 found that when a binding change broke the pipeline and every render test still passed.

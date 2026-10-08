@@ -1,11 +1,16 @@
 //! The tuning panel (§10: "any field with tune = true appears in the
 //! editor's tuning panel as a slider while the game runs"; phase 4 item 3).
 //! Its rows are `tune.fields`: named entities' fields, the runtime entities
-//! of a kind there are few of (Outpost's job kinds), and the def tables'
-//! rows (a meal's food). Every movement of a slider is a `tune.set`, logged
-//! with its frame, so the agent sees the search path and not only the value
-//! the person settled on; the session's end keeps the final values as one
-//! change by the person, or puts them back.
+//! of a kind there are few of (Outpost's job kinds), the def tables' rows
+//! (a meal's food), and the particle effects' knobs (phase 5 item 3: Swarm's
+//! sparks, their speed's min and max, their size over life). Every movement
+//! of a slider is a `tune.set`, logged with its frame, so the agent sees
+//! the search path and not only the value the person settled on; the
+//! session's end keeps the final values as one change by the person, an
+//! effect's in its sidecar, or puts them back. A field that is not a number
+//! has the control its value needs (phase 5 item 3: a light's colour): a
+//! colour as its swatch and its hex, sent when Enter is pressed; words as
+//! a text box; two numbers as two to drag; a switch as a box to tick.
 
 use eframe::egui::{self, RichText};
 use serde_json::{json, Value as Json};
@@ -14,7 +19,8 @@ use std::collections::{BTreeMap, HashMap};
 /// What the panel asks the editor to do.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Tune {
-    /// A slider moved: `tune.set` of the target (`{entity}` or `{def}`).
+    /// A slider moved: `tune.set` of the target (`{entity}`, `{def}`, or
+    /// `{asset}`).
     Set(Json),
     /// The person let go of a slider: the last `tune.set` is the command
     /// they gave (Show as command lists it once, not every step).
@@ -39,15 +45,22 @@ pub struct Tuning {
     pub note: String,
     /// Values a slider holds while it is dragged, by row key.
     held: HashMap<String, f64>,
+    /// Words being typed, and two numbers being dragged, by row key.
+    typed: HashMap<String, String>,
+    held2: HashMap<String, [f64; 2]>,
     /// The last `tune.set` sent for each row: a slider held still sends none.
     sent: HashMap<String, Json>,
 }
+
+/// The place of the many of a kind among the groups: last, and folded.
+const MANY: u8 = 4;
 
 /// A row's key: its target and path.
 pub fn key(row: &Json) -> String {
     let target = row["entity"]
         .as_str()
         .or_else(|| row["def"].as_str())
+        .or_else(|| row["asset"].as_str())
         .or_else(|| row["component"].as_str())
         .unwrap_or("?");
     format!("{target} {}", row["path"].as_str().unwrap_or("?"))
@@ -67,9 +80,17 @@ impl Tuning {
         } else {
             json!((value * 10_000.0).round() / 10_000.0)
         };
+        Tuning::set_value(row, v, author)
+    }
+
+    /// The `tune.set` params for a row at any value: words, two numbers, a
+    /// switch.
+    pub fn set_value(row: &Json, v: Json, author: &str) -> Json {
         let mut p = json!({ "path": row["path"], "value": v, "author": author });
         if let Some(d) = row["def"].as_str() {
             p["def"] = json!(d);
+        } else if let Some(a) = row["asset"].as_str() {
+            p["asset"] = json!(a);
         } else {
             p["entity"] = row["entity"].clone();
         }
@@ -157,15 +178,17 @@ impl Tuning {
             {
                 continue;
             }
-            // The named first, then the data tables, then the few of a kind
-            // made at run time (Outpost's job kinds); the many of a kind,
-            // which only what makes them tunes, last and folded.
+            // The named first, then the data tables, the effects, the few
+            // of a kind made at run time (Outpost's job kinds); the many of
+            // a kind, which only what makes them tunes, last and folded.
             let order = if r["runtime"].is_u64() {
-                3
+                MANY
             } else if r["def"].is_string() {
                 1
-            } else if r["runtime"] == true {
+            } else if r["asset"].is_string() {
                 2
+            } else if r["runtime"] == true {
+                3
             } else {
                 0
             };
@@ -177,12 +200,13 @@ impl Tuning {
             .show(ui, |ui| {
                 let many: Vec<Json> = groups
                     .iter()
-                    .filter(|((o, _), _)| *o == 3)
+                    .filter(|((o, _), _)| *o == MANY)
                     .flat_map(|(_, rows)| rows.iter().cloned())
                     .collect();
-                for ((order, label), rows) in groups.iter().filter(|((o, _), _)| *o < 3) {
+                for ((order, label), rows) in groups.iter().filter(|((o, _), _)| *o < MANY) {
                     let head = match order {
                         1 => format!("{label} (data table)"),
+                        2 => format!("{label} (effect)"),
                         _ => label.clone(),
                     };
                     egui::CollapsingHeader::new(head)
@@ -216,13 +240,19 @@ impl Tuning {
 
     fn row(&mut self, ui: &mut egui::Ui, r: &Json, author: &str, out: &mut Vec<Tune>) {
         let path = r["path"].as_str().unwrap_or("?");
-        let name = path.rsplit('.').next().unwrap_or(path);
+        // An effect's knob says what it is ("speed max"); a field, its name.
+        let name = r["name"]
+            .as_str()
+            .unwrap_or_else(|| path.rsplit('.').next().unwrap_or(path));
         let mut hover = r["doc"].as_str().unwrap_or("").to_string();
         if let Some(t) = r["table"].as_str() {
             hover.push_str(&format!(
                 "\nrow {} of defs/{t}.toml",
                 r["def"].as_str().unwrap_or("?")
             ));
+        }
+        if let Some(f) = r["file"].as_str() {
+            hover.push_str(&format!("\n{path} in {f}"));
         }
         if let Some(d) = r.get("default").filter(|d| !d.is_null()) {
             hover.push_str(&format!("\ndefault {d}"));
@@ -236,6 +266,11 @@ impl Tuning {
             return;
         }
         let k = key(r);
+        // Not a number: words (a colour), two numbers, a switch.
+        if !r["value"].is_number() && !r["value"].is_null() {
+            self.other(ui, r, name, &hover, author, out);
+            return;
+        }
         let now = r["value"].as_f64().unwrap_or(0.0);
         let mut v = *self.held.get(&k).unwrap_or(&now);
         let range = r["range"]
@@ -272,5 +307,118 @@ impl Tuning {
                 out.push(Tune::Done(p.clone()));
             }
         }
+    }
+
+    /// A row's new value: a `tune.set` when it moved, and the command given
+    /// when `done`.
+    fn send(&mut self, r: &Json, author: &str, v: Json, done: bool, out: &mut Vec<Tune>) {
+        let k = key(r);
+        let p = Tuning::set_value(r, v, author);
+        if self.sent.get(&k) != Some(&p) {
+            self.sent.insert(k, p.clone());
+            out.push(Tune::Set(p.clone()));
+        }
+        if done {
+            out.push(Tune::Done(p));
+        }
+    }
+
+    /// A row whose value is not a number.
+    fn other(
+        &mut self,
+        ui: &mut egui::Ui,
+        r: &Json,
+        name: &str,
+        hover: &str,
+        author: &str,
+        out: &mut Vec<Tune>,
+    ) {
+        let k = key(r);
+        match &r["value"] {
+            Json::String(now) => {
+                ui.horizontal(|ui| {
+                    let lab = ui.label(name);
+                    // A colour: its swatch beside the words.
+                    let shown = self.typed.get(&k).unwrap_or(now).clone();
+                    if let Some(c) = hex(&shown) {
+                        let (rect, _) =
+                            ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::hover());
+                        ui.painter().rect_filled(rect, 2.0, c);
+                    }
+                    let mut text = shown;
+                    let resp = ui
+                        .add(
+                            egui::TextEdit::singleline(&mut text)
+                                .desired_width(90.0)
+                                .hint_text("empty: the default"),
+                        )
+                        .labelled_by(lab.id)
+                        .on_hover_text(hover);
+                    if resp.changed() {
+                        self.typed.insert(k.clone(), text.clone());
+                    }
+                    // Sent as a whole, when Enter is pressed or the box is
+                    // left: a half-typed colour is no colour.
+                    if resp.lost_focus() {
+                        if let Some(t) = self.typed.remove(&k) {
+                            if &t != now {
+                                self.send(r, author, json!(t), true, out);
+                            }
+                        }
+                    }
+                });
+            }
+            Json::Array(a) if a.len() == 2 && a.iter().all(Json::is_number) => {
+                let now = [a[0].as_f64().unwrap_or(0.0), a[1].as_f64().unwrap_or(0.0)];
+                let mut v = *self.held2.get(&k).unwrap_or(&now);
+                ui.horizontal(|ui| {
+                    let rx = ui.add(egui::DragValue::new(&mut v[0]).speed(0.01));
+                    let ry = ui.add(egui::DragValue::new(&mut v[1]).speed(0.01));
+                    ui.label(name).on_hover_text(hover);
+                    let round = |x: f64| (x * 10_000.0).round() / 10_000.0;
+                    if rx.changed() || ry.changed() {
+                        self.held2.insert(k.clone(), v);
+                        let let_go = !(rx.dragged() || ry.dragged());
+                        self.send(r, author, json!([round(v[0]), round(v[1])]), let_go, out);
+                        if let_go {
+                            self.held2.remove(&k);
+                        }
+                    } else if rx.drag_stopped() || ry.drag_stopped() {
+                        self.held2.remove(&k);
+                        if let Some(p) = self.sent.get(&k) {
+                            out.push(Tune::Done(p.clone()));
+                        }
+                    }
+                });
+            }
+            Json::Bool(now) => {
+                let mut on = *now;
+                if ui.checkbox(&mut on, name).on_hover_text(hover).changed() {
+                    self.send(r, author, json!(on), true, out);
+                }
+            }
+            v => {
+                ui.horizontal(|ui| {
+                    ui.label(name).on_hover_text(hover);
+                    ui.weak(v.to_string());
+                });
+            }
+        }
+    }
+}
+
+/// A `#RRGGBB` or `#RRGGBBAA` colour, for its swatch.
+fn hex(s: &str) -> Option<egui::Color32> {
+    let h = s.trim().strip_prefix('#')?;
+    let v = |i: usize| u8::from_str_radix(h.get(i..i + 2)?, 16).ok();
+    match h.len() {
+        6 => Some(egui::Color32::from_rgb(v(0)?, v(2)?, v(4)?)),
+        8 => Some(egui::Color32::from_rgba_unmultiplied(
+            v(0)?,
+            v(2)?,
+            v(4)?,
+            v(6)?,
+        )),
+        _ => None,
     }
 }

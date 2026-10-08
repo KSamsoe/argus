@@ -36,13 +36,19 @@ Every statement in the design document (v0.3) that constrains materials as phase
 | (§12) SDF text is drawn by a material. | Done | The library's sixth built-in, `sdf_text`: the distance in the atlas's alpha, blended from the four texels around by hand (the atlas sampler is nearest), an edge `fwidth` wide; `edge` moves it (bolder or thinner) and `softness` widens it. | `material::every_parameters_struct_is_a_multiple_of_16_bytes_for_webgl2` compiles it; `argus-render` `ui::a_font_asset_draws_crisp_from_its_distance_field_at_any_size` draws it |
 | (§15) Every material works on the web's WebGL2 fallback. | Done | `compose` pads the `Params` struct to the uniform's size, a multiple of 16 bytes. WebGL2 binds nothing between; a material of one or two numbers stopped the page on WebGL2 (found by the web check with `sdf_text`). | `material::every_parameters_struct_is_a_multiple_of_16_bytes_for_webgl2`, the web check's WebGL2 page |
 
+## Phase 5, item 3: what glows
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| Under 2D lighting, a glow the dark should not dim. | Done | A sidecar's `emissive = true` (a variant inherits its base's): every sprite and particle drawn with the material is drawn after the scene's light, at its own colour, not darkened by it. Without lighting it changes nothing. | `argus-render` `tests/light.rs` |
+
 ## Known limitations, stated so they are decisions
 
 - A sprite carries four numbers for its material. A per-sprite colour takes all four, which is why `outline`'s width is per material (make a variant for a thicker line).
 - A parameter's `from` reads numbers, vec2s, and colour strings. There is no vec4 field type for it to read yet.
 - `outline` draws inside the frame, so art needs a clear margin as wide as the line.
 - Texture parameters sample frame 0 of a sprite asset. The cache pads textures to a power of two, and `sample_<name>` maps 0 to 1 onto the frame, not the padded texture.
-- `lit` has one light. Several lights and shadows are phase 5.
+- `lit` has one light. Many lights and their shadows are the 2D lighting pass (phase 5 item 3, `argus-light`), which lights every sprite whatever its material; `lit` stays for a sprite that wants a light of its own.
 - Screen-space passes (the post stack) are phase 2 and are not materials.
 - Materials are drawn with `textureSampleLevel` at level 0 (there are no mipmaps), so a shader may sample anywhere, branches included.
 - The per-sprite values made every instance 80 bytes, from 64. Building 200,000 sprites a frame went from 17.1 ms to 19.6 ms in release.

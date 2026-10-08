@@ -155,6 +155,9 @@ pub struct SemanticFrame {
     pub groups: Vec<Group>,
     /// Shake, particles, and materials on screen.
     pub effects: Vec<Json>,
+    /// 2D lighting, when the drawing camera has it (phase 5 item 3): the
+    /// ambient light and the lights reaching the view; `None` when off.
+    pub lighting: Option<Json>,
     /// Entities and groups past the limits.
     pub omitted: usize,
     /// Text holes that named nothing.
@@ -210,6 +213,15 @@ impl SemanticFrame {
             "omitted": self.omitted,
             "problems": self.problems,
         })
+        .as_object()
+        .cloned()
+        .map(|mut o| {
+            if let Some(l) = &self.lighting {
+                o.insert("lighting".into(), l.clone());
+            }
+            Json::Object(o)
+        })
+        .expect("an object")
     }
 }
 
@@ -265,6 +277,11 @@ fn post_effects(world: &World, cam: Entity, height: u32, out: &mut Vec<Json>) {
     if let Ok(p) = world.get::<PostPalette>(cam) {
         if p.amount > 0.0 {
             out.push(json!({ "kind": "palette", "camera": c, "amount": round(p.amount), "colors": color(p.colors, DEFAULT_PALETTE) }));
+        }
+    }
+    if let Ok(k) = world.get::<PostCrt>(cam) {
+        if k.amount > 0.0 {
+            out.push(json!({ "kind": "crt", "camera": c, "amount": round(k.amount), "scanlines": round(k.scanlines), "curvature": round(k.curvature) }));
         }
     }
 }
@@ -671,6 +688,7 @@ pub fn semantic(world: &World, spec: &FrameSpec) -> SemanticFrame {
         effects.push(json!({ "kind": "material", "material": m, "sprites": n }));
     }
 
+    let lighting = lighting(world, rect, &to_px, h);
     let ui = ui_seen(world, spec);
     SemanticFrame {
         size: [spec.width, spec.height],
@@ -682,9 +700,91 @@ pub fn semantic(world: &World, spec: &FrameSpec) -> SemanticFrame {
         entities: notable,
         groups,
         effects,
+        lighting,
         omitted,
         problems,
     }
+}
+
+/// Lights listed one by one; past this, counted.
+const LIGHTS: usize = 16;
+
+/// The drawing camera's 2D lighting, as the agent reads it: the ambient
+/// light, and each light reaching the view (where on the screen, how far
+/// it reaches in pixels, its colour and strength, a cone's direction).
+fn lighting(
+    world: &World,
+    rect: [f32; 4],
+    to_px: &dyn Fn(f32, f32) -> (f32, f32),
+    h: f32,
+) -> Option<Json> {
+    let (_, lit) = argus_light::lighting(world)?;
+    let words = |id: StrId, default: &str| {
+        let s = world.strings().resolve(id);
+        if s.is_empty() {
+            default.to_string()
+        } else {
+            s
+        }
+    };
+    let per_unit = h / (rect[3] - rect[1]).max(0.0001);
+    let mut lights = Vec::new();
+    let mut omitted = 0;
+    if let Some(lc) = world.component_id_of::<argus_light::Light>() {
+        for e in world.query().has(lc).entities() {
+            let Ok(l) = world.get::<argus_light::Light>(e) else {
+                continue;
+            };
+            if !l.on || l.radius <= 0.0 || l.intensity <= 0.0 {
+                continue;
+            }
+            let Some((p, dir)) = argus_light::light_at(world, e, &l) else {
+                continue;
+            };
+            let r = l.radius;
+            if p[0] + r < rect[0] || p[0] - r > rect[2] || p[1] + r < rect[1] || p[1] - r > rect[3]
+            {
+                continue;
+            }
+            if lights.len() == LIGHTS {
+                omitted += 1;
+                continue;
+            }
+            let (x, y) = to_px(p[0], p[1]);
+            let mut o = json!({
+                "id": entity_id(world, e),
+                "kind": if l.angle < 180.0 { "cone" } else { "point" },
+                "at": [x.round(), y.round()],
+                "radius_px": (r * per_unit).round(),
+                "color": words(l.color, "#FFFFFF"),
+                "intensity": round(l.intensity),
+            });
+            if l.angle < 180.0 {
+                o["direction"] = json!(round(dir.to_degrees().rem_euclid(360.0)));
+                o["angle"] = json!(round(l.angle));
+            }
+            if !(lit.shadows && l.shadows) {
+                o["shadows"] = json!(false);
+            }
+            if l.flicker > 0.0 {
+                o["flicker"] = json!(round(l.flicker));
+            }
+            lights.push(o);
+        }
+    }
+    let mut out = json!({
+        "ambient": words(lit.ambient, "#000000"),
+        "level": round(lit.level),
+        "shadows": lit.shadows,
+        "lights": lights,
+    });
+    if lit.shadows && !lit.tiles {
+        out["tiles_cast"] = json!(false);
+    }
+    if omitted > 0 {
+        out["omitted"] = json!(omitted);
+    }
+    Some(out)
 }
 
 /// The UI's words and buttons, placed in the frame through the canvas. A

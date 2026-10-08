@@ -22,16 +22,21 @@ pub enum PostKind {
     Vignette,
     /// Toward a colour, as `Flash`.
     Fade,
+    /// An old screen: `a.x` how much, `a.y` scanline darkness, `a.z` lines
+    /// (0: one per three pixels), `a.w` curvature; `b.x` bleed in pixels,
+    /// `b.y` the phosphor mask.
+    Crt,
 }
 
 impl PostKind {
-    const ALL: [PostKind; 6] = [
+    const ALL: [PostKind; 7] = [
         PostKind::Shake,
         PostKind::Aberration,
         PostKind::Palette,
         PostKind::Flash,
         PostKind::Vignette,
         PostKind::Fade,
+        PostKind::Crt,
     ];
 
     fn entry(self) -> &'static str {
@@ -42,6 +47,7 @@ impl PostKind {
             PostKind::Flash => "flash",
             PostKind::Vignette => "vignette",
             PostKind::Fade => "fade",
+            PostKind::Crt => "crt",
         }
     }
 
@@ -144,6 +150,38 @@ fn vignette(v: V) -> @location(0) vec4<f32> {
 fn fade(v: V) -> @location(0) vec4<f32> {
     let c = at(v.uv);
     return vec4<f32>(mix(c.rgb, p.a.rgb, p.b.x), c.a);
+}
+
+@fragment
+fn crt(v: V) -> @location(0) vec4<f32> {
+    let plain = at(v.uv);
+    // The curved glass: the picture pulled in toward the corners, black
+    // where it no longer reaches.
+    let c = v.uv * 2.0 - vec2<f32>(1.0);
+    let bent = c * (1.0 + p.a.w * dot(c, c));
+    let uv = bent * 0.5 + vec2<f32>(0.5);
+    var col = vec3<f32>(0.0);
+    if (all(uv >= vec2<f32>(0.0)) && all(uv <= vec2<f32>(1.0))) {
+        // Colours bleed sideways: the neighbours, a pixel or more over.
+        let dx = vec2<f32>(p.b.x * p.size.z, 0.0);
+        let mid = at(uv).rgb;
+        let side = (at(uv - dx).rgb + at(uv + dx).rgb) * 0.5;
+        col = mix(mid, side, select(0.0, 0.5, p.b.x > 0.0));
+        // Scanlines across the height.
+        let lines = select(p.size.y / 3.0, p.a.z, p.a.z > 0.0);
+        let s = 0.5 + 0.5 * cos(uv.y * lines * 6.2831853);
+        col = col * (1.0 - p.a.y * (1.0 - s));
+        // The mask: each pixel column leans red, green, or blue.
+        let k = i32(v.pos.x) % 3;
+        var m = vec3<f32>(1.0, 0.0, 0.0);
+        if (k == 1) {
+            m = vec3<f32>(0.0, 1.0, 0.0);
+        } else if (k == 2) {
+            m = vec3<f32>(0.0, 0.0, 1.0);
+        }
+        col = col * mix(vec3<f32>(1.0), m * 1.5 + vec3<f32>(0.25), p.b.y);
+    }
+    return vec4<f32>(mix(plain.rgb, col, p.a.x), plain.a);
 }
 "#;
 
@@ -290,7 +328,15 @@ impl PostStack {
         self.targets.as_ref().expect("made").1[0].clone()
     }
 
-    /// Run the passes from the scene texture into `out`.
+    /// The stack's other texture, where the lighting composite goes when
+    /// passes follow it (made by [`PostStack::scene`]).
+    pub fn second(&self) -> Option<wgpu::TextureView> {
+        self.targets.as_ref().map(|t| t.1[1].clone())
+    }
+
+    /// Run the passes into `out`, from the scene texture (`first` 0) or
+    /// from the other one (`first` 1, after the lighting composite).
+    #[allow(clippy::too_many_arguments)]
     pub fn run(
         &self,
         device: &wgpu::Device,
@@ -299,14 +345,19 @@ impl PostStack {
         passes: &[PostPass],
         out: &wgpu::TextureView,
         (w, h): (u32, u32),
+        first: usize,
     ) {
         let Some((_, views)) = &self.targets else {
             return;
         };
         let n = passes.len().min(MAX_PASSES);
         for (i, p) in passes.iter().take(n).enumerate() {
-            let (src, last) = (&views[i % 2], i + 1 == n);
-            let dst = if last { out } else { &views[(i + 1) % 2] };
+            let (src, last) = (&views[(first + i) % 2], i + 1 == n);
+            let dst = if last {
+                out
+            } else {
+                &views[(first + i + 1) % 2]
+            };
             let mut bytes: Vec<f32> = Vec::with_capacity(44);
             bytes.extend(p.a);
             bytes.extend(p.b);

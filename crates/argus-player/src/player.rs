@@ -496,6 +496,16 @@ impl Player {
         })
     }
 
+    /// The solid tiles' edges where they can shadow a view, for the
+    /// renderer's 2D lighting (none with lighting off; the daemon's
+    /// `tile_occluders`).
+    pub fn tile_occluders(&mut self, view: ([f32; 2], [f32; 2])) -> Vec<argus_light::Edge> {
+        match argus_light::reach(&self.world, view.0, view.1) {
+            Some(rect) => argus_light::tile_edges(&self.world, &mut self.tiles.borrow_mut(), rect),
+            None => Vec::new(),
+        }
+    }
+
     /// Tiles in view, for the renderer (the daemon's `tile_extras`).
     pub fn tile_extras(&mut self, view: ([f32; 2], [f32; 2])) -> Vec<argus_render::Extra> {
         let Some(tm) = self.world.component_id_of::<argus_tiles::Tilemap>() else {

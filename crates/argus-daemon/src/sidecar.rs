@@ -359,7 +359,11 @@ impl Daemon {
         }
         std::fs::write(file, new)
             .map_err(|e| ArgusError::new(codes::BAD_PARAMS, format!("{shown}: {e}")))?;
-        let report = self.session.as_mut().expect("session").assets.scan();
+        // Read again whatever the stamp says: two writes in a millisecond
+        // at one length (a commit and its undo) keep the file's stamp.
+        let assets = &mut self.session.as_mut().expect("session").assets;
+        assets.touch(asset);
+        let report = assets.scan();
         let failed = report
             .failed
             .iter()
@@ -368,7 +372,9 @@ impl Daemon {
         self.apply_asset_report(report);
         if let Some((message, at)) = failed {
             let _ = std::fs::write(file, old);
-            let report = self.session.as_mut().expect("session").assets.scan();
+            let assets = &mut self.session.as_mut().expect("session").assets;
+            assets.touch(asset);
+            let report = assets.scan();
             self.apply_asset_report(report);
             let mut e = ArgusError::new(
                 codes::BAD_PARAMS,

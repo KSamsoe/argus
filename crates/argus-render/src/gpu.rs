@@ -85,6 +85,15 @@ pub struct Atlas {
     pub page: u64,
     bind_group: wgpu::BindGroup,
     view: wgpu::TextureView,
+    /// Its normal map's texture, the same size and layout (phase 5 item 3).
+    normal: Option<wgpu::BindGroup>,
+}
+
+impl Atlas {
+    /// Whether it has a normal map.
+    pub fn normal_mapped(&self) -> bool {
+        self.normal.is_some()
+    }
 }
 
 /// A texture atlases are drawn from: one sprite's, or a page many share.
@@ -182,6 +191,14 @@ pub struct Gpu {
     view_filter: Option<crate::see_as::ViewFilter>,
     /// Their pipelines and textures, made when first used.
     post_stack: Option<crate::post::PostStack>,
+    /// The next frames' lighting (phase 5 item 3), and its pass, made when
+    /// first used; `light_f16` says whether its map can be half floats.
+    light: Option<crate::light::LightFrame>,
+    light_pass: Option<crate::light::LightPass>,
+    light_f16: bool,
+    /// The normal map a sprite without one is drawn with in the normal
+    /// pass: flat, and saying it is none (alpha 0).
+    flat_normal: wgpu::BindGroup,
 }
 
 fn err(e: impl std::fmt::Display) -> ArgusError {
@@ -404,6 +421,13 @@ impl Gpu {
     ) -> Result<Gpu> {
         let info = adapter.get_info();
         let software = info.device_type == wgpu::DeviceType::Cpu;
+        let f16 = adapter.get_texture_format_features(wgpu::TextureFormat::Rgba16Float);
+        let light_f16 = f16
+            .allowed_usages
+            .contains(wgpu::TextureUsages::RENDER_ATTACHMENT)
+            && f16
+                .flags
+                .contains(wgpu::TextureFormatFeatureFlags::BLENDABLE);
         // Every uniform is bound at an offset (a root constant buffer on
         // DirectX 12), never through the descriptor heap: on WARP, the
         // software rasteriser CI draws with (section 9), a constant buffer
@@ -476,6 +500,15 @@ impl Gpu {
         let bc = device
             .features()
             .contains(wgpu::Features::TEXTURE_COMPRESSION_BC);
+        let flat_normal = Self::normal_bind(
+            &device,
+            &queue,
+            &atlas_layout,
+            &sampler,
+            1,
+            1,
+            &[128, 128, 255, 0],
+        );
         let mut gpu = Gpu {
             device,
             queue,
@@ -505,6 +538,10 @@ impl Gpu {
             see_as: None,
             view_filter: None,
             post_stack: None,
+            light: None,
+            light_pass: None,
+            light_f16,
+            flat_normal,
         };
         // Built-in atlases for described-shape placeholders (section 14).
         gpu.add_atlas_rgba(
@@ -949,8 +986,90 @@ impl Gpu {
                 page: page.id,
                 bind_group: page.bind_group.clone(),
                 view: page.view.clone(),
+                normal: None,
             },
         );
+    }
+
+    /// Give an atlas a normal map (phase 5 item 3): RGBA8, the normal's x,
+    /// y (up), and z as colour, the same size and layout as the atlas's
+    /// texture, which must be its own (not a shared page). False when there
+    /// is no such atlas or the sizes differ.
+    pub fn set_atlas_normal(&mut self, name: &str, width: u32, height: u32, rgba: &[u8]) -> bool {
+        let Some(a) = self.atlases.get(name) else {
+            return false;
+        };
+        if (a.width, a.height) != (width, height) || rgba.len() != (width * height * 4) as usize {
+            return false;
+        }
+        let b = Self::normal_bind(
+            &self.device,
+            &self.queue,
+            &self.atlas_layout,
+            &self.sampler,
+            width,
+            height,
+            rgba,
+        );
+        self.atlases.get_mut(name).expect("found").normal = Some(b);
+        true
+    }
+
+    /// A normal map's texture, bound as an atlas is.
+    fn normal_bind(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        layout: &wgpu::BindGroupLayout,
+        sampler: &wgpu::Sampler,
+        width: u32,
+        height: u32,
+        rgba: &[u8],
+    ) -> wgpu::BindGroup {
+        let size = wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        };
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("normal map"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: crate::light::NORMALS,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            rgba,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(4 * width),
+                rows_per_image: Some(height),
+            },
+            size,
+        );
+        let view = texture.create_view(&Default::default());
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("normal map"),
+            layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(sampler),
+                },
+            ],
+        })
     }
 
     /// Forget an atlas (its asset went away).
@@ -987,8 +1106,14 @@ impl Gpu {
         ui: Option<&UiDraw>,
     ) -> Result<DrawStats> {
         let ui = ui.filter(|u| !u.runs.is_empty());
+        let glow: Vec<Run> = self
+            .light
+            .as_ref()
+            .map(|l| l.glow.clone())
+            .unwrap_or_default();
         let mut used: Vec<usize> = runs
             .iter()
+            .chain(glow.iter())
             .chain(ui.iter().flat_map(|u| u.runs.iter().map(|(r, _)| r)))
             .map(|r| r.material)
             .collect();
@@ -1050,8 +1175,9 @@ impl Gpu {
             }
             None => (view, None),
         };
-        // With post passes the world goes into the stack's texture first.
-        let post_on = !self.post.is_empty();
+        // With post passes, or lighting, the world goes into the stack's
+        // texture first.
+        let post_on = !self.post.is_empty() || self.light.is_some();
         let scene = if post_on {
             let (w, h) = (self.width, self.height);
             let stack = self
@@ -1090,48 +1216,114 @@ impl Gpu {
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
-            pass.set_bind_group(0, &self.view_bind, &[0]);
-            pass.set_vertex_buffer(0, self.instance_buf.slice(..));
             let mut bound = std::collections::HashSet::new();
             let mut drawn_with = std::collections::HashSet::new();
-            let (mut cur_mat, mut cur_atlas) = (usize::MAX, usize::MAX);
-            for r in runs {
-                let Some(a) = self
-                    .atlas_order
-                    .get(r.atlas)
-                    .and_then(|n| self.atlases.get(n))
-                else {
-                    continue;
-                };
-                // A material that is gone draws with the default.
-                let mi = match self.materials.get(r.material) {
-                    Some(Some(m)) if m.bind.is_some() => r.material,
-                    _ => 0,
-                };
-                if mi != cur_mat {
-                    let Some(Some(m)) = self.materials.get(mi) else {
-                        continue;
-                    };
-                    let Some((bg, _)) = &m.bind else {
-                        continue;
-                    };
-                    pass.set_pipeline(&m.pipeline);
-                    pass.set_bind_group(2, bg, &[0]);
-                    cur_mat = mi;
-                }
-                if r.atlas != cur_atlas {
-                    pass.set_bind_group(1, &a.bind_group, &[]);
-                    cur_atlas = r.atlas;
-                }
-                pass.draw(0..6, r.start as u32..(r.start + r.count) as u32);
-                stats.draw_calls += 1;
-                bound.insert(r.atlas);
-                drawn_with.insert(mi);
-            }
+            self.draw_runs(&mut pass, runs, &mut stats, &mut bound, &mut drawn_with);
             stats.atlases = bound.len();
             stats.materials = drawn_with.len();
         }
-        if post_on {
+        // Lit: the scene times the light map, into the target or the post
+        // stack's other texture; then what glows, unlit, over it; then the
+        // post passes from there (phase 5 item 3).
+        let mut post_from = 0;
+        if self.light.is_some() {
+            let dst = if self.post.is_empty() {
+                view.clone()
+            } else {
+                post_from = 1;
+                self.post_stack
+                    .as_ref()
+                    .and_then(|s| s.second())
+                    .expect("made with the scene")
+            };
+            let (w, h) = (self.width, self.height);
+            let (f16, format) = (self.light_f16, self.format);
+            let mut lp = self.light_pass.take().unwrap_or_else(|| {
+                crate::light::LightPass::new(
+                    &self.device,
+                    f16,
+                    &self.view_layout,
+                    &self.atlas_layout,
+                    format,
+                )
+            });
+            // A normal-mapped sprite drawn: the normal pass first, every
+            // sprite again into the normal buffer.
+            let atlas_of = |r: &Run| {
+                self.atlas_order
+                    .get(r.atlas)
+                    .and_then(|n| self.atlases.get(n))
+            };
+            let normals = runs
+                .iter()
+                .any(|r| atlas_of(r).is_some_and(|a| a.normal.is_some()));
+            if normals {
+                let nview = lp.normal_target(&self.device, w, h);
+                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("normals"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &nview,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color {
+                                r: 0.5,
+                                g: 0.5,
+                                b: 1.0,
+                                a: 0.0,
+                            }),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: None,
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                });
+                pass.set_pipeline(lp.normal_pipeline());
+                pass.set_bind_group(0, &self.view_bind, &[0]);
+                pass.set_vertex_buffer(0, self.instance_buf.slice(..));
+                for r in runs {
+                    let Some(a) = atlas_of(r) else {
+                        continue;
+                    };
+                    pass.set_bind_group(1, &a.bind_group, &[]);
+                    pass.set_bind_group(2, a.normal.as_ref().unwrap_or(&self.flat_normal), &[]);
+                    pass.draw(0..6, r.start as u32..(r.start + r.count) as u32);
+                }
+            }
+            if let Some(frame) = &self.light {
+                lp.run(
+                    &self.device,
+                    &self.queue,
+                    &mut encoder,
+                    &self.view_bind,
+                    frame,
+                    &scene,
+                    &dst,
+                    (w, h),
+                    normals,
+                );
+            }
+            self.light_pass = Some(lp);
+            if !glow.is_empty() {
+                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("glow"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &dst,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Load,
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: None,
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                });
+                let (mut b, mut m) = Default::default();
+                self.draw_runs(&mut pass, &glow, &mut stats, &mut b, &mut m);
+            }
+        }
+        if !self.post.is_empty() {
             if let Some(stack) = &self.post_stack {
                 stack.run(
                     &self.device,
@@ -1140,6 +1332,7 @@ impl Gpu {
                     &self.post,
                     &view,
                     (self.width, self.height),
+                    post_from,
                 );
             }
         }
@@ -1256,6 +1449,74 @@ impl Gpu {
     /// drawn straight into the target).
     pub fn set_post(&mut self, passes: Vec<crate::post::PostPass>) {
         self.post = passes;
+    }
+
+    /// The next frames' lighting (`None`: off, and nothing of it runs).
+    pub fn set_light(&mut self, frame: Option<crate::light::LightFrame>) {
+        self.light = frame;
+    }
+
+    /// The light map's format, once lighting has run: half floats, or sRGB
+    /// bytes holding half the light.
+    pub fn light_format(&self) -> Option<wgpu::TextureFormat> {
+        self.light_pass.as_ref().map(|l| l.format())
+    }
+
+    /// Light into half floats where the device can (the default), or into
+    /// bytes as a device without them does: a test's way to see both.
+    pub fn set_light_f16(&mut self, on: bool) {
+        if !on && self.light_f16 {
+            self.light_f16 = false;
+            self.light_pass = None;
+        }
+    }
+
+    /// Draw runs of the frame's instances (the world's sprites, or what
+    /// glows) into a pass: one draw per run, binding what changes.
+    fn draw_runs(
+        &self,
+        pass: &mut wgpu::RenderPass<'_>,
+        runs: &[Run],
+        stats: &mut DrawStats,
+        bound: &mut std::collections::HashSet<usize>,
+        drawn_with: &mut std::collections::HashSet<usize>,
+    ) {
+        pass.set_bind_group(0, &self.view_bind, &[0]);
+        pass.set_vertex_buffer(0, self.instance_buf.slice(..));
+        let (mut cur_mat, mut cur_atlas) = (usize::MAX, usize::MAX);
+        for r in runs {
+            let Some(a) = self
+                .atlas_order
+                .get(r.atlas)
+                .and_then(|n| self.atlases.get(n))
+            else {
+                continue;
+            };
+            // A material that is gone draws with the default.
+            let mi = match self.materials.get(r.material) {
+                Some(Some(m)) if m.bind.is_some() => r.material,
+                _ => 0,
+            };
+            if mi != cur_mat {
+                let Some(Some(m)) = self.materials.get(mi) else {
+                    continue;
+                };
+                let Some((bg, _)) = &m.bind else {
+                    continue;
+                };
+                pass.set_pipeline(&m.pipeline);
+                pass.set_bind_group(2, bg, &[0]);
+                cur_mat = mi;
+            }
+            if r.atlas != cur_atlas {
+                pass.set_bind_group(1, &a.bind_group, &[]);
+                cur_atlas = r.atlas;
+            }
+            pass.draw(0..6, r.start as u32..(r.start + r.count) as u32);
+            stats.draw_calls += 1;
+            bound.insert(r.atlas);
+            drawn_with.insert(mi);
+        }
     }
 
     /// Wait for the GPU to finish what it was given (a measurement's).

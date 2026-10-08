@@ -107,6 +107,11 @@ component "Vignette" {
   doc = "The camera a vignette cuts to: it follows what the vignette is about (systems/vignette.luau)",
 }
 
+component "Lamp" {
+  doc = "One of the colony's lamps (the stove, the campfire): its Light comes up as the day's light goes and goes out in the morning (systems/light.luau)",
+  intensity = field.f32 { default = 1, range = {0, 16}, tune = true, doc = "Its Light's intensity at full night" },
+}
+
 return component "Bed" {
   doc = "A bed",
   owner = field.entity { doc = "Whose it is" },

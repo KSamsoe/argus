@@ -218,6 +218,9 @@ pub struct MaterialSpec {
     pub source: String,
     /// How it blends.
     pub blend: Blend,
+    /// Drawn after the scene's 2D lighting, at its own colour (phase 5
+    /// item 3): glows and sparks the dark should not dim.
+    pub emissive: bool,
     /// What it is for.
     pub doc: String,
     /// Its parameters, in declared order.
@@ -508,7 +511,7 @@ pub fn check(spec: &MaterialSpec) -> Result<Composed> {
 
 // ----- the sidecar ------------------------------------------------------
 
-const KEYS: &[&str] = &["type", "shader", "blend", "doc", "params"];
+const KEYS: &[&str] = &["type", "shader", "blend", "emissive", "doc", "params"];
 const PARAM_KEYS: &[&str] = &["type", "default", "range", "doc", "from"];
 const RESERVED: &[&str] = &[
     "fn", "let", "var", "const", "struct", "if", "else", "for", "loop", "while", "return", "break",
@@ -516,7 +519,7 @@ const RESERVED: &[&str] = &[
     "override", "in", "out", "params", "p", "v", "m", "c", "view", "material", "texel", "_none",
 ];
 
-const HINT: &str = "A material is <name>.wgsl defining fn material(in: MaterialInput, p: Params) -> vec4<f32>, with an optional <name>.toml: type = \"material\", shader (a built-in: unlit, lit, palette, dissolve, outline; or a .wgsl path), blend (alpha, add, multiply), doc, and [params.<name>] with type (f32, vec2, vec4, color, texture), default, range, doc, and from (\"Component.field\" per sprite, \"@id:Component.field\" per frame).";
+const HINT: &str = "A material is <name>.wgsl defining fn material(in: MaterialInput, p: Params) -> vec4<f32>, with an optional <name>.toml: type = \"material\", shader (a built-in: unlit, lit, palette, dissolve, outline; or a .wgsl path), blend (alpha, add, multiply), emissive (true: drawn after the 2D lighting, unlit), doc, and [params.<name>] with type (f32, vec2, vec4, color, texture), default, range, doc, and from (\"Component.field\" per sprite, \"@id:Component.field\" per frame).";
 
 fn bad(at: String, msg: impl Into<String>) -> ArgusError {
     ArgusError::new(codes::BAD_MATERIAL, msg.into())
@@ -614,6 +617,7 @@ pub fn parse_material(
                 shader_file: sf.to_string(),
                 source: src.to_string(),
                 blend: Blend::Alpha,
+                emissive: false,
                 doc: String::new(),
                 params: Vec::new(),
             },
@@ -678,6 +682,12 @@ pub fn parse_material(
             Some("multiply") => Blend::Multiply,
             _ => return Err(bad(at(i), "blend is alpha, add, or multiply")),
         },
+    };
+    let emissive = match doc.get("emissive") {
+        None => base.is_some_and(|b| b.emissive),
+        Some(i) => i
+            .as_bool()
+            .ok_or_else(|| bad(at(i), "emissive is true or false"))?,
     };
     let mdoc = doc
         .get("doc")
@@ -896,6 +906,7 @@ pub fn parse_material(
         shader_file,
         source,
         blend,
+        emissive,
         doc: mdoc,
         params,
     };

@@ -1,0 +1,11 @@
+[package]
+name = "argus-light"
+description = "Argus Engine 2D lighting: point and cone lights, shadows from solid tiles and occluder boxes, emissive sprites, and the camera's ambient light; off by default and free when off"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+argus-ecs = { path = "../argus-ecs", version = "0.0.1" }
+argus-camera = { path = "../argus-camera", version = "0.0.1" }
+argus-tiles = { path = "../argus-tiles", version = "0.0.1" }

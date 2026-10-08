@@ -19,6 +19,9 @@ Each room is a directory with its room.toml (bounds, neighbours), its own
 tilemap (back wall, rock, planks) and the entity that draws it, and fifty
 decorations: crystals, drips, and two glowing crystals the semantic frame
 describes. About 10,000 authored files: what the index is for (section 4).
+Since phase 5 item 3 the hollow is dark: a glowing crystal shows at its own
+colour (Emissive) and lights the rock around it in that colour (a Light,
+which the room's walls stop), so the deep is a dark maze with beacons in it.
 
 Tiles are written in argus-tiles' format (chunks of little-endian u16
 cells, a manifest of FNV-1a hashes, the index's hash of the manifest); the
@@ -218,7 +221,9 @@ def decorate(rng, room_dir, room, c, r, open_up, open_down):
             os.path.join(room_dir, f"glow.{i}.toml"),
             f'tags = ["crystal", "glow"]\n\n[Transform]\npos = [{px}, {py}]\n\n'
             f'[Sprite]\nkind = "circle"\nsize = [0.9, 0.9]\ncolor = "{palette[2]}"\nz = -1.4\n\n'
-            f'[Describe]\nname = "glowing crystal"\ntext = "A crystal glows {tone} in the dark, {where}."\n',
+            f'[Describe]\nname = "glowing crystal"\ntext = "A crystal glows {tone} in the dark, {where}."\n\n'
+            f'[Emissive]\namount = 1.0\n\n'
+            f'[Light]\ncolor = "{palette[2]}"\nintensity = 0.8\nradius = 3.5\nfalloff = 1.5\n',
         )
 
 

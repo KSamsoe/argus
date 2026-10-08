@@ -1,7 +1,10 @@
 -- The valley, laid out from the seed when the colony is founded: the
 -- ground as a navigation grid with trees on it, the stockpile (the colony
 -- itself), a stove, fields, a bed each, the colonists with their skills,
--- the job kinds from defs/jobs.toml, a camera, and the HUD.
+-- the job kinds from defs/jobs.toml, a camera, the HUD, and a campfire.
+-- The stove and the campfire are the colony's lamps (phase 5 item 3): lit
+-- as the day's light goes, out in the morning (systems/light.luau). A
+-- valley laid out before there were lamps (a save from then) gets them.
 --
 -- A colony is laid out once (Colony.laid_out). A save from before the
 -- valley was (the first week's, tests/saves/week1.save) has colonists and
@@ -9,9 +12,40 @@
 -- them and gives them what a colonist has now.
 
 local PILE = vector.create(20, 12, 0)
+-- Between the stockpile and the beds, where the colony sleeps.
+local FIRE = vector.create(17.5, 15.5, 0)
 
 local function sprite(e, kind, w, h, color, z)
   e:insert("Sprite", { kind = kind, size = vector.create(w, h, 0), color = color, z = z })
+end
+
+-- One of the colony's lamps: a warm light, out until systems/light.luau
+-- lights it as the day's light goes, at intensity at full night.
+local function lamp(e, color, intensity, radius, flicker)
+  e:insert("Light", { color = color, intensity = 0, radius = radius, falloff = 1.6, flicker = flicker, shadows = false, on = false })
+  e:insert("Lamp", { intensity = intensity })
+end
+
+-- The colony's lamps: the stove's fire, and the campfire between the
+-- stockpile and the beds, the colony's light at night (the stockpile, the
+-- stove, and the beds within its reach). Spawned last, so nothing else
+-- moves.
+local function light_up(q)
+  local stoves = {}
+  for e in q:each("Station") do
+    if not e:has("Lamp") then table.insert(stoves, e:id()) end
+  end
+  for _, id in ipairs(stoves) do
+    lamp(q:entity(id), "#FF7A3A", 1.2, 4.0, 0.15)
+  end
+  local fire = q:spawn({ "Transform", "Describe" })
+  fire:get("Transform").pos = FIRE
+  sprite(fire, "circle", 0.6, 0.6, "#FF8A3A", 2)
+  fire:insert("Emissive", { amount = 1 })
+  local d = fire:get("Describe")
+  d.name = "campfire"
+  d.text = "The colony's fire, lit from dusk to morning."
+  lamp(fire, "#FF9440", 1.6, 7.5, 0.3)
 end
 
 -- Somewhere in the valley away from the colony's middle, for a tree.
@@ -26,13 +60,17 @@ return system "sim.colony.found" {
   stage = "sim",
   on_load = true, -- the colony is there before the first tick
   reads = { "Colony", "Colonist", "Camera", "UiRoot", "JobKind" },
-  writes = { "Colony", "Stockpile", "Colonist", "Needs", "Worker", "NavAgent", "NavGrid", "NavCost", "Transform", "Sprite", "Describe", "Field", "Station", "Bed", "JobKind", "Camera", "UiRoot", "UiNode", "UiPanel", "UiText", "PlayerSlot", "Actions", "Item", "Hud" },
+  writes = { "Colony", "Stockpile", "Colonist", "Needs", "Worker", "NavAgent", "NavGrid", "NavCost", "Transform", "Sprite", "Describe", "Field", "Station", "Bed", "JobKind", "Camera", "UiRoot", "UiNode", "UiPanel", "UiText", "PlayerSlot", "Actions", "Item", "Hud", "Light", "Lamp", "Emissive" },
   rng = "valley",
-  doc = "Lays the valley out once (Colony.laid_out): a navigation grid of Colony.size with trees from the seed, the stockpile at the colony, a stove, ten fields, a bed each, the founders from defs/founders.toml (or Colony.colonists of them, their skills in turn), Colony.stones stones lying about, a JobKind per row of defs/jobs.toml, a camera, and the HUD. An older save's colonists get a place, a Worker, a NavAgent, and a bed.",
+  doc = "Lays the valley out once (Colony.laid_out): a navigation grid of Colony.size with trees from the seed, the stockpile at the colony, a stove, ten fields, a bed each, the founders from defs/founders.toml (or Colony.colonists of them, their skills in turn), Colony.stones stones lying about, a JobKind per row of defs/jobs.toml, a camera, the HUD, and a campfire; the stove and the campfire are Lamps. An older save's colonists get a place, a Worker, a NavAgent, and a bed; a valley laid out without Lamps gets them.",
   run = function(q)
     local colony = q:entity("@colony")
     local rules = colony:get("Colony")
-    if rules.laid_out then return end
+    if rules.laid_out then
+      -- Laid out before the colony had lamps.
+      if q:count("Lamp") == 0 then light_up(q) end
+      return
+    end
     rules.laid_out = true
     -- An older save's calendar was the sim's.
     rules.clock = q.time
@@ -165,6 +203,7 @@ return system "sim.colony.found" {
         hud:get("Hud").kind = kind
       end
     end
+    light_up(q)
     q:emit("colony.laid_out", { day = rules.day, colonists = #ids })
   end,
 }
