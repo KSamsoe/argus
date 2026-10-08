@@ -141,6 +141,14 @@ pub struct SystemDesc {
     /// a loader that spawns and despawns whole rooms (phase 3 item 6). It
     /// declares what it wrote as it goes ([`SystemCtx::declare`]).
     pub exclusive: bool,
+    /// Registered with a parallel body (`Scheduler::add_parallel_system`);
+    /// the scheduler sets it.
+    pub parallel: bool,
+    /// Components a parallel system spawns, inserts, or removes. Those
+    /// changes wait for the end of its batch, so they do not keep it apart
+    /// from systems that use the same columns; they are writes for
+    /// `who_writes`.
+    pub spawns: Vec<ComponentId>,
 }
 
 impl SystemDesc {
@@ -160,7 +168,16 @@ impl SystemDesc {
             first: false,
             unfrozen: false,
             exclusive: false,
+            parallel: false,
+            spawns: Vec::new(),
         }
+    }
+
+    /// Declare a component a parallel system spawns with, inserts, or
+    /// removes (applied after its batch).
+    pub fn spawns(mut self, c: ComponentId) -> Self {
+        self.spawns.push(c);
+        self
     }
 
     /// May change the world in any way ([`SystemCtx::world_mut`]).

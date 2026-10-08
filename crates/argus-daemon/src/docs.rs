@@ -157,7 +157,7 @@ pub const TOOLS: &[ToolDoc] = &[
     },
     ToolDoc {
         name: "describe",
-        doc: "What things are: components with their fields and docs, or the systems in run order. A component: its fields with types, defaults, ranges, tune flags, and docs, and the systems that write and read it. No component: every component. systems: every system in run order with its stage, reads, writes, and doc.",
+        doc: "What things are: components with their fields and docs, or the systems in run order. A component: its fields with types, defaults, ranges, tune flags, and docs, and the systems that write and read it. No component: every component. systems: every system in run order with its stage, reads, writes, doc, and, for a parallel system, its batch.",
         params: &[
             opt("component", STRING, "a component's name"),
             opt("systems", BOOLEAN, "the systems instead of components"),
@@ -1062,6 +1062,14 @@ pub const METHODS: &[MethodDoc] = &[
         returns: "sim.status",
     },
     MethodDoc {
+        name: "sim.threads",
+        doc: "Threads a batch of parallel systems may use (section 3: the scheduler runs systems whose declarations do not conflict at once). 1 keeps every batch on the sim thread; 0 is one per core, the default. The world after a tick is the same for any number (section 6); only the time changes. Without n, the batches as they are: each one's systems in run order, and whether it ran on threads last time (a batch that would save under 0.2 ms runs on the sim thread).",
+        params: &[
+            opt("n", INTEGER, "threads; 0 is one per core"),
+        ],
+        returns: "{threads, batches: [{batch, stage, systems, threaded}]}",
+    },
+    MethodDoc {
         name: "sim.run_until",
         doc: "Fast-forward headless, as fast as the CPU allows, until an event fires, a sim time is reached, or n ticks pass.",
         params: &[
@@ -1405,12 +1413,12 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "script.systems",
-        doc: "Every system with stage, ordering, declared reads and writes, clock, RNG stream, enabled state, and source.",
+        doc: "Every system with stage, ordering, declared reads and writes, clock, RNG stream, enabled state, and source. A parallel system (a Rust system the scheduler may run beside others) has its batch: the systems of one batch run at once, on threads when that saves time (sim.threads).",
         params: &[
             opt("limit", INTEGER, "rows per page"),
             opt("cursor", STRING, "the next page, from a previous answer's cursor"),
         ],
-        returns: "{total, rows: [{name, stage, after, reads, writes, clock, rng, enabled, disabled_reason, source, doc}], next}",
+        returns: "{total, rows: [{name, stage, after, reads, writes, clock, rng, enabled, disabled_reason, source, doc, parallel, batch}], next}",
     },
     MethodDoc {
         name: "script.errors",

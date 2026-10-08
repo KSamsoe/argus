@@ -170,13 +170,23 @@ Decisions taken while building it:
 
 ## 5. Parallel stage scheduling
 
-**Status: to do.**
+**Status: done** (2026-10-08) in `argus-ecs` (`World` shared between threads: atomic column borrow flags, a string table behind a lock and sealed during a batch; the broadphase kept up to date instead of rebuilt), `argus-sim` (`par.rs`: parallel systems and their `ParCtx`; batches planned from the declarations and run on threads when it saves time; `SchedulerConfig::threads`; a capture's thread rows), and the daemon (`sim.threads`; `script.systems`' `parallel` and `batch`). Four heavy systems in one batch: 6.7 ms a tick on one thread, 2.0 ms on four, the same world. The world, every event, and the string table are the same tick by tick on 1, 3, and 4 threads. The broadphase's pass at 100k moving entities: 0.43 ms, where the rebuild was 2.2 ms. Traces: `argus-ecs`'s, `argus-sim`'s, `argus-physics`'s, the daemon's.
 
 - §3: "Each system declares the components it reads and writes. The scheduler uses this for parallelism."
 - §17: "one thread for sim unless the scheduler finds parallel stages."
 - §6: determinism holds: the world at tick N is the same with one thread or many.
 - The ECS's trace: column borrow flags are `Cell`s, so `World` is not `Sync`; parallel scheduling replaces them with static per-stage checks from `Access`. The Luau VM is not `Send`.
 - §12: the broadphase rebuilt incrementally (carried in).
+
+Decisions taken while building it:
+
+- **A parallel system is its own kind, registered as one.** `Scheduler::add_parallel_system` takes a `Send` body that sees the world through a `ParCtx`: the components it declared, its RNG stream, and nothing it could race on. Script systems share one Luau VM, and the engine's own systems hold the daemon's stores in `Rc`s, so neither is `Send`; in the four games every system stays serial and the sim runs on one thread, which is §17's "one thread for sim unless the scheduler finds parallel stages". Rust plugin crates (item 6) are the first that can use batches.
+- **The borrow flags stay, made atomic.** The ECS trace planned to replace the column flags with static checks from `Access`. The static checks are what plan a batch, but the flags also catch a system that fetches one column twice, which no declaration shows, so they stay, as atomics, and `World` is `Send` and `Sync` soundly. Field access costs about 2% more in the Luau per-entity benchmark (42.2 to 43.8 ms against 41.8).
+- **A batch changes only its own columns while it runs.** Its systems' events, spawns, despawns, inserts, and removes are applied after the last of them, system by system in run order, and the string table is sealed (a new string's id would depend on which thread asked first; a spawn may carry one, since spawns are applied after). So a batch is the same on one thread or many, and whether it uses threads is only about time: it does when its systems' last runs promise to save 0.2 ms beyond its longest, so a light batch never pays for starting threads.
+- **What a parallel system spawns does not keep it apart.** Spawns land after the batch, so `SystemDesc::spawns(c)` declares them separately from writes: a spawner and a system writing the same component's column can share a batch, and `who_writes` lists both.
+- **A batch is consecutive systems in the stage's order.** The scheduler does not move systems to make bigger batches; the order is what `after` and registration declared, and it stays the order events and changes are applied in.
+- **The thread count is not part of the run.** `sim.threads` makes no keyframe and a replay does not record it, since the world after a tick is the same for any number.
+- **The broadphase is kept, not rebuilt.** Each pass writes positions into per-entity slots and touches the cells only for entities that changed cell, arrived, or left (refilling every cell in one sweep when more than an eighth did). Cells list entities by index, so a hash kept up to date answers every query in the same order as one built from nothing, which is what a restored snapshot builds. Swarm's headless rate rose from 40,400 to 49,100 ticks a second, Delve's turn p95 from 0.031 to 0.021 ms, and the physics test's 20,000 circles from 3.2 to 2.1 ms a tick.
 
 ## 6. Rust plugin crates with dylib hot reload
 

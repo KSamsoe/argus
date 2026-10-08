@@ -108,6 +108,7 @@ fn session_open_gives_the_one_screen_summary() {
         "sim.step",
         "sim.advance",
         "sim.speed",
+        "sim.threads",
         "sim.run_until",
         "script.reload",
         "script.systems",
@@ -698,6 +699,14 @@ fn scripts_reload_in_place_and_errors_are_data() {
     assert_eq!(dmg["stage"], "sim");
     assert_eq!(dmg["writes"], json!(["Health"]));
     assert_eq!(dmg["enabled"], true);
+    // A script system runs on the sim thread, in no batch (phase 5 item 5).
+    assert_eq!(dmg["parallel"], false);
+    assert!(dmg["batch"].is_null());
+    let threads = ok(&mut d, "sim.threads", json!({ "n": 1 }));
+    assert_eq!(threads["threads"], 1);
+    assert_eq!(threads["batches"], json!([]));
+    let threads = ok(&mut d, "sim.threads", json!({ "n": 0 }));
+    assert!(threads["threads"].as_u64().unwrap() >= 1, "one per core");
     assert_eq!(ok(&mut d, "script.errors", json!({}))["total"], 0);
 
     ok(&mut d, "sim.step", json!({ "n": 1 }));

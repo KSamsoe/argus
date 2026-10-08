@@ -5,13 +5,16 @@
 //!
 //! Borrowing is checked at runtime per column (like `RefCell`), so a query
 //! that asks for `&mut T` and `&T` of the same component in one pass gets a
-//! structured error instead of aliasing.
+//! structured error instead of aliasing. The flag is atomic (phase 5 item
+//! 5), so a world can be shared by the systems of a parallel batch: the
+//! scheduler keeps their writes apart by their declarations, and the flag
+//! still catches a system that fetches one column twice.
 
 use crate::error::{codes, ArgusError, Result};
 use std::alloc::{self, Layout};
-use std::cell::Cell;
 use std::ops::{Deref, DerefMut};
 use std::ptr::NonNull;
+use std::sync::atomic::{AtomicIsize, Ordering};
 
 /// A column of `len` rows, each `stride` bytes, aligned to `align`.
 pub struct Column {
@@ -21,8 +24,14 @@ pub struct Column {
     stride: usize,
     align: usize,
     /// >0 shared borrows, -1 exclusive borrow, 0 free.
-    borrow: Cell<isize>,
+    borrow: AtomicIsize,
 }
+
+// SAFETY: the rows are reached through `&mut Column` or through a borrow
+// recorded in the atomic flag, so two threads holding `&Column` never alias
+// a row mutably; the allocation itself is plain memory owned by the column.
+unsafe impl Send for Column {}
+unsafe impl Sync for Column {}
 
 impl std::fmt::Debug for Column {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -43,7 +52,7 @@ impl Column {
             len: 0,
             stride,
             align: align.max(1),
-            borrow: Cell::new(0),
+            borrow: AtomicIsize::new(0),
         }
     }
 
@@ -183,11 +192,7 @@ impl Column {
     /// Borrow the whole column as `&[T]`. Fails if exclusively borrowed.
     pub fn borrow<T>(&self) -> Result<ColRef<'_, T>> {
         self.check_typed::<T>();
-        let b = self.borrow.get();
-        if b < 0 {
-            return Err(borrow_conflict("mutably"));
-        }
-        self.borrow.set(b + 1);
+        self.acquire_shared()?;
         // SAFETY: size/align checked; rows are initialized; shared borrow recorded.
         let slice = unsafe { core::slice::from_raw_parts(self.ptr.as_ptr() as *const T, self.len) };
         Ok(ColRef { col: self, slice })
@@ -196,10 +201,7 @@ impl Column {
     /// Borrow the whole column as `&mut [T]`. Fails if borrowed at all.
     pub fn borrow_mut<T>(&self) -> Result<ColMut<'_, T>> {
         self.check_typed::<T>();
-        if self.borrow.get() != 0 {
-            return Err(borrow_conflict("already"));
-        }
-        self.borrow.set(-1);
+        self.acquire_exclusive()?;
         // SAFETY: size/align checked; exclusive borrow recorded; data is behind
         // a raw pointer so mutation through `&self` is sound.
         let slice =
@@ -208,27 +210,37 @@ impl Column {
     }
 
     /// Try to take a dynamic shared borrow (for field-level access).
+    #[inline]
     pub(crate) fn acquire_shared(&self) -> Result<()> {
-        let b = self.borrow.get();
-        if b < 0 {
-            return Err(borrow_conflict("mutably"));
+        let mut b = self.borrow.load(Ordering::Relaxed);
+        loop {
+            if b < 0 {
+                return Err(borrow_conflict("mutably"));
+            }
+            match self
+                .borrow
+                .compare_exchange_weak(b, b + 1, Ordering::Acquire, Ordering::Relaxed)
+            {
+                Ok(_) => return Ok(()),
+                Err(now) => b = now,
+            }
         }
-        self.borrow.set(b + 1);
-        Ok(())
     }
     /// Try to take a dynamic exclusive borrow.
+    #[inline]
     pub(crate) fn acquire_exclusive(&self) -> Result<()> {
-        if self.borrow.get() != 0 {
-            return Err(borrow_conflict("already"));
-        }
-        self.borrow.set(-1);
-        Ok(())
+        self.borrow
+            .compare_exchange(0, -1, Ordering::Acquire, Ordering::Relaxed)
+            .map(|_| ())
+            .map_err(|_| borrow_conflict("already"))
     }
+    #[inline]
     pub(crate) fn release_shared(&self) {
-        self.borrow.set(self.borrow.get() - 1);
+        self.borrow.fetch_sub(1, Ordering::Release);
     }
+    #[inline]
     pub(crate) fn release_exclusive(&self) {
-        self.borrow.set(0);
+        self.borrow.store(0, Ordering::Release);
     }
 }
 

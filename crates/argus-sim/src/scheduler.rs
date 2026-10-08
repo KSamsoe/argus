@@ -6,6 +6,7 @@
 
 use crate::alloc;
 use crate::clock::{Clock, ClockKind};
+use crate::par::{Deferred, ParCtx, ParSystemFn};
 use crate::prof::{
     AllocProf, Capture, CapturedSpan, CapturedTick, Profiler, SystemProf, SystemSample, TickRecord,
 };
@@ -17,6 +18,7 @@ use argus_os::time::Instant;
 use std::collections::HashMap;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::Arc;
+use std::time::Duration;
 
 /// Scene-level scheduler configuration (`scene.toml` clock section, §4/§6).
 #[derive(Clone, Debug, PartialEq)]
@@ -29,6 +31,10 @@ pub struct SchedulerConfig {
     pub seed: u64,
     /// How many recent ticks the profiler keeps.
     pub prof_ticks: usize,
+    /// Threads a batch of parallel systems may use: 1 runs every batch on
+    /// the sim thread, 0 (the default) one per core. The world after a
+    /// tick is the same for any number (§6).
+    pub threads: usize,
 }
 
 impl Default for SchedulerConfig {
@@ -38,6 +44,7 @@ impl Default for SchedulerConfig {
             hz: 60.0,
             seed: 0,
             prof_ticks: 600,
+            threads: 0,
         }
     }
 }
@@ -68,10 +75,86 @@ impl SchedulerConfig {
 struct SystemSlot {
     desc: SystemDesc,
     name: Arc<str>,
-    run: SystemFn,
+    run: Body,
     enabled: bool,
     disabled_reason: Option<String>,
     rng: Option<Pcg32>,
+    /// The batch it runs in ([`NO_BATCH`] for a serial system).
+    batch: u32,
+    /// What its last run took: whether a batch is worth threads.
+    cost: Duration,
+}
+
+/// A system's body: run with the whole world on the sim thread, or in a
+/// batch through a [`ParCtx`].
+enum Body {
+    Serial(SystemFn),
+    Parallel(ParSystemFn),
+}
+
+const NO_BATCH: u32 = u32::MAX;
+
+/// A batch runs on threads only when its systems' last runs promise to save
+/// at least this much (the time beyond its longest system), since starting
+/// threads costs tens of microseconds. Either way the batch is the same.
+const PARALLEL_FLOOR: Duration = Duration::from_micros(200);
+
+/// One parallel system's run in a batch, with what it needs and what it
+/// leaves: each is moved to the thread that runs it.
+struct Job<'s> {
+    slot: usize,
+    run: &'s mut ParSystemFn,
+    rng: Option<&'s mut Pcg32>,
+    access: &'s Access,
+    spawns: &'s [ComponentId],
+    name: &'s Arc<str>,
+    out: Deferred,
+    outcome: Option<std::thread::Result<Result<()>>>,
+    start: Option<Instant>,
+    elapsed: Duration,
+    allocs: (u64, u64),
+    lane: u32,
+}
+
+/// What every job of a batch shares.
+#[derive(Clone, Copy)]
+struct Tick {
+    stage: Stage,
+    kind: ClockKind,
+    tick: u64,
+    time: f64,
+    dt: f64,
+    speed: f64,
+    frozen: bool,
+}
+
+impl Job<'_> {
+    fn run(&mut self, world: &World, t: Tick, lane: u32) {
+        let start = Instant::now();
+        let (a0, b0) = alloc::counters();
+        let mut ctx = ParCtx {
+            world,
+            access: self.access,
+            spawns: self.spawns,
+            rng: self.rng.as_deref_mut(),
+            out: &mut self.out,
+            name: self.name,
+            stage: t.stage,
+            clock: t.kind,
+            tick: t.tick,
+            time: t.time,
+            dt: t.dt,
+            speed: t.speed,
+            frozen: t.frozen,
+        };
+        let run = &mut *self.run;
+        self.outcome = Some(catch_unwind(AssertUnwindSafe(|| run(&mut ctx))));
+        let (a1, b1) = alloc::counters();
+        self.start = Some(start);
+        self.elapsed = start.elapsed();
+        self.allocs = (a1 - a0, b1 - b0);
+        self.lane = lane;
+    }
 }
 
 /// Everything about the sim that is not in the world: clocks, seed, RNG
@@ -197,6 +280,11 @@ pub struct SystemInfo {
     pub source: Option<String>,
     /// Doc string.
     pub doc: String,
+    /// A parallel system ([`Scheduler::add_parallel_system`]).
+    pub parallel: bool,
+    /// The batch it runs in, numbered in run order across stages; the
+    /// systems of one batch may run at once.
+    pub batch: Option<u32>,
     /// Runs at the end of its stage.
     pub last: bool,
     /// Also runs once when a scene loads (`run_load`).
@@ -226,12 +314,31 @@ pub struct Scheduler {
     quiet: bool,
     /// A system froze the rest of the tick being run (`SystemCtx::freeze`).
     frozen: bool,
+    /// Threads a batch may use, resolved from the config.
+    threads: usize,
+    /// How much a batch must promise to save to run on threads.
+    parallel_floor: Duration,
+    /// Whether each batch ran on threads last time, by batch number.
+    threaded: Vec<bool>,
 }
 
 /// Something that reads the world at the end of every tick and cannot
 /// change it: the daemon's history for `obs.trace`. Called with the frame
 /// the tick ran as, the frame its events carry.
 pub type Observer = Box<dyn FnMut(&World, u64)>;
+
+/// One batch of parallel systems (`sim.systems`' batches).
+#[derive(Clone, Debug, PartialEq)]
+pub struct BatchInfo {
+    /// Its number, in run order across stages.
+    pub batch: u32,
+    /// Its stage.
+    pub stage: Stage,
+    /// Its systems, in run order.
+    pub systems: Vec<String>,
+    /// Whether it ran on threads the last time it ran.
+    pub threaded: bool,
+}
 
 /// Called when a tick has fully ended (the clock already counts it), with
 /// the scheduler, so it can take the sim state: the daemon's keyframes.
@@ -247,6 +354,7 @@ impl Scheduler {
     /// New scheduler with no systems.
     pub fn new(config: SchedulerConfig) -> Scheduler {
         let prof = Profiler::new(config.prof_ticks);
+        let threads = resolve_threads(config.threads);
         Scheduler {
             continuous: Clock::continuous(config.hz),
             discrete: Clock::discrete(),
@@ -263,7 +371,60 @@ impl Scheduler {
             tick_end: None,
             quiet: false,
             frozen: false,
+            threads,
+            parallel_floor: PARALLEL_FLOOR,
+            threaded: Vec::new(),
         }
+    }
+
+    /// Threads a batch of parallel systems may use: 1 keeps every batch on
+    /// the sim thread, 0 is one per core. The world after a tick is the
+    /// same for any number (§6); only the time it takes changes.
+    pub fn set_threads(&mut self, n: usize) {
+        self.config.threads = n;
+        self.threads = resolve_threads(n);
+    }
+
+    /// Threads a batch may use now (0 resolved to the core count).
+    pub fn threads(&self) -> usize {
+        self.threads
+    }
+
+    /// How much time a batch's systems must promise to save, beyond its
+    /// longest one, before it runs on threads (200 µs unless set). Zero
+    /// sends every batch of two or more to threads: what a test of the
+    /// threaded path wants.
+    pub fn set_parallel_floor(&mut self, floor: Duration) {
+        self.parallel_floor = floor;
+    }
+
+    /// The batches of parallel systems in run order, each with its members
+    /// and whether it ran on threads last time.
+    pub fn batches(&mut self) -> Result<Vec<BatchInfo>> {
+        self.ensure_order()?;
+        let mut out: Vec<BatchInfo> = Vec::new();
+        for stage in &self.order {
+            for &i in stage {
+                let s = &self.systems[i];
+                if s.batch == NO_BATCH {
+                    continue;
+                }
+                match out.last_mut() {
+                    Some(b) if b.batch == s.batch => b.systems.push(s.desc.name.clone()),
+                    _ => out.push(BatchInfo {
+                        batch: s.batch,
+                        stage: s.desc.stage,
+                        systems: vec![s.desc.name.clone()],
+                        threaded: self
+                            .threaded
+                            .get(s.batch as usize)
+                            .copied()
+                            .unwrap_or(false),
+                    }),
+                }
+            }
+        }
+        Ok(out)
     }
 
     /// Call `f` at the end of every tick, after the clock counts it.
@@ -306,6 +467,36 @@ impl Scheduler {
     /// Register a system. Names are unique; `present` systems may not
     /// declare writes; ordering is validated on the next tick.
     pub fn add_system(&mut self, desc: SystemDesc, run: SystemFn) -> Result<()> {
+        self.add_body(desc, Body::Serial(run))
+    }
+
+    /// Register a parallel system (phase 5 item 5): a `Send` body that sees
+    /// the world through a [`ParCtx`], so the scheduler may run it beside
+    /// the parallel systems next to it in run order that it does not
+    /// conflict with. It may not be exclusive; its declaration is final
+    /// (it cannot declare more as it runs).
+    pub fn add_parallel_system(&mut self, desc: SystemDesc, run: ParSystemFn) -> Result<()> {
+        self.add_body(desc, Body::Parallel(run))
+    }
+
+    fn check_parallel(desc: &mut SystemDesc, body: &Body) -> Result<()> {
+        desc.parallel = matches!(body, Body::Parallel(_));
+        if desc.parallel && desc.exclusive {
+            return Err(ArgusError::new(
+                crate::codes::NOT_PARALLEL,
+                format!(
+                    "system {} is parallel and exclusive; an exclusive system changes the whole world",
+                    desc.name
+                ),
+            )
+            .hint("Register a loader with add_system; a parallel system writes its declared components.")
+            .at(desc.source.clone()));
+        }
+        Ok(())
+    }
+
+    fn add_body(&mut self, mut desc: SystemDesc, run: Body) -> Result<()> {
+        Self::check_parallel(&mut desc, &run)?;
         if self.systems.iter().any(|s| s.desc.name == desc.name) {
             return Err(ArgusError::new(
                 crate::codes::DUPLICATE_SYSTEM,
@@ -333,6 +524,8 @@ impl Scheduler {
             enabled: true,
             disabled_reason: None,
             rng,
+            batch: NO_BATCH,
+            cost: Duration::ZERO,
         });
         self.order_dirty = true;
         Ok(())
@@ -364,9 +557,19 @@ impl Scheduler {
     /// its RNG stream state when the stream name is unchanged (§7 hot reload:
     /// "continues from the current frame"). Registers it if absent.
     pub fn replace_system(&mut self, desc: SystemDesc, run: SystemFn) -> Result<()> {
+        self.replace_body(desc, Body::Serial(run))
+    }
+
+    /// [`Scheduler::replace_system`] for a parallel system.
+    pub fn replace_parallel_system(&mut self, desc: SystemDesc, run: ParSystemFn) -> Result<()> {
+        self.replace_body(desc, Body::Parallel(run))
+    }
+
+    fn replace_body(&mut self, mut desc: SystemDesc, run: Body) -> Result<()> {
         let Some(i) = self.systems.iter().position(|s| s.desc.name == desc.name) else {
-            return self.add_system(desc, run);
+            return self.add_body(desc, run);
         };
+        Self::check_parallel(&mut desc, &run)?;
         if desc.stage == Stage::Present && !desc.access.writes.is_empty() {
             return Err(ArgusError::new(
                 crate::codes::STAGE_READ_ONLY,
@@ -436,7 +639,7 @@ impl Scheduler {
                     stage: s.desc.stage,
                     after: s.desc.after.clone(),
                     reads: names(&s.desc.access.reads),
-                    writes: names(&s.desc.access.writes),
+                    writes: names(&writes_of(&s.desc)),
                     clock: s.desc.clock,
                     rng: s.desc.rng.clone(),
                     enabled: s.enabled,
@@ -447,6 +650,8 @@ impl Scheduler {
                     on_load: s.desc.on_load,
                     first: s.desc.first,
                     unfrozen: s.desc.unfrozen,
+                    parallel: s.desc.parallel,
+                    batch: (s.batch != NO_BATCH).then_some(s.batch),
                 });
             }
         }
@@ -461,7 +666,10 @@ impl Scheduler {
             .order
             .iter()
             .flatten()
-            .filter(|&&i| self.systems[i].desc.access.allows_write(c))
+            .filter(|&&i| {
+                let d = &self.systems[i].desc;
+                d.access.allows_write(c) || d.spawns.contains(&c)
+            })
             .map(|&i| self.systems[i].desc.name.clone())
             .collect())
     }
@@ -566,8 +774,47 @@ impl Scheduler {
             order[stage.index()] = out;
         }
         self.order = order;
+        self.plan_batches();
         self.order_dirty = false;
         Ok(())
+    }
+
+    /// Group the parallel systems into batches (§3 "The scheduler uses this
+    /// for parallelism"): walking each stage in run order, a parallel
+    /// system joins the batch before it when the batch is the system just
+    /// before it in the order, nothing in the batch writes what it reads or
+    /// writes or reads what it writes, and no `after` names one from the
+    /// other. Otherwise it starts a batch. The checks are static, from the
+    /// declarations; the order is the stage's, unchanged.
+    fn plan_batches(&mut self) {
+        for s in &mut self.systems {
+            s.batch = NO_BATCH;
+        }
+        let mut next = 0u32;
+        for stage in &self.order {
+            let mut members: Vec<usize> = Vec::new();
+            for &i in stage {
+                if !matches!(self.systems[i].run, Body::Parallel(_)) {
+                    members.clear();
+                    continue;
+                }
+                let me = &self.systems[i].desc;
+                let fits = !members.is_empty()
+                    && members.iter().all(|&j| {
+                        let other = &self.systems[j].desc;
+                        !conflicts(&me.access, &other.access)
+                            && !me.after.contains(&other.name)
+                            && !other.after.contains(&me.name)
+                    });
+                if !fits {
+                    members.clear();
+                    next += 1;
+                }
+                members.push(i);
+                self.systems[i].batch = next - 1;
+            }
+        }
+        self.threaded = vec![false; next as usize];
     }
 
     // ----- clocks and play state --------------------------------------------
@@ -800,6 +1047,7 @@ impl Scheduler {
                 t,
                 qa - pa,
                 qb - pb,
+                0,
             );
         }
         self.run_stage(world, Stage::Hierarchy, kind, tick, time, dt, &mut samples);
@@ -811,7 +1059,14 @@ impl Scheduler {
                 o(world, frame);
             }
             let (qa, qb) = alloc::counters();
-            self.sample(&mut samples, Arc::from("obs.observe"), t, qa - pa, qb - pb);
+            self.sample(
+                &mut samples,
+                Arc::from("obs.observe"),
+                t,
+                qa - pa,
+                qb - pb,
+                0,
+            );
         }
         world.end_frame();
         {
@@ -828,6 +1083,7 @@ impl Scheduler {
                 t,
                 qa - pa,
                 qb - pb,
+                0,
             );
         }
 
@@ -904,8 +1160,31 @@ impl Scheduler {
 
     /// Record one system's sample for the profiler ring and, while a
     /// capture is collecting, its span on the capture's time base.
-    fn sample(&self, s: &mut TickSamples, name: Arc<str>, t: Instant, allocs: u64, bytes: u64) {
-        let elapsed = t.elapsed();
+    fn sample(
+        &self,
+        s: &mut TickSamples,
+        name: Arc<str>,
+        t: Instant,
+        allocs: u64,
+        bytes: u64,
+        lane: u32,
+    ) {
+        self.sample_span(s, name, t, t.elapsed(), allocs, bytes, lane);
+    }
+
+    /// [`Scheduler::sample`] for a span already timed (on another thread:
+    /// `lane` is the batch's thread, 0 the sim thread's).
+    #[allow(clippy::too_many_arguments)]
+    fn sample_span(
+        &self,
+        s: &mut TickSamples,
+        name: Arc<str>,
+        t: Instant,
+        elapsed: Duration,
+        allocs: u64,
+        bytes: u64,
+        lane: u32,
+    ) {
         if let Some(c) = &self.capture {
             if !c.complete() {
                 s.spans.push(CapturedSpan {
@@ -914,6 +1193,7 @@ impl Scheduler {
                     dur_us: elapsed.as_secs_f64() * 1e6,
                     allocs,
                     bytes,
+                    lane,
                 });
             }
         }
@@ -937,11 +1217,27 @@ impl Scheduler {
         samples: &mut TickSamples,
     ) {
         let order = self.order[stage.index()].clone();
-        for i in order {
-            if !self.systems[i].enabled || !self.binds(i, kind) {
+        let keep = |s: &Scheduler, i: usize| {
+            s.systems[i].enabled && s.binds(i, kind) && (!s.frozen || s.systems[i].desc.unfrozen)
+        };
+        let mut at = 0;
+        while at < order.len() {
+            let i = order[at];
+            let batch = self.systems[i].batch;
+            if batch != NO_BATCH {
+                let end = batch_end(&self.systems, &order, at);
+                let members: Vec<usize> = order[at..end]
+                    .iter()
+                    .copied()
+                    .filter(|&j| keep(self, j))
+                    .collect();
+                let samples = Some(&mut *samples);
+                self.run_batch(&members, batch, world, stage, kind, tick, time, dt, samples);
+                at = end;
                 continue;
             }
-            if self.frozen && !self.systems[i].desc.unfrozen {
+            at += 1;
+            if !keep(self, i) {
                 continue;
             }
             let t = Instant::now();
@@ -949,7 +1245,139 @@ impl Scheduler {
             self.run_system(i, world, stage, kind, tick, time, dt);
             let (a1, b1) = alloc::counters();
             let name = self.systems[i].name.clone();
-            self.sample(samples, name, t, a1 - a0, b1 - b0);
+            self.systems[i].cost = t.elapsed();
+            self.sample(samples, name, t, a1 - a0, b1 - b0, 0);
+        }
+    }
+
+    /// Run the parallel systems `members` of one batch (already filtered to
+    /// those that run this tick): on threads when they promise to save
+    /// time, else one after another on this thread. Either way they share
+    /// the world as the batch began, with the string table sealed, and
+    /// what each deferred is applied after the last of them, in run order.
+    #[allow(clippy::too_many_arguments)]
+    fn run_batch(
+        &mut self,
+        members: &[usize],
+        batch: u32,
+        world: &mut World,
+        stage: Stage,
+        kind: ClockKind,
+        tick: u64,
+        time: f64,
+        dt: f64,
+        mut samples: Option<&mut TickSamples>,
+    ) {
+        if members.is_empty() {
+            return;
+        }
+        let t = Tick {
+            stage,
+            kind,
+            tick,
+            time,
+            dt,
+            speed: self.continuous.speed,
+            frozen: self.frozen,
+        };
+        let costs: Vec<Duration> = members.iter().map(|&i| self.systems[i].cost).collect();
+        let longest = costs.iter().copied().max().unwrap_or_default();
+        let total: Duration = costs.iter().sum();
+        let lanes = self.threads.min(members.len());
+        let threaded = lanes > 1 && total.saturating_sub(longest) >= self.parallel_floor;
+        if let Some(slot) = self.threaded.get_mut(batch as usize) {
+            *slot = threaded;
+        }
+        // Each member's body, stream, and declaration, borrowed apart.
+        let mut jobs: Vec<Job<'_>> = Vec::with_capacity(members.len());
+        for (i, slot) in self.systems.iter_mut().enumerate() {
+            if !members.contains(&i) {
+                continue;
+            }
+            let SystemSlot {
+                desc,
+                name,
+                run,
+                rng,
+                ..
+            } = slot;
+            let Body::Parallel(run) = run else {
+                unreachable!("a batch holds parallel systems");
+            };
+            jobs.push(Job {
+                slot: i,
+                run,
+                rng: rng.as_mut(),
+                access: &desc.access,
+                spawns: &desc.spawns,
+                name,
+                out: Deferred::default(),
+                outcome: None,
+                start: None,
+                elapsed: Duration::ZERO,
+                allocs: (0, 0),
+                lane: 0,
+            });
+        }
+        jobs.sort_by_key(|j| members.iter().position(|&m| m == j.slot));
+        let shared: &World = world;
+        shared.strings().seal();
+        if threaded {
+            // Longest first, each to the least loaded lane; lane 0 is this
+            // thread. Which lane runs what changes nothing but the time.
+            let mut order: Vec<usize> = (0..jobs.len()).collect();
+            order.sort_by_key(|&k| std::cmp::Reverse(costs[k]));
+            let mut load = vec![Duration::ZERO; lanes];
+            let mut lane_of = vec![0usize; jobs.len()];
+            for k in order {
+                let l = (0..lanes).min_by_key(|&l| load[l]).unwrap_or(0);
+                load[l] += costs[k].max(Duration::from_nanos(1));
+                lane_of[k] = l;
+            }
+            let mut groups: Vec<Vec<&mut Job<'_>>> = (0..lanes).map(|_| Vec::new()).collect();
+            for (k, job) in jobs.iter_mut().enumerate() {
+                groups[lane_of[k]].push(job);
+            }
+            let mut groups = groups.into_iter();
+            let mine = groups.next().unwrap_or_default();
+            std::thread::scope(|scope| {
+                for (l, group) in groups.enumerate() {
+                    scope.spawn(move || {
+                        for job in group {
+                            job.run(shared, t, l as u32 + 1);
+                        }
+                    });
+                }
+                for job in mine {
+                    job.run(shared, t, 0);
+                }
+            });
+        } else {
+            for job in &mut jobs {
+                job.run(shared, t, 0);
+            }
+        }
+        shared.strings().unseal();
+        // Back on the sim thread, in run order: samples, then each one's
+        // deferred changes, then its fault if it had one.
+        let done: Vec<_> = jobs
+            .into_iter()
+            .map(|j| {
+                (
+                    j.slot, j.out, j.outcome, j.start, j.elapsed, j.allocs, j.lane,
+                )
+            })
+            .collect();
+        for (i, out, outcome, start, elapsed, (allocs, bytes), lane) in done {
+            self.systems[i].cost = elapsed;
+            let name = self.systems[i].name.clone();
+            if let (Some(s), Some(start)) = (samples.as_deref_mut(), start) {
+                self.sample_span(s, name.clone(), start, elapsed, allocs, bytes, lane);
+            }
+            out.apply(world, name);
+            if let Some(outcome) = outcome {
+                self.settle(i, world, outcome);
+            }
         }
     }
 
@@ -970,13 +1398,31 @@ impl Scheduler {
         let mut ran = 0;
         for stage in [Stage::Input, Stage::Sim, Stage::Late, Stage::Hierarchy] {
             let order = self.order[stage.index()].clone();
-            for i in order {
-                let s = &self.systems[i];
-                if !s.enabled || !s.desc.on_load || !self.binds(i, kind) {
+            let keep = |s: &Scheduler, i: usize| {
+                let x = &s.systems[i];
+                x.enabled && x.desc.on_load && s.binds(i, kind)
+            };
+            let mut at = 0;
+            while at < order.len() {
+                let i = order[at];
+                let batch = self.systems[i].batch;
+                if batch != NO_BATCH {
+                    let end = batch_end(&self.systems, &order, at);
+                    let members: Vec<usize> = order[at..end]
+                        .iter()
+                        .copied()
+                        .filter(|&j| keep(self, j))
+                        .collect();
+                    ran += members.len();
+                    self.run_batch(&members, batch, world, stage, kind, tick, time, dt, None);
+                    at = end;
                     continue;
                 }
-                self.run_system(i, world, stage, kind, tick, time, dt);
-                ran += 1;
+                at += 1;
+                if keep(self, i) {
+                    self.run_system(i, world, stage, kind, tick, time, dt);
+                    ran += 1;
+                }
             }
         }
         if ran > 0 {
@@ -997,12 +1443,28 @@ impl Scheduler {
         );
         let order = self.order[Stage::Present.index()].clone();
         let mut ran = false;
-        for i in order {
-            if !self.systems[i].enabled {
+        let mut at = 0;
+        while at < order.len() {
+            let i = order[at];
+            let batch = self.systems[i].batch;
+            if batch != NO_BATCH {
+                let end = batch_end(&self.systems, &order, at);
+                let members: Vec<usize> = order[at..end]
+                    .iter()
+                    .copied()
+                    .filter(|&j| self.systems[j].enabled)
+                    .collect();
+                ran |= !members.is_empty();
+                let stage = Stage::Present;
+                self.run_batch(&members, batch, world, stage, kind, tick, time, dt, None);
+                at = end;
                 continue;
             }
-            self.run_system(i, world, Stage::Present, kind, tick, time, dt);
-            ran = true;
+            at += 1;
+            if self.systems[i].enabled {
+                self.run_system(i, world, Stage::Present, kind, tick, time, dt);
+                ran = true;
+            }
         }
         Ok(ran)
     }
@@ -1022,6 +1484,12 @@ impl Scheduler {
         let frozen = self.frozen;
         let speed = self.continuous.speed;
         let slot = &mut self.systems[i];
+        let Body::Serial(run) = &mut slot.run else {
+            // A parallel system outside a batch runs as a batch of one.
+            let batch = slot.batch;
+            self.run_batch(&[i], batch, world, stage, kind, tick, time, dt, None);
+            return;
+        };
         let outcome = {
             let mut ctx = SystemCtx {
                 world,
@@ -1041,7 +1509,7 @@ impl Scheduler {
             };
             // What the system emits says it did (obs.why).
             ctx.world.set_emitter(Some(slot.name.clone()));
-            let r = catch_unwind(AssertUnwindSafe(|| (slot.run)(&mut ctx)));
+            let r = catch_unwind(AssertUnwindSafe(|| run(&mut ctx)));
             ctx.world.set_emitter(None);
             let learned = std::mem::take(&mut ctx.learned);
             froze = ctx.freeze;
@@ -1062,6 +1530,12 @@ impl Scheduler {
         if froze {
             self.frozen = true;
         }
+        self.settle(i, world, outcome);
+    }
+
+    /// A system's run is over: if it failed, switch it off and say so.
+    fn settle(&mut self, i: usize, world: &mut World, outcome: std::thread::Result<Result<()>>) {
+        let slot = &mut self.systems[i];
         let (message, r#ref) = match outcome {
             Ok(Ok(())) => return,
             Ok(Err(e)) => (
@@ -1267,4 +1741,43 @@ impl Scheduler {
             writes: Vec::new(),
         }
     }
+}
+
+/// What a system changes: its declared writes, then what it spawns.
+fn writes_of(desc: &SystemDesc) -> Vec<ComponentId> {
+    let mut w = desc.access.writes.clone();
+    for &c in &desc.spawns {
+        if !w.contains(&c) {
+            w.push(c);
+        }
+    }
+    w
+}
+
+/// 0 is one thread per core. The page has one thread: a browser starts no
+/// threads for wasm without shared memory, so every batch runs on it.
+fn resolve_threads(n: usize) -> usize {
+    if cfg!(target_arch = "wasm32") {
+        return 1;
+    }
+    match n {
+        0 => std::thread::available_parallelism().map_or(1, |n| n.get()),
+        n => n,
+    }
+}
+
+/// Whether two declarations may run at once: neither writes what the other
+/// reads or writes.
+fn conflicts(a: &Access, b: &Access) -> bool {
+    a.writes.iter().any(|&c| b.allows_read(c)) || b.writes.iter().any(|&c| a.allows_read(c))
+}
+
+/// One past the last position of the batch that starts at `at` in `order`.
+fn batch_end(systems: &[SystemSlot], order: &[usize], at: usize) -> usize {
+    let batch = systems[order[at]].batch;
+    let mut end = at + 1;
+    while end < order.len() && systems[order[end]].batch == batch {
+        end += 1;
+    }
+    end
 }

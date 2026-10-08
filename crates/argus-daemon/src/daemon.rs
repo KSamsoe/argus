@@ -741,6 +741,7 @@ impl Daemon {
                 Ok(self.sim_status())
             }
             "sim.run_until" => self.sim_run_until(params),
+            "sim.threads" => self.sim_threads(params),
             "sim.status" => {
                 let mut s = self.sim_status();
                 // The world's digest: two worlds with the same one are the
@@ -4512,6 +4513,36 @@ impl Daemon {
         }))
     }
 
+    /// `sim.threads {n}`: how many threads a batch of parallel systems may
+    /// use, and the batches. Not part of the run: the world after a tick is
+    /// the same for any number (§6), so no keyframe marks a change.
+    fn sim_threads(&mut self, params: &Json) -> Result<Json> {
+        if let Some(n) = params.get("n").filter(|v| !v.is_null()) {
+            let n = n.as_u64().ok_or_else(|| {
+                ArgusError::new(codes::BAD_PARAMS, "n is a count of threads, 0 or more")
+                    .hint("0 is one per core; 1 keeps every batch on the sim thread.")
+            })?;
+            self.sched.set_threads(n as usize);
+        }
+        let batches: Vec<Json> = self
+            .sched
+            .batches()?
+            .iter()
+            .map(|b| {
+                json!({
+                    "batch": b.batch,
+                    "stage": b.stage.name(),
+                    "systems": b.systems,
+                    "threaded": b.threaded,
+                })
+            })
+            .collect();
+        Ok(json!({
+            "threads": self.sched.threads(),
+            "batches": batches,
+        }))
+    }
+
     fn script_systems(&mut self, params: &Json) -> Result<Json> {
         let rows: Vec<Json> = self
             .sched
@@ -4530,6 +4561,8 @@ impl Daemon {
                     "disabled_reason": s.disabled_reason,
                     "source": s.source,
                     "doc": s.doc,
+                    "parallel": s.parallel,
+                    "batch": s.batch,
                 })
             })
             .collect();

@@ -156,10 +156,42 @@ fn perf_broadphase_rebuild_and_within_100k() {
         w.set_field(e, "Transform.pos", Vec2::new(next(), next()))
             .unwrap();
     }
+    // From nothing: what a scene load or a restore pays.
     let rebuild = best_of(5, || {
+        w.set_broadphase_cell(4.0);
         assert_eq!(w.rebuild_broadphase(), 100_000);
     });
     eprintln!("broadphase rebuild 100k: {rebuild:?}");
+    // A tick's pass: everything drifted at 3 units a second (a swarm),
+    // so a few in a hundred changed cell. And the worst pass: every one
+    // changed cell.
+    let drift = |w: &World, dx: f32, dy: f32| {
+        w.query()
+            .each::<(&mut argus_ecs::Transform,)>(|_, (t,)| {
+                t.pos.x += dx;
+                t.pos.y += dy;
+            })
+            .unwrap();
+    };
+    let mut ticks = Vec::new();
+    for _ in 0..20 {
+        drift(&w, 0.05, 0.03);
+        let t = Instant::now();
+        assert_eq!(w.rebuild_broadphase(), 100_000);
+        ticks.push(t.elapsed());
+    }
+    ticks.sort();
+    let tick = ticks[ticks.len() / 2];
+    eprintln!("broadphase pass 100k, drifting: {tick:?} (median of 20)");
+    let mut all = Vec::new();
+    for _ in 0..5 {
+        drift(&w, 4.0, 0.0);
+        let t = Instant::now();
+        assert_eq!(w.rebuild_broadphase(), 100_000);
+        all.push(t.elapsed());
+    }
+    let jump = *all.iter().min().unwrap();
+    eprintln!("broadphase pass 100k, every one changed cell: {jump:?}");
     let q = best_of(20, || {
         let hits = w.within(500.0, 500.0, 30.0);
         assert!(hits.len() > 100 && hits.len() < 1000, "{}", hits.len());
@@ -169,5 +201,10 @@ fn perf_broadphase_rebuild_and_within_100k() {
         rebuild < Duration::from_millis(6),
         "rebuild took {rebuild:?}"
     );
+    assert!(
+        tick < Duration::from_millis(1),
+        "a drifting pass took {tick:?}"
+    );
+    assert!(jump < Duration::from_millis(6), "a jump took {jump:?}");
     assert!(q < Duration::from_millis(2), "within took {q:?}");
 }

@@ -89,3 +89,82 @@ fn spawn_with_places_the_entity_in_its_archetype_at_defaults() {
     );
     assert!(w.spawn_with(&[argus_ecs::ComponentId(999)]).is_err());
 }
+
+/// What the hash answers, as a value: every `within` and `for_each_within`
+/// over a grid of probes, in the order given.
+fn answers(w: &World) -> Vec<Vec<(argus_ecs::Entity, u32, u32)>> {
+    let mut out = Vec::new();
+    for px in (0..60).step_by(7) {
+        for py in (0..60).step_by(7) {
+            let (x, y) = (px as f32, py as f32);
+            out.push(
+                w.within(x, y, 9.0)
+                    .into_iter()
+                    .map(|(e, d)| (e, d.to_bits(), 0))
+                    .collect(),
+            );
+            let mut seen = Vec::new();
+            w.broadphase().for_each_within(x, y, 9.0, |e, ex, ey| {
+                seen.push((e, ex.to_bits(), ey.to_bits()))
+            });
+            out.push(seen);
+        }
+    }
+    out
+}
+
+#[test]
+fn a_hash_kept_up_to_date_answers_as_one_built_from_nothing() {
+    let mut w = World::new();
+    w.register::<Tag>().unwrap();
+    let mut seed = 99u64;
+    let mut next = move |n: u64| {
+        seed ^= seed << 13;
+        seed ^= seed >> 7;
+        seed ^= seed << 17;
+        seed % n
+    };
+    let mut live = Vec::new();
+    for _ in 0..300 {
+        live.push(at(&mut w, next(60) as f32, next(60) as f32));
+    }
+    w.rebuild_broadphase();
+    for round in 0..40 {
+        // Moves, small and large; despawns, whose indices spawns reuse; a
+        // position lost and found again.
+        for &e in &live {
+            if next(3) == 0 {
+                let (dx, dy) = (next(9) as f32 - 4.0, next(9) as f32 - 4.0);
+                w.update::<Transform, _>(e, |t| {
+                    t.pos = Vec2::new(
+                        (t.pos.x + dx).rem_euclid(60.0),
+                        (t.pos.y + dy).rem_euclid(60.0),
+                    )
+                })
+                .unwrap();
+            }
+        }
+        for _ in 0..10 {
+            let i = next(live.len() as u64) as usize;
+            w.despawn(live.swap_remove(i)).unwrap();
+        }
+        for _ in 0..10 {
+            live.push(at(&mut w, next(60) as f32, next(60) as f32));
+        }
+        let lost = live[next(live.len() as u64) as usize];
+        let tr = w.component_id_of::<Transform>().unwrap();
+        if round % 2 == 0 {
+            w.remove(lost, tr).unwrap();
+        }
+        w.end_frame();
+        let n = w.rebuild_broadphase();
+        let kept = answers(&w);
+        w.set_broadphase_cell(4.0);
+        assert_eq!(w.rebuild_broadphase(), n);
+        assert_eq!(answers(&w), kept, "round {round}");
+        if round % 2 == 0 {
+            w.insert(lost, Transform::default()).unwrap();
+        }
+    }
+    assert_eq!(w.broadphase().len(), live.len());
+}

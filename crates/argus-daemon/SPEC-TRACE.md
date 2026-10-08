@@ -373,6 +373,12 @@ Phase 0 item 4, "JSON-RPC daemon with session, world, edit, sim (play, pause, st
 | A runtime map's tiles are the run's. | Done | An `edit.tiles` on a runtime map is refused before a cell is written. Found: refused only by its save, the edit had already changed the cell in memory. | `runtime_map` |
 | (§6) "Two runs with the same digest are the same world", with a map the run wrote. | Done | Found by Delve's move onto a runtime map: the world's digest (`sim.status {digest}`, a mark's, a replay's) and `sim.seek {verify}` read only the ECS world, so two floors digested alike. A run's digest is the world's and the runtime maps' cells (`argus_player::keyframe::run_digest`; the world's alone when no map holds a tile, so every digest recorded before is still the same), a replay file ends with the cells at its `to`, and a seek's verify compares them (`tiles_same`). | `runtime_map::a_map_answers_in_world_places_and_the_runs_digest_holds_its_cells` |
 
+## Phase 5, item 5: parallel batches through the protocol
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§3, §5) The scheduler's parallelism is visible and set through the protocol. | Done | `script.systems` rows carry `parallel` and `batch`; `sim.threads {n}` sets how many threads a batch may use (0 is one per core) and lists the batches, each with its stage, its systems in run order, and whether it ran on threads last time. Not part of the run: the world after a tick is the same for any number (§6), so a change makes no keyframe. A feed row, like `sim.speed`. The four games' systems are all serial (Luau, and engine systems holding the daemon's stores), so their batch lists are empty. | `protocol::scripts_reload_in_place_and_errors_are_data`, `schema` |
+
 ## Known limitations, stated so they are decisions
 
 - A tuning session's values live in this daemon until its end: a fork made during one, and a mark's or a replay's file, start from the files, without the session's def rows or effects.

@@ -216,7 +216,7 @@ impl FieldType {
             (FieldType::F64, Value::Float(v)) => wr!(f64, *v),
             (FieldType::Vec2, Value::Vec2(v)) => wr!(Vec2, *v),
             (FieldType::Str, Value::Str(s)) | (FieldType::Ref, Value::Ref(s)) => {
-                wr!(StrId, strings.intern(s))
+                wr!(StrId, strings.try_intern(s)?)
             }
             (FieldType::Entity, Value::Entity(e)) => wr!(Entity, *e),
             _ => return Err(mismatch()),

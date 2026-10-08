@@ -35,6 +35,8 @@ pub mod codes {
     pub const ACCESS_VIOLATION: u32 = 4301;
     /// A column is already borrowed in a conflicting way.
     pub const BORROW_CONFLICT: u32 = 4302;
+    /// A parallel system wrote a string the world has never held.
+    pub const SEALED_STRINGS: u32 = 4303;
 }
 
 /// The one error type this crate returns.

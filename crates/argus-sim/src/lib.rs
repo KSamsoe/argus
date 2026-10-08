@@ -16,18 +16,21 @@
 
 pub mod alloc;
 pub mod clock;
+pub mod par;
 pub mod prof;
 pub mod rng;
 pub mod scheduler;
 pub mod system;
 
 pub use clock::{Clock, ClockKind};
+pub use par::{ParCtx, ParSystemFn};
 pub use prof::{
     AllocProf, Capture, CapturedSpan, CapturedTick, SystemProf, SystemSample, TickRecord,
 };
 pub use rng::{stream_seed, Pcg32};
 pub use scheduler::{
-    FrameReport, Observer, RunUntil, Scheduler, SchedulerConfig, SimSnapshot, SimState, SystemInfo,
+    BatchInfo, FrameReport, Observer, RunUntil, Scheduler, SchedulerConfig, SimSnapshot, SimState,
+    SystemInfo,
 };
 pub use system::{ClockBinding, Stage, SystemCtx, SystemDesc, SystemFn};
 
@@ -49,4 +52,6 @@ pub mod codes {
     pub const BAD_CLOCK_SPEC: u32 = 4407;
     /// `world_mut` from a system not declared exclusive.
     pub const NOT_EXCLUSIVE: u32 = 4408;
+    /// A parallel system declared exclusive.
+    pub const NOT_PARALLEL: u32 = 4409;
 }

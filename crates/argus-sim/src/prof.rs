@@ -100,6 +100,9 @@ pub struct CapturedSpan {
     pub allocs: u64,
     /// Bytes while it ran.
     pub bytes: u64,
+    /// The thread it ran on: 0 the sim thread, 1 and up a parallel batch's
+    /// other threads.
+    pub lane: u32,
 }
 
 /// One tick of a capture.
@@ -156,9 +159,10 @@ impl Capture {
 
     /// The capture as a Chrome trace event file (the JSON format Tracy's
     /// `import-chrome` tool converts to `.tracy`, and Perfetto and
-    /// `chrome://tracing` open directly). One process, one thread: a
-    /// complete (`X`) event per tick and, nested inside it, one per system,
-    /// each carrying its allocation counts as args.
+    /// `chrome://tracing` open directly). One process; the sim thread holds
+    /// a complete (`X`) event per tick and, nested inside it, one per
+    /// system, each carrying its allocation counts as args. A parallel
+    /// batch's systems that ran on other threads are on their own rows.
     pub fn chrome_trace(&self) -> String {
         let mut out = String::with_capacity(256 + self.ticks.len() * 512);
         out.push_str("{\"displayTimeUnit\":\"ms\",\"traceEvents\":[\n");
@@ -168,6 +172,19 @@ impl Capture {
         out.push_str(
             "{\"ph\":\"M\",\"name\":\"thread_name\",\"pid\":1,\"tid\":1,\"args\":{\"name\":\"sim\"}}",
         );
+        let lanes = self
+            .ticks
+            .iter()
+            .flat_map(|t| t.systems.iter().map(|s| s.lane))
+            .max()
+            .unwrap_or(0);
+        for lane in 1..=lanes {
+            let _ = write!(
+                out,
+                ",\n{{\"ph\":\"M\",\"name\":\"thread_name\",\"pid\":1,\"tid\":{},\"args\":{{\"name\":\"batch {lane}\"}}}}",
+                lane + 1
+            );
+        }
         for t in &self.ticks {
             let _ = write!(
                 out,
@@ -177,8 +194,9 @@ impl Capture {
             for s in &t.systems {
                 let _ = write!(
                     out,
-                    ",\n{{\"ph\":\"X\",\"cat\":\"system\",\"name\":\"{}\",\"pid\":1,\"tid\":1,\"ts\":{:.3},\"dur\":{:.3},\"args\":{{\"tick\":{},\"allocs\":{},\"bytes\":{}}}}}",
+                    ",\n{{\"ph\":\"X\",\"cat\":\"system\",\"name\":\"{}\",\"pid\":1,\"tid\":{},\"ts\":{:.3},\"dur\":{:.3},\"args\":{{\"tick\":{},\"allocs\":{},\"bytes\":{}}}}}",
                     json_escape(&s.name),
+                    s.lane + 1,
                     s.start_us,
                     s.dur_us,
                     t.tick,

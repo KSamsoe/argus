@@ -173,3 +173,84 @@ fn perf_empty_tick_overhead() {
     eprintln!("empty tick with 10 systems: {per:?}");
     assert!(per < Duration::from_micros(20), "{per:?} per tick");
 }
+
+macro_rules! work {
+    ($($t:ident),*) => {$(
+        #[derive(Component, Clone, Copy, Debug, Default, PartialEq)]
+        #[repr(C)]
+        struct $t {
+            v: u64,
+        }
+    )*};
+}
+work!(Work0, Work1, Work2, Work3);
+
+/// §17 "one thread for sim unless the scheduler finds parallel stages":
+/// four parallel systems that each fold a hash over 50k rows of their own
+/// column form one batch, which four threads run in well under half the
+/// time one does, to the same world.
+#[test]
+#[ignore = "release-only perf gate; run with --release -- --ignored"]
+fn perf_four_heavy_systems_in_one_batch_on_threads() {
+    fn build(threads: usize) -> (World, Scheduler) {
+        let mut w = World::new();
+        let ids = [
+            w.register::<Work0>().unwrap(),
+            w.register::<Work1>().unwrap(),
+            w.register::<Work2>().unwrap(),
+            w.register::<Work3>().unwrap(),
+        ];
+        for i in 0..50_000u64 {
+            let e = w.spawn();
+            w.insert(e, Work0 { v: i }).unwrap();
+            w.insert(e, Work1 { v: i }).unwrap();
+            w.insert(e, Work2 { v: i }).unwrap();
+            w.insert(e, Work3 { v: i }).unwrap();
+        }
+        w.drain_events();
+        let mut s = Scheduler::new(SchedulerConfig {
+            threads,
+            ..SchedulerConfig::continuous(60.0)
+        });
+        macro_rules! heavy {
+            ($n:literal, $t:ident) => {
+                s.add_parallel_system(
+                    SystemDesc::new(concat!("sim.work", $n), Stage::Sim).writes(ids[$n]),
+                    Box::new(|ctx| {
+                        ctx.query().each::<(&mut $t,)>(|_, (w,)| {
+                            let mut h = w.v;
+                            for _ in 0..64 {
+                                h = (h ^ (h >> 31)).wrapping_mul(0x9e37_79b9_7f4a_7c15);
+                            }
+                            w.v = h;
+                        })
+                    }),
+                )
+                .unwrap();
+            };
+        }
+        heavy!(0, Work0);
+        heavy!(1, Work1);
+        heavy!(2, Work2);
+        heavy!(3, Work3);
+        (w, s)
+    }
+    let time = |threads: usize| {
+        let (mut w, mut s) = build(threads);
+        s.play(&w);
+        s.step(&mut w, 3).unwrap(); // warm, and measured once for the floor
+        let t = Instant::now();
+        s.step(&mut w, 30).unwrap();
+        let per = t.elapsed() / 30;
+        let threaded = s.batches().unwrap()[0].threaded;
+        (per, threaded, w.digest())
+    };
+    let (one, one_threaded, one_world) = time(1);
+    let (four, four_threaded, four_world) = time(4);
+    eprintln!(
+        "four heavy systems, 50k rows each: one thread {one:?} a tick, four threads {four:?}"
+    );
+    assert!(!one_threaded && four_threaded);
+    assert_eq!(one_world, four_world, "the same world");
+    assert!(four < one / 2, "four threads took {four:?}, one {one:?}");
+}

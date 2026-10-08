@@ -412,10 +412,12 @@ impl World {
 
     // ----- broadphase -------------------------------------------------------
 
-    /// Rebuild the spatial hash from every entity with a position:
+    /// Bring the spatial hash up to date with every entity with a position:
     /// `GlobalTransform.pos` when the entity has one, else `Transform.pos`.
-    /// The scheduler calls this at the start of every tick; a client that
-    /// edits positions outside a tick calls it before a spatial query.
+    /// The scheduler calls this at the end of every tick; a client that
+    /// edits positions outside a tick calls it before a spatial query. Only
+    /// the entities that changed cell move in the hash, and the ones gone
+    /// (or without a position now) leave it (§12 "rebuilt incrementally").
     /// Returns the number of entities indexed.
     pub fn rebuild_broadphase(&mut self) -> usize {
         let frame = self.frame;
@@ -435,7 +437,10 @@ impl World {
             .and_then(|g| self.registry.schema(g).field("pos").map(|f| f.offset))
             .unwrap_or(0);
         let mut hash = std::mem::take(&mut self.broadphase);
-        hash.clear(frame);
+        hash.begin(frame);
+        if hash.is_empty() {
+            hash.reserve(self.entities.alive);
+        }
         for arch in &self.archetypes {
             if arch.is_empty() {
                 continue;
@@ -452,9 +457,10 @@ impl World {
                     let p = col.row_ptr(row).add(off) as *const f32;
                     (p.read_unaligned(), p.add(1).read_unaligned())
                 };
-                hash.insert(e, x, y);
+                hash.place(e, x, y);
             }
         }
+        hash.finish();
         self.broadphase = hash;
         self.broadphase.len()
     }
