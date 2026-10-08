@@ -7,6 +7,28 @@ language.name = "English"
 title = "Delve, floor {@player:Player.floor}"
 resume = "Resume"
 new = "New run"
+controls = "Controls"
+settings = "Settings"
+
+# The menu's controls page (phase 5 item 2): each line is an action and
+# what it is bound to.
+[controls]
+title = "Controls: press one, then a key"
+wait = "Wait: {InputBinding.keys}"
+descend = "Descend: {InputBinding.keys}"
+pause = "Menu: {InputBinding.keys}"
+back = "Back"
+
+# The menu's settings page (phase 5 item 2); systems/menu_buttons.luau
+# fills the holes.
+[settings]
+title = "Settings"
+text = "Text size: {percent}%"
+contrast = "High contrast: {state}"
+fullscreen = "Fullscreen: {state}"
+on = "on"
+off = "off"
+back = "Back"
 
 [hud]
 line = "Floor {@player:Player.floor}, turn {Turn.n}. HP {@player:Health.cur}/{@player:Health.max}."

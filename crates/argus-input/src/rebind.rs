@@ -42,6 +42,33 @@ pub struct InputBinding {
     pub listening: bool,
 }
 
+/// A settings menu's button for an action a player may hold or toggle
+/// (section 12: "input-hold and toggle alternatives are action-map
+/// options"; phase 5 item 2): pressed, it switches the action between the
+/// two. The switch happens in the tick, so a replay switches it too.
+#[derive(Component, Clone, Copy, Debug, PartialEq)]
+#[repr(C)]
+#[argus(
+    doc = "A settings menu's button that switches a button action between holding and toggling: pressed, a press of the action then toggles it (or holds it again); toggle says which (input.toggled)"
+)]
+pub struct InputToggle {
+    /// The action.
+    #[argus(doc = "The action (a button) it switches")]
+    pub action: StrId,
+    /// Toggling.
+    #[argus(doc = "A press toggles the action instead of holding it (written by input.rebind)")]
+    pub toggle: bool,
+}
+
+impl Default for InputToggle {
+    fn default() -> Self {
+        InputToggle {
+            action: StrId::EMPTY,
+            toggle: false,
+        }
+    }
+}
+
 impl Default for InputBinding {
     fn default() -> Self {
         InputBinding {
@@ -85,12 +112,18 @@ pub fn install_with(
         Some(id) => id,
         None => world.register::<InputBinding>()?,
     };
+    let tid = match world.component_id_of::<InputToggle>() {
+        Some(id) => id,
+        None => world.register::<InputToggle>()?,
+    };
     let mut desc = SystemDesc::new(REBIND, Stage::Sim)
         .unfrozen()
         .reads(id)
         .writes(id)
+        .reads(tid)
+        .writes(tid)
         .source("argus-input:rebind")
-        .doc("Rebinding: a pressed button with an InputBinding waits for the next press on its device and binds its action to it (input.rebound; Escape cancels, input.rebind_cancelled); every InputBinding's keys says what its action is bound to.");
+        .doc("Rebinding: a pressed button with an InputBinding waits for the next press on its device and binds its action to it (input.rebound; Escape cancels, input.rebind_cancelled); every InputBinding's keys says what its action is bound to. A pressed button with an InputToggle switches its action between holding and toggling (input.toggled); every InputToggle's toggle says which.");
     if sched.is_enabled("ui.input").is_ok() {
         desc = desc.after("ui.input");
     }
@@ -122,6 +155,21 @@ pub fn install_with(
                     let action = ctx.world().strings().resolve(b.action).to_string();
                     let device = dev(&ctx.world().strings().resolve(b.device));
                     let _ = state.borrow_mut().listen(&action, &device, e);
+                }
+                if let Ok(t) = ctx.get::<InputToggle>(e) {
+                    let action = ctx.world().strings().resolve(t.action).to_string();
+                    let mut st = state.borrow_mut();
+                    let now = st.map().action(&action).is_ok_and(|a| a.toggle);
+                    if st.map_mut().set_toggle(&action, !now).is_ok() {
+                        ctx.emit(
+                            "input.toggled",
+                            vec![
+                                ("action".into(), Value::Str(action)),
+                                ("toggle".into(), Value::Bool(!now)),
+                                ("entity".into(), Value::Entity(e)),
+                            ],
+                        );
+                    }
                 }
             }
             // What listening came to.
@@ -166,12 +214,27 @@ pub fn install_with(
                     writes.push((e, keys, listening));
                 }
             }
+            // Every toggle button's state.
+            let mut toggles = Vec::new();
+            for e in ctx.query().has(tid).entities() {
+                let Ok(t) = ctx.get::<InputToggle>(e) else {
+                    continue;
+                };
+                let action = ctx.world().strings().resolve(t.action).to_string();
+                let on = st.map().action(&action).is_ok_and(|a| a.toggle);
+                if on != t.toggle {
+                    toggles.push((e, on));
+                }
+            }
             drop(st);
             for (e, keys, listening) in writes {
                 ctx.update::<InputBinding, _>(e, |b| {
                     b.keys = keys;
                     b.listening = listening;
                 })?;
+            }
+            for (e, on) in toggles {
+                ctx.update::<InputToggle, _>(e, |t| t.toggle = on)?;
             }
             Ok(())
         }),

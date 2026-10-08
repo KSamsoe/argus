@@ -127,6 +127,11 @@ function verdict() {
   if (!(report.cold_load?.ms <= report.cold_load?.bound_ms)) failures.push(`cold load ${report.cold_load?.ms} ms`);
   if (!(report.render?.drawn > 0)) failures.push("nothing drawn");
   if (report.webgl && !(report.webgl.drawn > 0)) failures.push("nothing drawn with WebGL2");
+  if (report.reader) {
+    if (!(report.reader.buttons?.length >= 4)) failures.push("the screen reader sees no menu");
+    if (!report.reader.said) failures.push("the screen reader is not told the focus");
+    if (!report.reader.pressed_controls) failures.push("a screen reader's press did not reach the game");
+  }
   const walk = (v, at) => {
     if (v && typeof v === "object") {
       for (const [k, x] of Object.entries(v)) {
@@ -349,6 +354,33 @@ try {
     s = await status();
     report.ui.clicked = { menu_open: seen.some((u) => u.id.endsWith("pause.restart")), tick_before: tick, tick_after: s.tick, player: s.player };
   }
+  // The same menu for a screen reader (phase 5 item 2): its buttons are
+  // the page's, the focus is said, and pressing one there presses the
+  // game's (here, Controls).
+  await key("Escape", "Escape", 27, true);
+  await sleep(100);
+  await key("Escape", "Escape", 27, false);
+  await sleep(600);
+  const reader = async () =>
+    JSON.parse(
+      await evaluate(`JSON.stringify({
+        buttons: [...document.querySelectorAll('#reader-buttons button')].map((b) => b.textContent),
+        said: document.getElementById('reader-said').textContent,
+        role: document.getElementById('game').getAttribute('role'),
+      })`),
+    );
+  const readerBefore = await reader();
+  await evaluate("[...document.querySelectorAll('#reader-buttons button')].find((b) => b.dataset.id.endsWith('pause.controls'))?.click()");
+  await sleep(600);
+  seen = await ui();
+  const after = await reader();
+  report.reader = {
+    buttons: readerBefore.buttons,
+    said: readerBefore.said,
+    role: readerBefore.role,
+    pressed_controls: seen.some((u) => u.id.endsWith("controls.jump") && u.focused),
+    said_after: after.said,
+  };
 
   stage = "6. WebGL2";
   // 6. WebGL2 forced.

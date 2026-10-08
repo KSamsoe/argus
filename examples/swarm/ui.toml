@@ -1,0 +1,8 @@
+# Swarm's UI (phase 5 item 2): only the pause menu, on the default canvas
+# (960 x 540) in the built-in pixel font; a colour for buttons, which the
+# settings' high contrast turns black on white.
+[colors]
+button = "#262C34"
+
+[high_contrast_colors]
+button = "#000000"

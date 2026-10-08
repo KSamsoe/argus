@@ -226,6 +226,23 @@ pub enum Command {
         /// The log.
         entries: Vec<LogEntry>,
     },
+    /// `input.bind`: `action` on `device` bound to `names` from now on
+    /// (phase 5 item 2: journaled, so a replay binds it too).
+    Bind {
+        /// Action name.
+        action: String,
+        /// Device: keyboard, mouse, gamepad.
+        device: String,
+        /// What it is bound to.
+        names: Vec<String>,
+    },
+    /// The press an action waiting for a key took, between ticks (`None`:
+    /// Escape): what a player bound in a controls menu, which a replay
+    /// binds again (phase 5 item 2).
+    Took {
+        /// The name bound.
+        binding: Option<String>,
+    },
 }
 
 /// A command and the tick it came before (the next tick to run).
@@ -249,6 +266,18 @@ pub struct InputSnapshot {
     device_last: BTreeMap<(u8, String), ActionValue>,
     releases: BTreeMap<(u8, String), Vec<(u64, u64)>>,
     cursor: usize,
+    /// The bindings and toggles, and what waits for a key (phase 5 item
+    /// 2): a seek back before a rebind undoes it. `None` in a keyframe
+    /// read from a file older than that, which leaves the map as it is.
+    map: Option<MapState>,
+}
+
+/// What a run can change of the map: each action's bindings by device and
+/// whether a press toggles it, and what waits for a key.
+#[derive(Clone, Debug, PartialEq)]
+struct MapState {
+    actions: Vec<(String, BTreeMap<String, Vec<String>>, bool)>,
+    listening: Option<Listen>,
 }
 
 /// All input state of a session.
@@ -414,10 +443,38 @@ impl InputState {
         &self.map
     }
 
-    /// Bind `action` on `device` to `names` from now on (§12: "Rebinding
-    /// at runtime is a UI over the same table"). The log records actions,
-    /// not keys, so a replay survives a rebind.
-    pub fn rebind(&mut self, action: &str, device: &str, names: Vec<String>) -> Result<()> {
+    /// The map, to set a run's starting bindings and toggles (a player's
+    /// settings, applied before the first tick and kept with the run). A
+    /// change during a run goes through [`InputState::rebind`], a
+    /// controls menu, or a toggle button, which a replay repeats.
+    pub fn map_mut(&mut self) -> &mut ActionMap {
+        &mut self.map
+    }
+
+    /// Bind `action` on `device` to `names` from `now` on, the next tick
+    /// to run (§12: "Rebinding at runtime is a UI over the same table").
+    /// The log records actions, not keys; the journal records the rebind,
+    /// so a replay binds it too.
+    pub fn rebind(
+        &mut self,
+        now: u64,
+        action: &str,
+        device: &str,
+        names: Vec<String>,
+    ) -> Result<()> {
+        self.bind_raw(action, device, names.clone())?;
+        self.journal_live(
+            now,
+            Command::Bind {
+                action: action.to_string(),
+                device: device.to_string(),
+                names,
+            },
+        );
+        Ok(())
+    }
+
+    fn bind_raw(&mut self, action: &str, device: &str, names: Vec<String>) -> Result<()> {
         self.map.set_bindings(action, device, names)?;
         // A wait for this action on this device is answered.
         if self
@@ -447,10 +504,11 @@ impl InputState {
         self.listening.as_ref()
     }
 
-    /// A device event while listening: a press on the device binds it (and
-    /// is taken, so the game does not hear it); Escape cancels. True when
-    /// the event was taken.
-    pub fn capture(&mut self, ev: &crate::devices::DeviceInput) -> bool {
+    /// A device event while listening, at `now` (the next tick to run): a
+    /// press on the device binds it (and is taken, so the game does not
+    /// hear it); Escape cancels. True when the event was taken. What it
+    /// took is journaled, so a replay binds the same.
+    pub fn capture(&mut self, now: u64, ev: &crate::devices::DeviceInput) -> bool {
         use crate::devices::{key_name, DeviceInput};
         let Some(l) = self.listening.clone() else {
             return false;
@@ -462,8 +520,8 @@ impl InputState {
             } => {
                 let k = key_name(name);
                 if k == "escape" {
-                    self.listening = None;
-                    self.rebound.push(Rebound::Cancelled(l));
+                    self.took(None);
+                    self.journal_live(now, Command::Took { binding: None });
                     return true;
                 }
                 (l.device == "keyboard").then_some(k)
@@ -482,18 +540,34 @@ impl InputState {
         let Some(name) = pressed else {
             return false;
         };
-        match self
-            .map
-            .set_bindings(&l.action, &l.device, vec![name.clone()])
-        {
-            Ok(()) => self.rebound.push(Rebound::Bound {
-                listen: l,
-                binding: name,
-            }),
-            Err(_) => self.rebound.push(Rebound::Cancelled(l)),
-        }
-        self.listening = None;
+        self.took(Some(name.clone()));
+        self.journal_live(
+            now,
+            Command::Took {
+                binding: Some(name),
+            },
+        );
         true
+    }
+
+    /// What waits for a key takes `binding` (`None`: cancelled).
+    fn took(&mut self, binding: Option<String>) {
+        let Some(l) = self.listening.take() else {
+            return;
+        };
+        match binding {
+            None => self.rebound.push(Rebound::Cancelled(l)),
+            Some(name) => match self
+                .map
+                .set_bindings(&l.action, &l.device, vec![name.clone()])
+            {
+                Ok(()) => self.rebound.push(Rebound::Bound {
+                    listen: l,
+                    binding: name,
+                }),
+                Err(_) => self.rebound.push(Rebound::Cancelled(l)),
+            },
+        }
     }
 
     /// What listening came to since the last call.
@@ -787,6 +861,14 @@ impl InputState {
             Command::Replay { entries } => {
                 let _ = self.replay_raw(entries);
             }
+            Command::Bind {
+                action,
+                device,
+                names,
+            } => {
+                let _ = self.bind_raw(action, device, names.clone());
+            }
+            Command::Took { binding } => self.took(binding.clone()),
         }
     }
 
@@ -840,6 +922,15 @@ impl InputState {
             device_last: self.device_last.clone(),
             releases: self.releases.clone(),
             cursor: self.cursor,
+            map: Some(MapState {
+                actions: self
+                    .map
+                    .actions
+                    .iter()
+                    .map(|a| (a.name.clone(), a.bindings.clone(), a.toggle))
+                    .collect(),
+                listening: self.listening.clone(),
+            }),
         }
     }
 
@@ -856,6 +947,15 @@ impl InputState {
         self.device_last = s.device_last.clone();
         self.releases = s.releases.clone();
         self.cursor = s.cursor.min(self.journal.len());
+        if let Some(m) = &s.map {
+            for (name, bindings, toggle) in &m.actions {
+                if let Some(a) = self.map.actions.iter_mut().find(|a| &a.name == name) {
+                    a.bindings = bindings.clone();
+                    a.toggle = *toggle;
+                }
+            }
+            self.listening = m.listening.clone();
+        }
     }
 
     /// Replace the journal with one read from a replay file and go back to
@@ -1120,10 +1220,31 @@ impl InputSnapshot {
             }
         }
         w.count(self.cursor.saturating_sub(base));
+        w.opt(self.map.as_ref(), |w, m| {
+            w.count(m.actions.len());
+            for (name, bindings, toggle) in &m.actions {
+                w.str(name);
+                w.count(bindings.len());
+                for (device, names) in bindings {
+                    w.str(device);
+                    w.count(names.len());
+                    for n in names {
+                        w.str(n);
+                    }
+                }
+                w.bool(*toggle);
+            }
+            w.opt(m.listening.as_ref(), |w, l| {
+                w.str(&l.action);
+                w.str(&l.device);
+                w.u64(l.entity.to_bits());
+            });
+        });
     }
 
-    /// Read what [`InputSnapshot::encode`] wrote.
-    pub fn decode(r: &mut Reader) -> Result<InputSnapshot> {
+    /// Read what [`InputSnapshot::encode`] wrote; `with_map` for a file
+    /// that has the map's state (replay files from version 4).
+    pub fn decode_as(r: &mut Reader, with_map: bool) -> Result<InputSnapshot> {
         let mut scheduled = BTreeMap::new();
         for _ in 0..r.count()? {
             let tick = r.u64()?;
@@ -1171,6 +1292,31 @@ impl InputSnapshot {
             device_last,
             releases,
             cursor: r.u32()? as usize,
+            map: if with_map {
+                r.opt(|r| {
+                    let mut actions = Vec::new();
+                    for _ in 0..r.count()? {
+                        let name = r.str()?;
+                        let mut bindings = BTreeMap::new();
+                        for _ in 0..r.count()? {
+                            let device = r.str()?;
+                            let names = (0..r.count()?).map(|_| r.str()).collect::<Result<_>>()?;
+                            bindings.insert(device, names);
+                        }
+                        actions.push((name, bindings, r.bool()?));
+                    }
+                    let listening = r.opt(|r| {
+                        Ok(Listen {
+                            action: r.str()?,
+                            device: r.str()?,
+                            entity: argus_ecs::Entity::from_bits(r.u64()?),
+                        })
+                    })?;
+                    Ok(MapState { actions, listening })
+                })?
+            } else {
+                None
+            },
         })
     }
 }
@@ -1219,6 +1365,23 @@ impl JournalEntry {
                     w.str(&e.action);
                     put_value(w, &e.value);
                 }
+            }
+            Command::Bind {
+                action,
+                device,
+                names,
+            } => {
+                w.u8(4);
+                w.str(action);
+                w.str(device);
+                w.count(names.len());
+                for n in names {
+                    w.str(n);
+                }
+            }
+            Command::Took { binding } => {
+                w.u8(5);
+                w.opt(binding.as_deref(), |w, b| w.str(b));
             }
         }
     }
@@ -1269,6 +1432,14 @@ impl JournalEntry {
                 }
                 Command::Replay { entries }
             }
+            4 => Command::Bind {
+                action: r.str()?,
+                device: r.str()?,
+                names: (0..r.count()?).map(|_| r.str()).collect::<Result<_>>()?,
+            },
+            5 => Command::Took {
+                binding: r.opt(|r| r.str())?,
+            },
             k => return Err(r.bad(format!("input command kind {k}"))),
         };
         Ok(JournalEntry { now, command })

@@ -1,0 +1,9 @@
+[Parent]
+entity = "@controls"
+
+[UiNode]
+margin = [0.0, 6.0]
+
+[UiText]
+key = "controls.title"
+align = "center"

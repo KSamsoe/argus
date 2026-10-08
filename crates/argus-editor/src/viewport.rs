@@ -141,7 +141,21 @@ pub struct Viewport {
     /// to the painter, not the game.
     pub paint: bool,
     painting: bool,
+    /// How the game is shown: as it is (empty), or as a colour-blind eye
+    /// sees it, by the daemon's name (`render.stream`'s `see_as`; phase 5
+    /// item 2), to check that it reads without guessing.
+    pub see_as: &'static str,
 }
+
+/// The kinds of colour vision the viewport can show the game as, as the
+/// daemon names them.
+pub const SEE_AS: [&str; 5] = [
+    "normal",
+    "protanopia",
+    "deuteranopia",
+    "tritanopia",
+    "achromatopsia",
+];
 
 /// What the viewport wants sent.
 pub enum Send {
@@ -276,6 +290,24 @@ impl Viewport {
             });
             if let Some(i) = &self.info {
                 ui.weak(format!("{}x{}  tick {}", i.width, i.height, i.tick));
+            }
+            ui.separator();
+            let before = self.see_as;
+            egui::ComboBox::from_label("See as")
+                .selected_text(if self.see_as.is_empty() {
+                    "normal"
+                } else {
+                    self.see_as
+                })
+                .show_ui(ui, |ui| {
+                    for k in SEE_AS {
+                        let v = if k == "normal" { "" } else { k };
+                        ui.selectable_value(&mut self.see_as, v, k);
+                    }
+                });
+            if self.see_as != before {
+                // The stream is asked for again, drawn the new way.
+                self.asked = None;
             }
         });
         let avail = ui.available_size().max(Vec2::splat(16.0));

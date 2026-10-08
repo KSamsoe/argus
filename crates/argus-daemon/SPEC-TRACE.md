@@ -306,6 +306,14 @@ Phase 0 item 4, "JSON-RPC daemon with session, world, edit, sim (play, pause, st
 | (§17) "All of them are perf assertions the engine's own test suite runs", green "in CI on the reference laptop". | Done (but Rust plugin reload, phase 5 item 7) | `prof.targets`' gates name the check for every row. CI (`tools/ci/ci.sh`, `.github/workflows/ci.yml`, a runner on this laptop: `docs/ci.md`) runs the release timing tests on every push to main, and the web check. The two rows that had no measure: a web cold load of Hollow's page is 2.6 s on 20 Mbit (2.7 MB, brotli), and an incremental release build after one script changed is 4.7 s. | `perf_*` (release, ignored), `argus-cli` `release`, `tools/web/check.mjs` |
 | (§9) `obs.frame {golden, threshold}` compares the frame it drew. | Done | The golden PNG is read and compared (`Image::compare`); the answer's `compare` holds the golden, the threshold, the pixels, how many differ, the share, the worst, and the difference image beside the frame (`<path>.diff.png`). The harness's `expect:image` uses it. | `argus-test` `runner::an_image_golden_is_recorded_matched_and_fails_with_a_picture` |
 
+## Phase 5, item 2: seeing as a colour-blind eye, and rebinds in the run
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§12) The agent checks readability without guessing. | Done | `obs.frame {see_as}` (png): the frame as protanopia, deuteranopia, tritanopia, or achromatopsia sees it, the UI too; `render.stream {see_as}` for the editor's viewport. | `render::obs_frame_sees_as_a_colour_blind_eye_sees` |
+| A rebind is in the run. | Done | `input.bind` and the key a controls page takes are journaled (argus-input's trace). | `argus-player` `tests/release_settings.rs` |
+| A key a controls page catches shows at once in a turn-based game. | Done | Found by Delve's page: a discrete game ticks only on a command, and the caught key was none, so the page said "press a key" until the next key. In play, a caught key takes the tick (`device_input`, as `Player::devices`); the menu has the game frozen, so no turn of play passes. | `input::a_caught_key_takes_the_tick_in_a_turn_based_game_in_play`, `argus-player` `release_settings::a_caught_key_shows_at_once_in_a_turn_based_game` |
+
 ## Phase 4, item 6: §17 beside what is measured
 
 | Spec | Status | Where | Test |

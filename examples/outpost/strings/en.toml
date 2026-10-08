@@ -68,3 +68,30 @@ cold = "cold"
 kind = "{kind}: {open} open, {taken} taken, priority {priority}"
 job = "{who}: {kind}, {stage}"
 none = "No one has a job"
+
+# The menu (phase 5 item 2): Escape opens it; its pages' words.
+# systems/menu.luau fills the settings' holes; {InputBinding.keys} is what
+# an action is bound to.
+[menu]
+title = "Outpost, day {@colony:Colony.day}"
+resume = "Resume"
+controls = "Controls"
+settings = "Settings"
+back = "Back"
+
+[controls]
+title = "Controls: press one, then a key"
+speed_1 = "Play at 1x: {InputBinding.keys}"
+speed_3 = "Play at 3x: {InputBinding.keys}"
+speed_10 = "Play at 10x: {InputBinding.keys}"
+pause = "Pause the colony: {InputBinding.keys}"
+inspect = "Inspector: {InputBinding.keys}"
+menu = "Menu: {InputBinding.keys}"
+
+[settings]
+title = "Settings"
+text = "Text size: {percent}%"
+contrast = "High contrast: {state}"
+fullscreen = "Fullscreen: {state}"
+on = "on"
+off = "off"

@@ -1,0 +1,16 @@
+[Parent]
+entity = "@menu.panel"
+
+[UiNode]
+pad = [18.0, 8.0]
+order = 3
+
+[UiPanel]
+color = "button"
+
+[UiButton]
+event = "menu.controls"
+
+[UiText]
+key = "menu.controls"
+align = "center"

@@ -30,9 +30,16 @@ The release executable (§15, phase 2 item 7): what a player double-clicks. The 
 |---|---|---|---|
 | (§15) A report "the team can open": a desktop player's goes to them as the page's does. | Done | With `[reports] url`, a saved report is posted in the background (`argus_player::reports`), the waiting ones when the game starts, and a crash's for up to three seconds before the game stops; the bottom line says whether it went. Without, it stays in the save location as before. | `argus-player` `tests/release_reports.rs` |
 
+## Phase 5, item 2: the player's screen reader, and settings kept
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§12) The semantic frame "can drive a player's narrator": the player's own screen reader. | Done | While a screen reader is reading, each frame's `ui` and `hud` go to it as an AccessKit tree (`argus-render` `access`, the window's adapter); a press it asks for is the pointer on the button and `ui_click`, recorded input like a mouse's. The window opens hidden until the adapter is attached, as AccessKit needs. | `argus-player` `tests/release_access.rs` (Hollow's menu read, the focus following, Controls pressed); Kevin's hand check with Narrator or NVDA |
+| Settings that last between launches. | Done | `argus_player::settings::Store`: `settings.toml` in the save location, read and put in before the first tick and the recorder, written when the player changes one. | `argus-player` `tests/release_settings.rs` |
+
 ## Known limitations, stated so they are decisions
 
-- The window opens at 1280x720 and can be resized. It fills the screen (borderless) while the game's `UiSettings.fullscreen` says so, read each frame (phase 3 item 1); a game's settings screen is its own UI (Hollow's pause menu has one). Settings last for the session; keeping them between launches is phase 5's accessibility pass.
+- The window opens at 1280x720 and can be resized. It fills the screen (borderless) while the game's `UiSettings.fullscreen` says so, read each frame (phase 3 item 1); a game's settings screen is its own UI (every reference game's pause menu has one). Settings last between launches (phase 5 item 2).
 - The mouse is the UI's pointer: the window's cursor goes onto the canvas through the renderer's fit.
-- A report is not sent anywhere from the desktop; the player finds it in the save location.
+- A report goes to the team when the project names a `[reports] url` (phase 5 item 1); without one, the player finds it in the save location.
 - Saves (phase 3 item 0): what a game asks for with `q:save` goes to the save location's `saves/<name>.save`, and `q:load` reads it back; a failure is said on the bottom line, a success is the game's to mention. `--headless N` writes the saves its ticks asked for and lists them.

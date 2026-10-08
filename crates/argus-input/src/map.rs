@@ -316,6 +316,27 @@ impl ActionMap {
             .map_err(|e| ArgusError::new(codes::BAD_MAP, format!("input.toml: {e}")))
     }
 
+    /// Whether a press of `action` (a button) toggles it instead of
+    /// holding it: the hold-or-toggle choice a player makes (section 12
+    /// accessibility; phase 5 item 2).
+    pub fn set_toggle(&mut self, action: &str, toggle: bool) -> Result<()> {
+        if toggle && self.action(action)?.kind != ActionKind::Button {
+            return Err(ArgusError::new(
+                codes::BAD_MAP,
+                format!("{action}: toggle applies to buttons only"),
+            ));
+        }
+        let a = self
+            .actions
+            .iter_mut()
+            .find(|a| a.name == action)
+            .ok_or_else(|| {
+                ArgusError::new(codes::UNKNOWN_ACTION, format!("no action named {action:?}"))
+            })?;
+        a.toggle = toggle;
+        Ok(())
+    }
+
     /// The names `action` is bound to on `device`.
     pub fn bindings(&self, action: &str, device: &str) -> Vec<String> {
         self.action(action)

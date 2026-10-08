@@ -31,7 +31,7 @@ Every statement in the design document (v0.3) that constrains the UI tree (§12 
 |---|---|---|---|
 | Text scaling and high-contrast palettes are UI theme tokens. | Done | `ui.toml` (`theme.rs`): canvas size, font, text size, `text_scale`, `high_contrast`, `[colors]`, and `[high_contrast_colors]`; every theme has text, muted, panel, border, focus, accent, and disabled. `UiSettings` (the first in the world) overrides scale and contrast at run time; Hollow's Settings page writes it. | `ui::a_players_settings_scale_the_text_and_swap_the_palette`, `theme::tests::colours_parse_and_a_theme_overrides_the_defaults`, Hollow's `tests/settings.luau` |
 | Rebinding comes with the action map. | Done | As in the input section above. | |
-| The semantic frame is, without modification, a screen-reader feed. | Done | Its `ui` section is in reading order, with each button's words and focus. | Delve's `tests/menu.luau` |
+| The semantic frame is, without modification, a screen-reader feed. | Done (phase 5 item 2: read by the player's own screen reader) | Its `ui` section is in reading order, with each button's words and focus. The desktop game gives it to the operating system's screen reader as an AccessKit tree (`argus-render` `access`), the web page as buttons and a live region a browser's screen reader reads (`tools/web/main.js`); a press from either is the pointer and a click, recorded input. | Delve's `tests/menu.luau`; `argus-player` `tests/release_access.rs`; `tools/web/check.mjs` (`reader`) |
 
 ## §3, §13, §17, §8
 
@@ -79,6 +79,6 @@ Every statement in the design document (v0.3) that constrains the UI tree (§12 
 - Layout runs in the tick (late stage), so a `UiRect` is world state: a seek, a fork, or a replay lays out the same, and a test can read it. It costs a relayout of what changed each tick, which the §17 number covers.
 - A font's atlas is one size (32 pixels an em by default) with one distance channel, so very large text rounds a glyph's sharp corners a little. A multi-channel field is later work if a game needs it.
 - Glyphs are baked for printable ASCII, Latin-1, common punctuation, a sidecar's `chars`, and whatever the font's substitutions make of them. Text in another script needs its characters listed in `chars`; a glyph the atlas lacks draws the font's missing-glyph box.
-- Settings last for the session. Keeping them between launches needs a place outside the world, since a replay must not change with them; that is the accessibility pass of phase 5.
+- Settings last between launches (phase 5 item 2): `argus_player::settings` keeps them in the player's save location, outside the world, and puts them in before the first tick. A hidden node keeps the world's words, not the layout's cache's, so a replay begun from a keyframe lays out as the run did (found by that item).
 - Hollow's HUD, pause menu, Controls, and Settings live in room `a`, which the scene's radius keeps loaded. The 200 rooms of item 6 will need them somewhere always loaded.
 - Right-to-left shaping is rustybuzz's and was not checked here: Delve's font has no Hebrew or Arabic.

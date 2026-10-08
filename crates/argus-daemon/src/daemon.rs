@@ -842,10 +842,16 @@ impl Daemon {
     /// reach it through `poll_devices`.
     pub fn device_input(&mut self, events: &[argus_input::DeviceInput]) -> u64 {
         let st = self.session.as_ref().and_then(|s| s.input.clone());
+        let next = self.sched.tick();
+        let mut caught = false;
         for ev in events {
             // A controls menu waiting for a key takes the press (phase 3
-            // item 1); the game does not hear it.
-            if st.as_ref().is_some_and(|s| s.borrow_mut().capture(ev)) {
+            // item 1); the game does not hear it. It is journaled.
+            if st
+                .as_ref()
+                .is_some_and(|s| s.borrow_mut().capture(next, ev))
+            {
+                caught = true;
                 continue;
             }
             self.devices.apply(ev);
@@ -857,7 +863,9 @@ impl Daemon {
         let commands = st.borrow_mut().apply_devices(now, &self.devices);
         self.input_branched();
         let mut turns = 0;
-        if commands > 0
+        // A caught key is a command too: the controls page shows it on the
+        // next tick, and a discrete game ticks only on a command.
+        if (commands > 0 || caught)
             && self.sched.config().driving == ClockKind::Discrete
             && self.sched.is_playing()
             && !self.sched.is_paused()
@@ -3590,7 +3598,9 @@ impl Daemon {
             .collect::<Result<_>>()?;
         let save = json::bool_param(params, "save", false)?;
         let st = self.input()?;
-        st.borrow_mut().rebind(&action, &device, names.clone())?;
+        let next = self.sched.tick();
+        st.borrow_mut()
+            .rebind(next, &action, &device, names.clone())?;
         if save {
             let root = self.require_session()?.root.clone();
             argus_input::ActionMap::save_bindings(&root, &action, &device, &names)?;
@@ -5135,6 +5145,7 @@ impl Daemon {
             return Ok(self.semantic_json(width, height, limit, groups, None));
         }
         let software = json::bool_param(params, "software", false)?;
+        let see_as = see_as_param(params)?;
         let root = self.session.as_ref().expect("session").root.clone();
         let path = match json::opt_str(params, "path")? {
             Some(p) => {
@@ -5165,6 +5176,8 @@ impl Daemon {
         let _ = self.sched.present(&mut self.world);
         r.set_time(shader_time(&self.sched, alpha));
         r.set_ui(self.session.as_ref().map(|s| s.ui.clone()));
+        // Set every time: the renderer is kept between calls.
+        r.gpu_mut().set_see_as(see_as);
         let store = self.session.as_ref().expect("session").particles.borrow();
         let rep = r.render_frame(&self.world, tick, alpha, &extras, Some(&store))?;
         drop(store);
@@ -5208,6 +5221,7 @@ impl Daemon {
             "width": width,
             "height": height,
             "tick": tick,
+            "see_as": see_as.map(|k| k.name()),
             "alpha": alpha,
             "sprites": rep.stats.sprites,
             "draw_calls": rep.stats.draw_calls,
@@ -5590,6 +5604,7 @@ impl Daemon {
         let height = json::u64_param(params, "height", 720)?.clamp(16, 8192) as u32;
         let fps = json::f64_param(params, "fps", 60.0)?.clamp(1.0, 240.0);
         let software = json::bool_param(params, "software", false)?;
+        let see_as = see_as_param(params)?;
         let audio = json::bool_param(params, "audio", true)?;
         if let Some(s) = &self.render.stream {
             if s.conn != conn {
@@ -5670,6 +5685,7 @@ impl Daemon {
         // Held from the first sample if the game is not playing.
         self.sync_audio();
         let s = self.render.stream.as_mut().expect("just made");
+        s.renderer.gpu_mut().set_see_as(see_as);
         s.fps = fps;
         s.audio = audio && !sound.is_null() && sound.get("error").is_none();
         // The first frame goes at once.
@@ -5685,6 +5701,7 @@ impl Daemon {
             "audio": sound,
             "adapter": s.renderer.gpu().adapter,
             "software": s.renderer.gpu().software,
+            "see_as": see_as.map(|k| k.name()),
         }))
     }
 
@@ -6607,4 +6624,18 @@ fn shader_time(sched: &argus_sim::Scheduler, alpha: f32) -> f32 {
         0.0
     };
     (sched.time() - behind).max(0.0) as f32
+}
+
+/// `see_as`: a kind of colour vision a frame is drawn as (phase 5 item 2),
+/// or none.
+#[cfg(feature = "render")]
+fn see_as_param(params: &Json) -> Result<Option<argus_render::SeeAs>> {
+    match json::opt_str(params, "see_as")? {
+        None | Some("") | Some("normal") => Ok(None),
+        Some(s) => argus_render::SeeAs::parse(s).map(Some).ok_or_else(|| {
+            bad_params(format!(
+                "see_as is protanopia, deuteranopia, tritanopia, achromatopsia, or normal; got {s:?}"
+            ))
+        }),
+    }
 }

@@ -13,9 +13,11 @@
 
 #![warn(missing_docs)]
 
+pub mod access;
 pub mod annotate;
 pub mod gpu;
 pub mod post;
+pub mod see_as;
 pub mod semantic;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod window;
@@ -31,6 +33,7 @@ use std::path::Path;
 
 pub use annotate::{annotate, Mark};
 pub use gpu::{DrawStats, Gpu, Instance, Page, Run, Texels, UiDraw};
+pub use see_as::SeeAs;
 pub use semantic::{semantic, Describe, FrameSpec, SemanticFrame, View};
 
 /// Error codes this crate adds (50xx).

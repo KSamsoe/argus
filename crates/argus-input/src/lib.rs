@@ -26,7 +26,7 @@ pub mod system;
 
 pub use devices::{key_name, DeviceInput, Devices};
 pub use map::{Action, ActionKind, ActionMap, Slot};
-pub use rebind::{InputBinding, REBIND};
+pub use rebind::{InputBinding, InputToggle, REBIND};
 pub use state::{
     ActionValue, Command, InjectReport, InputSnapshot, InputState, JournalEntry, Listen, LogEntry,
     Rebound,

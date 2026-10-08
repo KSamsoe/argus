@@ -493,6 +493,7 @@ dependencies = [
 name = "argus-player"
 version = "0.0.1"
 dependencies = [
+ "accesskit",
  "argus-anim",
  "argus-assets",
  "argus-audio",
@@ -532,6 +533,8 @@ dependencies = [
 name = "argus-render"
 version = "0.0.1"
 dependencies = [
+ "accesskit",
+ "accesskit_winit",
  "argus-assets",
  "argus-camera",
  "argus-ecs",

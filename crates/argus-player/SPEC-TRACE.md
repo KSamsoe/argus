@@ -123,6 +123,13 @@ Every statement in the design document (v0.3) that constrains a game as players 
 | The tick-end hook that finds `q:save` requests is cheap in a long step. | Done | `savegame::requested` reads only the tick's events at the queue's tail. | Outpost's `tests/week.luau` |
 | What a report or a page can say of a player's memory. | Done | `Player::status` has `script_bytes` (the Luau heap) and `strings` (the string table's size). Used at the gate to find that the player does not leak: three hours of Outpost stayed at 19 to 23 MB once its saves were collected, as the executable collects them every frame. The heap's size is not the world's: it depends on when the collector ran and on whether the scripts were compiled or shipped as bytecode, so the tests that compare runs leave it out. | the gate's measurements; `packs`, `player` |
 
+## Phase 5, item 2: a player's settings
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| Settings that last between launches, outside the world, since a replay must not change with them. | Done | `settings`: the text size, high contrast, fullscreen, and language of the game's `UiSettings`, and the bindings and toggles that differ from the game's, as TOML (`settings.toml` in the save location; the web page keeps the text in the browser). `Store::open` puts them in before the first tick and before the recorder starts, so its first keyframe holds them and a report replays with the player's settings in a player without them; `Store::changed` writes them back when the player changes them. The daemon does not read them. | `tests/release_settings.rs` |
+| (§12) The player's screen reader reads the game. | Done | The desktop game builds the frame's AccessKit tree while one is reading and turns its presses into the pointer and a click (`argus-game`). | `tests/release_access.rs`: Hollow's pause menu, by its words, the focus following, and a press opening Controls |
+
 ## Known limitations, stated so they are decisions
 
 - A desktop report goes over plain HTTP to the server's tailnet address (`[reports] url`): a player off the tailnet keeps theirs, and it goes when they are on it, or they send the file.

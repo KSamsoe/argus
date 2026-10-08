@@ -11,7 +11,7 @@ Every statement in the design document (v0.3) that constrains action maps and th
 | The input log records actions, not device events: a replay survives a rebind, a test written against a keyboard runs against a gamepad. | Done | `state.rs`: the log is `tick, slot, action, value` change points. Bindings never appear in it. | `input::injected_input_reaches_the_slot_entity_with_edges`, `input::a_recorded_log_replays_to_the_same_run` |
 | The agent's `input.inject` says `{action: "jump"}` rather than naming a scancode. | Done | `input.inject {action, slot, value, frames, hold}`; the value defaults to the action's active value (a button down, an axis at 1). | `input::injected_actions_reach_gameplay_and_never_name_keys` |
 | Rebinding at runtime is a UI over the same table. | Done (phase 3 item 1) | `rebind.rs`: a UI button with an `InputBinding {action, device}` waits, when pressed, for the next press on its device and binds the action to it (`InputState::listen`, then `capture` in the host's device path takes the press so the game does not hear it; Escape cancels): `input.rebound` or `input.rebind_cancelled`. Its `keys` field says what the action is bound to, for a text hole. `input.bind {action, device, bindings, save}` does the same through the protocol, and `save` writes it into `input.toml` keeping the rest of the file. The log records actions, so a replay survives it. | `argus-ui` `ui::a_controls_button_rebinds_an_action_to_the_next_key`, `argus-daemon` `input::input_bind_rebinds_an_action_and_save_keeps_it_in_the_file`, Hollow's `tests/controls.luau` |
-| Accessibility: input-hold and toggle alternatives are action-map options. | Done | `toggle = true` on a button: a press flips the held state; the automatic release does nothing. | `input::toggles_holds_and_scripts` |
+| Accessibility: input-hold and toggle alternatives are action-map options. | Done | `toggle = true` on a button: a press flips the held state; the automatic release does nothing. A player switches it in a settings menu (phase 5 item 2): a button with an `InputToggle {action}` switches the action between holding and toggling, in the tick (`input.toggled`). | `input::toggles_holds_and_scripts`, `argus-ui` `toggle::a_toggle_button_switches_an_action_between_holding_and_toggling` |
 
 ## §3, §15 Where actions live
 
@@ -74,6 +74,12 @@ In the daemon: `Daemon::device_input(events)` is the one entry point; `poll_devi
 | Spec | Status | Where | Test |
 |---|---|---|---|
 | (§12) Player-facing strings through a string table, the engine's own too. | Done | `rebind::install_with` takes what a button waiting for a key says; the assembly hands it the string tables' `input.press_a_key` in the world's language ("press a key" by default), since this crate reads no tables. | Hollow's `tests/controls.luau` (English), its French by hand |
+
+## Phase 5, item 2: a rebind is in the run
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§6, §15) A report replays to the same world after the player rebound a key. | Done | Found: a rebind was in neither the journal nor a keyframe, so a replay showed the game's old keys in the controls page (world state) and drifted. The key a waiting action took is journaled (`Command::Took`, Escape too), as is `input.bind` (`Command::Bind`), and a snapshot holds the map's bindings, toggles, and what waits for a key (replay files from version 4), so a seek back before a rebind undoes it. `map_mut` sets a run's starting map (a player's settings). | `argus-player` `tests/release_settings.rs` (a report from before the rebind and one from after) |
 
 ## Known limitations, stated so they are decisions
 

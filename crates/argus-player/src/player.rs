@@ -326,9 +326,15 @@ impl Player {
     /// one turn.
     pub fn devices(&mut self, evs: &[DeviceInput]) -> u64 {
         let st = self.input.clone();
+        let next = self.sched.tick();
+        let mut caught = false;
         for ev in evs {
             // A controls menu waiting for a key takes the press.
-            if st.as_ref().is_some_and(|s| s.borrow_mut().capture(ev)) {
+            if st
+                .as_ref()
+                .is_some_and(|s| s.borrow_mut().capture(next, ev))
+            {
+                caught = true;
                 continue;
             }
             self.devices.apply(ev);
@@ -338,7 +344,11 @@ impl Player {
         };
         let now = self.sched.tick();
         let commands = st.borrow_mut().apply_devices(now, &self.devices);
-        if commands > 0 && self.sched.driving().kind == ClockKind::Discrete && self.step(1).is_ok()
+        // A caught key is a command too: the controls page shows it on the
+        // next tick, and a discrete game ticks only on a command.
+        if (commands > 0 || caught)
+            && self.sched.driving().kind == ClockKind::Discrete
+            && self.step(1).is_ok()
         {
             return 1;
         }

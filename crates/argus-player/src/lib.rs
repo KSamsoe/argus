@@ -27,6 +27,7 @@ pub mod replay;
 pub mod reports;
 pub mod save;
 pub mod savegame;
+pub mod settings;
 pub mod sha256;
 
 pub use assemble::{

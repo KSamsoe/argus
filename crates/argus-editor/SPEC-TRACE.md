@@ -117,6 +117,12 @@ Every statement in the design document (v0.3) that constrains the editor (§11, 
 | (Kevin's hand check) The editor left minimized holds no frames. | Done | `Viewport::upload` takes no frame while the window is minimized: a window that does not paint submits nothing, and each frame written to the GPU texture waited in the queue (11 GB after half an hour). The newest frame goes up when it paints again. | `editor::a_minimized_editor_holds_no_frames` |
 | The profiler goes only where the run can. | Done | "Go there" is offered for a slow tick inside the run's reach (`sim.ring`'s floor to end); one from a run that went (play stopped, a branch) says so (found by the gate: the seek was refused). | `gate` |
 
+## Phase 5, item 2
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§12) "A colour-blind simulation ... lets the agent and the human check readability without guessing": the human's half. | Done | The viewport's See as: normal, protanopia, deuteranopia, tritanopia, or achromatopsia, sent as `render.stream {see_as}`; the next frame comes back seen that way, the UI too. | `argus-daemon` `render::obs_frame_sees_as_a_colour_blind_eye_sees` (the same pass) |
+
 ## Known limitations, stated so they are decisions
 
 - The editor polls `session.status` five times a second and `world.summary` once a second rather than subscribing to them; the protocol has no status topic, and at these rates a poll is a few hundred bytes.

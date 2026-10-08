@@ -82,18 +82,24 @@ impl Default for UiSettings {
     }
 }
 
+/// The entity whose [`UiSettings`] the UI reads: the first one.
+pub fn settings_entity(world: &World) -> Option<argus_ecs::Entity> {
+    let id = world.component_id_of::<UiSettings>()?;
+    let mut all = world.query().has(id).entities();
+    all.sort();
+    all.first().copied()
+}
+
+/// The [`UiSettings`] the UI reads, if the game has any (a settings page).
+pub fn settings(world: &World) -> Option<UiSettings> {
+    world.get::<UiSettings>(settings_entity(world)?).ok()
+}
+
 /// Whether the world's settings ask for fullscreen (the first
 /// [`UiSettings`], as the rest of the UI reads them): what a release host
 /// applies to its window each frame.
 pub fn wants_fullscreen(world: &World) -> bool {
-    let Some(id) = world.component_id_of::<UiSettings>() else {
-        return false;
-    };
-    let mut all = world.query().has(id).entities();
-    all.sort();
-    all.first()
-        .and_then(|e| world.get::<UiSettings>(*e).ok())
-        .is_some_and(|s| s.fullscreen)
+    settings(world).is_some_and(|s| s.fullscreen)
 }
 
 /// The fonts a project has, by asset name, and the built-in pixel font.

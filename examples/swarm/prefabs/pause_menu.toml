@@ -1,0 +1,218 @@
+# The pause menu (phase 5 item 2), one tree for every scene: each scene's
+# pause.toml is this prefab. Escape (or Start) opens it and the game stands
+# still (systems/pause.luau); its buttons are pressed with the UI's actions
+# (systems/pause_menu.luau). Three pages: the buttons (panel), the
+# controls, and the settings, whose UiSettings is the game's only one.
+# Closed, it is hidden and its systems look at one flag a tick.
+[UiRoot]
+layer = 10
+
+[UiNode]
+justify = "center"
+align = "center"
+visible = false
+
+[UiPanel]
+color = "#05070ACC"
+
+# The first page: Resume, Restart, Controls, Settings.
+[children.panel.UiNode]
+pad = [28.0, 22.0]
+gap = 10.0
+
+[children.panel.UiPanel]
+color = "panel"
+border = 2.0
+
+[children.panel.children.title.UiNode]
+margin = [0.0, 6.0]
+
+[children.panel.children.title.UiText]
+key = "pause.title"
+align = "center"
+
+[children.panel.children.resume.UiNode]
+pad = [18.0, 8.0]
+order = 1
+
+[children.panel.children.resume.UiPanel]
+color = "button"
+
+[children.panel.children.resume.UiButton]
+event = "pause.resume"
+
+[children.panel.children.resume.UiText]
+key = "pause.resume"
+align = "center"
+
+[children.panel.children.restart.UiNode]
+pad = [18.0, 8.0]
+order = 2
+
+[children.panel.children.restart.UiPanel]
+color = "button"
+
+[children.panel.children.restart.UiButton]
+event = "pause.restart"
+
+[children.panel.children.restart.UiText]
+key = "pause.restart"
+align = "center"
+
+[children.panel.children.controls.UiNode]
+pad = [18.0, 8.0]
+order = 3
+
+[children.panel.children.controls.UiPanel]
+color = "button"
+
+[children.panel.children.controls.UiButton]
+event = "pause.controls"
+
+[children.panel.children.controls.UiText]
+key = "pause.controls"
+align = "center"
+
+[children.panel.children.settings.UiNode]
+pad = [18.0, 8.0]
+order = 4
+
+[children.panel.children.settings.UiPanel]
+color = "button"
+
+[children.panel.children.settings.UiButton]
+event = "pause.settings"
+
+[children.panel.children.settings.UiText]
+key = "pause.settings"
+align = "center"
+
+# The controls: the pause button's key, rebound to the next key pressed
+# (Escape cancels). Walking is four keys or a stick, not one key, so it is
+# said but not rebound.
+[children.controls.UiNode]
+pad = [28.0, 22.0]
+gap = 8.0
+min = [300.0, 0.0]
+visible = false
+
+[children.controls.UiPanel]
+color = "panel"
+border = 2.0
+
+[children.controls.children.title.UiNode]
+margin = [0.0, 6.0]
+
+[children.controls.children.title.UiText]
+key = "controls.title"
+align = "center"
+
+[children.controls.children.pause.UiNode]
+pad = [18.0, 8.0]
+order = 1
+
+[children.controls.children.pause.UiPanel]
+color = "button"
+
+[children.controls.children.pause.UiButton]
+
+[children.controls.children.pause.InputBinding]
+action = "pause"
+
+[children.controls.children.pause.UiText]
+key = "controls.pause"
+
+[children.controls.children.move.UiNode]
+pad = [18.0, 8.0]
+order = 2
+
+[children.controls.children.move.UiText]
+key = "controls.move"
+
+[children.controls.children.back.UiNode]
+pad = [18.0, 8.0]
+order = 9
+
+[children.controls.children.back.UiPanel]
+color = "button"
+
+[children.controls.children.back.UiButton]
+event = "controls.back"
+
+[children.controls.children.back.UiText]
+key = "controls.back"
+align = "center"
+
+# The settings: text size, high contrast, and fullscreen, which this
+# page's UiSettings holds for the whole UI (and the release window reads).
+[children.settings.UiNode]
+pad = [28.0, 22.0]
+gap = 8.0
+min = [300.0, 0.0]
+visible = false
+
+[children.settings.UiPanel]
+color = "panel"
+border = 2.0
+
+[children.settings.UiSettings]
+
+[children.settings.children.title.UiNode]
+margin = [0.0, 6.0]
+
+[children.settings.children.title.UiText]
+key = "settings.title"
+align = "center"
+
+[children.settings.children.text.UiNode]
+pad = [18.0, 8.0]
+order = 1
+
+[children.settings.children.text.UiPanel]
+color = "button"
+
+[children.settings.children.text.UiButton]
+event = "settings.text"
+
+[children.settings.children.text.UiText]
+text = "Text size: 100%"
+
+[children.settings.children.contrast.UiNode]
+pad = [18.0, 8.0]
+order = 2
+
+[children.settings.children.contrast.UiPanel]
+color = "button"
+
+[children.settings.children.contrast.UiButton]
+event = "settings.contrast"
+
+[children.settings.children.contrast.UiText]
+text = "High contrast: off"
+
+[children.settings.children.fullscreen.UiNode]
+pad = [18.0, 8.0]
+order = 3
+
+[children.settings.children.fullscreen.UiPanel]
+color = "button"
+
+[children.settings.children.fullscreen.UiButton]
+event = "settings.fullscreen"
+
+[children.settings.children.fullscreen.UiText]
+text = "Fullscreen: off"
+
+[children.settings.children.back.UiNode]
+pad = [18.0, 8.0]
+order = 9
+
+[children.settings.children.back.UiPanel]
+color = "button"
+
+[children.settings.children.back.UiButton]
+event = "settings.back"
+
+[children.settings.children.back.UiText]
+key = "settings.back"
+align = "center"

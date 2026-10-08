@@ -12,7 +12,9 @@
 //! at the keyframe); the journal of input commands from `from` to `to`;
 //! and the world at `to`, which a reader compares a replay with. A version
 //! 1 file reads with no overlaps remembered; before version 3 the rooms
-//! carry no memory of what happened in the unloaded ones.
+//! carry no memory of what happened in the unloaded ones; before version
+//! 4 the input state has no bindings, toggles, or key awaited, so a replay
+//! keeps the map it has (phase 5 item 2).
 
 use crate::keyframe::Keyframe;
 use argus_ecs::codec::{Reader, Writer};
@@ -25,7 +27,7 @@ use serde_json::Value as Json;
 use std::path::Path;
 
 const TAG: &[u8; 4] = b"ARGR";
-const VERSION: u32 = 3;
+const VERSION: u32 = 4;
 
 /// A replay file, read back. The two worlds stay bytes until a live world
 /// (with the components registered) reads them.
@@ -133,7 +135,7 @@ pub fn decode(bytes: &[u8]) -> Result<ReplayFile> {
     let time = r.f64()?;
     let world = r.bytes()?.to_vec();
     let sim = SimState::decode(&mut r)?;
-    let input = r.opt(|r| InputSnapshot::decode(r))?;
+    let input = r.opt(|r| InputSnapshot::decode_as(r, version >= 4))?;
     let pools = r.bytes()?.to_vec();
     let rooms = r.opt(|r| StreamState::decode_as(r, version >= 3))?;
     let mut contacts = Vec::new();

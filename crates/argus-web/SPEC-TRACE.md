@@ -49,6 +49,13 @@ Every statement in the design document (v0.3) that constrains the web spike (pha
 |---|---|---|---|
 | (§17) "Web build, cold load < 5 s on a 20 Mbit link." | Done | `tools/web/check.mjs` first loads the page in a fresh profile with the cache off and the network held to 20 Mbit down, 5 up, and 40 ms, until the first frame is drawn, and fails past 5 s; it exits 1 on any failure, which CI gates on. `tools/web/serve.mjs` sends files brotli-compressed to a browser that takes it (each compressed once while it is the same file): Hollow's page went from 14.1 MB and 6.5 s to 2.7 MB and 2.6 s. `tools/web/deploy.sh` copies the server to klab when it changed. | `tools/web/check.mjs` (`cold_load`, `ok`) |
 
+## Phase 5, item 2: the page's screen reader, and settings kept
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§12) The semantic frame read by the player's screen reader, in the page. | Done | `tools/web/main.js` reads `semantic` every ten frames into hidden HTML the browser's screen reader reads: the canvas an application named for the game, a button for each of the frame's UI buttons with its words, the focused one's words in a polite live region, the HUD's lines in another. A button pressed there is the pointer on it and `ui_click`, recorded input. | `tools/web/check.mjs` (`reader`: Hollow's menu as buttons, the focus said, Controls pressed through the mirror) |
+| Settings that last between launches. | Done | `WebPlayer::apply_settings` (before the recorder starts again) and `settings_changed`; the page keeps the text in the browser's storage (`argus:<game>:settings`). | `argus-player` `tests/release_settings.rs` (the same `Store`) |
+
 ## Known limitations, stated so they are decisions
 
 - `Player::open` copies the daemon's `open_scene`. Item 7 shares one assembly.

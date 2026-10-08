@@ -91,3 +91,39 @@ fn the_no_adapter_code_matches_the_renderer() {
         argus_render::codes::NO_ADAPTER
     );
 }
+
+/// Phase 5 item 2: the frame as a colour-blind eye sees it, the game left
+/// as it is. The red blob as drawn, then as no colour at all.
+#[test]
+fn obs_frame_sees_as_a_colour_blind_eye_sees() {
+    let (t, mut d) = open_with_sprites("frame-see-as");
+    let centre = |d: &mut Daemon, see_as: &str| -> Option<[u8; 3]> {
+        let r = match d.call(
+            0,
+            "obs.frame",
+            &json!({ "width": 64, "height": 64, "see_as": see_as, "software": true }),
+        ) {
+            Ok(r) => r,
+            Err(e) if e.code == argus_render::codes::NO_ADAPTER => return None,
+            Err(e) => panic!("obs.frame: {e}"),
+        };
+        let (w, _, rgba) =
+            argus_assets::decode_png(std::path::Path::new(r["path"].as_str().unwrap())).unwrap();
+        let i = ((32 * w + 32) * 4) as usize;
+        Some([rgba[i], rgba[i + 1], rgba[i + 2]])
+    };
+    let Some(red) = centre(&mut d, "normal") else {
+        return;
+    };
+    assert!(red[0] > 200 && red[1] < 40, "{red:?}");
+    let grey = centre(&mut d, "achromatopsia").unwrap();
+    assert!(
+        grey[0].abs_diff(grey[1]) <= 1 && grey[1].abs_diff(grey[2]) <= 1,
+        "{grey:?}"
+    );
+    // And as it is again: the renderer is kept between calls.
+    assert_eq!(centre(&mut d, "normal").unwrap(), red);
+    let e = err(&mut d, "obs.frame", json!({ "see_as": "sepia" }));
+    assert!(e.message.contains("deuteranopia"), "{}", e.message);
+    drop(t);
+}

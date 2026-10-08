@@ -43,3 +43,7 @@ serde_json = "1"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 vorbis_rs = { version = "0.5", default-features = false }
+
+[dev-dependencies]
+# The screen reader's tree, in a test of it.
+accesskit = "0.17"

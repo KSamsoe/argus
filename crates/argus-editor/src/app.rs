@@ -1175,11 +1175,17 @@ impl Editor {
         self.viewport.paint = up && self.tab == Tab::Tiles && self.tiles.ready();
         for s in self.viewport.ui(ui, up, playing) {
             match s {
-                Send::Stream(w, h) => self.link.send(
-                    "render.stream",
-                    json!({ "width": w, "height": h, "fps": 60, "audio": self.audio }),
-                    Want::Stream,
-                ),
+                Send::Stream(w, h) => {
+                    let see_as = match self.viewport.see_as {
+                        "" => "normal",
+                        k => k,
+                    };
+                    self.link.send(
+                        "render.stream",
+                        json!({ "width": w, "height": h, "fps": 60, "audio": self.audio, "see_as": see_as }),
+                        Want::Stream,
+                    )
+                }
                 Send::Input(events, text) => {
                     let mut p = json!({ "events": events });
                     if !text.is_empty() {

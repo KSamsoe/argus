@@ -10,6 +10,20 @@ return scenario "the menu takes no turn and its buttons work" {
     t:advance { by = "turn", n = 1 }
     t.expect:field("@menu", "UiRect.shown"):eq(true)
     t.expect:field("@menu.resume", "UiButton.focused"):eq(true)
+    -- The semantic frame reads the menu out: its buttons in order, Resume
+    -- focused (a screen reader's feed, section 12).
+    local open = t:call("obs.frame", { format = "semantic" })
+    local buttons, focused = {}, nil
+    for _, u in ipairs(open.ui) do
+      if u.button then
+        table.insert(buttons, u.text)
+        if u.focused then focused = u.text end
+      end
+    end
+    if table.concat(buttons, " | ") ~= "Resume | New run | Controls | Settings" then
+      error("the semantic frame's buttons: " .. table.concat(buttons, " | "), 0)
+    end
+    if focused ~= "Resume" then error("the semantic frame's focus: " .. tostring(focused), 0) end
     -- Moving through the menu: the hero does not step, no turn passes.
     t.input:hold("move", { 1, 0 }, 1)
     t.input:hold("ui_move", { 0, -1 }, 1)

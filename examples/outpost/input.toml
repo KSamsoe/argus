@@ -39,8 +39,8 @@ doc = "Zoom in and out"
 keyboard = ["minus/equal"]
 
 # The inspector (the phase 3 gate): Tab opens and closes it, and the menu
-# actions move and press in it. While it is open, the arrows move its focus
-# instead of the view.
+# actions move and press in it (and in the menu). While it is open, the
+# arrows move its focus instead of the view.
 [actions.inspect]
 type = "button"
 doc = "Open or close the inspector"
@@ -48,9 +48,19 @@ doc = "Open or close the inspector"
 keyboard = ["tab"]
 gamepad = ["select"]
 
+# The menu (phase 5 item 2): Escape opens it and the game stands still;
+# Escape backs out of it a page at a time. Escape is ui_cancel's too, so
+# with the inspector open it backs out of the inspector first, and the menu
+# opens once the inspector is closed. Not on the gamepad: Start is pause.
+[actions.menu]
+type = "button"
+doc = "Open the menu, or back out of it a page"
+[actions.menu.bindings]
+keyboard = ["escape"]
+
 [actions.ui_move]
 type = "axis2"
-doc = "Move the focus in the inspector"
+doc = "Move the focus in the inspector or the menu"
 [actions.ui_move.bindings]
 keyboard = ["arrows", "wasd"]
 gamepad = ["dpad"]
@@ -64,7 +74,7 @@ gamepad = ["south"]
 
 [actions.ui_cancel]
 type = "button"
-doc = "Back out of the inspector's page"
+doc = "Back out of a page of the inspector or the menu"
 [actions.ui_cancel.bindings]
 keyboard = ["escape", "backspace"]
 gamepad = ["east"]

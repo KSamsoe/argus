@@ -1,0 +1,27 @@
+# Swarm's words (phase 5 item 2): the pause menu's, by key. The game is
+# written in English; another language would be a file like this one,
+# strings/<code>.toml, with the same keys. Holes: {Component.field} come
+# from the world, {name} from systems/pause_menu.luau.
+language.name = "English"
+
+[pause]
+title = "Paused"
+resume = "Resume"
+restart = "Restart from wave 1"
+controls = "Controls"
+settings = "Settings"
+
+[controls]
+title = "Controls: press one, then a key"
+pause = "Pause: {InputBinding.keys}"
+move = "Walk: W A S D, or the left stick"
+back = "Back"
+
+[settings]
+title = "Settings"
+text = "Text size: {percent}%"
+contrast = "High contrast: {state}"
+fullscreen = "Fullscreen: {state}"
+on = "on"
+off = "off"
+back = "Back"

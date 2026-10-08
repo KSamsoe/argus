@@ -5,5 +5,46 @@ doc = "Walk direction"
 keyboard = ["wasd"]
 gamepad = ["left_stick"]
 
+[actions.pause]
+type = "button"
+doc = "Open or close the pause menu"
+[actions.pause.bindings]
+keyboard = ["escape"]
+gamepad = ["start"]
+
+# The menus' actions (the UI reads these names).
+[actions.ui_move]
+type = "axis2"
+doc = "Move the focus in a menu"
+[actions.ui_move.bindings]
+keyboard = ["arrows", "wasd"]
+gamepad = ["dpad", "left_stick"]
+
+[actions.ui_confirm]
+type = "button"
+doc = "Press the focused button"
+[actions.ui_confirm.bindings]
+keyboard = ["enter"]
+gamepad = ["south"]
+
+[actions.ui_cancel]
+type = "button"
+doc = "Back out of a menu's page"
+[actions.ui_cancel.bindings]
+keyboard = ["backspace"]
+gamepad = ["east"]
+
+[actions.ui_click]
+type = "button"
+doc = "Press the button under the pointer"
+[actions.ui_click.bindings]
+mouse = ["left"]
+
+[actions.pointer]
+type = "pointer"
+doc = "Where the mouse is, on the UI canvas"
+[actions.pointer.bindings]
+mouse = ["position"]
+
 [slots.1]
-devices = ["keyboard", "gamepad:0"]
+devices = ["keyboard", "mouse", "gamepad:0"]

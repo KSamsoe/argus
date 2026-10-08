@@ -469,9 +469,21 @@ fn layout(
             continue;
         };
         let prev = state.prev.get(&it.e).and_then(|p| p.text.as_ref());
+        // The words a hidden node keeps are the world's, which a seek or a
+        // replay's keyframe puts back, not this cache's (phase 5 item 2: a
+        // report that began after a controls page closed replayed its
+        // labels as a fresh layout had last seen them).
         let unseen = prev
             .filter(|k| hidden[i] && lang_same && k.raw == t.text && k.key == t.key)
-            .map(|k| (k.shown.clone(), (!k.holes).then_some(t.text)));
+            .map(|k| {
+                let world_shown = world.strings().resolve(t.shown);
+                let s = if *k.shown == *world_shown {
+                    k.shown.clone()
+                } else {
+                    Rc::from(world_shown.as_ref())
+                };
+                (s, (!k.holes).then_some(t.text))
+            });
         // Words without holes are the text itself: resolved again only when
         // the text is another one.
         let kept = prev

@@ -79,7 +79,26 @@ function saveStore(game) {
 try {
   await init();
   const player = await loadPlayer();
-  const store = saveStore(JSON.parse(player.status()).game);
+  const game = JSON.parse(player.status()).game;
+  const store = saveStore(game);
+  // The player's settings (phase 5 item 2): kept in the browser, applied
+  // before the first frame, kept again when the player changes them.
+  const settingsKey = `argus:${game}:settings`;
+  const kept = (() => {
+    try {
+      return localStorage.getItem(settingsKey) ?? "";
+    } catch {
+      return "";
+    }
+  })();
+  player.apply_settings(kept);
+  const keepSettings = () => {
+    const s = player.settings_changed();
+    if (s === undefined) return;
+    try {
+      localStorage.setItem(settingsKey, s);
+    } catch {}
+  };
   // After a frame: keep the saves it asked for, and do the loads.
   const savesAndLoads = () => {
     for (const [name, bytes] of player.take_saves()) {
@@ -187,12 +206,72 @@ try {
     if (!want && document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
   };
 
+  // The game for the browser's screen reader (phase 5 item 2, the
+  // player's own screen reader): the canvas is an application, so keys go
+  // to the game; the semantic frame's buttons are buttons here, off the
+  // screen, that press the game's (the pointer to it and a click, input
+  // the run records as it does a mouse's); and what changes is said: the
+  // focus as it moves, and the HUD.
+  canvas.setAttribute("aria-label", game);
+  const reader = {
+    buttons: document.getElementById("reader-buttons"),
+    said: document.getElementById("reader-said"),
+    hud: document.getElementById("reader-hud"),
+    ui: "",
+    focus: "",
+    lines: "",
+  };
+  const pressFor = (u) => () => {
+    const r = canvas.getBoundingClientRect();
+    const x = ((u.bounds[0] + u.bounds[2]) / 2) * (r.width / canvas.width);
+    const y = ((u.bounds[1] + u.bounds[3]) / 2) * (r.height / canvas.height);
+    player.pointer(x, y, r.width, r.height);
+    try {
+      player.inject("ui_click", "true", 1);
+    } catch {}
+    canvas.focus();
+  };
+  const read = () => {
+    const f = JSON.parse(player.semantic());
+    const ui = f.ui ?? [];
+    const shape = JSON.stringify(ui.map((u) => [u.id, u.text, !!u.button, !!u.disabled]));
+    if (shape !== reader.ui) {
+      reader.ui = shape;
+      reader.buttons.replaceChildren(
+        ...ui.map((u) => {
+          const el = document.createElement(u.button ? "button" : "p");
+          el.textContent = u.text;
+          el.dataset.id = u.id;
+          if (u.button) {
+            el.disabled = !!u.disabled;
+            el.addEventListener("click", pressFor(u));
+          }
+          return el;
+        }),
+      );
+    }
+    const focused = ui.find((u) => u.button && u.focused);
+    const words = focused ? `${focused.text}, button` : "";
+    if (words !== reader.focus) {
+      reader.focus = words;
+      if (words) reader.said.textContent = words;
+    }
+    const lines = (f.hud ?? []).map((h) => [h.name, h.text].filter(Boolean).join(": ")).join(". ");
+    if (lines !== reader.lines) {
+      reader.lines = lines;
+      reader.hud.textContent = lines;
+    }
+  };
+  window.argus.read = read;
+
   let n = 0;
   const frame = (t) => {
     try {
       player.frame(t, run);
       savesAndLoads();
       fitScreen();
+      if (n % 30 === 0) keepSettings();
+      if (n % 10 === 0) read();
     } catch (e) {
       status.textContent = "Stopped: " + e;
       return;

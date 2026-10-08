@@ -28,6 +28,8 @@ fn hook() {
 #[wasm_bindgen]
 pub struct WebPlayer {
     p: Player,
+    /// The player's settings (phase 5 item 2), once the page gave them.
+    settings: Option<argus_player::settings::Store>,
     renderer: Option<argus_render::Renderer>,
     backend: String,
     last_ms: Option<f64>,
@@ -86,6 +88,7 @@ impl WebPlayer {
         p.record();
         Ok(WebPlayer {
             p,
+            settings: None,
             renderer: None,
             backend: "none".into(),
             last_ms: None,
@@ -93,6 +96,22 @@ impl WebPlayer {
             frames: 0,
             drawn: 0,
         })
+    }
+
+    /// The player's settings as the page kept them (`settings.toml`'s text,
+    /// empty for none), before the first frame: into the world and the
+    /// map, and the recorder starts again so its first keyframe holds them
+    /// (phase 5 item 2).
+    pub fn apply_settings(&mut self, text: &str) {
+        let text = (!text.trim().is_empty()).then_some(text);
+        self.settings = Some(argus_player::settings::Store::open(&mut self.p, None, text));
+        self.p.record();
+    }
+
+    /// The settings as the page should keep them, when the player changed
+    /// them since the last call.
+    pub fn settings_changed(&mut self) -> Option<String> {
+        self.settings.as_mut()?.changed(&self.p)
     }
 
     /// Run `n` ticks.

@@ -155,8 +155,11 @@ fn run(args: Args) -> Result<(), String> {
     let (mods, mods_said) = player_mods(&root, &cfg, &args);
     let mut p = Player::open_with(&root, args.scene.as_deref(), args.seed, mods)
         .map_err(|e| format!("{} {}", e.message, e.hint))?;
-    p.record();
     let save = argus_player::save::save_dir(&p.name);
+    // The player's settings (phase 5 item 2), before the first tick and the
+    // recorder's first keyframe, so a report replays with them.
+    let settings = argus_player::settings::Store::open(&mut p, save.as_deref(), None);
+    p.record();
     if let Some(n) = args.headless {
         p.step(n).map_err(|e| e.message)?;
         let mut saves = Vec::new();
@@ -175,7 +178,7 @@ fn run(args: Args) -> Result<(), String> {
     }
     let key = cfg.mark_key.unwrap_or_else(|| "F8".to_string());
     let left_out = p.mods.left_out_line();
-    let mut game = Game::open(p, key, save, cfg.reports_url.clone())?;
+    let mut game = Game::open(p, key, save, cfg.reports_url.clone(), settings)?;
     // Reports that did not go last time go now.
     game.send_later();
     // Mods that did not load, or a load order that did not read.
@@ -218,6 +221,10 @@ struct Game {
     /// Where reports go (`[reports] url`), and the try under way.
     reports: Option<String>,
     sending: Option<mpsc::Receiver<argus_player::reports::Sent>>,
+    /// The player's settings, written back when they change.
+    settings: argus_player::settings::Store,
+    /// The UI the screen reader was last given, to find what it asks for.
+    access_ui: Vec<argus_render::semantic::UiSeen>,
 }
 
 impl Game {
@@ -226,6 +233,7 @@ impl Game {
         key: String,
         save: Option<PathBuf>,
         reports: Option<String>,
+        settings: argus_player::settings::Store,
     ) -> Result<Game, String> {
         let host = WindowHost::open(&p.name, 1280, 720).map_err(|e| e.message)?;
         let window = host.window().ok_or("the window did not open")?;
@@ -248,7 +256,42 @@ impl Game {
             save,
             reports,
             sending: None,
+            settings,
+            access_ui: Vec::new(),
         })
+    }
+
+    /// The UI as the player's screen reader reads it: the semantic frame
+    /// as an accessibility tree, made only while one is reading.
+    fn give_screen_reader(&mut self) {
+        let (w, h) = self.r.gpu().size();
+        let canvas = {
+            let sh = self.p.ui.borrow();
+            [sh.theme.width, sh.theme.height]
+        };
+        let (world, assets, name) = (&self.p.world, &self.p.assets, &self.p.name);
+        let mut seen = None;
+        self.host.access(|| {
+            let sf = argus_render::semantic::semantic(
+                world,
+                &argus_render::FrameSpec {
+                    width: w,
+                    height: h,
+                    limit: 0,
+                    groups: 0,
+                    assets: Some(assets),
+                    particles: None,
+                    view: None,
+                    ui_canvas: Some(canvas),
+                },
+            );
+            let tree = argus_render::access::tree(&sf, name);
+            seen = Some(sf.ui);
+            tree
+        });
+        if let Some(ui) = seen {
+            self.access_ui = ui;
+        }
     }
 
     /// Where reports wait: the save location's `reports/`.
@@ -357,8 +400,28 @@ impl Game {
         if self.prompt.is_none() {
             devs.extend(pads);
         }
+        // What the player's screen reader asked (phase 5 item 2): the
+        // pointer to the button, and a click if it pressed it, input the
+        // run records as it does a mouse's.
+        let mut click = false;
+        for ask in self.host.access_asks() {
+            let Some((u, press)) = argus_render::access::asked(&ask, &self.access_ui) else {
+                continue;
+            };
+            if let Some(f) = self.r.ui_fit() {
+                let b = u.bounds;
+                let [x, y] = f.to_canvas([(b[0] + b[2]) as f32 / 2.0, (b[1] + b[3]) as f32 / 2.0]);
+                devs.push(DeviceInput::Pointer { x, y });
+                click |= press;
+            }
+        }
         if !devs.is_empty() {
             self.p.devices(&devs);
+        }
+        if click {
+            let _ = self
+                .p
+                .inject("ui_click", Some(&json!(true)), Some(1), false);
         }
         let now = Instant::now();
         let dt = (now - self.last).as_secs_f64();
@@ -381,6 +444,9 @@ impl Game {
         // The game's settings say whether the window fills the screen.
         self.host
             .set_fullscreen(argus_ui::wants_fullscreen(&self.p.world));
+        // Settings the player changed are kept for the next launch.
+        self.settings.changed(&self.p);
+        self.give_screen_reader();
         self.overlay();
         let (w, h) = self.r.gpu().size();
         let view = argus_render::view_for(&self.p.world, w, h);

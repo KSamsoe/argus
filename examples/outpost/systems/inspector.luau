@@ -4,7 +4,9 @@
 -- see them, and follow them with the view), its stores, and its jobs. The
 -- menu actions move the focus and press, the mouse clicks, and Esc backs
 -- out. It answers while the game is paused, and its words are written
--- again six times a second of the player's time at any speed.
+-- again six times a second of the player's time at any speed. One panel
+-- at a time with the game's menu (systems/menu.luau): while the inspector
+-- is open Esc is its own, and while the menu is open Tab does nothing.
 --
 -- The panel is made of UI entities like any other tree, built here the
 -- first tick there is none: a save from before it (the first week's) gets
@@ -297,9 +299,9 @@ return system "sim.colony.inspector" {
   after = { "ui.input" },
   -- It answers while the game is paused.
   unfrozen = true,
-  reads = { "Actions", "Colony", "Stockpile", "Colonist", "Needs", "Worker", "Job", "JobKind", "Field", "Item", "Station", "Grave", "Transform", "InspectPage", "InspectLine", "Vignette" },
+  reads = { "Actions", "Colony", "Stockpile", "Colonist", "Needs", "Worker", "Job", "JobKind", "Field", "Item", "Station", "Grave", "Transform", "InspectPage", "InspectLine", "Vignette", "Menu" },
   writes = { "Inspector", "InspectRow", "UiRoot", "UiNode", "UiText", "UiButton", "UiPanel", "Camera" },
-  doc = "Runs the inspector: Tab (inspect) opens and closes it; its tabs, a colonist's button, Follow, Back, the page arrows, and cancel move between its pages; while it is open the arrows move its focus, not the view, and Follow has the view follow the person shown. Six times a second of the player's time (every ten ticks at 1x, a hundred at 10x) the page shown is written again from the world: the colony (day, food, people, the lost, fields, jobs, the most common reason for idling), the people ten at a time (fed, rest, what they are doing), one person (skills, needs, their job and how far along, or why they are idle), the stores (the stockpile, what is lying about, the stove), and the jobs (by kind, open and taken, and who has what).",
+  doc = "Runs the inspector: Tab (inspect) opens and closes it, but not while the menu is open; its tabs, a colonist's button, Follow, Back, the page arrows, and cancel move between its pages; while it is open the arrows move its focus, not the view, and Follow has the view follow the person shown. Six times a second of the player's time (every ten ticks at 1x, a hundred at 10x) the page shown is written again from the world: the colony (day, food, people, the lost, fields, jobs, the most common reason for idling), the people ten at a time (fed, rest, what they are doing), one person (skills, needs, their job and how far along, or why they are idle), the stores (the stockpile, what is lying about, the stove), and the jobs (by kind, open and taken, and who has what).",
   run = function(q)
     local ie = nil
     for e in q:each("Inspector") do
@@ -313,6 +315,12 @@ return system "sim.colony.inspector" {
     -- Closed, and staying closed: nothing to do (the tick it closed put
     -- the view back). The colony's own ticks pay nothing for it.
     local toggled = q:entity("@colony"):get("Actions").inspect_pressed
+    -- Tab does nothing while the menu is open (systems/menu.luau).
+    if toggled then
+      for _, _, n in q:each("Menu", "UiNode") do
+        if n.visible then toggled = false end
+      end
+    end
     if not ins.open and not toggled then return end
     if toggled then
       ins.open = not ins.open

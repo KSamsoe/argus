@@ -5,7 +5,7 @@
 
 use argus_ecs::{ArgusError, Result};
 use std::cell::RefCell;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, WindowEvent};
@@ -88,6 +88,36 @@ struct App {
     closed: bool,
     visible: bool,
     destroyed: bool,
+    /// The bridge to the player's screen reader (phase 5 item 2), and what
+    /// it asked of the UI since the last take.
+    access: Option<accesskit_winit::Adapter>,
+    asks: Arc<Mutex<Vec<accesskit::ActionRequest>>>,
+}
+
+/// No tree until the game sends one (it builds it on its own thread).
+struct NoTreeYet;
+
+impl accesskit::ActivationHandler for NoTreeYet {
+    fn request_initial_tree(&mut self) -> Option<accesskit::TreeUpdate> {
+        None
+    }
+}
+
+/// A screen reader's requests, kept for the game to take.
+struct Asks(Arc<Mutex<Vec<accesskit::ActionRequest>>>);
+
+impl accesskit::ActionHandler for Asks {
+    fn do_action(&mut self, request: accesskit::ActionRequest) {
+        if let Ok(mut q) = self.0.lock() {
+            q.push(request);
+        }
+    }
+}
+
+struct Quiet;
+
+impl accesskit::DeactivationHandler for Quiet {
+    fn deactivate_accessibility(&mut self) {}
 }
 
 impl App {
@@ -95,12 +125,21 @@ impl App {
         if self.window.is_some() || self.id.is_some() || self.closed {
             return;
         }
+        // Hidden until the screen reader's bridge is attached, as AccessKit
+        // asks, then shown as asked.
         let attrs = Window::default_attributes()
             .with_title(self.title.clone())
             .with_inner_size(winit::dpi::LogicalSize::new(self.width, self.height))
-            .with_visible(self.visible);
+            .with_visible(false);
         match el.create_window(attrs) {
             Ok(w) => {
+                self.access = Some(accesskit_winit::Adapter::with_direct_handlers(
+                    &w,
+                    NoTreeYet,
+                    Asks(self.asks.clone()),
+                    Quiet,
+                ));
+                w.set_visible(self.visible);
                 self.id = Some(w.id());
                 self.window = Some(Arc::new(w));
             }
@@ -123,6 +162,9 @@ impl ApplicationHandler for App {
     fn window_event(&mut self, _el: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
         if Some(id) != self.id {
             return;
+        }
+        if let (Some(a), Some(w)) = (self.access.as_mut(), self.window.as_ref()) {
+            a.process_event(w, &event);
         }
         match event {
             WindowEvent::Focused(focused) => {
@@ -227,6 +269,8 @@ impl WindowHost {
                 closed: false,
                 visible,
                 destroyed: false,
+                access: None,
+                asks: Arc::new(Mutex::new(Vec::new())),
             },
         };
         // The first pump creates the window (`resumed` or `about_to_wait`).
@@ -288,6 +332,25 @@ impl WindowHost {
                 w.set_fullscreen(on.then_some(winit::window::Fullscreen::Borderless(None)));
             }
         }
+    }
+
+    /// Give the player's screen reader the UI as it is now: `tree` is
+    /// called only while one is reading (`access::tree` of the frame's
+    /// semantic frame), so a game nobody reads costs nothing.
+    pub fn access(&mut self, tree: impl FnOnce() -> accesskit::TreeUpdate) {
+        if let Some(a) = self.app.access.as_mut() {
+            a.update_if_active(tree);
+        }
+    }
+
+    /// What the screen reader asked of the UI since the last take: a
+    /// button pressed or focused (`access::asked` says which).
+    pub fn access_asks(&mut self) -> Vec<accesskit::ActionRequest> {
+        self.app
+            .asks
+            .lock()
+            .map(|mut q| std::mem::take(&mut *q))
+            .unwrap_or_default()
     }
 
     /// Ask the window to redraw (the renderer presents on its own; this

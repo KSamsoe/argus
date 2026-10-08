@@ -176,6 +176,10 @@ pub struct Gpu {
     /// A picture over the frame's bottom edge (a mark's note prompt).
     /// The post passes of the next frame (phase 2 item 6).
     post: Vec<crate::post::PostPass>,
+    /// The frame as a colour-blind eye sees it, when asked (phase 5 item
+    /// 2), and the pass that does it.
+    see_as: Option<crate::see_as::SeeAs>,
+    view_filter: Option<crate::see_as::ViewFilter>,
     /// Their pipelines and textures, made when first used.
     post_stack: Option<crate::post::PostStack>,
 }
@@ -498,6 +502,8 @@ impl Gpu {
             width,
             height,
             post: Vec::new(),
+            see_as: None,
+            view_filter: None,
             post_stack: None,
         };
         // Built-in atlases for described-shape placeholders (section 14).
@@ -1030,6 +1036,20 @@ impl Gpu {
                 (Some(f), v)
             }
         };
+        // Seen as a colour-blind eye sees it: the whole frame, the UI too,
+        // into a texture of its own, then through the matrix into the
+        // target (phase 5 item 2).
+        let see_as = self.see_as;
+        let (view, target) = match see_as {
+            Some(_) => {
+                let (w, h) = (self.width, self.height);
+                let f = self.view_filter.get_or_insert_with(|| {
+                    crate::see_as::ViewFilter::new(&self.device, self.format)
+                });
+                (f.target(&self.device, w, h), Some(view))
+            }
+            None => (view, None),
+        };
         // With post passes the world goes into the stack's texture first.
         let post_on = !self.post.is_empty();
         let scene = if post_on {
@@ -1182,6 +1202,9 @@ impl Gpu {
                 stats.draw_calls += 1;
             }
         }
+        if let (Some(kind), Some(target), Some(f)) = (see_as, &target, &self.view_filter) {
+            f.run(&self.device, &self.queue, &mut encoder, target, kind);
+        }
         if let Target::Offscreen {
             texture,
             readback,
@@ -1216,6 +1239,17 @@ impl Gpu {
             f.present();
         }
         Ok(stats)
+    }
+
+    /// Draw the next frames as a colour-blind eye sees them (`None`: as
+    /// they are).
+    pub fn set_see_as(&mut self, kind: Option<crate::see_as::SeeAs>) {
+        self.see_as = kind;
+    }
+
+    /// How the frames are seen.
+    pub fn see_as(&self) -> Option<crate::see_as::SeeAs> {
+        self.see_as
     }
 
     /// The post passes the next frames run, in order (none: the world is

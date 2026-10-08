@@ -1457,10 +1457,11 @@ pub const METHODS: &[MethodDoc] = &[
             opt("annotate", BOOLEAN, "png only"),
             opt("path", STRING, "default .argus/frames/frame-<tick>.png"),
             opt("software", BOOLEAN, "force the software rasteriser"),
+            opt("see_as", STRING, "png only: draw the frame as a colour-blind eye sees it, the UI included, to check readability (section 12): protanopia, deuteranopia, tritanopia, achromatopsia, or normal (default)"),
             opt("golden", STRING, "png only: a picture to compare with (an image golden, section 9): compare says how many pixels a person would see differ, and writes a difference picture beside path"),
             opt("threshold", NUMBER, "with golden: how different a pixel must be to count, 0 to 1 (default 0.1, a person's eye; 0 counts any change)"),
         ],
-        returns: "png: {path, width, height, tick, alpha, sprites, draw_calls, atlases, missing_atlases, interpolated, particles, materials, missing_materials, material_problems, camera, view: {center, half, angle, rect: [x0, y0, x1, y1]}, adapter, ms, marks?, compare?: {golden, threshold, pixels, differing, fraction, worst, diff}}; semantic: {format, size, camera: {id, rect, angle}, hud: [{id, name?, role?, text, bounds?}], columns: [id, name, text, bounds, z, look], entities, groups: [{what, count, bounds, look, ids}], effects, omitted, problems, tick, time, tiles?: {key, maps: [{entity, map, cell, step, at: [x, y, px a cell], rows}]}, bytes}",
+        returns: "png: {path, width, height, tick, see_as, alpha, sprites, draw_calls, atlases, missing_atlases, interpolated, particles, materials, missing_materials, material_problems, camera, view: {center, half, angle, rect: [x0, y0, x1, y1]}, adapter, ms, marks?, compare?: {golden, threshold, pixels, differing, fraction, worst, diff}}; semantic: {format, size, camera: {id, rect, angle}, hud: [{id, name?, role?, text, bounds?}], columns: [id, name, text, bounds, z, look], entities, groups: [{what, count, bounds, look, ids}], effects, omitted, problems, tick, time, tiles?: {key, maps: [{entity, map, cell, step, at: [x, y, px a cell], rows}]}, bytes}",
     },
     MethodDoc {
         name: "obs.annotate",
@@ -1535,8 +1536,9 @@ pub const METHODS: &[MethodDoc] = &[
             opt("open", BOOLEAN, "false closes it"),
             opt("audio", BOOLEAN, "open the sound output, default true"),
             opt("software", BOOLEAN, "draw with the software rasteriser"),
+            opt("see_as", STRING, "draw as a colour-blind eye sees it: protanopia, deuteranopia, tritanopia, achromatopsia, or normal (default); calling it again with another changes it"),
         ],
-        returns: "{stream: {path, width, height, fps, slots, header_bytes, slot_header_bytes, format}, audio, adapter, software}",
+        returns: "{stream: {path, width, height, fps, slots, header_bytes, slot_header_bytes, format}, audio, adapter, software, see_as}",
     },
     MethodDoc {
         name: "audio.status",

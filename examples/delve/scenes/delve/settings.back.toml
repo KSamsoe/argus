@@ -1,0 +1,16 @@
+[Parent]
+entity = "@settings"
+
+[UiNode]
+pad = [18.0, 8.0]
+order = 9
+
+[UiPanel]
+color = "button"
+
+[UiButton]
+event = "settings.back"
+
+[UiText]
+key = "settings.back"
+align = "center"

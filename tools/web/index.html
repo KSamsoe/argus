@@ -10,8 +10,16 @@
   form input { flex: 1; font: inherit; padding: 6px 8px; background: #22202b; color: #f0ecf8; border: 1px solid #ffc440; }
   form button { font: inherit; padding: 6px 10px; background: #2d2a38; color: #f0ecf8; border: 1px solid #5a5570; cursor: pointer; }
   #said { color: #8fdca0; min-height: 1.4em; }
+  /* For the screen reader only: off the screen, not hidden from it. */
+  .reader { position: absolute; left: -10000px; top: auto; width: 1px; height: 1px; overflow: hidden; }
 </style>
-<canvas id="game" width="960" height="540" tabindex="0"></canvas>
+<canvas id="game" width="960" height="540" tabindex="0" role="application" aria-label="The game" aria-describedby="reader-said"></canvas>
+<!-- The game for a screen reader (phase 5 item 2): its buttons, and what changes. -->
+<div class="reader">
+  <div id="reader-buttons"></div>
+  <div id="reader-said" aria-live="polite"></div>
+  <div id="reader-hud" aria-live="polite"></div>
+</div>
 <form id="report" hidden>
   <input id="note" maxlength="300" autocomplete="off" placeholder="What just happened? Enter sends, Esc goes back to the game.">
   <button type="submit">Send report</button>

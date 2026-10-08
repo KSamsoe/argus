@@ -371,3 +371,60 @@ fn input_bind_rebinds_an_action_and_save_keeps_it_in_the_file() {
     let e = err(&mut d, "input.bind", json!({ "action": "fire" }));
     assert_eq!(e.code, argus_daemon::codes::BAD_PARAMS);
 }
+
+// ----- phase 5 item 2: a caught key in a turn-based game ------------------------
+
+/// Copy a project, without what a daemon writes.
+fn copy(from: &std::path::Path, to: &std::path::Path) {
+    for e in std::fs::read_dir(from).unwrap() {
+        let e = e.unwrap();
+        let name = e.file_name();
+        if name.to_string_lossy().starts_with('.') {
+            continue;
+        }
+        let (src, dst) = (e.path(), to.join(&name));
+        if src.is_dir() {
+            std::fs::create_dir_all(&dst).unwrap();
+            copy(&src, &dst);
+        } else {
+            std::fs::copy(&src, &dst).unwrap();
+        }
+    }
+}
+
+/// A turn-based game ticks only on a command, and the key a controls page
+/// catches is one, so the page shows it without a second key and no turn
+/// of play passes while the menu is open (Delve, as its window plays it).
+#[test]
+fn a_caught_key_takes_the_tick_in_a_turn_based_game_in_play() {
+    let delve = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/delve");
+    let t = temp("caught-key");
+    copy(&delve, t.path());
+    let mut d = open(t.path());
+    ok(&mut d, "scene.load", json!({ "scene": "delve" }));
+    ok(&mut d, "sim.play", json!({}));
+    let tap = |d: &mut Daemon, name: &str| {
+        let turns = d.device_input(&[key(name, true)]);
+        d.device_input(&[key(name, false)]);
+        turns
+    };
+    let shown = |d: &mut Daemon, id: &str, component: &str, field: &str| {
+        ok(d, "world.get", json!({ "entity": id }))["components"][component][field].clone()
+    };
+    let turn = shown(&mut d, "@turn", "Turn", "n");
+    tap(&mut d, "Escape");
+    tap(&mut d, "ArrowDown");
+    tap(&mut d, "ArrowDown");
+    tap(&mut d, "Enter");
+    tap(&mut d, "Enter");
+    assert_eq!(
+        shown(&mut d, "@controls.wait", "UiText", "shown"),
+        "Wait: press a key"
+    );
+    assert_eq!(tap(&mut d, "KeyW"), 1, "the caught key took the tick");
+    assert_eq!(
+        shown(&mut d, "@controls.wait", "UiText", "shown"),
+        "Wait: w"
+    );
+    assert_eq!(shown(&mut d, "@turn", "Turn", "n"), turn, "no turn of play");
+}

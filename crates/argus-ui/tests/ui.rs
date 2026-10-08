@@ -762,7 +762,8 @@ fn a_controls_button_rebinds_an_action_to_the_next_key() {
         name: "KeyX".into(),
         pressed: true,
     };
-    assert!(u.input.borrow_mut().capture(&x), "taken");
+    let next = u.s.tick();
+    assert!(u.input.borrow_mut().capture(next, &x), "taken");
     u.events("x");
     u.step(2);
     let rebound = u.events("input.rebound");
@@ -794,7 +795,8 @@ fn a_controls_button_rebinds_an_action_to_the_next_key() {
         name: "Escape".into(),
         pressed: true,
     };
-    assert!(u.input.borrow_mut().capture(&esc));
+    let next = u.s.tick();
+    assert!(u.input.borrow_mut().capture(next, &esc));
     u.events("x");
     u.step(2);
     assert_eq!(u.events("input.rebind_cancelled").len(), 1);

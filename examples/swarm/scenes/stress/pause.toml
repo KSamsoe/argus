@@ -1,0 +1,2 @@
+# The pause menu: the same tree in every scene (prefabs/pause_menu.toml).
+prefab = "pause_menu"
