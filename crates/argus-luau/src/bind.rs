@@ -237,6 +237,211 @@ fn needs_read(c: &SystemCtx<'_>, name: &str) -> LuaResult<()> {
     ))
 }
 
+/// A map's cells through the host's maps, once the system may: reading
+/// them is reading its `Tilemap`, writing them writing it.
+fn tiles_for(lua: &Lua, c: &SystemCtx<'_>, write: bool) -> LuaResult<Rc<dyn crate::Tiles>> {
+    let id = c.world().registry().require("Tilemap").map_err(argus_err)?;
+    let ok = if write {
+        c.access().allows_write(id)
+    } else {
+        c.access().allows_read(id) || c.access().allows_write(id)
+    };
+    if !ok {
+        let (what, list) = if write {
+            ("writes", "writes")
+        } else {
+            ("reads", "reads")
+        };
+        return Err(argus_err(
+            ArgusError::new(
+                codes::ACCESS_VIOLATION,
+                format!(
+                    "system {} {what} a map's tiles, which {what} Tilemap, without declaring it",
+                    c.name
+                ),
+            )
+            .hint(format!("Add \"Tilemap\" to the system's {list} list.")),
+        ));
+    }
+    lua.app_data_ref::<crate::TilesData>()
+        .map(|t| t.0.clone())
+        .ok_or_else(|| mlua::Error::runtime("no maps here: the host gave scripts none"))
+}
+
+/// A map's cells, from `q:tiles(map)` (phase 5 item 4).
+pub struct TilesRef {
+    pub(crate) entity: Entity,
+    pub(crate) link: Link,
+}
+
+/// A cell coordinate from Lua: a whole number, 0 or more.
+fn cell_arg(v: f64, what: &str) -> LuaResult<u32> {
+    if v.fract() != 0.0 || !(0.0..=u32::MAX as f64).contains(&v) {
+        return Err(mlua::Error::runtime(format!(
+            "{what} {v} is not a cell: a whole number from 0"
+        )));
+    }
+    Ok(v as u32)
+}
+
+impl UserData for TilesRef {
+    fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
+        // size(): the map's width and height in cells.
+        m.add_method("size", |lua, this, ()| {
+            let c = ctx(&this.link)?;
+            let t = tiles_for(lua, c, false)?;
+            let (w, h, _) = t.size(c.world(), this.entity).map_err(argus_err)?;
+            Ok((w, h))
+        });
+        // layers(): their names, in the map's order.
+        m.add_method("layers", |lua, this, ()| {
+            let c = ctx(&this.link)?;
+            let t = tiles_for(lua, c, false)?;
+            let (_, _, names) = t.size(c.world(), this.entity).map_err(argus_err)?;
+            let out = lua.create_table()?;
+            for (i, n) in names.into_iter().enumerate() {
+                out.set(i + 1, n)?;
+            }
+            Ok(out)
+        });
+        // get(layer, x, y): one cell's tile, 0 for none (off the map too,
+        // on every side: what is outside a map is empty, as the physics has
+        // it).
+        m.add_method("get", |lua, this, (layer, x, y): (String, f64, f64)| {
+            let c = ctx(&this.link)?;
+            let t = tiles_for(lua, c, false)?;
+            if (x < 0.0 || y < 0.0) && x.fract() == 0.0 && y.fract() == 0.0 {
+                return Ok(0);
+            }
+            t.get(
+                c.world(),
+                this.entity,
+                &layer,
+                cell_arg(x, "x")?,
+                cell_arg(y, "y")?,
+            )
+            .map_err(argus_err)
+        });
+        // cell(pos): the column and row a world point is in (a vector, a
+        // table, or an entity), counted from the map's top-left, rows down;
+        // off the map they are past its edges. center(x, y): that cell's
+        // centre in the world. A game whose y goes up needs no flip.
+        m.add_method("cell", |lua, this, at: LuaValue| {
+            let c = ctx(&this.link)?;
+            let t = tiles_for(lua, c, false)?;
+            let p = place(c, at)?;
+            let (o, s) = t.grid(c.world(), this.entity).map_err(argus_err)?;
+            let s = s.max(0.0001);
+            Ok((
+                ((p[0] - o[0]) / s).floor() as f64,
+                ((o[1] - p[1]) / s).floor() as f64,
+            ))
+        });
+        m.add_method("center", |lua, this, (x, y): (f64, f64)| {
+            let c = ctx(&this.link)?;
+            let t = tiles_for(lua, c, false)?;
+            let (o, s) = t.grid(c.world(), this.entity).map_err(argus_err)?;
+            Ok(LuaValue::Vector(mlua::Vector::new(
+                o[0] + (x as f32 + 0.5) * s,
+                o[1] - (y as f32 + 0.5) * s,
+                0.0,
+            )))
+        });
+        // set(layer, x, y, tile): one cell.
+        m.add_method(
+            "set",
+            |lua, this, (layer, x, y, tile): (String, f64, f64, f64)| {
+                let c = ctx(&this.link)?;
+                let t = tiles_for(lua, c, true)?;
+                let rect = [cell_arg(x, "x")?, cell_arg(y, "y")?, 1, 1];
+                t.set(
+                    c.world(),
+                    this.entity,
+                    &layer,
+                    rect,
+                    &[cell_arg(tile, "tile")?],
+                )
+                .map_err(argus_err)
+            },
+        );
+        // fill(layer, x, y, w, h, tile): a rect of one tile (0 clears it).
+        m.add_method(
+            "fill",
+            |lua, this, (layer, x, y, w, h, tile): (String, f64, f64, f64, f64, f64)| {
+                let c = ctx(&this.link)?;
+                let t = tiles_for(lua, c, true)?;
+                let rect = [
+                    cell_arg(x, "x")?,
+                    cell_arg(y, "y")?,
+                    cell_arg(w, "w")?,
+                    cell_arg(h, "h")?,
+                ];
+                let n = rect[2] as usize * rect[3] as usize;
+                t.set(
+                    c.world(),
+                    this.entity,
+                    &layer,
+                    rect,
+                    &vec![cell_arg(tile, "tile")?; n],
+                )
+                .map_err(argus_err)
+            },
+        );
+        // paint(layer, x, y, rows, legend): rows of characters (a table of
+        // strings, or one string of lines), each character a cell whose
+        // tile the legend gives: {["#"] = 1, ["."] = 0}. A whole floor in
+        // one call.
+        m.add_method(
+            "paint",
+            |lua, this, (layer, x, y, rows, legend): (String, f64, f64, LuaValue, mlua::Table)| {
+                let c = ctx(&this.link)?;
+                let t = tiles_for(lua, c, true)?;
+                let lines: Vec<String> = match rows {
+                    LuaValue::String(s) => s.to_str()?.lines().map(str::to_string).collect(),
+                    LuaValue::Table(tb) => tb
+                        .sequence_values::<String>()
+                        .collect::<LuaResult<Vec<String>>>()?,
+                    _ => {
+                        return Err(mlua::Error::runtime(
+                            "paint's rows are a table of strings, or one string of lines",
+                        ))
+                    }
+                };
+                let mut key: std::collections::HashMap<char, u32> = Default::default();
+                for pair in legend.pairs::<String, f64>() {
+                    let (k, v) = pair?;
+                    let mut ch = k.chars();
+                    let (Some(c0), None) = (ch.next(), ch.next()) else {
+                        return Err(mlua::Error::runtime(format!(
+                            "paint's legend key {k:?} is not one character"
+                        )));
+                    };
+                    key.insert(c0, cell_arg(v, "tile")?);
+                }
+                let h = lines.len() as u32;
+                let w = lines.iter().map(|l| l.chars().count()).max().unwrap_or(0) as u32;
+                if w == 0 || h == 0 {
+                    return Ok(());
+                }
+                let mut cells = vec![0u32; (w * h) as usize];
+                for (r, line) in lines.iter().enumerate() {
+                    for (col, ch) in line.chars().enumerate() {
+                        let Some(&v) = key.get(&ch) else {
+                            return Err(mlua::Error::runtime(format!(
+                                "paint: row {r} has {ch:?}, which the legend does not name"
+                            )));
+                        };
+                        cells[r * w as usize + col] = v;
+                    }
+                }
+                let rect = [cell_arg(x, "x")?, cell_arg(y, "y")?, w, h];
+                t.set(c.world(), this.entity, &layer, rect, &cells)
+                    .map_err(argus_err)
+            },
+        );
+    }
+}
+
 /// A point: a vector, a table, or an entity (where it is).
 fn place(c: &SystemCtx<'_>, v: LuaValue) -> LuaResult<[f32; 2]> {
     if let LuaValue::UserData(ud) = &v {
@@ -704,6 +909,25 @@ impl UserData for QueryHandle {
                 }
             },
         );
+        // A map's cells (phase 5 item 4): q:tiles(map), map a Tilemap
+        // entity or its "@id"; reading declares reads of Tilemap, writing
+        // (a runtime map's cells, the run's) writes of it.
+        m.add_method("tiles", |lua, this, map: LuaValue| {
+            let c = ctx(&this.link)?;
+            let entity = match &map {
+                LuaValue::String(s) => c.world().entity(&s.to_str()?).map_err(argus_err)?,
+                LuaValue::UserData(ud) => ud.borrow::<EntityRef>()?.entity,
+                _ => {
+                    return Err(mlua::Error::runtime(
+                        "q:tiles takes a Tilemap entity, or its \"@id\"",
+                    ))
+                }
+            };
+            lua.create_userdata(TilesRef {
+                entity,
+                link: this.link.clone(),
+            })
+        });
         // Paths (phase 3 item 2, section 12): q:path(from, to, grid?) is
         // the waypoints (vectors) and the cost in steps, or nil;
         // q:walkable(pos, grid?); q:distance(field, pos) is the steps to a

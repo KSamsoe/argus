@@ -5,12 +5,13 @@ return system "sim.floor" {
   -- the open menu froze.
   after = { "sim.menu_buttons" },
   unfrozen = true,
-  reads = { "Floor", "Player", "Monster", "Stairs", "Transform", "Tile" },
-  writes = { "Floor", "Player", "Monster", "Stairs", "Transform", "Health", "Sprite", "Tile", "Describe", "NavCost" },
+  reads = { "Floor", "Player", "Monster", "Stairs", "Transform", "Tilemap" },
+  writes = { "Floor", "Player", "Monster", "Stairs", "Transform", "Health", "Sprite", "Describe", "Tilemap" },
   rng = "floor",
-  doc = "Generates a floor when there is none or the hero asked to descend: rooms, L-shaped corridors, the hero in the first room, stairs in the last, monsters never within four steps of the hero.",
+  doc = "Generates a floor when there is none or the hero asked to descend: rooms, L-shaped corridors, the hero in the first room, stairs in the last, monsters never within four steps of the hero. The floor's cells are painted on @floor's runtime map, every cell, so the old floor's go with it.",
   run = function(q)
-    local f = q:entity("@floor"):get("Floor")
+    local fe = q:entity("@floor")
+    local f = fe:get("Floor")
     local pe = q:entity("@player")
     local pl = pe:get("Player")
     if f.n > 0 and not pl.descend then return end
@@ -19,10 +20,12 @@ return system "sim.floor" {
     local doomed = {}
     for e in q:each("Monster") do table.insert(doomed, e:id()) end
     for e in q:each("Stairs") do table.insert(doomed, e:id()) end
-    for e in q:each("Tile") do table.insert(doomed, e:id()) end
     for _, id in ipairs(doomed) do q:entity(id):despawn() end
 
-    local w, h = f.w, f.h
+    -- The floor is the map's size. Cell (x, y) of grid is the world's
+    -- (x, y), y up; the map's rows go down, so world y is row h - 1 - y.
+    local map = q:tiles(fe)
+    local w, h = map:size()
     local grid = table.create(w * h, "#")
     local rng = q:rng()
     local rooms = {}
@@ -60,7 +63,14 @@ return system "sim.floor" {
       end
       grid[y * w + x + 1] = "."
     end
-    f.map = table.concat(grid)
+    -- The whole floor, top row (world y = h - 1) first: a wall on every
+    -- '#' and a drawn floor tile on every '.', each layer's every cell.
+    local rows = table.create(h)
+    for y = h - 1, 0, -1 do
+      table.insert(rows, table.concat(grid, "", y * w + 1, y * w + w))
+    end
+    map:paint("walls", 0, 0, rows, { ["#"] = 1, ["."] = 0 })
+    map:paint("floor", 0, 0, rows, { ["#"] = 0, ["."] = 1 })
     f.n += 1
     f.rooms = #rooms
 
@@ -74,22 +84,6 @@ return system "sim.floor" {
     ss.size = vector.create(0.8, 0.8, 0)
     ss.color = "#7FD1FF"
     ss.z = 2
-    -- One drawn cell per floor tile, so the window shows the map.
-    local cells = {}
-    for i = 1, w * h do
-      if grid[i] == "." then table.insert(cells, i - 1) end
-    end
-    q:spawn_many(#cells, { "Tile", "Transform", "Sprite", "NavCost" }, function(e, i)
-      local c = cells[i]
-      e:get("Transform").pos = vector.create(c % w, c // w, 0)
-      -- Open ground on the floor's navigation grid.
-      e:get("NavCost").cost = 1
-      local sp = e:get("Sprite")
-      sp.kind = "rect"
-      sp.size = vector.create(0.95, 0.95, 0)
-      sp.color = "#2E2A3A"
-      sp.z = 0
-    end)
 
     local count = 4 + 2 * f.n
     local placed, guard = 0, 0

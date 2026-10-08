@@ -140,6 +140,12 @@ Phase 0 item 9, "CLI": this crate, plus `argus_daemon::launch` (shared with `arg
 |---|---|---|---|
 | (§8) The agent reads the lights as it reads the rest of the frame. | Done | `render::semantic`: `Lit: ambient ... at ...`, then a line a light: its kind, id, where on the screen, its reach in pixels, its colour and strength, a cone's direction and width, no shadows, a flicker. | `lighting::a_lit_frame_says_its_ambient_and_each_light` |
 
+## Phase 5, item 4: a prefab in the edit tool
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§3) The agent changes a prefab as a transaction. | Done | The `edit` tool takes `{op: "prefab", prefab, path, value \| remove, child}`, as the daemon's `edit.prefab`. | `argus-daemon` `prefab_edit` |
+
 ## Known limitations, stated so they are decisions
 
 - A daemon started by the CLI outlives the shell; `argus daemon stop` ends it, and `.argus/daemon.json` is removed on a clean exit. `stop` returns once the daemon is gone (its record removed and its socket silent), not when it agreed to go: a command right after it used to reach the daemon on its way out and fail with "connection lost" (found after the phase-1 gate; `cli::the_binary_finds_starts_and_stops_a_project_daemon`). A daemon killed otherwise leaves a stale record, which `argus daemon status` reports and a method call replaces.

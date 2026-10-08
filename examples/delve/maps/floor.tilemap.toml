@@ -1,0 +1,30 @@
+# The floor (phase 5 item 4): a runtime map. Its layers are authored here;
+# its cells are the run's, painted by systems/floor.luau from the seed each
+# time a floor is made, and carried by keyframes, replays, and saves. No
+# chunk folder: nothing writes them to disk.
+#
+# @floor places it (scenes/delve/floor.toml) so that cell (x, row) is
+# centred on world (x, height - 1 - row): rows go down, world y goes up,
+# and the hero, the monsters, and the stairs stand on whole numbers.
+kind = "tilemap"
+runtime = true
+width = 40
+height = 20
+tile_size = 1.0
+chunk = 20
+cell = 1
+
+# What is drawn: tile 1 on every open cell.
+[[layers]]
+name = "floor"
+tileset = "tiles/floor"
+z = 0.0
+
+# What blocks: tile 1 on every wall cell. No tileset, so every tile is
+# solid and none is drawn (the walls are the background around the rooms). The
+# hero's moves, the monsters' paths (the navigation grid), and the semantic
+# frame's tiles read this layer.
+[[layers]]
+name = "walls"
+z = 0.0
+collision = true

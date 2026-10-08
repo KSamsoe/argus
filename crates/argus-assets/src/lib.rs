@@ -21,12 +21,14 @@
 #![warn(missing_docs)]
 
 pub mod animator;
+pub mod aseprite;
 pub mod bc7;
 mod catalog;
 pub mod effect;
 pub mod font;
 pub mod pages;
 pub mod sidecar;
+pub mod tiled;
 
 pub use animator::{
     AnimatorSpec, Condition, FrameEventSpec, Num, Op, Operand, StateSpec, Term, TransitionSpec,
@@ -121,6 +123,9 @@ pub struct SpriteAsset {
     pub shape: Option<Shape>,
     /// Auto-tiling rules by terrain, when the sprite is a tileset.
     pub autotile: BTreeMap<String, AutoTileSpec>,
+    /// What its Aseprite file holds (layers, tags, slices), when it is
+    /// drawn from one (phase 5 item 4).
+    pub aseprite: Option<aseprite::Info>,
 }
 
 impl SpriteAsset {
@@ -190,6 +195,8 @@ pub enum Asset {
     Material(MaterialSpec),
     /// A font: its distance-field atlas and bytes.
     Font(FontAsset),
+    /// A Tiled map (`.tmx` or `.tmj`, phase 5 item 4): what it holds.
+    Map(tiled::MapAsset),
 }
 
 /// A warning about an import: a sentence and where.
@@ -228,6 +235,7 @@ impl Entry {
             Asset::Emitter(_) => "emitter",
             Asset::Material(_) => "material",
             Asset::Font(_) => "font",
+            Asset::Map(_) => "tilemap",
         }
     }
 
@@ -247,6 +255,14 @@ impl Entry {
         });
         match &self.asset {
             Asset::Material(m) => material_json(m, &mut o),
+            Asset::Map(m) => {
+                o["file"] = json!(m.file);
+                if let Json::Object(info) = &m.info {
+                    for (k, v) in info {
+                        o[k] = v.clone();
+                    }
+                }
+            }
             Asset::Font(f) => {
                 o["source"] = json!(f.source);
                 o["family"] = json!(f.family);
@@ -327,6 +343,9 @@ impl Entry {
                 }
                 if let Some(sh) = &s.shape {
                     o["shape"] = json!({ "kind": sh.kind, "size": sh.size, "color": sh.color });
+                }
+                if let Some(a) = &s.aseprite {
+                    o["aseprite"] = a.to_json();
                 }
             }
             Asset::Sound(s) => {
@@ -443,6 +462,12 @@ struct Group {
     wgsl: Option<String>,
     font: Option<String>,
     sidecar: Option<String>,
+    /// `<name>.aseprite` or `.ase`: a sprite's source in place of a PNG.
+    aseprite: Option<String>,
+    /// A Tiled file (`.tsx`, `.tsj`, `.tmx`, `.tmj`; phase 5 item 4).
+    tiled: Option<String>,
+    /// One of the map `tiled`'s embedded tilesets, not the map itself.
+    embedded: bool,
 }
 
 /// A layer's files (relative to its `assets/`) grouped into assets by name:
@@ -475,6 +500,13 @@ fn group_files<'a>(
             .or_else(|| lower.strip_suffix(".otf"))
         {
             (rel[..n.len()].to_string(), 4)
+        } else if let Some(n) = lower
+            .strip_suffix(".aseprite")
+            .or_else(|| lower.strip_suffix(".ase"))
+        {
+            (rel[..n.len()].to_string(), 6)
+        } else if tiled::is_tileset_file(rel) || tiled::is_map_file(rel) {
+            (rel[..rel.len() - 4].to_string(), 7)
         } else {
             continue;
         };
@@ -488,6 +520,8 @@ fn group_files<'a>(
             3 => g.wgsl = Some(rel.clone()),
             4 => g.font = Some(rel.clone()),
             5 => g.normal = Some(rel.clone()),
+            6 => g.aseprite = Some(rel.clone()),
+            7 => g.tiled = Some(rel.clone()),
             _ => g.sidecar = Some(rel.clone()),
         }
     }
@@ -781,14 +815,23 @@ impl Importer {
         for li in 0..self.layers.len() {
             let mut files = BTreeMap::new();
             walk(&self.layers[li].dir, &self.layers[li].dir, &mut files);
-            for (name, g) in group_files(li, files.keys()) {
+            for (name, g) in self.expand_tiled(li, group_files(li, files.keys())) {
                 if let Some(id) = self.layers[li].id.clone() {
-                    let first = [&g.png, &g.wav, &g.wgsl, &g.font, &g.sidecar, &g.normal]
-                        .into_iter()
-                        .flatten()
-                        .next()
-                        .cloned()
-                        .unwrap_or_default();
+                    let first = [
+                        &g.png,
+                        &g.wav,
+                        &g.wgsl,
+                        &g.font,
+                        &g.sidecar,
+                        &g.normal,
+                        &g.aseprite,
+                        &g.tiled,
+                    ]
+                    .into_iter()
+                    .flatten()
+                    .next()
+                    .cloned()
+                    .unwrap_or_default();
                     let at = self.shown(li, &first);
                     if let Some(old) = groups.get(&name) {
                         let was = self.shown(old.layer, "");
@@ -852,11 +895,20 @@ impl Importer {
             }
             // The files this asset reads: its own, plus a sound's variations
             // (added after the sidecar is parsed, below).
-            let mut files: Vec<String> = [&g.png, &g.wav, &g.wgsl, &g.font, &g.sidecar, &g.normal]
-                .into_iter()
-                .flatten()
-                .map(|f| self.shown(g.layer, f))
-                .collect();
+            let mut files: Vec<String> = [
+                &g.png,
+                &g.wav,
+                &g.wgsl,
+                &g.font,
+                &g.sidecar,
+                &g.normal,
+                &g.aseprite,
+                &g.tiled,
+            ]
+            .into_iter()
+            .flatten()
+            .map(|f| self.shown(g.layer, f))
+            .collect();
             files.sort();
             let stamp: Stamp = files
                 .iter()
@@ -935,7 +987,10 @@ impl Importer {
             None => None,
         };
         let side_file = g.sidecar.as_ref().map(|s| self.shown(g.layer, s));
-        let sources: Vec<&String> = [&g.png, &g.wav, &g.wgsl, &g.font]
+        if let Some(t) = &g.tiled {
+            return self.import_tiled(name, g, t, side_text.as_deref(), side_file.as_deref(), hash);
+        }
+        let sources: Vec<&String> = [&g.png, &g.wav, &g.wgsl, &g.font, &g.aseprite]
             .into_iter()
             .flatten()
             .collect();
@@ -962,6 +1017,16 @@ impl Importer {
         }
         if let Some(f) = &g.font {
             return self.import_font(name, g, f, side_text.as_deref(), side_file.as_deref(), hash);
+        }
+        if let Some(a) = &g.aseprite {
+            return self.import_aseprite(
+                name,
+                g,
+                a,
+                side_text.as_deref(),
+                side_file.as_deref(),
+                hash,
+            );
         }
         if let (Some(n), None) = (&g.normal, &g.png) {
             return Err(ArgusError::new(
@@ -1456,6 +1521,7 @@ impl Importer {
                     } else {
                         None
                     },
+                    aseprite: None,
                 }),
                 ms: 0.0,
             },

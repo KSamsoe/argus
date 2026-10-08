@@ -302,6 +302,11 @@ impl Daemon {
             base,
             &journal,
             Some(&self.world),
+            &self
+                .session
+                .as_ref()
+                .map(|s| s.tiles.borrow().runtime_cells())
+                .unwrap_or_default(),
         )?;
 
         let window_from = frame.saturating_sub(lead);
@@ -312,7 +317,7 @@ impl Daemon {
             "scene": scene,
             "seed": seed,
             "code": code,
-            "digest": format!("{:016x}", self.world.digest()),
+            "digest": format!("{:016x}", self.run_digest()),
             "input": input.as_ref().map(|i| input_window(&i.borrow(), window_from, frame)),
             "events": self.events_window(window_from, frame),
             "replay": { "file": "replay.bin", "from": start.tick, "to": frame, "bytes": bytes },
@@ -885,7 +890,7 @@ impl Daemon {
             out["mods"] = d;
         }
         self.after_open();
-        let digest = format!("{:016x}", self.world.digest());
+        let digest = format!("{:016x}", self.run_digest());
         let same = mark["digest"].as_str() == Some(digest.as_str());
         out["digest"] = json!({ "mark": mark["digest"], "now": digest, "same": same });
         out["code"] = json!({ "mark": mark["code"], "now": code_version(&root) });
@@ -1296,7 +1301,7 @@ impl Daemon {
             out["mods"] = d;
         }
         self.after_open();
-        let digest = format!("{:016x}", self.world.digest());
+        let digest = format!("{:016x}", self.run_digest());
         let same = info["digest"].as_str().map(|d| d == digest);
         out["digest"] = json!({ "saved": info["digest"], "now": digest, "same": same });
         out["code"] = json!({ "saved": code, "now": code_version(&root) });

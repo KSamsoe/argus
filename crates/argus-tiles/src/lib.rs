@@ -9,14 +9,18 @@
 //! sidecar declares how a terrain picks its tile from its neighbours. A
 //! `Tilemap` component on an entity places a map in the world: its
 //! `Transform` is the top-left corner of tile (0, 0), rows go down.
+//!
+//! A Tiled map (`.tmx`, `.tmj`; phase 5 item 4) is a map too: a `Tilemap`
+//! naming it reads it into this form in memory ([`tiled`]), read-only.
 
 #![warn(missing_docs)]
 
 pub mod map;
 pub mod store;
+pub mod tiled;
 
 pub use map::{fnv1a64, LayerDef, MapFile, MapIndex, Rect, SaveReport};
-pub use store::{MapStore, TileGrid};
+pub use store::{cells_digest, decode_cells, encode_cells, MapStore, RuntimeCells, TileGrid};
 
 use argus_assets::{AutoMode, AutoTileSpec, Importer, SpriteAsset};
 use argus_ecs::{ArgusError, Component, Result, StrId};
@@ -37,11 +41,11 @@ pub mod codes {
 #[derive(Component, Clone, Copy, Debug, PartialEq)]
 #[repr(C)]
 #[argus(
-    doc = "Places a tilemap (a *.tilemap.toml) in the world; the Transform is the top-left corner of tile (0, 0)"
+    doc = "Places a tilemap (a *.tilemap.toml, or a Tiled .tmx or .tmj) in the world; the Transform is the top-left corner of tile (0, 0)"
 )]
 pub struct Tilemap {
-    /// Project-relative path of the tilemap index.
-    #[argus(doc = "Project-relative *.tilemap.toml")]
+    /// Project-relative path of the tilemap index, or of a Tiled map.
+    #[argus(doc = "Project-relative *.tilemap.toml, or a Tiled map (.tmx, .tmj)")]
     pub map: StrId,
     /// Draw it.
     #[argus(doc = "Draw it")]
@@ -408,6 +412,9 @@ pub fn visible(
         .collect();
     for (li, tileset, z) in layers {
         let Some(tileset) = tileset else { continue };
+        if !map.layer_visible(li) {
+            continue;
+        }
         let cells = map.get(li, rect)?;
         for (i, t) in cells.into_iter().enumerate() {
             if t == 0 {

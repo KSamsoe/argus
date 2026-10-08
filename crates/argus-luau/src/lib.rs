@@ -131,6 +131,47 @@ pub trait Texts {
 /// The string tables a host was given.
 pub(crate) struct TextsData(pub Rc<dyn Texts>);
 
+/// A game's maps as scripts read and write them (phase 5 item 4):
+/// `q:tiles(map)`, `map` a `Tilemap` entity. A runtime map's cells are the
+/// run's and a script writes them (Delve's floors from the seed); any
+/// map's a script may read. The player's assembly hands the host the
+/// session's map store ([`ScriptHost::set_tiles`]). Cells are by column
+/// and row from the map's top-left, 0 first; tile 0 is empty.
+pub trait Tiles {
+    /// The width and height in cells, and the layers' names, of the map a
+    /// `Tilemap` entity places.
+    fn size(
+        &self,
+        world: &argus_ecs::World,
+        map: argus_ecs::Entity,
+    ) -> Result<(u32, u32, Vec<String>)>;
+    /// One cell of a layer.
+    fn get(
+        &self,
+        world: &argus_ecs::World,
+        map: argus_ecs::Entity,
+        layer: &str,
+        x: u32,
+        y: u32,
+    ) -> Result<u32>;
+    /// Where the map's cell (0, 0)'s top-left corner is in the world, and
+    /// the world units a cell is.
+    fn grid(&self, world: &argus_ecs::World, map: argus_ecs::Entity) -> Result<([f32; 2], f32)>;
+    /// A rect of a layer's cells (x, y, w, h), row-major: only a runtime
+    /// map's.
+    fn set(
+        &self,
+        world: &argus_ecs::World,
+        map: argus_ecs::Entity,
+        layer: &str,
+        rect: [u32; 4],
+        cells: &[u32],
+    ) -> Result<()>;
+}
+
+/// The maps a host was given.
+pub(crate) struct TilesData(pub Rc<dyn Tiles>);
+
 /// The tables a host was given, and the frozen Lua tables made from them
 /// (a row is made once, not every time a system asks).
 pub(crate) struct DefsData {
@@ -312,6 +353,11 @@ impl ScriptHost {
     /// `q:downhill`; phase 3 item 2).
     pub fn set_paths(&self, paths: Rc<dyn Paths>) {
         self.lua.set_app_data(PathsData(paths));
+    }
+
+    /// Give scripts the game's maps (`q:tiles`; phase 5 item 4).
+    pub fn set_tiles(&self, tiles: Rc<dyn Tiles>) {
+        self.lua.set_app_data(TilesData(tiles));
     }
 
     /// Give scripts the game's string tables (`q:text`, `q:languages`;

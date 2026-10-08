@@ -130,6 +130,12 @@ Every statement in the design document (v0.3) that constrains a game as players 
 | Settings that last between launches, outside the world, since a replay must not change with them. | Done | `settings`: the text size, high contrast, fullscreen, and language of the game's `UiSettings`, and the bindings and toggles that differ from the game's, as TOML (`settings.toml` in the save location; the web page keeps the text in the browser). `Store::open` puts them in before the first tick and before the recorder starts, so its first keyframe holds them and a report replays with the player's settings in a player without them; `Store::changed` writes them back when the player changes them. The daemon does not read them. | `tests/release_settings.rs` |
 | (§12) The player's screen reader reads the game. | Done | The desktop game builds the frame's AccessKit tree while one is reading and turns its presses into the pointer and a click (`argus-game`). | `tests/release_access.rs`: Hollow's pause menu, by its words, the focus following, and a press opening Controls |
 
+## Phase 5, item 4: runtime maps in the run
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§6) A run stays a value with a map its scripts wrote. | Done | A keyframe holds the runtime maps' cells (`Keyframe.tiles`, from the session's map store, `Sources.tiles`) and a seek puts them back; replay files from version 5 (at the keyframe and at the end) and save files from version 3 carry them (older files read with none). `Player::digest` and a report's `same` are the run's digest (`run_digest`): the world's and the cells'. | `argus-daemon` `runtime_map`; Delve's floors |
+
 ## Known limitations, stated so they are decisions
 
 - A desktop report goes over plain HTTP to the server's tailnet address (`[reports] url`): a player off the tailnet keeps theirs, and it goes when they are on it, or they send the file.

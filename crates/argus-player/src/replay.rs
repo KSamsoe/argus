@@ -14,7 +14,9 @@
 //! 1 file reads with no overlaps remembered; before version 3 the rooms
 //! carry no memory of what happened in the unloaded ones; before version
 //! 4 the input state has no bindings, toggles, or key awaited, so a replay
-//! keeps the map it has (phase 5 item 2).
+//! keeps the map it has (phase 5 item 2); from version 5 the keyframe
+//! holds the runtime maps' cells, which the game's scripts wrote, and the
+//! file ends with them as they were at `to` (phase 5 item 4).
 
 use crate::keyframe::Keyframe;
 use argus_ecs::codec::{Reader, Writer};
@@ -27,7 +29,7 @@ use serde_json::Value as Json;
 use std::path::Path;
 
 const TAG: &[u8; 4] = b"ARGR";
-const VERSION: u32 = 4;
+const VERSION: u32 = 5;
 
 /// A replay file, read back. The two worlds stay bytes until a live world
 /// (with the components registered) reads them.
@@ -46,9 +48,12 @@ pub struct ReplayFile {
     pools: Vec<u8>,
     rooms: Option<StreamState>,
     contacts: Vec<(Entity, Entity)>,
+    tiles: argus_tiles::RuntimeCells,
     /// The input commands from the keyframe on.
     pub journal: Vec<JournalEntry>,
     end: Option<Vec<u8>>,
+    /// The runtime maps' cells at `to` (from version 5).
+    pub end_cells: argus_tiles::RuntimeCells,
 }
 
 /// What a keyframe read back into a live world dropped or remapped.
@@ -62,7 +67,8 @@ pub struct ReadBack {
 }
 
 /// Write a replay file: `k` and the commands after it (`journal`, already
-/// cut to the span), `end` the world at `meta.to`.
+/// cut to the span), `end` the world at `meta.to` and `end_cells` the
+/// runtime maps' cells then.
 pub fn write(
     path: &Path,
     meta: &Json,
@@ -70,8 +76,9 @@ pub fn write(
     base: usize,
     journal: &[JournalEntry],
     end: Option<&World>,
+    end_cells: &argus_tiles::RuntimeCells,
 ) -> Result<usize> {
-    let bytes = encode(meta, k, base, journal, end);
+    let bytes = encode(meta, k, base, journal, end, end_cells);
     if let Some(d) = path.parent() {
         argus_os::fs::create_dir_all(d).map_err(|e| io(path, e))?;
     }
@@ -86,6 +93,7 @@ pub fn encode(
     base: usize,
     journal: &[JournalEntry],
     end: Option<&World>,
+    end_cells: &argus_tiles::RuntimeCells,
 ) -> Vec<u8> {
     let mut w = Writer::new();
     w.magic(TAG, VERSION);
@@ -104,11 +112,13 @@ pub fn encode(
         w.u64(a.to_bits());
         w.u64(b.to_bits());
     }
+    argus_tiles::encode_cells(&k.tiles, &mut w);
     w.count(journal.len());
     for e in journal {
         e.encode(&mut w);
     }
     w.opt(end, |w, world| w.bytes(&world.encode_state()));
+    argus_tiles::encode_cells(end_cells, &mut w);
     w.into_bytes()
 }
 
@@ -145,11 +155,21 @@ pub fn decode(bytes: &[u8]) -> Result<ReplayFile> {
             contacts.push((a, Entity::from_bits(r.u64()?)));
         }
     }
+    let tiles = if version >= 5 {
+        argus_tiles::decode_cells(&mut r)?
+    } else {
+        Vec::new()
+    };
     let mut journal = Vec::new();
     for _ in 0..r.count()? {
         journal.push(JournalEntry::decode(&mut r)?);
     }
     let end = r.opt(|r| r.bytes().map(<[u8]>::to_vec))?;
+    let end_cells = if version >= 5 {
+        argus_tiles::decode_cells(&mut r)?
+    } else {
+        Vec::new()
+    };
     if r.remaining() != 0 {
         return Err(r.bad(format!("{} bytes after the end", r.remaining())));
     }
@@ -165,8 +185,10 @@ pub fn decode(bytes: &[u8]) -> Result<ReplayFile> {
         pools,
         rooms,
         contacts,
+        tiles,
         journal,
         end,
+        end_cells,
     })
 }
 
@@ -189,6 +211,7 @@ impl ReplayFile {
             pools,
             self.rooms.clone(),
             self.contacts.clone(),
+            self.tiles.clone(),
         );
         Ok(ReadBack {
             keyframe,

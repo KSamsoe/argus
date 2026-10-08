@@ -1,9 +1,14 @@
 local DIRS = { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } }
 
+-- One number a cell, for the cells monsters stand in.
+local function cell(x, y)
+  return y * 65536 + x
+end
+
 return system "sim.monsters" {
   stage = "sim",
   after = { "sim.player_turn" },
-  reads = { "Monster", "Transform", "Health", "Player", "Floor", "Turn", "NavField" },
+  reads = { "Monster", "Transform", "Health", "Player", "Turn", "NavField" },
   writes = { "Transform", "Health", "Player" },
   doc = "Every monster acts in initiative order (ties by id): strike the hero when adjacent, else step along the shortest path toward it when within sight (the hero's flow field, section 12).",
   run = function(q)
@@ -14,7 +19,6 @@ return system "sim.monsters" {
       q:emit("turn.end", { turn = turn, hero_dead = true })
       return
     end
-    local w = q:entity("@floor"):get("Floor").w
     local order = {}
     for e, mo, tr in q:each("Monster", "Transform") do
       table.insert(order, {
@@ -32,7 +36,7 @@ return system "sim.monsters" {
       return q:distance(pe, vector.create(x, y, 0))
     end
     local occupied = {}
-    for _, m in ipairs(order) do occupied[m.y * w + m.x] = true end
+    for _, m in ipairs(order) do occupied[cell(m.x, m.y)] = true end
     local php = pe:get("Health")
     for _, m in ipairs(order) do
       local here = steps(m.x, m.y)
@@ -53,13 +57,13 @@ return system "sim.monsters" {
         for _, c in ipairs(DIRS) do
           local nx, ny = m.x + c[1], m.y + c[2]
           local d = steps(nx, ny)
-          if d ~= nil and d < best and d > 0 and not occupied[ny * w + nx] then
+          if d ~= nil and d < best and d > 0 and not occupied[cell(nx, ny)] then
             best, bx, by = d, nx, ny
           end
         end
         if bx ~= nil then
-          occupied[m.y * w + m.x] = nil
-          occupied[by * w + bx] = true
+          occupied[cell(m.x, m.y)] = nil
+          occupied[cell(bx, by)] = true
           q:entity(m.id):get("Transform").pos = { x = bx, y = by }
           m.x, m.y = bx, by
         end

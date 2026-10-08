@@ -2138,6 +2138,15 @@ impl Scene {
             .filter(|(_, r)| r.uses_prefab(prefab))
             .map(|(id, _)| id.clone())
             .collect();
+        // Each instance as it resolved before, so only what the change
+        // changed is written: a running game keeps the rest of its state
+        // (a bat's position, its wounds).
+        let before: BTreeMap<String, ResolvedEntity> = affected
+            .iter()
+            .filter_map(|id| self.resolved.get(id))
+            .flat_map(|r| r.flatten())
+            .map(|(e, _)| (e.id.clone(), e.clone()))
+            .collect();
         for id in &affected {
             self.resolve_one(ctx, id);
         }
@@ -2148,12 +2157,47 @@ impl Scene {
                 continue;
             };
             for (e, _) in r.flatten() {
-                if e.chain.iter().any(|p| p == prefab) {
-                    touched.push(e.id.clone());
-                    if self.spawned.contains_key(&e.id) && self.issues.is_empty() {
-                        self.sync_entity(world, &e.id)?;
-                    }
+                if !e.chain.iter().any(|p| p == prefab) {
+                    continue;
                 }
+                touched.push(e.id.clone());
+                if !self.spawned.contains_key(&e.id) || !self.issues.is_empty() {
+                    continue;
+                }
+                let same_shape = before.get(&e.id).is_some_and(|b| {
+                    b.tags.iter().map(|t| &t.0).eq(e.tags.iter().map(|t| &t.0))
+                        && b.components
+                            .iter()
+                            .map(|c| &c.name)
+                            .eq(e.components.iter().map(|c| &c.name))
+                });
+                if !same_shape {
+                    // A component or tag came or went: the whole entity.
+                    self.sync_entity(world, &e.id)?;
+                    continue;
+                }
+                let b = &before[&e.id];
+                let mut changed = e.clone();
+                changed.children.clear();
+                for (c, old) in changed.components.iter_mut().zip(&b.components) {
+                    c.fields.retain(|f| {
+                        old.fields
+                            .iter()
+                            .find(|o| o.name == f.name)
+                            .is_none_or(|o| o.value != f.value)
+                    });
+                }
+                changed.components.retain(|c| !c.fields.is_empty());
+                if changed.components.is_empty() {
+                    continue;
+                }
+                let ent = self.spawned[&e.id];
+                let room = self
+                    .split_id(&e.id)
+                    .and_then(|(f, _)| self.entities[f].room.clone());
+                let mut report = LoadReport::default();
+                self.set_fields(world, ent, &changed, room.as_deref(), &mut report, true)?;
+                self.fill_pending(world)?;
             }
         }
         touched.sort();

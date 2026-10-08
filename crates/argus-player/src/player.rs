@@ -117,6 +117,7 @@ impl Player {
             particles: a.particles.clone(),
             scene: Some(a.scene.clone()),
             contacts: a.contacts.clone(),
+            tiles: Some(a.tiles.clone()),
         };
         let mut p = Player {
             world: a.world,
@@ -275,7 +276,7 @@ impl Player {
         self.step(n)?;
         let end = file
             .end_world(&self.world)?
-            .map(|w| format!("{:016x}", w.digest()));
+            .map(|w| format!("{:016x}", crate::keyframe::run_digest(&w, &file.end_cells)));
         let now = format!("{:016x}", self.digest());
         Ok(json!({
             "from": file.from,
@@ -459,10 +460,11 @@ impl Player {
     }
 
     /// A digest of the whole world: every field of every live entity, in
-    /// entity order, floats to the bit. Two runs with the same digest are
+    /// entity order, floats to the bit, and the runtime maps' cells when
+    /// any holds a tile (phase 5 item 4). Two runs with the same digest are
     /// the same world.
     pub fn digest(&self) -> u64 {
-        self.world.digest()
+        crate::keyframe::run_digest(&self.world, &self.tiles.borrow().runtime_cells())
     }
 
     /// The events so far, as one digest.

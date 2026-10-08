@@ -1,15 +1,17 @@
-local function walkable(f, x, y)
-  if x < 0 or y < 0 or x >= f.w or y >= f.h then return false end
-  local i = y * f.w + x + 1
-  return string.sub(f.map, i, i) == "."
+-- Open ground: on the floor's map and no wall there. World (x, y) is the
+-- map's cell (x, h - 1 - y): its rows go down (scenes/delve/floor.toml).
+local function walkable(map, x, y)
+  local w, h = map:size()
+  if x < 0 or y < 0 or x >= w or y >= h then return false end
+  return map:get("walls", x, h - 1 - y) == 0
 end
 
 return system "sim.player_turn" {
   stage = "sim",
   after = { "sim.floor" },
-  reads = { "PlayerSlot", "Actions", "Floor", "Monster", "Stairs", "Transform", "Health", "Turn" },
+  reads = { "PlayerSlot", "Actions", "Tilemap", "Monster", "Stairs", "Transform", "Health", "Turn" },
   writes = { "Player", "Transform", "Health", "Turn" },
-  doc = "The hero's turn: step in the move direction, attack a monster in the way, wait, or descend on the stairs.",
+  doc = "The hero's turn: step in the move direction (a wall on the floor's map is a bump), attack a monster in the way, wait, or descend on the stairs.",
   run = function(q)
     local pe = q:entity("@player")
     local pl = pe:get("Player")
@@ -57,8 +59,7 @@ return system "sim.player_turn" {
         return
       end
     end
-    local f = q:entity("@floor"):get("Floor")
-    if walkable(f, nx, ny) then
+    if walkable(q:tiles("@floor"), nx, ny) then
       pe:get("Transform").pos = { x = nx, y = ny }
       q:play("sfx/step")
     else

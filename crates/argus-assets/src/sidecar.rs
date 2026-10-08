@@ -32,6 +32,12 @@
 //! kind = "rect"                  # rect or circle
 //! size = [8, 8]                  # pixels
 //! color = "#E8703F"
+//!
+//! # Beside hero.aseprite (phase 5 item 4; see aseprite.rs), the frames and
+//! # tags are the file's, and the sidecar picks and changes:
+//! layers = ["body", "outline"]   # the layers drawn (a group's path: "fx/sparks")
+//! [clips.run]                    # the tag "run": only what is written changes
+//! fps = 12
 //! ```
 
 use argus_ecs::{ArgusError, Result};
@@ -76,6 +82,13 @@ pub struct ClipSpec {
     pub direction: Direction,
     /// `file:line`.
     pub at: String,
+    /// The sidecar wrote `frames` (or `from` and `to`), `loop`, and
+    /// `direction`: a clip of an Aseprite tag's name changes only those.
+    pub frames_given: bool,
+    /// See `frames_given`.
+    pub loop_given: bool,
+    /// See `frames_given`.
+    pub direction_given: bool,
 }
 
 /// An explicit frame rectangle or per-frame override.
@@ -172,6 +185,10 @@ pub struct SpriteSidecar {
     pub shape: Option<Shape>,
     /// Auto-tiling rules by terrain.
     pub autotile: Vec<AutoTileSpec>,
+    /// An Aseprite file's layers to draw (`layers = ["body"]`).
+    pub layers: Option<Vec<String>>,
+    /// `file:line` of `layers`.
+    pub layers_at: String,
     /// Keys the importer did not recognise (reported as warnings).
     pub unknown: Vec<String>,
 }
@@ -291,11 +308,36 @@ fn pivot_of(v: &toml_edit::Value) -> Option<[f32; 2]> {
 
 /// Parse a sprite sidecar.
 pub fn parse_sprite(file: &str, text: &str) -> Result<SpriteSidecar> {
+    parse_sprite_with(file, text, false)
+}
+
+/// Parse a sprite sidecar; beside an Aseprite file (`aseprite`), `layers`
+/// is a key and a clip may leave out its frames (it changes a tag's).
+pub(crate) fn parse_sprite_with(file: &str, text: &str, aseprite: bool) -> Result<SpriteSidecar> {
     let doc = parse(file, text)?;
     let mut out = SpriteSidecar::default();
     for (k, _) in doc.as_table().iter() {
-        if !SPRITE_KEYS.contains(&k) {
+        if !SPRITE_KEYS.contains(&k) && !(aseprite && k == "layers") {
             out.unknown.push(k.to_string());
+        }
+    }
+    if let Some(item) = doc.get("layers").filter(|_| aseprite) {
+        let l = line_of(text, item);
+        let names: Option<Vec<String>> = item
+            .as_array()
+            .and_then(|a| a.iter().map(|v| v.as_str().map(str::to_string)).collect());
+        match names {
+            Some(n) if !n.is_empty() => {
+                out.layers = Some(n);
+                out.layers_at = format!("{file}:{l}");
+            }
+            _ => {
+                return Err(err(
+                    file,
+                    l,
+                    "layers must be a list of the Aseprite file's layer names: layers = [\"body\", \"outline\"]",
+                ))
+            }
         }
     }
     if let Some(g) = doc.get("grid") {
@@ -387,6 +429,9 @@ pub fn parse_sprite(file: &str, text: &str) -> Result<SpriteSidecar> {
                 } else {
                     (b..=a).rev().collect()
                 }
+            } else if aseprite {
+                // Changes the tag of its name (checked at import).
+                Vec::new()
             } else {
                 return Err(err(
                     file,
@@ -394,6 +439,8 @@ pub fn parse_sprite(file: &str, text: &str) -> Result<SpriteSidecar> {
                     format!("clips.{name} needs frames = [...] or from and to"),
                 ));
             };
+            let frames_given = ct.get("frames").is_some()
+                || (num(ct.get("from")).is_some() && num(ct.get("to")).is_some());
             let direction = match ct.get("direction").and_then(|d| d.as_str()).unwrap_or("forward") {
                 "forward" => Direction::Forward,
                 "reverse" => Direction::Reverse,
@@ -409,6 +456,9 @@ pub fn parse_sprite(file: &str, text: &str) -> Result<SpriteSidecar> {
                 looping: ct.get("loop").and_then(|l| l.as_bool()).unwrap_or(true),
                 direction,
                 at: format!("{file}:{cl}"),
+                frames_given,
+                loop_given: ct.get("loop").is_some(),
+                direction_given: ct.get("direction").is_some(),
             });
         }
     }

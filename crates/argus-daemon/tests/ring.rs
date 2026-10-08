@@ -33,6 +33,7 @@ fn base() -> argus_daemon::ring::Keyframe {
         particles: Rc::new(RefCell::new(ParticleStore::default())),
         scene: None,
         contacts: Rc::new(RefCell::new(argus_physics::Contacts::default())),
+        tiles: None,
     };
     src.capture(&w, &s, false)
 }

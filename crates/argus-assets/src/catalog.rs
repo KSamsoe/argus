@@ -222,6 +222,7 @@ fn sprite_from(j: &Json, root: &Path) -> Result<Entry> {
             pixels_per_unit: j["pixels_per_unit"].as_f64().unwrap_or(16.0) as f32,
             shape,
             autotile,
+            aseprite: None,
         }),
         ms: 0.0,
     })

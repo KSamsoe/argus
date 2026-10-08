@@ -6,7 +6,9 @@
 //! schema gives each field its widget, its range, and its doc. Every change
 //! is a transaction by the person (§5): a field when its drag ends or its
 //! text is entered, a component added or removed. Undo and redo are the
-//! person's own; locks fence an entity, a component, or a field.
+//! person's own; locks fence an entity, a component, or a field. With
+//! "Change the prefab instead" ticked (phase 5 item 4), a field's change goes to
+//! the entity's prefab instead, and every entity made from it changes.
 
 use eframe::egui::{self, Color32, RichText};
 use serde_json::{json, Map, Value as Json};
@@ -53,6 +55,8 @@ pub struct Inspector {
     pub locks: Vec<Json>,
     /// How many entities share its prefab.
     pub instances: Option<(String, u64)>,
+    /// Field changes go to the entity's prefab, not its own file.
+    pub to_prefab: bool,
     /// Values a widget holds while the person changes them.
     editing: HashMap<String, Json>,
     /// Text a field holds while the person types.
@@ -70,6 +74,7 @@ impl Inspector {
             self.got = Json::Null;
             self.overrides = Json::Null;
             self.instances = None;
+            self.to_prefab = false;
             self.editing.clear();
             self.typing.clear();
         }
@@ -192,6 +197,10 @@ impl Inspector {
                 RichText::new(format!("prefab {}{n}", chain.join(" < ")))
                     .color(provenance_colour(p)),
             );
+            ui.checkbox(&mut self.to_prefab, "Change the prefab instead")
+                .on_hover_text(format!(
+                    "A field's change goes to {p}'s file, and every entity made from it takes it; one whose own file sets the field keeps its own"
+                ));
         }
         if !resolved.is_null() {
             // The colours' key: where each value comes from.
@@ -448,10 +457,16 @@ impl Inspector {
                         let ty = f["type"].as_str().unwrap_or("");
                         let range = f["range"].as_array().and_then(|r| Some((r.first()?.as_f64()?, r.get(1)?.as_f64()?)));
                         if let Some(v) = self.widget(ui, &path, ty, &value, range) {
-                            out.push(Do::Edit(
-                                format!("{path} on {entity}"),
-                                vec![json!({ "op": "set", "entity": entity, "path": path, "value": v })],
-                            ));
+                            match resolved["prefab"].as_str().filter(|_| self.to_prefab) {
+                                Some(p) => out.push(Do::Edit(
+                                    format!("{path} in the prefab {p}"),
+                                    vec![json!({ "op": "prefab", "prefab": p, "path": path, "value": v })],
+                                )),
+                                None => out.push(Do::Edit(
+                                    format!("{path} on {entity}"),
+                                    vec![json!({ "op": "set", "entity": entity, "path": path, "value": v })],
+                                )),
+                            }
                         }
                         ui.end_row();
                     }

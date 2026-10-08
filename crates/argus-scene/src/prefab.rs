@@ -147,6 +147,75 @@ impl PrefabLibrary {
         self.prefabs.get(path)
     }
 
+    /// Set one field of a prefab, or of one of its children (`child`, a
+    /// path such as `light`; empty for the prefab itself), in its file with
+    /// its comments kept, or with `None` take the field out; then read it
+    /// again. A prefab edited as a transaction (§3, phase 5 item 4): the
+    /// caller re-resolves the instances. Returns the file's text as it
+    /// was, which [`PrefabLibrary::put_text`] puts back.
+    pub fn set_field(
+        &mut self,
+        registry: &argus_ecs::Registry,
+        prefab: &str,
+        child: &str,
+        path: &str,
+        value: Option<&argus_ecs::Value>,
+    ) -> Result<String> {
+        let Some(p) = self.prefabs.get(prefab) else {
+            return Err(ArgusError::new(
+                codes::MISSING_REFERENCE,
+                format!("there is no prefab {prefab:?}"),
+            )
+            .hint("world.prefabs lists the prefabs; a prefab is a file under prefabs/."));
+        };
+        let (comp, field) = path.split_once('.').ok_or_else(|| {
+            ArgusError::new(
+                argus_ecs::codes::BAD_PATH,
+                format!("{path:?} is not Component.field"),
+            )
+        })?;
+        let checked = match value {
+            None => None,
+            Some(v) => {
+                let (cid, fs) = registry.resolve_path(path)?;
+                Some(match (fs.ty, v) {
+                    // An entity is written to a file as its "@id".
+                    (argus_ecs::FieldType::Entity, argus_ecs::Value::Str(_)) => v.clone(),
+                    _ => registry.schema(cid).check(fs, v.clone())?,
+                })
+            }
+        };
+        let (abs, rel) = (self.root.join(&p.file), p.file.clone());
+        let old = tomlv::read(&abs)?;
+        let doc = crate::doc::edit_file(&abs, &rel, child, |t| match &checked {
+            Some(v) => crate::doc::set_override(t, comp, field, v),
+            None => {
+                crate::doc::clear_override(t, comp, field);
+                Ok(())
+            }
+        })?;
+        self.prefabs.get_mut(prefab).expect("found").doc = doc;
+        Ok(old)
+    }
+
+    /// Put a prefab's file back as `text` (the inverse of
+    /// [`PrefabLibrary::set_field`]) and read it again.
+    pub fn put_text(&mut self, prefab: &str, text: &str) -> Result<()> {
+        let Some(p) = self.prefabs.get(prefab) else {
+            return Err(ArgusError::new(
+                codes::MISSING_REFERENCE,
+                format!("there is no prefab {prefab:?}"),
+            ));
+        };
+        let (abs, rel) = (self.root.join(&p.file), p.file.clone());
+        let doc = EntityDoc::parse(&rel, text)?;
+        argus_os::fs::write(&abs, text).map_err(|e| {
+            ArgusError::new(codes::MISSING_FILE, format!("cannot write {rel}: {e}"))
+        })?;
+        self.prefabs.get_mut(prefab).expect("found").doc = doc;
+        Ok(())
+    }
+
     /// All prefab paths, sorted.
     pub fn paths(&self) -> Vec<&str> {
         self.prefabs.keys().map(String::as_str).collect()

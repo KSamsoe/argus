@@ -107,6 +107,10 @@ impl Recorder {
         meta["from"] = json!(k.tick);
         meta["to"] = json!(sched.tick());
         meta["clock"] = json!(sched.driving().to_string());
-        crate::replay::encode(&meta, k, base, &journal, end)
+        let cells = match (end, &sources.tiles) {
+            (Some(_), Some(t)) => t.borrow().runtime_cells(),
+            _ => Vec::new(),
+        };
+        crate::replay::encode(&meta, k, base, &journal, end, &cells)
     }
 }

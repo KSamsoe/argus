@@ -26,6 +26,13 @@
 //! cell in it is read; an empty chunk is never written; a save rewrites
 //! only the chunks that changed. Rows go down (row 0 is the top), as a
 //! tile editor shows them.
+//!
+//! `runtime = true` (phase 5 item 4) makes a map whose layers are authored
+//! here and whose cells are the run's: they start empty each run, a game's
+//! scripts write them (`q:tiles`), keyframes, replays, and saves carry them,
+//! and nothing writes them to disk (Delve's floors, made from the seed).
+//! [`MapFile::in_memory`] makes such a map without an index file too (a
+//! Tiled map read into the engine's form).
 
 use argus_ecs::{ArgusError, Result};
 use std::collections::{BTreeMap, HashMap};
@@ -95,6 +102,8 @@ pub struct MapIndex {
     pub hash: String,
     /// Layers, drawn in `z` order.
     pub layers: Vec<LayerDef>,
+    /// The cells are the run's, written by scripts, never saved.
+    pub runtime: bool,
 }
 
 /// 64-bit FNV-1a.
@@ -108,6 +117,10 @@ pub fn fnv1a64(bytes: &[u8]) -> u64 {
 }
 
 type Key = (usize, u32, u32);
+
+/// Chunks' cells by layer index, chunk column, and chunk row (a runtime
+/// map's, as [`MapFile::cells`] gives them).
+pub type Chunks = Vec<((usize, u32, u32), Vec<u8>)>;
 
 #[derive(Clone, Debug)]
 struct Chunk {
@@ -143,6 +156,11 @@ pub struct MapFile {
     loaded: HashMap<Key, Chunk>,
     /// See [`MapFile::revision`].
     revision: u64,
+    /// Cells in memory only: a runtime map, or one made by
+    /// [`MapFile::in_memory`].
+    in_memory: bool,
+    /// What a Tiled map's file said beyond its cells (phase 5 item 4).
+    tiled: Option<std::sync::Arc<crate::tiled::TiledSource>>,
 }
 
 /// The next [`MapFile::revision`]: never repeats in a process.
@@ -209,8 +227,12 @@ impl MapFile {
         Ok(())
     }
 
-    /// Whether `rel` is a tilemap index (`kind = "tilemap"`).
+    /// Whether `rel` is a tilemap index (`kind = "tilemap"`), or a Tiled
+    /// map (`.tmx`, `.tmj`).
     pub fn is_tilemap(root: &Path, rel: &str) -> bool {
+        if crate::tiled::is_tiled(rel) {
+            return argus_os::fs::is_file(root.join(rel));
+        }
         argus_os::fs::read_to_string(root.join(rel))
             .ok()
             .and_then(|t| t.parse::<toml_edit::DocumentMut>().ok())
@@ -274,10 +296,13 @@ impl MapFile {
                 chunks: format!("{stem}.chunks"),
                 hash: String::new(),
                 layers,
+                runtime: false,
             },
             manifest: BTreeMap::new(),
             loaded: HashMap::new(),
             revision: next_revision(),
+            in_memory: false,
+            tiled: None,
         };
         m.check_names().map_err(|x| e(crate::codes::BAD_MAP, x))?;
         m.save()?;
@@ -360,6 +385,10 @@ impl MapFile {
                 .unwrap_or("")
                 .to_string(),
             layers,
+            runtime: doc
+                .get("runtime")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false),
         };
         if !matches!(index.cell, 1 | 2 | 4) {
             return Err(bad(format!(
@@ -374,7 +403,14 @@ impl MapFile {
             manifest: BTreeMap::new(),
             loaded: HashMap::new(),
             revision: next_revision(),
+            in_memory: false,
+            tiled: None,
         };
+        // A runtime map's cells are the run's: nothing on disk to read.
+        if m.index.runtime {
+            m.in_memory = true;
+            return Ok(m);
+        }
         m.check_names().map_err(bad)?;
         let mpath = m.chunk_dir().join("manifest.txt");
         let mtext = argus_os::fs::read_to_string(&mpath).unwrap_or_default();
@@ -562,6 +598,9 @@ impl MapFile {
 
     /// Write cells of a layer inside `rect` from a row-major slice.
     pub fn set(&mut self, layer: usize, rect: Rect, values: &[u32]) -> Result<()> {
+        if self.tiled.is_some() {
+            return Err(crate::tiled::read_only(&self.rel));
+        }
         self.check(rect)?;
         if values.len() != rect.area() {
             return Err(e(
@@ -655,9 +694,95 @@ impl MapFile {
         self.loaded.len()
     }
 
+    /// A map whose cells live in memory only, all empty: no index file, no
+    /// chunks on disk, and [`MapFile::save`] refuses. A runtime map is one
+    /// (its index read by [`MapFile::open`]); so is a map read from another
+    /// tool's file into the engine's form.
+    pub fn in_memory(root: &Path, rel: &str, index: MapIndex) -> MapFile {
+        MapFile {
+            root: root.to_path_buf(),
+            rel: rel.to_string(),
+            index,
+            manifest: BTreeMap::new(),
+            loaded: HashMap::new(),
+            revision: next_revision(),
+            in_memory: true,
+            tiled: None,
+        }
+    }
+
+    /// Whether its cells live in memory only.
+    pub fn is_in_memory(&self) -> bool {
+        self.in_memory
+    }
+
+    /// What a Tiled map's file said beyond its cells: its structure, the
+    /// layers Tiled hides, what did not carry over. `None` for the engine's
+    /// own maps.
+    pub fn tiled(&self) -> Option<&crate::tiled::TiledSource> {
+        self.tiled.as_deref()
+    }
+
+    /// Mark the map as read from a Tiled file, which makes it read-only.
+    pub(crate) fn set_tiled(&mut self, source: crate::tiled::TiledSource) {
+        self.tiled = Some(std::sync::Arc::new(source));
+    }
+
+    /// Whether a layer is drawn: every layer but one Tiled hides (which
+    /// still collides when it is a collision layer).
+    pub fn layer_visible(&self, layer: usize) -> bool {
+        self.tiled
+            .as_ref()
+            .and_then(|t| t.visible.get(layer).copied())
+            .unwrap_or(true)
+    }
+
+    /// Every chunk that holds a tile, by layer, column, and row of chunks:
+    /// a runtime map's cells as a keyframe or a save keeps them.
+    pub fn cells(&self) -> Chunks {
+        let mut out: Chunks = self
+            .loaded
+            .iter()
+            .filter(|(_, c)| c.data.iter().any(|&b| b != 0))
+            .map(|(k, c)| (*k, c.data.clone()))
+            .collect();
+        out.sort_by_key(|(k, _)| *k);
+        out
+    }
+
+    /// Put cells back as [`MapFile::cells`] gave them (a seek, a load): every
+    /// other chunk empty.
+    pub fn set_cells(&mut self, chunks: &[(Key, Vec<u8>)]) {
+        let size = self.chunk_bytes();
+        self.loaded.clear();
+        for (k, d) in chunks {
+            if k.0 < self.index.layers.len() && d.len() == size {
+                self.loaded.insert(
+                    *k,
+                    Chunk {
+                        data: d.clone(),
+                        dirty: false,
+                    },
+                );
+            }
+        }
+        self.revision = next_revision();
+    }
+
     /// Write changed chunks, the manifest, and the index. An empty chunk
     /// is deleted rather than written.
     pub fn save(&mut self) -> Result<SaveReport> {
+        if self.in_memory {
+            return Err(e(
+                crate::codes::BAD_MAP,
+                if self.index.runtime {
+                    format!("{}: a runtime map's tiles are the run's, written by the game's scripts; nothing saves them", self.rel)
+                } else {
+                    format!("{}: its tiles are read from another file and live in memory; nothing saves them here", self.rel)
+                },
+            )
+            .at(Some(self.rel.clone())));
+        }
         let mut rep = SaveReport::default();
         let dir = self.chunk_dir();
         let io = |x: std::io::Error, what: &Path| {
@@ -737,6 +862,9 @@ impl MapFile {
         d["cell"] = value(i64::from(i.cell));
         d["chunks"] = value(i.chunks.clone());
         d["hash"] = value(i.hash.clone());
+        if i.runtime {
+            d["runtime"] = value(true);
+        }
         let mut layers = ArrayOfTables::new();
         for l in &i.layers {
             let mut t = Table::new();

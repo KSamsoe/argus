@@ -143,6 +143,26 @@ pub enum Op {
         /// The file's text.
         text: String,
     },
+    /// Set one field of a prefab, or of a child it declares, or with `None`
+    /// take it out (phase 5 item 4): its file is written with its comments
+    /// kept, and every instance in the scene is resolved again.
+    Prefab {
+        /// The prefab's path, `door/base`.
+        prefab: String,
+        /// A child's path inside it (`light`), or empty for the prefab.
+        child: String,
+        /// `Component.field`.
+        path: String,
+        /// The value as JSON, or `None` to take it out.
+        value: Option<Json>,
+    },
+    /// A prefab's whole text as it was: the inverse of a `Prefab` op.
+    PrefabText {
+        /// The prefab's path.
+        prefab: String,
+        /// The file's text.
+        text: String,
+    },
     /// Paint a terrain over a rect (or erase it) and re-pick the tiles
     /// around it by the tileset's auto-tiling rules.
     Terrain {
@@ -221,6 +241,21 @@ impl Op {
                     None => json!({ "asset": asset, "path": path, "remove": true }),
                 },
             ),
+            Op::Prefab {
+                prefab,
+                child,
+                path,
+                value,
+            } => {
+                let mut p = match value {
+                    Some(v) => json!({ "prefab": prefab, "path": path, "value": v }),
+                    None => json!({ "prefab": prefab, "path": path, "remove": true }),
+                };
+                if !child.is_empty() {
+                    p["child"] = json!(child);
+                }
+                ("edit.prefab", p)
+            }
             _ => return None,
         })
     }
@@ -260,6 +295,20 @@ impl Op {
             Op::DefRow { def, fields } => json!(["def_row", def, fields]),
             Op::DefText { file, .. } => json!(["def_row", file, "(as it was)"]),
             Op::AssetText { asset, .. } => json!(["asset", asset, "(as it was)"]),
+            Op::Prefab {
+                prefab,
+                child,
+                path,
+                value,
+            } => {
+                let at = if child.is_empty() {
+                    prefab.clone()
+                } else {
+                    format!("{prefab}/{child}")
+                };
+                json!(["prefab", at, path, value])
+            }
+            Op::PrefabText { prefab, .. } => json!(["prefab", prefab, "(as it was)"]),
             Op::Terrain {
                 file,
                 layer,

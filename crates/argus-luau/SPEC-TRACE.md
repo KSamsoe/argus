@@ -164,6 +164,12 @@ Phase 0 item 3, "Luau binding with component and def schemas": this crate.
 |---|---|---|---|
 | (§15) A mod's Luau systems run "with the same sandbox and instruction budgets as the game's own scripts". | Done | `ScriptHost::load_layers`: each mod's `components/`, `defs/`, and `systems/` load into the same VM after the game's, named from the game's root (`mods/<id>/systems/x.luau`); `reload` walks the layers too. What a mod file declares must be in its namespace; a mod redeclaring a game's system, component, or def table is refused (`load_bytes`). | argus-player `mods::a_mod_that_breaks_a_rule_is_left_out_whole_and_the_game_runs`, `mods::a_mods_runaway_system_is_stopped_by_the_same_budget_as_the_games` |
 
+## Phase 5, item 4: a map's tiles from a script
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| Procedural generation onto an engine map (Delve). | Done | `q:tiles(map)`, `map` a Tilemap entity or its "@id": `size`, `layers`, `get(layer, x, y)`, and on a runtime map `set`, `fill`, and `paint(layer, x, y, rows, legend)` (a floor of characters in one call); `cell(pos)` and `center(x, y)` between world places and cells, so a game whose y goes up needs no flip; a read off any edge is empty, as the physics has it. Reading a map's tiles is reading its `Tilemap`, writing them writing it: a system declares them, or the call is refused naming the list. The host is given the maps by the player's assembly (`ScriptHost::set_tiles`, the `Tiles` trait); the project's own maps are refused. | `argus-daemon` `runtime_map::a_script_writes_only_a_runtime_maps_tiles_and_only_when_it_says_so` |
+
 ## Known limitations, stated so they are decisions
 
 - One Luau VM per `ScriptHost`; a forked world needs its own host (or the same host with a different scheduler, since the VM holds no world state).

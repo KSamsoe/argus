@@ -30,10 +30,7 @@ component "Stairs" {
 }
 
 component "Floor" {
-  doc = "The current floor: walkability as one character per cell, row-major, '.' floor '#' wall",
-  map = field.str { default = "" },
-  w = field.u8 { default = 40, range = {8, 200} },
-  h = field.u8 { default = 20, range = {8, 200} },
+  doc = "The current floor: how many there have been and its rooms. Its cells are the runtime map this entity's Tilemap places (maps/floor.tilemap.toml: a walls layer, # in the semantic frame, and a floor layer, drawn), painted by sim.floor",
   n = field.u32 { default = 0, doc = "Floors generated so far; 0 means none yet" },
   rooms = field.u8 { default = 0 },
 }
@@ -41,8 +38,4 @@ component "Floor" {
 component "Turn" {
   doc = "Turn counter",
   n = field.u32 { default = 0 },
-}
-
-component "Tile" {
-  doc = "A drawn floor cell; regenerated with the floor",
 }

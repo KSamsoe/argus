@@ -436,6 +436,7 @@ fn assemble_layers(
         ..ScriptConfig::default()
     })?;
     host.set_paths(Rc::new(NavPaths(nav.clone())));
+    host.set_tiles(Rc::new(ScriptTiles(tiles.clone())));
     host.set_texts(Rc::new(UiTexts(ui.clone())));
     host.load_layers(&mut world, &mut sched, layers)?;
     let defs: Vec<DefSchema> = host
@@ -521,6 +522,98 @@ fn assemble_layers(
         audio,
         mods: crate::mods::Report::default(),
     })
+}
+
+/// Scripts' maps (`q:tiles`, phase 5 item 4): the session's map store, a
+/// runtime map's cells written, any map's read.
+struct ScriptTiles(Rc<RefCell<argus_tiles::MapStore>>);
+
+impl ScriptTiles {
+    /// The map file a Tilemap entity places.
+    fn file(world: &World, e: argus_ecs::Entity) -> Result<String> {
+        let t = world.get::<argus_tiles::Tilemap>(e).map_err(|_| {
+            ArgusError::new(
+                argus_ecs::codes::UNKNOWN_FIELD,
+                format!(
+                    "{} has no Tilemap: q:tiles takes the entity that places a map",
+                    argus_ecs::text::entity_id(world, e)
+                ),
+            )
+        })?;
+        Ok(world.strings().resolve(t.map))
+    }
+}
+
+impl argus_luau::Tiles for ScriptTiles {
+    fn size(&self, world: &World, map: argus_ecs::Entity) -> Result<(u32, u32, Vec<String>)> {
+        let file = Self::file(world, map)?;
+        let mut st = self.0.borrow_mut();
+        let m = st.open(&file)?;
+        Ok((
+            m.index.width,
+            m.index.height,
+            m.index.layers.iter().map(|l| l.name.clone()).collect(),
+        ))
+    }
+
+    fn grid(&self, world: &World, map: argus_ecs::Entity) -> Result<([f32; 2], f32)> {
+        let file = Self::file(world, map)?;
+        let origin = world
+            .get::<argus_ecs::GlobalTransform>(map)
+            .map(|g| [g.pos.x, g.pos.y])
+            .or_else(|_| {
+                world
+                    .get::<argus_ecs::Transform>(map)
+                    .map(|t| [t.pos.x, t.pos.y])
+            })
+            .unwrap_or([0.0, 0.0]);
+        let mut st = self.0.borrow_mut();
+        Ok((origin, st.open(&file)?.index.tile_size))
+    }
+
+    fn get(
+        &self,
+        world: &World,
+        map: argus_ecs::Entity,
+        layer: &str,
+        x: u32,
+        y: u32,
+    ) -> Result<u32> {
+        let file = Self::file(world, map)?;
+        let mut st = self.0.borrow_mut();
+        let m = st.open(&file)?;
+        let li = m.layer(layer)?;
+        if x >= m.index.width || y >= m.index.height {
+            return Ok(0);
+        }
+        m.cell(li, x, y)
+    }
+
+    fn set(
+        &self,
+        world: &World,
+        map: argus_ecs::Entity,
+        layer: &str,
+        rect: [u32; 4],
+        cells: &[u32],
+    ) -> Result<()> {
+        let file = Self::file(world, map)?;
+        let mut st = self.0.borrow_mut();
+        let m = st.open(&file)?;
+        if !m.index.runtime {
+            return Err(ArgusError::new(
+                argus_tiles::codes::BAD_MAP,
+                format!("{file} is the project's map: a script writes only a runtime map's tiles"),
+            )
+            .hint("Mark the map's index runtime = true for tiles the game makes each run; the project's maps change with edit.tiles or in the editor."));
+        }
+        let li = m.layer(layer)?;
+        m.set(
+            li,
+            argus_tiles::Rect::new(rect[0], rect[1], rect[2], rect[3]),
+            cells,
+        )
+    }
 }
 
 /// Scripts' path queries (`q:path` and the rest, phase 3 item 2), answered

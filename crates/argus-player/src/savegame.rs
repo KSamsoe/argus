@@ -8,8 +8,9 @@
 //! scene, seed, code, clock, tick, time, name, saved_at); then the keyframe
 //! as a replay file holds one (the world as `World::encode_state` writes
 //! it, with each component's schema version; the sim state; the particle
-//! pools; the rooms), without the input state: a loaded game hears the
-//! player's hands now, not the ones that saved it.
+//! pools; the rooms; from version 3 the runtime maps' cells), without the
+//! input state: a loaded game hears the player's hands now, not the ones
+//! that saved it.
 //!
 //! A save must survive code changes. Its world is read field by field, by
 //! name, and components saved at an older version go through the
@@ -26,7 +27,7 @@ use argus_sim::{SimSnapshot, SimState};
 use serde_json::Value as Json;
 
 const TAG: &[u8; 4] = b"ARGS";
-const VERSION: u32 = 2;
+const VERSION: u32 = 3;
 
 /// A save file's bytes: `meta` (the identity) and the keyframe `k`.
 pub fn encode(meta: &Json, k: &Keyframe) -> Vec<u8> {
@@ -41,6 +42,7 @@ pub fn encode(meta: &Json, k: &Keyframe) -> Vec<u8> {
     ParticleStore::encode_pools(&k.pools, &mut pools);
     w.bytes(&pools.into_bytes());
     w.opt(k.rooms.as_ref(), |w, r| r.encode(w));
+    argus_tiles::encode_cells(&k.tiles, &mut w);
     w.into_bytes()
 }
 
@@ -58,6 +60,7 @@ pub struct SaveFile {
     sim: SimState,
     pools: Vec<u8>,
     rooms: Option<StreamState>,
+    tiles: argus_tiles::RuntimeCells,
 }
 
 /// A save read into a live world.
@@ -83,6 +86,12 @@ pub fn decode(bytes: &[u8]) -> Result<SaveFile> {
     let pools = r.bytes()?.to_vec();
     // Rooms remember what happened in them from version 2 (phase 3 item 6).
     let rooms = r.opt(|r| StreamState::decode_as(r, version >= 2))?;
+    // Runtime maps' cells from version 3 (phase 5 item 4).
+    let tiles = if version >= 3 {
+        argus_tiles::decode_cells(&mut r)?
+    } else {
+        Vec::new()
+    };
     if r.remaining() != 0 {
         return Err(r.bad(format!("{} bytes after the end", r.remaining())));
     }
@@ -94,6 +103,7 @@ pub fn decode(bytes: &[u8]) -> Result<SaveFile> {
         sim,
         pools,
         rooms,
+        tiles,
     })
 }
 
@@ -149,6 +159,7 @@ impl SaveFile {
             self.rooms.clone(),
             // A loaded game starts afresh: what touches is met again.
             Vec::new(),
+            self.tiles.clone(),
         );
         Ok(Loaded {
             keyframe,

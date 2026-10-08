@@ -166,14 +166,14 @@ pub const TOOLS: &[ToolDoc] = &[
     },
     ToolDoc {
         name: "edit",
-        doc: "Change the game's authored state (its files) in one transaction by an author with a note, so the change feed says who and why and undo takes it back. ops run in order and all are kept or none: each is {op: set|add|remove|spawn|despawn|tiles|text|def|def_row|asset, ...} with that edit method's parameters, e.g. {op: \"set\", entity: \"@player\", path: \"CharacterController.jump_height\", value: 3.4}, or {op: \"asset\", asset: \"anim/hero\", path: \"states.run.fps\", value: 10} for an animator's clip rate. undo: take back the author's last transaction instead.",
+        doc: "Change the game's authored state (its files) in one transaction by an author with a note, so the change feed says who and why and undo takes it back. ops run in order and all are kept or none: each is {op: set|add|remove|spawn|despawn|tiles|text|def|def_row|asset|prefab, ...} with that edit method's parameters, e.g. {op: \"set\", entity: \"@player\", path: \"CharacterController.jump_height\", value: 3.4}, or {op: \"asset\", asset: \"anim/hero\", path: \"states.run.fps\", value: 10} for an animator's clip rate. undo: take back the author's last transaction instead.",
         params: &[
-            opt("ops", ARRAY, "one of ops, undo; [{op, ...}]: set {entity, path, value}, add {entity, component}, remove {entity, component}, spawn {id, room, prefab, tags, components}, despawn {entity}, tiles {file, layer, rect, cells | tile | terrain | erase}, text {lang, key, text} (a string in strings/<lang>.toml; text null removes it), def {def, path, value} (a def table row's field), def_row {def, fields | remove} (a whole row: a timeline's cue), asset {asset, path, value | remove} (a value in an asset's sidecar)"),
+            opt("ops", ARRAY, "one of ops, undo; [{op, ...}]: set {entity, path, value}, add {entity, component}, remove {entity, component}, spawn {id, room, prefab, tags, components}, despawn {entity}, tiles {file, layer, rect, cells | tile | terrain | erase}, text {lang, key, text} (a string in strings/<lang>.toml; text null removes it), def {def, path, value} (a def table row's field), def_row {def, fields | remove} (a whole row: a timeline's cue), asset {asset, path, value | remove} (a value in an asset's sidecar), prefab {prefab, path, value | remove, child} (a prefab's field: every entity made from it changes, and the feed lists them)"),
             opt("undo", BOOLEAN, "one of ops, undo; undo the author's last transaction"),
             opt("note", STRING, "why, for the change feed"),
             opt("author", STRING, "default \"agent:claude\""),
         ],
-        calls: &["edit.begin", "edit.set", "edit.add", "edit.remove", "edit.spawn", "edit.despawn", "edit.tiles", "edit.text", "edit.def", "edit.def_row", "edit.asset", "edit.commit", "edit.abort", "edit.undo"],
+        calls: &["edit.begin", "edit.set", "edit.add", "edit.remove", "edit.spawn", "edit.despawn", "edit.tiles", "edit.text", "edit.def", "edit.def_row", "edit.asset", "edit.prefab", "edit.commit", "edit.abort", "edit.undo"],
     },
     ToolDoc {
         name: "run",
@@ -626,9 +626,9 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "asset.list",
-        doc: "Every asset under assets/: sprites (a PNG, or a sidecar describing a shape), sounds (a WAV, or a sidecar naming variations), animators (a sidecar with type = \"animator\": states, transitions, events by frame), particle effects (type = \"emitter\"), materials (a .wgsl shader, with a sidecar of typed parameters), and fonts (a .ttf or .otf, baked into a distance-field atlas of the glyphs text needs; a sidecar may set size, spread, and chars), with the warnings the importer found. A name is the path without the extension; sprites/hero is assets/sprites/hero.png with assets/sprites/hero.toml beside it. For an animator the frames and clips columns are its state count and names; for an emitter its pool size and sprite; for a material its parameter count and names; for a font its glyphs baked. kind = \"material\" also lists the engine's material library (unlit, lit, palette, dissolve, outline, sdf_text), source builtin:<name>, unless a project asset of the same name shadows one.",
+        doc: "Every asset under assets/: sprites (a PNG, an Aseprite file, a Tiled tileset .tsx or .tsj, or a sidecar describing a shape), tilemaps (a Tiled map, .tmx or .tmj; its embedded tilesets are sprites named <map file>/<tileset name>, maps/level1.tmx/terrain), sounds (a WAV, or a sidecar naming variations), animators (a sidecar with type = \"animator\": states, transitions, events by frame), particle effects (type = \"emitter\"), materials (a .wgsl shader, with a sidecar of typed parameters), and fonts (a .ttf or .otf, baked into a distance-field atlas of the glyphs text needs; a sidecar may set size, spread, and chars), with the warnings the importer found. A name is the path without the extension; sprites/hero is assets/sprites/hero.png with assets/sprites/hero.toml beside it. For an animator the frames and clips columns are its state count and names; for an emitter its pool size and sprite; for a material its parameter count and names; for a font its glyphs baked; for a tilemap the engine layers it becomes. kind = \"material\" also lists the engine's material library (unlit, lit, palette, dissolve, outline, sdf_text), source builtin:<name>, unless a project asset of the same name shadows one.",
         params: &[
-            opt("kind", STRING, "\"sprite\" | \"sound\" | \"animator\" | \"emitter\" | \"material\" | \"font\"; optional"),
+            opt("kind", STRING, "\"sprite\" | \"sound\" | \"animator\" | \"emitter\" | \"material\" | \"font\" | \"tilemap\"; optional"),
             opt("limit", INTEGER, "rows per page"),
             opt("cursor", STRING, "the next page, from a previous answer's cursor"),
         ],
@@ -636,7 +636,7 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "asset.get",
-        doc: "One asset as imported: frames with rects, pivots, durations, and properties; clips; the cached texture; a sound's bus, gain, and files with rate, channels, length, and peak; an animator's states; an emitter's rate, burst, and pool; a material's shader, blend, and parameters (type, default, range, from, doc); a font's family, size and spread in atlas pixels, glyphs baked, atlas size, and characters it lacks; every warning with file:line. A library material (unlit, lit, palette, dissolve, outline, sdf_text) answers too, with builtin: true.",
+        doc: "One asset as imported: frames with rects, pivots, durations, and properties; clips; the cached texture; for a sprite drawn from an Aseprite file, under aseprite, its canvas, layers (name, path, kind, visible, opacity, blend, used), tags (name, from, to, direction, repeat), and slices (name, keys with bounds, center, pivot), so a sidecar can pick layers (layers = [\"body\"]) or change a tag's clip ([clips.<tag>] fps = 12) without opening Aseprite; a sound's bus, gain, and files with rate, channels, length, and peak; an animator's states; an emitter's rate, burst, and pool; a material's shader, blend, and parameters (type, default, range, from, doc); a font's family, size and spread in atlas pixels, glyphs baked, atlas size, and characters it lacks; for a Tiled map (kind tilemap), its tilesets (name, firstgid, tiles, the sprite asset), its Tiled layers and the engine layers they became (name, kind, tileset, collision, z, visible), and its object layers' objects (name, class, shape, pos and size in world units from the map's top-left corner with y up, properties), which are data for the game, not entities; every warning with file:line. A library material (unlit, lit, palette, dissolve, outline, sdf_text) answers too, with builtin: true.",
         params: &[
             req("name", STRING, ""),
         ],
@@ -683,6 +683,19 @@ pub const METHODS: &[MethodDoc] = &[
         returns: "{queued}",
     },
     MethodDoc {
+        name: "edit.prefab",
+        doc: "Queue a change to one field of a prefab (phase 5 item 4, section 3: \"changing a prefab is a transaction like any other\"): the field in the prefab's file, or in a child it declares, written with the file's comments kept, or with remove taken out so the base's or the default shows. At commit every instance in the scene is resolved again and what the change changed is written to the live ones, a running game keeping the rest of their state; each instance is in the commit's touched, so the feed says how many the change touched (world.prefabs counts them in every scene). An instance that overrides the field keeps its own. Undo puts back the file's exact text. Locks: an author's lock on prefab:<path> refuses others.",
+        params: &[
+            req("tx", INTEGER, "the transaction, from edit.begin"),
+            req("prefab", STRING, "the prefab's path: enemy/bat, door/base"),
+            req("path", STRING, "Component.field: Health.max"),
+            opt("value", ANY, "one of value, remove"),
+            opt("remove", BOOLEAN, "one of value, remove: take the field out of the prefab"),
+            opt("child", STRING, "a child the prefab declares: light"),
+        ],
+        returns: "{queued}",
+    },
+    MethodDoc {
         name: "asset.move",
         doc: "Rename a prefab, entity file, def row, or asset and rewrite every reference to it; appends to .argus/moves.log. The only sanctioned way to rename.",
         params: &[
@@ -701,7 +714,7 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "scene.tiles.get",
-        doc: "A rectangle of cells from a tilemap (*.tilemap.toml) or a phase-0 bulk index (*.map.toml), without reading the chunks yourself. Tile ids: 0 is empty, n is frame n - 1 of the layer's tileset.",
+        doc: "A rectangle of cells from a tilemap (*.tilemap.toml, or a Tiled map .tmx or .tmj) or a phase-0 bulk index (*.map.toml), without reading the chunks yourself. Tile ids: 0 is empty, n is frame n - 1 of the layer's tileset.",
         params: &[
             req("file", STRING, "project-relative *.map.toml"),
             opt("layer", STRING, ""),
@@ -725,11 +738,11 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "scene.tiles.info",
-        doc: "A tilemap's index: size, tile size, layers with their tileset and its terrains, chunks on disk and in memory.",
+        doc: "A tilemap's index: size, tile size, layers with their tileset and its terrains, chunks on disk and in memory. A Tiled map (.tmx, .tmj) is read into this form in memory, read-only: each layer says whether Tiled shows it (visible; a hidden collision layer still collides), and tiled holds what the file says (tilesets, Tiled's layers, object layers) and what did not carry over.",
         params: &[
             req("file", STRING, ""),
         ],
-        returns: "{file, width, height, tile_size, chunk, cell, hash, layers: [{name, tileset, z, collision, terrains, tileset_found}], chunks, loaded}",
+        returns: "{file, width, height, tile_size, chunk, cell, hash, layers: [{name, tileset, z, collision, visible, terrains, tileset_found}], chunks, loaded, tiled?: {map, read_only, warnings}}",
     },
     MethodDoc {
         name: "scene.tiles.list",
@@ -748,7 +761,7 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "edit.tiles",
-        doc: "Queue a tile edit in a transaction: cells (row-major ids), one tile to fill the rect, a terrain to paint and auto-tile, or erase. Applied at commit, saved to the changed chunks only, undoable per author, in the change feed.",
+        doc: "Queue a tile edit in a transaction: cells (row-major ids), one tile to fill the rect, a terrain to paint and auto-tile, or erase. Applied at commit, saved to the changed chunks only, undoable per author, in the change feed. A Tiled map (.tmx, .tmj) is refused: it is Tiled's to edit, and the engine reads it again when Tiled saves it.",
         params: &[
             req("tx", INTEGER, "the transaction, from edit.begin"),
             req("file", STRING, ""),
@@ -898,6 +911,7 @@ pub const METHODS: &[MethodDoc] = &[
             opt("paths", ARRAY, "[\"Component\" | \"Component.field\"]; optional"),
             opt("assets", ARRAY, "[asset name]: its sidecar, whole (edit.asset); optional"),
             opt("defs", ARRAY, "[prefix:key]: a def row, whole (edit.def, a tuning session's commit); optional"),
+            opt("prefabs", ARRAY, "[prefab path]: a prefab, whole or by paths (edit.prefab); optional"),
         ],
         returns: "{lock}",
     },

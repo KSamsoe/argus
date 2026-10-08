@@ -358,12 +358,13 @@ fn transaction(c: &mut dyn Caller, args: &Json, tool: &str) -> Result<Json, Json
         // animator's edit (item 8) are lines of this tool in the feed.
         if ![
             "set", "add", "remove", "spawn", "despawn", "tiles", "text", "def", "def_row", "asset",
+            "prefab",
         ]
         .contains(&kind)
         {
             let _ = c.call("edit.abort", json!({ "tx": tx }));
             return Err(bad(format!(
-                "op {i} has op {kind:?}: set, add, remove, spawn, despawn, tiles, text, def, def_row, or asset"
+                "op {i} has op {kind:?}: set, add, remove, spawn, despawn, tiles, text, def, def_row, asset, or prefab"
             )));
         }
         let mut p = op.as_object().cloned().unwrap_or_default();

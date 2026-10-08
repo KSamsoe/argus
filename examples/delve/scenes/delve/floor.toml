@@ -1,11 +1,19 @@
 [Floor]
-w = 40
-h = 20
 
-# The floor as a navigation grid (phase 3 item 2): a cell's centre is its
-# (x, y), everything blocked but the cells a floor tile opens (NavCost 1).
+# The floor's cells (phase 5 item 4): a runtime map, painted by sim.floor
+# from the seed. The Transform is the top-left corner of cell (0, 0), put
+# so that cell (x, row) is centred on world (x, 19 - row): the map is 20
+# rows, rows go down and world y goes up, and everything on the floor
+# stands on whole numbers. The semantic frame lists the map's rows (# a
+# wall, . open), top row first, as the screen shows them.
+[Transform]
+pos = [-0.5, 19.5]
+
+[Tilemap]
+map = "maps/floor.tilemap.toml"
+
+# The floor as a navigation grid (phase 3 item 2), cell for cell over the
+# map: a wall is blocked, the rest open (fill 1). The hero's flow field,
+# which the monsters walk down, is found on it.
 [NavGrid]
-origin = [-0.5, -0.5]
-width = 40
-height = 20
-fill = 0
+tilemap = "@floor"

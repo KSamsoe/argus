@@ -131,7 +131,12 @@ impl MapStore {
         let i = self.slot(file);
         let e = &self.entries[i];
         if e.map.is_none() || e.mtime != now {
-            match MapFile::open(&self.root, file) {
+            let read = if crate::tiled::is_tiled(file) {
+                crate::tiled::open(&self.root, file)
+            } else {
+                MapFile::open(&self.root, file)
+            };
+            match read {
                 Ok(m) => {
                     let e = &mut self.entries[i];
                     e.map = Some(m);
@@ -289,4 +294,101 @@ impl MapStore {
         }
         out
     }
+
+    /// The cells of every open runtime map (phase 5 item 4), by file: what
+    /// a keyframe, a replay, and a save keep of them.
+    pub fn runtime_cells(&self) -> RuntimeCells {
+        let mut out: RuntimeCells = Vec::new();
+        for (file, &i) in &self.by_file {
+            let Some(m) = self.entries[i].map.as_ref().filter(|m| m.index.runtime) else {
+                continue;
+            };
+            let cells = m
+                .cells()
+                .into_iter()
+                .map(|((li, cx, cy), d)| (m.index.layers[li].name.clone(), cx, cy, d))
+                .collect();
+            out.push((file.clone(), cells));
+        }
+        out.sort_by(|a, b| a.0.cmp(&b.0));
+        out
+    }
+
+    /// Put runtime maps' cells back as [`MapStore::runtime_cells`] gave them
+    /// (a seek, a load): every open runtime map gets its own, or none.
+    pub fn set_runtime_cells(&mut self, cells: &RuntimeCells) {
+        for (file, _) in cells {
+            let _ = self.open(file);
+        }
+        for (file, &i) in &self.by_file {
+            let Some(m) = self.entries[i].map.as_mut().filter(|m| m.index.runtime) else {
+                continue;
+            };
+            let chunks: crate::map::Chunks = cells
+                .iter()
+                .find(|(f, _)| f == file)
+                .map(|(_, c)| {
+                    c.iter()
+                        .filter_map(|(name, cx, cy, d)| {
+                            m.layer(name).ok().map(|li| ((li, *cx, *cy), d.clone()))
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            m.set_cells(&chunks);
+        }
+    }
+}
+
+/// Runtime maps' cells: by map file, each chunk by layer name, chunk
+/// column, chunk row, and its bytes.
+pub type RuntimeCells = Vec<(String, Vec<(String, u32, u32, Vec<u8>)>)>;
+
+/// Write [`RuntimeCells`] (a keyframe's, a save's).
+pub fn encode_cells(cells: &RuntimeCells, w: &mut argus_ecs::codec::Writer) {
+    w.count(cells.len());
+    for (file, chunks) in cells {
+        w.str(file);
+        w.count(chunks.len());
+        for (layer, cx, cy, d) in chunks {
+            w.str(layer);
+            w.u64(u64::from(*cx));
+            w.u64(u64::from(*cy));
+            w.bytes(d);
+        }
+    }
+}
+
+/// A digest of runtime maps' cells, or `None` when none holds a tile: a
+/// game without them digests as it always did. Part of a run's digest
+/// (`argus_player::run_digest`, phase 5 item 4).
+pub fn cells_digest(cells: &RuntimeCells) -> Option<u64> {
+    let held: RuntimeCells = cells
+        .iter()
+        .filter(|(_, c)| !c.is_empty())
+        .cloned()
+        .collect();
+    if held.is_empty() {
+        return None;
+    }
+    let mut w = argus_ecs::codec::Writer::new();
+    encode_cells(&held, &mut w);
+    Some(crate::map::fnv1a64(&w.into_bytes()))
+}
+
+/// Read what [`encode_cells`] wrote.
+pub fn decode_cells(r: &mut argus_ecs::codec::Reader) -> Result<RuntimeCells> {
+    let mut out = Vec::new();
+    for _ in 0..r.count()? {
+        let file = r.str()?;
+        let mut chunks = Vec::new();
+        for _ in 0..r.count()? {
+            let layer = r.str()?;
+            let cx = r.u64()? as u32;
+            let cy = r.u64()? as u32;
+            chunks.push((layer, cx, cy, r.bytes()?.to_vec()));
+        }
+        out.push((file, chunks));
+    }
+    Ok(out)
 }

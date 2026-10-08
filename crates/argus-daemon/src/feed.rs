@@ -100,6 +100,7 @@ pub const TX_PARTS: &[&str] = &[
     "edit.def",
     "edit.asset",
     "edit.def_row",
+    "edit.prefab",
     "edit.abort",
 ];
 

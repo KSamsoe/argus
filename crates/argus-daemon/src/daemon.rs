@@ -589,7 +589,7 @@ impl Daemon {
             "scene.tiles.collision" => self.tiles_collision(params),
             "scene.tiles.list" => self.tiles_list(),
             "edit.set" | "edit.add" | "edit.remove" | "edit.spawn" | "edit.despawn"
-            | "edit.def" | "edit.asset" | "edit.def_row" => {
+            | "edit.def" | "edit.asset" | "edit.def_row" | "edit.prefab" => {
                 self.edit_queue(method, params)
             }
             "edit.commit" => {
@@ -746,7 +746,7 @@ impl Daemon {
                 // The world's digest: two worlds with the same one are the
                 // same world (the phase 4 gate compares a feed's replay).
                 if json::bool_param(params, "digest", false)? {
-                    s["digest"] = json!(format!("{:016x}", self.world.digest()));
+                    s["digest"] = json!(format!("{:016x}", self.run_digest()));
                 }
                 Ok(s)
             }
@@ -1467,6 +1467,7 @@ impl Daemon {
             particles: particles.clone(),
             scene: Some(scene.clone()),
             contacts: contacts.clone(),
+            tiles: Some(tiles.clone()),
         };
         self.session = Some(Session {
             ring: Rc::new(RefCell::new(crate::ring::Ring::new(
@@ -1925,6 +1926,14 @@ impl Daemon {
                     e.sidecar.clone().unwrap_or_default(),
                     fx.max,
                     fx.sprite.iter().collect::<Vec<_>>(),
+                    e.warnings.len()
+                ]),
+                argus_assets::Asset::Map(m) => json!([
+                    e.name,
+                    "tilemap",
+                    m.file,
+                    m.layers.len(),
+                    m.layers,
                     e.warnings.len()
                 ]),
                 argus_assets::Asset::Sound(so) => json!([
@@ -2615,26 +2624,43 @@ impl Daemon {
     }
 
     fn tiles_info(&mut self, file: &str) -> Result<Json> {
-        let (index, chunks, loaded) =
-            self.with_map(file, |m| Ok((m.index.clone(), m.chunk_count(), m.loaded())))?;
+        let (index, chunks, loaded, tiled) = self.with_map(file, |m| {
+            Ok((
+                m.index.clone(),
+                m.chunk_count(),
+                m.loaded(),
+                m.tiled().cloned(),
+            ))
+        })?;
         let ses = self.session.as_ref().expect("session");
         let layers: Vec<Json> = index
             .layers
             .iter()
-            .map(|l| {
+            .enumerate()
+            .map(|(i, l)| {
                 let ts = l.tileset.as_deref().and_then(|n| ses.assets.sprites().find(|(k, _)| *k == n).map(|(_, s)| s));
                 json!({
                     "name": l.name,
                     "tileset": l.tileset,
                     "z": l.z,
                     "collision": l.collision,
+                    "visible": tiled.as_ref().and_then(|t| t.visible.get(i).copied()).unwrap_or(true),
                     "tileset_found": l.tileset.is_none() || ts.is_some(),
                     "tiles": ts.map(|s| s.frames.len()),
                     "terrains": ts.map(|s| s.autotile.keys().cloned().collect::<Vec<_>>()).unwrap_or_default(),
                 })
             })
             .collect();
-        Ok(json!({
+        // A Tiled map (phase 5 item 4): what its file holds, and that it is
+        // Tiled's to edit.
+        let tiled = tiled.map(|t| {
+            json!({
+                "map": t.info,
+                "read_only": "This map is Tiled's: edit it in Tiled; the engine reads it again when it is saved.",
+                "warnings": t.warnings.iter().map(|(m, at)| json!({ "message": m, "at": at })).collect::<Vec<_>>(),
+            })
+        });
+        let mut out = json!({
             "file": file,
             "width": index.width,
             "height": index.height,
@@ -2645,7 +2671,11 @@ impl Daemon {
             "layers": layers,
             "chunks": chunks,
             "loaded": loaded,
-        }))
+        });
+        if let Some(t) = tiled {
+            out["tiled"] = t;
+        }
+        Ok(out)
     }
 
     fn tiles_collision(&mut self, params: &Json) -> Result<Json> {
@@ -2682,6 +2712,9 @@ impl Daemon {
     fn edit_tiles(&mut self, params: &Json) -> Result<Json> {
         let tx = json::u64_param(params, "tx", 0)? as u32;
         let file = json::str_param(params, "file")?.to_string();
+        if argus_tiles::tiled::is_tiled(&file) {
+            return Err(argus_tiles::tiled::read_only(&file));
+        }
         let layer = json::str_param(params, "layer")?.to_string();
         let r = rect_param(params)?;
         let rect = [r.x, r.y, r.w, r.h];
@@ -2755,6 +2788,19 @@ impl Daemon {
         };
         let r = argus_tiles::Rect::new(rect[0], rect[1], rect[2], rect[3]);
         let (li, w, h, tileset) = self.with_map(&file, |m| {
+            // A runtime map's tiles are the run's (phase 5 item 4): refused
+            // before a cell is written, not when the save would fail.
+            if m.index.runtime {
+                return Err(ArgusError::new(
+                    codes::BAD_PARAMS,
+                    format!("{file}: a runtime map's tiles are the run's, written by the game's scripts; an edit cannot keep them"),
+                )
+                .hint("Its layers, tileset, and size are its index's to change; its cells are made each run (q:tiles)."));
+            }
+            // A Tiled map is Tiled's (phase 5 item 4): refused the same way.
+            if m.tiled().is_some() {
+                return Err(argus_tiles::tiled::read_only(&file));
+            }
             let li = m.layer(&layer)?;
             Ok((
                 li,
@@ -2946,6 +2992,34 @@ impl Daemon {
                 let (_, _, text) = self.sidecar_of(&asset)?;
                 crate::daemon::sidecar::edit_text(&text, &path, value.as_ref())?;
                 Op::Asset { asset, path, value }
+            }
+            "edit.prefab" => {
+                let prefab = json::str_param(params, "prefab")?.to_string();
+                let child = json::opt_str(params, "child")?.unwrap_or("").to_string();
+                let path = json::str_param(params, "path")?.to_string();
+                let value = if json::bool_param(params, "remove", false)? {
+                    None
+                } else {
+                    Some(params.get("value").cloned().ok_or_else(|| {
+                        bad_params("give value, or remove: true")
+                            .hint("edit.prefab {tx, prefab, path, value}")
+                    })?)
+                };
+                // Checked now, so a prefab or a field there is not is refused
+                // when queued, not at commit.
+                let ses = self.require_session()?;
+                if ses.project.prefabs.get(&prefab).is_none() {
+                    return Err(bad_params(format!("there is no prefab {prefab:?}")).hint(
+                        "world.prefabs lists the prefabs; a prefab is a file under prefabs/.",
+                    ));
+                }
+                self.world.registry().resolve_path(&path)?;
+                Op::Prefab {
+                    prefab,
+                    child,
+                    path,
+                    value,
+                }
             }
             _ => Op::Despawn {
                 entity: json::str_param(params, "entity")?.to_string(),
@@ -3142,6 +3216,82 @@ impl Daemon {
         Ok(row)
     }
 
+    /// Apply an `edit.prefab` op (or its inverse, the file as it was):
+    /// the prefab's file, then every instance in the scene resolved again,
+    /// what changed written to the live ones, each one touched (§3: "the
+    /// change feed reports how many entities the change touched").
+    fn apply_prefab(
+        &mut self,
+        author: &str,
+        op: &Op,
+        touched: &mut BTreeSet<String>,
+        files: &mut BTreeSet<String>,
+    ) -> Result<Option<Op>> {
+        let registry = self.world.registry().clone();
+        if let Op::Prefab { prefab, path, .. } = op {
+            self.edits
+                .check_lock(author, &format!("prefab:{prefab}"), path)?;
+        }
+        let file_value = match op {
+            Op::Prefab {
+                path,
+                value: Some(v),
+                ..
+            } => {
+                let (_, fs) = registry.resolve_path(path)?;
+                Some(match fs.ty {
+                    // A file names an entity as its "@id".
+                    argus_ecs::FieldType::Entity => {
+                        Value::Str(v.as_str().unwrap_or("").to_string())
+                    }
+                    _ => json::from_json(&self.world, v, fs.ty)?,
+                })
+            }
+            _ => None,
+        };
+        let ses = self.session.as_mut().expect("session");
+        let (prefab, old) = match op {
+            Op::Prefab {
+                prefab,
+                child,
+                path,
+                ..
+            } => {
+                let old = ses.project.prefabs.set_field(
+                    &registry,
+                    prefab,
+                    child,
+                    path,
+                    file_value.as_ref(),
+                )?;
+                (prefab.clone(), old)
+            }
+            Op::PrefabText { prefab, text } => {
+                let file = ses
+                    .project
+                    .prefabs
+                    .get(prefab)
+                    .map(|p| ses.project.root.join(&p.file));
+                let old = file
+                    .and_then(|f| std::fs::read_to_string(f).ok())
+                    .unwrap_or_default();
+                ses.project.prefabs.put_text(prefab, text)?;
+                (prefab.clone(), old)
+            }
+            _ => return Ok(None),
+        };
+        if let Some(p) = ses.project.prefabs.get(&prefab) {
+            files.insert(p.file.clone());
+        }
+        let ids = ses
+            .scene
+            .borrow_mut()
+            .reapply_prefab(&ses.project, &mut self.world, &prefab)?;
+        touched.extend(ids.into_iter().map(|id| format!("@{id}")));
+        touched.insert(format!("prefab:{prefab}"));
+        Ok(Some(Op::PrefabText { prefab, text: old }))
+    }
+
     /// Apply one op; returns its inverse.
     fn apply_op(
         &mut self,
@@ -3155,6 +3305,9 @@ impl Daemon {
             Op::Text { .. } => self.apply_text(op, touched, files),
             Op::Def { .. } => self.apply_def(author, op, touched, files),
             Op::Asset { .. } | Op::AssetText { .. } => self.apply_asset(author, op, touched, files),
+            Op::Prefab { .. } | Op::PrefabText { .. } => {
+                self.apply_prefab(author, op, touched, files)
+            }
             Op::DefRow { .. } | Op::DefText { .. } => {
                 self.apply_def_row(author, op, touched, files)
             }
@@ -3577,6 +3730,16 @@ impl Daemon {
                 );
             }
             entities.push(r);
+        }
+        // A prefab, whole (phase 5 item 4).
+        for p in json::str_list(params, "prefabs")? {
+            if ses.project.prefabs.get(&p).is_none() {
+                return Err(
+                    ArgusError::new(codes::BAD_PARAMS, format!("no prefab {p:?}"))
+                        .hint("world.prefabs lists the prefabs."),
+                );
+            }
+            entities.push(format!("prefab:{p}"));
         }
         let paths = json::str_list(params, "paths")?;
         for p in &paths {
@@ -4168,6 +4331,17 @@ impl Daemon {
     /// Replay from the keyframe before the one a seek to `target` starts
     /// from into that one, and compare the two worlds: a replay that does
     /// not reproduce the run shows here as fields that differ.
+    /// The run's digest: the world's, with the runtime maps' cells when any
+    /// holds a tile (phase 5 item 4).
+    pub(super) fn run_digest(&self) -> u64 {
+        let cells = self
+            .session
+            .as_ref()
+            .map(|s| s.tiles.borrow().runtime_cells())
+            .unwrap_or_default();
+        argus_player::keyframe::run_digest(&self.world, &cells)
+    }
+
     fn verify_keyframe(
         &mut self,
         ring: &Rc<RefCell<crate::ring::Ring>>,
@@ -4187,8 +4361,13 @@ impl Daemon {
                     json!({ "ok": null, "why": "a change between ticks made that keyframe; a replay does not cross one" }),
                 );
             }
-            (earlier.tick, later.sim.world.clone(), later.tick)
+            (
+                earlier.tick,
+                (later.sim.world.clone(), later.tiles.clone()),
+                later.tick,
+            )
         };
+        let (later_world, later_cells) = later_world;
         {
             let r = ring.borrow();
             let k = r.at_or_before(earlier).expect("just found");
@@ -4206,9 +4385,19 @@ impl Daemon {
         let _ = self.world.drain_events();
         let then = later_world.into_world();
         let d = crate::history::diff(&then, &self.world);
-        let ok = d.appeared.is_empty() && d.vanished.is_empty() && d.changed.is_empty();
+        // The runtime maps' cells too (phase 5 item 4): outside the world.
+        let now_cells = sources
+            .tiles
+            .as_ref()
+            .map(|t| t.borrow().runtime_cells())
+            .unwrap_or_default();
+        let tiles_same =
+            argus_tiles::cells_digest(&now_cells) == argus_tiles::cells_digest(&later_cells);
+        let ok =
+            d.appeared.is_empty() && d.vanished.is_empty() && d.changed.is_empty() && tiles_same;
         Ok(json!({
             "ok": ok,
+            "tiles_same": tiles_same,
             "from": earlier,
             "to": later_tick,
             "appeared": d.appeared.len(),
