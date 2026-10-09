@@ -21,7 +21,10 @@ ssh -o BatchMode=yes "$HOST" 'rm -rf ~/argus-play/site.new'
 scp -q -o BatchMode=yes -r "$SITE" "$HOST:argus-play/site.new"
 ssh -o BatchMode=yes "$HOST" 'cd ~/argus-play && rm -rf site.old && mv site site.old && mv site.new site && rm -rf site.old && cat site/data/packs.json && echo'
 SERVER="$(dirname "$0")/serve.mjs"
-if [ "$(ssh -o BatchMode=yes "$HOST" 'sha256sum < ~/argus-play/serve.mjs')" != "$(sha256sum < "$SERVER")" ]; then
+# The hashes alone: Git Bash marks its own output "*-" where Linux has " -",
+# so whole lines never matched and every deploy restarted the server
+# (found at the phase 5 gate).
+if [ "$(ssh -o BatchMode=yes "$HOST" 'sha256sum < ~/argus-play/serve.mjs' | cut -d' ' -f1)" != "$(sha256sum < "$SERVER" | cut -d' ' -f1)" ]; then
   scp -q -o BatchMode=yes "$SERVER" "$HOST:argus-play/serve.mjs.new"
   ssh -o BatchMode=yes "$HOST" 'cd ~/argus-play && mv serve.mjs.new serve.mjs && systemctl --user restart argus-play && echo "the server changed: copied and restarted"'
 fi
