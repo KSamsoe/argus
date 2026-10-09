@@ -400,7 +400,16 @@ fn test_command(
 ) -> i32 {
     let mut name: Vec<String> = words.to_vec();
     name.extend(inv.args.iter().filter(|a| !a.contains('=')).cloned());
-    let mut params = json!({});
+    // --params first, the flags and words on top, as for every method
+    // (found at the phase 5 gate: `argus test --params '{"set": [...]}'`
+    // dropped `set` without a word, and ran the scenario untouched).
+    let mut params = match params::build("test.run", &[], &inv.params_json) {
+        Ok(p) => p,
+        Err(e) => {
+            let _ = writeln!(err, "argus: {e}");
+            return EXIT_USAGE;
+        }
+    };
     if !name.is_empty() {
         params["name"] = json!(name.join(" "));
     }

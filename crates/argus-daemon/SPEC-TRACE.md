@@ -419,6 +419,14 @@ Phase 0 item 4, "JSON-RPC daemon with session, world, edit, sim (play, pause, st
 | (§5) "... over TLS." | Partial (decided with Kevin, 2026-10-08) | The listener binds only to this machine or its tailnet (100.64.0.0/10, fd7a:115c:a1e0::/48), which Tailscale encrypts; any other address is refused at start, with the reason. A `Host` header that is not the listener's is refused (DNS rebinding), and so is a WebSocket from another origin. TLS for other networks is not built. | the `web` unit tests (addresses, hosts, scopes) |
 | (§19 open) "Review requests over a phone during a couch playtest: worth a small web client early, or does that wait for the browser editor?" | Done: worth it, and built | The page lists the waiting requests with their clips; a tap answers, recorded as the token's label's. | `tools/web/editor-check.mjs` (390 x 844 with touch: `answered_by` is `web:check`) |
 
+## The phase 5 gate: what the agents could not find
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§16) Docs say what the methods give. | Done | `obs.frame` names `ui` (a HUD made of UI nodes is there, not in `hud`); `input.bind` lists keyboard names and says they are open-ended; `input.device` says a press and release with no tick between is never seen; `token.revoke` and the web notifications as in item 10. | the gate's Delve trial |
+| (§8) `obs.events {entity}` and `obs.trace` for a gone entity. | Done | `obs.events` finds a gone entity's events by the handle it had (it refused it as not alive); `obs.trace` says when a gone entity was never traced, and how to trace one while it lives. | the gate's Swarm trial |
+| (§17) Swarm's stress tick under 6 ms. | Done | Measured also with the swarm on the hero (ticks 1,080 to 1,200), where the run is heaviest: the window before ended before contact and passed at 1.5 ms while the game ran at 12 to 13 ms there. With the music's count capped and `q:within` ordered as it goes, 1.6 ms. | `plugins::perf_swarm_stress_tick_under_6_ms_with_its_chase_in_rust` |
+
 ## Known limitations, stated so they are decisions
 
 - A tuning session's values live in this daemon until its end: a fork made during one, and a mark's or a replay's file, start from the files, without the session's def rows or effects.

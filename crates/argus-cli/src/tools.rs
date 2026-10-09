@@ -255,7 +255,10 @@ pub fn run(c: &mut dyn Caller, name: &str, args: &Json) -> Result<Json, Json> {
             }
             c.call(
                 "obs.events",
-                pick(args, &["name", "entity", "since", "limit"]),
+                pick(
+                    args,
+                    &["name", "entity", "since", "from_frame", "limit", "cursor"],
+                ),
             )
         }
         "test" => c.call(

@@ -32,6 +32,12 @@ Every statement in the design document (v0.3) about Rust plugins (§2, §4, §7,
 | "Rust plugin reload < 2 s after compile. Compile time is the cost; reload itself must not add to it." | Done | `Reloaded::reload_ms`: from the build's end to the world running on the new library. 35 ms for a test plugin; 38 to 43 ms for Swarm's chase in the daemon's release gate, after a one-line change built in 0.34 to 0.40 s (Swarm's plugin keeps `incremental = true` in its release profile). | `plugins::reload_swaps_the_library_and_the_run_continues`; argus-daemon `perf_rust_plugin_reload_under_2_s_after_compile` |
 | (§19 risk) "Rust compile times on the plugin path." | Done (measured) | A plugin is its own small crate depending only on the SDK; the SDK has no dependencies. A cold build of the SDK and Swarm's plugin takes under a second here; cargo's no-op check at a session's open about 30 ms. | the build reports' `ms` |
 
+## The phase 5 gate: what the compiler said
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§7) A plugin's compile error is its file, line, and the compiler's words. | Done | The row carries the primary span's label and rustc's notes after the headline (`mismatched types: expected u32, found &str`), not the headline alone. | `plugins::a_compile_error_is_its_file_and_line_and_the_compilers_words` |
+
 ## Known limitations, stated so they are decisions
 
 - The page cannot load a library: on the web a plugin is an error row and its systems are missing, and `argus build --target web` refuses a game with plugins. Linking a plugin into the wasm build statically is item 10's question.

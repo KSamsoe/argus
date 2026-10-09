@@ -62,6 +62,12 @@ Test: `perf_a_thousand_characters_and_twenty_thousand_contacts` (ignored; `cargo
 |---|---|---|---|
 | (§6) A seek replays the run exactly. | Done | `physics.overlap` measures this tick's pairs against last tick's; those pairs are not the world's, so they are `Contacts`, shared with whatever keeps keyframes (`install_with`), and a keyframe takes and puts them back. Found scrubbing Hollow's outro: from a hero standing in the doorway, a seek back said the doorway was left (`overlap.end`) on the first tick it replayed, and the replay was reported as diverged. A loaded save starts with none: what touches is met again. | Hollow's `tests/outro.luau` (scrubs with `diverged` null); `argus-daemon` `timeline::a_timeline_is_listed_played_and_scrubbed` |
 
+## The phase 5 gate: the controller's behaviour
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§12) The kinematic tier's controller, documented. | Done | CharacterController's doc (in ARGUS.md and `world describe`) says how a jump works: gravity and take-off from jump_height and jump_time, the buffer and coyote time, rising and the cut, dropping through a one-way platform, its events, and that a system between physics.control and physics.move may change this tick's decisions. The gate's Hollow trial learned it with a probe of every tick. | the gate's Hollow trial |
+
 ## Known limitations, stated so they are decisions
 
 - A kinematic body is a box, unrotated and unscaled; circles are overlap-only. A parented collider is placed by its `GlobalTransform` as last propagated, one tick behind a parent that moved this tick; kinematic bodies should not have parents.

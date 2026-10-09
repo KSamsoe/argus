@@ -13,6 +13,7 @@
 #![deny(missing_docs)]
 #![warn(clippy::all)]
 
+pub mod api;
 mod bind;
 mod decl;
 mod migrate;
@@ -256,6 +257,10 @@ pub struct ScriptHost {
     migrations: BTreeMap<String, MigrateDecl>,
     defs: Vec<DefDecl>,
     errors: BTreeMap<String, Vec<ScriptError>>,
+    /// The run order's error after the last reload, when the systems as
+    /// declared cannot be ordered (an `after` naming no system): kept apart
+    /// from the files' errors, since the fix may be in another file.
+    order: Option<ScriptError>,
     budget: Rc<Cell<i64>>,
 }
 
@@ -409,6 +414,7 @@ impl ScriptHost {
             migrations: BTreeMap::new(),
             defs: Vec::new(),
             errors: BTreeMap::new(),
+            order: None,
             budget,
         })
     }
@@ -482,6 +488,23 @@ impl ScriptHost {
                 .map(|r| r.hash != fnv(&src))
                 .unwrap_or(true);
             if changed {
+                self.load_bytes(world, sched, rel, &src);
+                report.reloaded.push(rel.clone());
+            }
+        }
+        // A file that failed because of another (systems reading a
+        // component whose file did not load) is tried again once anything
+        // changed, so fixing the cause clears what followed from it (found
+        // at the phase 5 gate: sixteen systems' errors stayed after their
+        // component's file was fixed, until a scene load).
+        if !report.reloaded.is_empty() {
+            for (rel, path) in &found {
+                if report.reloaded.contains(rel) || !self.errors.contains_key(rel) {
+                    continue;
+                }
+                let src = argus_os::fs::read(path).map_err(|e| {
+                    ArgusError::new(codes::SYNTAX, format!("cannot read {rel}: {e}"))
+                })?;
                 self.load_bytes(world, sched, rel, &src);
                 report.reloaded.push(rel.clone());
             }
@@ -807,9 +830,33 @@ impl ScriptHost {
             });
     }
 
-    /// Every outstanding error, by file (`script.errors`).
+    /// Every outstanding error, by file (`script.errors`), and the run
+    /// order's.
     pub fn errors(&self) -> Vec<&ScriptError> {
-        self.errors.values().flatten().collect()
+        self.errors
+            .values()
+            .flatten()
+            .chain(self.order.iter())
+            .collect()
+    }
+
+    /// What ordering the systems after a reload said: an error stays in
+    /// `script.errors` until a reload orders them (found at the phase 5
+    /// gate: a missing `after` target was in the reload's answer only).
+    pub fn set_order_error(&mut self, e: Option<&ArgusError>) {
+        self.order = e.map(|e| {
+            let at = e.r#ref.clone().unwrap_or_default();
+            let (file, line) = match at.rsplit_once(':') {
+                Some((f, l)) if l.parse::<u32>().is_ok() => (f.to_string(), l.parse().ok()),
+                _ => (at, None),
+            };
+            ScriptError {
+                file,
+                line,
+                message: e.message.clone(),
+                phase: ErrorPhase::Declaration,
+            }
+        });
     }
 
     /// Components declared from script.

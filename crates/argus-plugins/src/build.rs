@@ -277,10 +277,23 @@ fn diagnostic(m: &Json, root: &Path, dir: &Path) -> Option<Diagnostic> {
         .iter()
         .find(|s| s["is_primary"].as_bool() == Some(true))
         .or(spans.first());
-    let message = m["message"].as_str().unwrap_or_default().to_string();
+    let mut message = m["message"].as_str().unwrap_or_default().to_string();
     // "aborting due to N previous errors" has no span: the errors it
     // counts are listed.
     let span = span?;
+    // The headline alone ("mismatched types") loses what rustc said at the
+    // place and after it (found at the phase 5 gate): its label there
+    // ("expected `u32`, found `f32`") and its notes and help.
+    if let Some(label) = span["label"].as_str().filter(|l| !l.is_empty()) {
+        message = format!("{message}: {label}");
+    }
+    for child in m["children"].as_array().into_iter().flatten() {
+        if let (Some(level), Some(text)) = (child["level"].as_str(), child["message"].as_str()) {
+            if !text.is_empty() {
+                message = format!("{message}; {level}: {text}");
+            }
+        }
+    }
     let file = span["file_name"].as_str().unwrap_or_default();
     let path = Path::new(file);
     let abs = if path.is_absolute() {

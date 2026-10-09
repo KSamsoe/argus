@@ -1,0 +1,700 @@
+diff -ruN -x .argus -x ARGUS.md -x '*.png' -x target orig/delve/components/delve.luau gate/delve/components/delve.luau
+--- orig/delve/components/delve.luau	2026-10-09 12:11:49.000000000 -0400
++++ gate/delve/components/delve.luau	2026-10-09 12:23:48.381702300 -0400
+@@ -15,6 +15,8 @@
+   kills = field.u32 { default = 0 },
+   dead = field.bool { default = false },
+   descend = field.bool { default = false, doc = "Asked to take the stairs; sim.floor answers" },
++  potions = field.u32 { default = 0, doc = "Healing potions carried; the drink command drinks one" },
++  potion_heal = field.i32 { default = 4, range = {0, 100}, tune = true, doc = "Hit points a potion gives back, never above Health.max" },
+ }
+ 
+ component "Monster" {
+@@ -23,6 +25,11 @@
+   atk = field.i32 { default = 1, range = {0, 100} },
+   initiative = field.u8 { default = 5, range = {0, 20} },
+   sight = field.u8 { default = 60, range = {0, 255}, doc = "Manhattan distance at which it notices the hero" },
++  drop = field.u8 { default = 35, range = {0, 100}, doc = "Chance in a hundred that it leaves a potion where the hero kills it (the loot stream rolls it)" },
++}
++
++component "Potion" {
++  doc = "A healing potion lying on the floor where a monster fell; the hero picks it up by walking onto it (sim.potions)",
+ }
+ 
+ component "Stairs" {
+diff -ruN -x .argus -x ARGUS.md -x '*.png' -x target orig/delve/input.toml gate/delve/input.toml
+--- orig/delve/input.toml	2026-10-09 12:11:49.000000000 -0400
++++ gate/delve/input.toml	2026-10-09 12:23:50.308345300 -0400
+@@ -19,6 +19,13 @@
+ keyboard = ["enter"]
+ gamepad = ["south"]
+ 
++[actions.drink]
++type = "button"
++doc = "Drink a healing potion; one drink is one turn"
++[actions.drink.bindings]
++keyboard = ["q"]
++gamepad = ["north"]
++
+ [actions.pause]
+ type = "button"
+ doc = "Open or close the menu; while it is open no turn passes"
+diff -ruN -x .argus -x ARGUS.md -x '*.png' -x target orig/delve/scenes/delve/controls.drink.toml gate/delve/scenes/delve/controls.drink.toml
+--- orig/delve/scenes/delve/controls.drink.toml	1969-12-31 19:00:00.000000000 -0500
++++ gate/delve/scenes/delve/controls.drink.toml	2026-10-09 12:25:57.821166100 -0400
+@@ -0,0 +1,17 @@
++[InputBinding]
++action = "drink"
++
++[Parent]
++entity = "@controls"
++
++[UiButton]
++
++[UiNode]
++order = 3
++pad = [18.0, 8.0]
++
++[UiPanel]
++color = "button"
++
++[UiText]
++key = "controls.drink"
+diff -ruN -x .argus -x ARGUS.md -x '*.png' -x target orig/delve/scenes/delve/controls.pause.toml gate/delve/scenes/delve/controls.pause.toml
+--- orig/delve/scenes/delve/controls.pause.toml	2026-10-09 12:11:49.000000000 -0400
++++ gate/delve/scenes/delve/controls.pause.toml	2026-10-09 12:25:57.820167500 -0400
+@@ -3,7 +3,7 @@
+ 
+ [UiNode]
+ pad = [18.0, 8.0]
+-order = 3
++order = 4
+ 
+ [UiPanel]
+ color = "button"
+diff -ruN -x .argus -x ARGUS.md -x '*.png' -x target orig/delve/strings/en.toml gate/delve/strings/en.toml
+--- orig/delve/strings/en.toml	2026-10-09 12:11:49.000000000 -0400
++++ gate/delve/strings/en.toml	2026-10-09 12:25:57.816166300 -0400
+@@ -18,6 +18,7 @@
+ descend = "Descend: {InputBinding.keys}"
+ pause = "Menu: {InputBinding.keys}"
+ back = "Back"
++drink = "Drink: {InputBinding.keys}"
+ 
+ # The menu's settings page (phase 5 item 2); systems/menu_buttons.luau
+ # fills the holes.
+@@ -31,7 +32,7 @@
+ back = "Back"
+ 
+ [hud]
+-line = "Floor {@player:Player.floor}, turn {Turn.n}. HP {@player:Health.cur}/{@player:Health.max}."
++line = "Floor {@player:Player.floor}, turn {Turn.n}. HP {@player:Health.cur}/{@player:Health.max}. Potions {@player:Player.potions}."
+ 
+ [message]
+ hit = "You hit the {monster}."
+@@ -41,6 +42,11 @@
+ descend = "You take the stairs down."
+ no_stairs = "There are no stairs here."
+ wall = "A wall."
++potion_dropped = "The {monster} drops a potion."
++potion_picked = "You pick up a potion; you carry {count}."
++potion_drunk = "You drink a potion and heal {amount}, to {hp}/{max}."
++potion_full = "You drink a potion, but you are already at full health."
++no_potions = "You have no potions to drink."
+ 
+ [monster]
+ rat = "rat"
+diff -ruN -x .argus -x ARGUS.md -x '*.png' -x target orig/delve/systems/floor.luau gate/delve/systems/floor.luau
+--- orig/delve/systems/floor.luau	2026-10-09 12:11:49.000000000 -0400
++++ gate/delve/systems/floor.luau	2026-10-09 12:24:38.957759400 -0400
+@@ -5,10 +5,10 @@
+   -- the open menu froze.
+   after = { "sim.menu_buttons" },
+   unfrozen = true,
+-  reads = { "Floor", "Player", "Monster", "Stairs", "Transform", "Tilemap" },
+-  writes = { "Floor", "Player", "Monster", "Stairs", "Transform", "Health", "Sprite", "Describe", "Tilemap" },
++  reads = { "Floor", "Player", "Monster", "Stairs", "Potion", "Transform", "Tilemap" },
++  writes = { "Floor", "Player", "Monster", "Stairs", "Potion", "Transform", "Health", "Sprite", "Describe", "Tilemap" },
+   rng = "floor",
+-  doc = "Generates a floor when there is none or the hero asked to descend: rooms, L-shaped corridors, the hero in the first room, stairs in the last, monsters never within four steps of the hero. The floor's cells are painted on @floor's runtime map, every cell, so the old floor's go with it.",
++  doc = "Generates a floor when there is none or the hero asked to descend: rooms, L-shaped corridors, the hero in the first room, stairs in the last, monsters never within four steps of the hero; the old floor's monsters, stairs, and potions go. The floor's cells are painted on @floor's runtime map, every cell, so the old floor's go with it.",
+   run = function(q)
+     local fe = q:entity("@floor")
+     local f = fe:get("Floor")
+@@ -20,6 +20,8 @@
+     local doomed = {}
+     for e in q:each("Monster") do table.insert(doomed, e:id()) end
+     for e in q:each("Stairs") do table.insert(doomed, e:id()) end
++    -- Potions left lying on the old floor go with it.
++    for e in q:each("Potion") do table.insert(doomed, e:id()) end
+     for _, id in ipairs(doomed) do q:entity(id):despawn() end
+ 
+     -- The floor is the map's size. Cell (x, y) of grid is the world's
+diff -ruN -x .argus -x ARGUS.md -x '*.png' -x target orig/delve/systems/menu_buttons.luau gate/delve/systems/menu_buttons.luau
+--- orig/delve/systems/menu_buttons.luau	2026-10-09 12:11:49.000000000 -0400
++++ gate/delve/systems/menu_buttons.luau	2026-10-09 12:24:40.734512600 -0400
+@@ -33,6 +33,7 @@
+       pl.kills = 0
+       pl.dead = false
+       pl.descend = false
++      pl.potions = 0
+       local hp = pe:get("Health")
+       hp.cur = hp.max
+       q:entity("@floor"):get("Floor").n = 0
+diff -ruN -x .argus -x ARGUS.md -x '*.png' -x target orig/delve/systems/messages.luau gate/delve/systems/messages.luau
+--- orig/delve/systems/messages.luau	2026-10-09 12:11:49.000000000 -0400
++++ gate/delve/systems/messages.luau	2026-10-09 12:24:52.812827100 -0400
+@@ -4,9 +4,12 @@
+ 
+ return system "sim.messages" {
+   stage = "sim",
+-  after = { "sim.monsters" },
++  after = { "sim.monsters", "sim.potions" },
++  -- A drink with no potion freezes the rest of the turn (no turn passes);
++  -- the line still says so.
++  unfrozen = true,
+   writes = { "UiText" },
+-  doc = "Writes the turn's messages under the HUD line: the hero's hits and kills, the monsters' hits, a death, the stairs, and bumps, each from the string tables (message.*, monster.*).",
++  doc = "Writes the turn's messages under the HUD line: the hero's hits and kills, potions dropped, picked up, and drunk (or none to drink), the monsters' hits, a death, the stairs, and bumps, each from the string tables (message.*, monster.*).",
+   run = function(q)
+     local said = {}
+     local function name(kind)
+@@ -25,8 +28,30 @@
+         table.insert(said, q:text("message.hurt", { monster = name(ev.kind), amount = ev.amount }))
+       end
+     end
++    -- What the hero's own turn did comes first: a kill and what it left,
++    -- or a potion picked up, drunk, or not there to drink.
++    local first = {}
+     for kind in pairs(killed) do
+-      table.insert(said, 1, q:text("message.kill", { monster = name(kind) }))
++      table.insert(first, q:text("message.kill", { monster = name(kind) }))
++    end
++    for _, ev in ipairs(q:events("potion.dropped")) do
++      table.insert(first, q:text("message.potion_dropped", { monster = name(ev.kind) }))
++    end
++    for _, ev in ipairs(q:events("potion.picked")) do
++      table.insert(first, q:text("message.potion_picked", { count = ev.carried }))
++    end
++    for _, ev in ipairs(q:events("potion.drunk")) do
++      if ev.healed > 0 then
++        table.insert(first, q:text("message.potion_drunk", { amount = ev.healed, hp = ev.hp, max = ev.max }))
++      else
++        table.insert(first, q:text("message.potion_full", { hp = ev.hp, max = ev.max }))
++      end
++    end
++    if #q:events("potion.none") > 0 then
++      table.insert(first, q:text("message.no_potions"))
++    end
++    for i, line in ipairs(first) do
++      table.insert(said, i, line)
+     end
+     for _, ev in ipairs(q:events("player.died")) do
+       table.insert(said, q:text("message.died", { monster = name(ev.kind), floor = ev.floor, kills = ev.kills }))
+diff -ruN -x .argus -x ARGUS.md -x '*.png' -x target orig/delve/systems/player_turn.luau gate/delve/systems/player_turn.luau
+--- orig/delve/systems/player_turn.luau	2026-10-09 12:11:49.000000000 -0400
++++ gate/delve/systems/player_turn.luau	2026-10-09 12:24:08.217387400 -0400
+@@ -11,14 +11,24 @@
+   after = { "sim.floor" },
+   reads = { "PlayerSlot", "Actions", "Tilemap", "Monster", "Stairs", "Transform", "Health", "Turn" },
+   writes = { "Player", "Transform", "Health", "Turn" },
+-  doc = "The hero's turn: step in the move direction (a wall on the floor's map is a bump), attack a monster in the way, wait, or descend on the stairs.",
++  doc = "The hero's turn: step in the move direction (a wall on the floor's map is a bump), attack a monster in the way, wait, descend on the stairs, or drink a potion (heals Player.potion_heal, never above Health.max; with none it says so and no turn passes).",
+   run = function(q)
+     local pe = q:entity("@player")
+     local pl = pe:get("Player")
+     local turn = q:entity("@turn"):get("Turn")
++    local a = pe:get("Actions")
++
++    -- Drinking with no potion does nothing but say so: no turn passes, so
++    -- the rest of this one is frozen (the monsters do not act), as the
++    -- menu does; sim.messages runs unfrozen to say it.
++    if not pl.dead and a.drink_pressed and pl.potions == 0 then
++      q:emit("potion.none", { turn = turn.n })
++      q:freeze()
++      return
++    end
++
+     turn.n += 1
+     if pl.dead then return end
+-    local a = pe:get("Actions")
+     local pos = pe:get("Transform").pos
+ 
+     if a.descend_pressed then
+@@ -33,6 +43,18 @@
+       return
+     end
+ 
++    -- Drink a potion: it heals a set amount, never above the maximum (nor
++    -- below where the hero is), and takes the turn, even at full health.
++    if a.drink_pressed then
++      local hp = pe:get("Health")
++      local before = hp.cur
++      local after = math.max(before, math.min(hp.max, before + pl.potion_heal))
++      hp.cur = after
++      pl.potions -= 1
++      q:emit("potion.drunk", { healed = after - before, hp = after, max = hp.max, left = pl.potions, turn = turn.n })
++      return
++    end
++
+     local m = a.move
+     local dx, dy = 0, 0
+     if m.x > 0.5 then dx = 1
+@@ -53,7 +75,9 @@
+         q:play("sfx/hit", { entity = e })
+         if left == 0 then
+           pl.kills += 1
+-          q:emit("death", { entity = e, kind = mo.kind, cause = "hero", turn = turn.n })
++          -- Where it fell and its drop chance, for sim.potions (the
++          -- entity is gone by then).
++          q:emit("death", { entity = e, kind = mo.kind, cause = "hero", turn = turn.n, x = nx, y = ny, drop = mo.drop })
+           e:despawn()
+         end
+         return
+diff -ruN -x .argus -x ARGUS.md -x '*.png' -x target orig/delve/systems/potions.luau gate/delve/systems/potions.luau
+--- orig/delve/systems/potions.luau	1969-12-31 19:00:00.000000000 -0500
++++ gate/delve/systems/potions.luau	2026-10-09 12:24:27.975359100 -0400
+@@ -0,0 +1,49 @@
++-- Healing potions: a monster the hero kills sometimes leaves one where it
++-- fell, rolled on the run's "loot" stream (one roll a death, so a seed
++-- always gives the same drops, and the floor's own stream is untouched);
++-- the hero picks up every potion on the cell it walks onto. Drinking one is
++-- the hero's command (systems/player_turn.luau).
++
++return system "sim.potions" {
++  stage = "sim",
++  after = { "sim.player_turn" },
++  reads = { "Potion", "Transform", "Player", "Turn" },
++  writes = { "Potion", "Transform", "Sprite", "Describe", "Player" },
++  rng = "loot",
++  doc = "Drops a potion where a monster the hero killed this turn fell, at its Monster.drop chance in a hundred (the loot stream), and picks up every potion on the hero's cell into Player.potions. Emits potion.dropped and potion.picked.",
++  run = function(q)
++    local pe = q:entity("@player")
++    local pl = pe:get("Player")
++    local turn = q:entity("@turn"):get("Turn").n
++    local rng = q:rng()
++
++    for _, ev in ipairs(q:events("death")) do
++      if ev.cause == "hero" then
++        local roll = rng:range(1, 100)
++        if roll <= ev.drop then
++          local p = q:spawn({ "Potion", "Transform", "Sprite", "Describe" })
++          p:get("Describe").name = "potion"
++          p:get("Transform").pos = vector.create(ev.x, ev.y, 0)
++          local sp = p:get("Sprite")
++          sp.kind = "rect"
++          sp.size = vector.create(0.4, 0.55, 0)
++          sp.color = "#E0405A"
++          sp.z = 3
++          q:emit("potion.dropped", { entity = p, kind = ev.kind, x = ev.x, y = ev.y, roll = roll, turn = turn })
++        end
++      end
++    end
++
++    if pl.dead then return end
++    local pos = pe:get("Transform").pos
++    local here = {}
++    for e, _, tr in q:each("Potion", "Transform") do
++      if tr.pos.x == pos.x and tr.pos.y == pos.y then table.insert(here, e:id()) end
++    end
++    for _, id in ipairs(here) do
++      q:entity(id):despawn()
++      pl.potions += 1
++      q:emit("potion.picked", { x = pos.x, y = pos.y, carried = pl.potions, turn = turn })
++    end
++  end,
++}
+diff -ruN -x .argus -x ARGUS.md -x '*.png' -x target orig/delve/tests/controls.luau gate/delve/tests/controls.luau
+--- orig/delve/tests/controls.luau	2026-10-09 12:11:49.000000000 -0400
++++ gate/delve/tests/controls.luau	2026-10-09 12:31:43.234640200 -0400
+@@ -21,6 +21,7 @@
+     t.expect:field("@controls.wait", "UiButton.focused"):eq(true)
+     t.expect:field("@controls.wait", "UiText.shown"):eq("Wait: period")
+     t.expect:field("@controls.descend", "UiText.shown"):eq("Descend: enter")
++    t.expect:field("@controls.drink", "UiText.shown"):eq("Drink: q")
+     t.expect:field("@controls.pause", "UiText.shown"):eq("Menu: escape")
+     -- The semantic frame reads the page out, the focused button among them.
+     local f = t:call("obs.frame", { format = "semantic" })
+@@ -31,7 +32,7 @@
+         if u.focused then focused = u.text end
+       end
+     end
+-    local want = { "Wait: period", "Descend: enter", "Menu: escape", "Back" }
++    local want = { "Wait: period", "Descend: enter", "Drink: q", "Menu: escape", "Back" }
+     if table.concat(buttons, " | ") ~= table.concat(want, " | ") then
+       error("the semantic frame's buttons: " .. table.concat(buttons, " | "), 0)
+     end
+diff -ruN -x .argus -x ARGUS.md -x '*.png' -x target orig/delve/tests/goldens/a_monster_the_hero_kills_may_drop_a_potion_and_walking_onto_it_picks_it_up/after_the_hunt.seed1.json gate/delve/tests/goldens/a_monster_the_hero_kills_may_drop_a_potion_and_walking_onto_it_picks_it_up/after_the_hunt.seed1.json
+--- orig/delve/tests/goldens/a_monster_the_hero_kills_may_drop_a_potion_and_walking_onto_it_picks_it_up/after_the_hunt.seed1.json	1969-12-31 19:00:00.000000000 -0500
++++ gate/delve/tests/goldens/a_monster_the_hero_kills_may_drop_a_potion_and_walking_onto_it_picks_it_up/after_the_hunt.seed1.json	2026-10-09 12:30:55.047954600 -0400
+@@ -0,0 +1,20 @@
++{
++  "rows": [
++    [
++      "@player",
++      6,
++      3
++    ]
++  ],
++  "scene": "delve",
++  "select": [
++    "id",
++    "Player.kills",
++    "Player.potions"
++  ],
++  "where": {
++    "has": [
++      "Player"
++    ]
++  }
++}
+\ No newline at end of file
+diff -ruN -x .argus -x ARGUS.md -x '*.png' -x target orig/delve/tests/goldens/a_monster_the_hero_kills_may_drop_a_potion_and_walking_onto_it_picks_it_up/after_the_hunt.seed2.json gate/delve/tests/goldens/a_monster_the_hero_kills_may_drop_a_potion_and_walking_onto_it_picks_it_up/after_the_hunt.seed2.json
+--- orig/delve/tests/goldens/a_monster_the_hero_kills_may_drop_a_potion_and_walking_onto_it_picks_it_up/after_the_hunt.seed2.json	1969-12-31 19:00:00.000000000 -0500
++++ gate/delve/tests/goldens/a_monster_the_hero_kills_may_drop_a_potion_and_walking_onto_it_picks_it_up/after_the_hunt.seed2.json	2026-10-09 12:30:55.097171300 -0400
+@@ -0,0 +1,20 @@
++{
++  "rows": [
++    [
++      "@player",
++      6,
++      5
++    ]
++  ],
++  "scene": "delve",
++  "select": [
++    "id",
++    "Player.kills",
++    "Player.potions"
++  ],
++  "where": {
++    "has": [
++      "Player"
++    ]
++  }
++}
+\ No newline at end of file
+diff -ruN -x .argus -x ARGUS.md -x '*.png' -x target orig/delve/tests/goldens/a_monster_the_hero_kills_may_drop_a_potion_and_walking_onto_it_picks_it_up/after_the_hunt.seed4.json gate/delve/tests/goldens/a_monster_the_hero_kills_may_drop_a_potion_and_walking_onto_it_picks_it_up/after_the_hunt.seed4.json
+--- orig/delve/tests/goldens/a_monster_the_hero_kills_may_drop_a_potion_and_walking_onto_it_picks_it_up/after_the_hunt.seed4.json	1969-12-31 19:00:00.000000000 -0500
++++ gate/delve/tests/goldens/a_monster_the_hero_kills_may_drop_a_potion_and_walking_onto_it_picks_it_up/after_the_hunt.seed4.json	2026-10-09 12:30:55.152170700 -0400
+@@ -0,0 +1,20 @@
++{
++  "rows": [
++    [
++      "@player",
++      6,
++      4
++    ]
++  ],
++  "scene": "delve",
++  "select": [
++    "id",
++    "Player.kills",
++    "Player.potions"
++  ],
++  "where": {
++    "has": [
++      "Player"
++    ]
++  }
++}
+\ No newline at end of file
+diff -ruN -x .argus -x ARGUS.md -x '*.png' -x target orig/delve/tests/goldens/a_monster_the_hero_kills_may_drop_a_potion_and_walking_onto_it_picks_it_up/after_the_hunt.seed5.json gate/delve/tests/goldens/a_monster_the_hero_kills_may_drop_a_potion_and_walking_onto_it_picks_it_up/after_the_hunt.seed5.json
+--- orig/delve/tests/goldens/a_monster_the_hero_kills_may_drop_a_potion_and_walking_onto_it_picks_it_up/after_the_hunt.seed5.json	1969-12-31 19:00:00.000000000 -0500
++++ gate/delve/tests/goldens/a_monster_the_hero_kills_may_drop_a_potion_and_walking_onto_it_picks_it_up/after_the_hunt.seed5.json	2026-10-09 12:30:55.217170900 -0400
+@@ -0,0 +1,20 @@
++{
++  "rows": [
++    [
++      "@player",
++      6,
++      3
++    ]
++  ],
++  "scene": "delve",
++  "select": [
++    "id",
++    "Player.kills",
++    "Player.potions"
++  ],
++  "where": {
++    "has": [
++      "Player"
++    ]
++  }
++}
+\ No newline at end of file
+diff -ruN -x .argus -x ARGUS.md -x '*.png' -x target orig/delve/tests/goldens/a_monster_the_hero_kills_may_drop_a_potion_and_walking_onto_it_picks_it_up/after_the_hunt.seed6.json gate/delve/tests/goldens/a_monster_the_hero_kills_may_drop_a_potion_and_walking_onto_it_picks_it_up/after_the_hunt.seed6.json
+--- orig/delve/tests/goldens/a_monster_the_hero_kills_may_drop_a_potion_and_walking_onto_it_picks_it_up/after_the_hunt.seed6.json	1969-12-31 19:00:00.000000000 -0500
++++ gate/delve/tests/goldens/a_monster_the_hero_kills_may_drop_a_potion_and_walking_onto_it_picks_it_up/after_the_hunt.seed6.json	2026-10-09 12:30:55.262172500 -0400
+@@ -0,0 +1,20 @@
++{
++  "rows": [
++    [
++      "@player",
++      6,
++      2
++    ]
++  ],
++  "scene": "delve",
++  "select": [
++    "id",
++    "Player.kills",
++    "Player.potions"
++  ],
++  "where": {
++    "has": [
++      "Player"
++    ]
++  }
++}
+\ No newline at end of file
+diff -ruN -x .argus -x ARGUS.md -x '*.png' -x target orig/delve/tests/goldens/a_monster_the_hero_kills_may_drop_a_potion_and_walking_onto_it_picks_it_up/after_the_hunt.seed7.json gate/delve/tests/goldens/a_monster_the_hero_kills_may_drop_a_potion_and_walking_onto_it_picks_it_up/after_the_hunt.seed7.json
+--- orig/delve/tests/goldens/a_monster_the_hero_kills_may_drop_a_potion_and_walking_onto_it_picks_it_up/after_the_hunt.seed7.json	1969-12-31 19:00:00.000000000 -0500
++++ gate/delve/tests/goldens/a_monster_the_hero_kills_may_drop_a_potion_and_walking_onto_it_picks_it_up/after_the_hunt.seed7.json	2026-10-09 12:30:55.316171100 -0400
+@@ -0,0 +1,20 @@
++{
++  "rows": [
++    [
++      "@player",
++      6,
++      3
++    ]
++  ],
++  "scene": "delve",
++  "select": [
++    "id",
++    "Player.kills",
++    "Player.potions"
++  ],
++  "where": {
++    "has": [
++      "Player"
++    ]
++  }
++}
+\ No newline at end of file
+diff -ruN -x .argus -x ARGUS.md -x '*.png' -x target orig/delve/tests/potions.luau gate/delve/tests/potions.luau
+--- orig/delve/tests/potions.luau	1969-12-31 19:00:00.000000000 -0500
++++ gate/delve/tests/potions.luau	2026-10-09 12:30:46.200252400 -0400
+@@ -0,0 +1,220 @@
++-- Healing potions: a monster the hero kills sometimes drops one where it
++-- fell, rolled on the run's loot stream; walking onto one picks it up; the
++-- drink command (q) drinks one on the hero's turn, healing a set amount
++-- (Player.potion_heal) never above the maximum, and takes the turn. With
++-- none, it says so and no turn passes. The HUD counts them and the message
++-- line says what happened.
++
++local function me(t)
++  return t:call("world.get", { entity = "@player" }).components
++end
++
++local function shown(t, id)
++  return t:call("world.get", { entity = id }).components.UiText.shown
++end
++
++local function events(t, name, since)
++  return t:call("obs.events", { name = name, since = since, limit = 500 }).rows
++end
++
++local function last_seq(t)
++  return t:call("obs.events", { limit = 1 }).last_seq
++end
++
++local function has(s, part)
++  return s ~= nil and string.find(s, part, 1, true) ~= nil
++end
++
++-- How many potions lie on the cell (x, y). (A where on a vec2 field with
++-- whole numbers matches nothing, so the cells are compared here.)
++local function potions_at(t, x, y)
++  local r = t:call("world.query", { select = { "Transform.pos" }, where = { has = { "Potion" } }, limit = 100 })
++  local n = 0
++  for _, row in ipairs(r.rows) do
++    if row[1][1] == x and row[1][2] == y then n += 1 end
++  end
++  return n
++end
++
++local function monster_cells(t)
++  local r = t:call("world.query", { select = { "id", "Transform.pos" }, where = { has = { "Monster" } }, limit = 100 })
++  local cells = {}
++  for _, row in ipairs(r.rows) do cells[row[1]] = row[2][1] .. "," .. row[2][2] end
++  return cells
++end
++
++-- One step of the hunt: to the nearest potion lying there, else at the
++-- nearest monster (walking into it attacks). False when nothing is left.
++local function hunt_step(t)
++  local target = nil
++  for _, kind in ipairs({ "Potion", "Monster" }) do
++    local r = t:call("world.query", {
++      select = { "id", "Transform.pos" }, where = { has = { kind } }, order = "dist(@player)", limit = 1,
++    })
++    if r.total > 0 then
++      target = r.rows[1][2]
++      break
++    end
++  end
++  if target == nil then return false end
++  local pos = me(t).Transform.pos
++  local p = t:call("nav.path", { from = "@player", to = { target[1], target[2] } })
++  if not p.found then error("no way to " .. target[1] .. ", " .. target[2] .. ": " .. tostring(p.why), 0) end
++  t.input:tap("move", { p.points[1][1] - pos[1], p.points[1][2] - pos[2] })
++  t:advance { by = "turn", n = 1 }
++  return true
++end
++
++local drops_and_pickups = scenario "a monster the hero kills may drop a potion, and walking onto it picks it up" {
++  -- Seeds whose six kills drop some potions and not all: a drop is a
++  -- chance (Monster.drop in a hundred), and each seed always drops the
++  -- same ones, the loot stream being the seed's (the golden pins them).
++  -- Seeds 3 and 19 are ones whose kills drop none.
++  scene = "delve", seeds = { 1, 2, 4, 5, 6, 7 },
++  run = function(t)
++    t:advance { by = "turn", n = 1 }
++    local from = last_seq(t)
++    -- The hero lives through the hunt on any seed (as tests/map.luau).
++    t:call("sim.set", { entity = "@player", path = "Health.cur", value = 1000 })
++
++    local seen = from
++    local carried = 0
++    for _ = 1, 400 do
++      if not hunt_step(t) then break end
++      local now = me(t)
++      if now.Player.dead then error("the hero died", 0) end
++      -- A drop: a potion lies where the monster fell, and the line says so.
++      local dropped = events(t, "potion.dropped", seen)
++      local deaths = events(t, "death", seen)
++      for _, d in ipairs(dropped) do
++        local f = d.fields
++        local matched = false
++        for _, k in ipairs(deaths) do
++          if k.fields.x == f.x and k.fields.y == f.y and k.fields.turn == f.turn and k.fields.kind == f.kind then matched = true end
++        end
++        if not matched then error(string.format("a potion dropped at %d, %d with no kill there", f.x, f.y), 0) end
++        if potions_at(t, f.x, f.y) < 1 then error(string.format("no potion lies at %d, %d after its drop", f.x, f.y), 0) end
++        local line = shown(t, "@messages")
++        if not has(line, "drops a potion.") then error("the drop's message: " .. tostring(line), 0) end
++      end
++      -- A pickup: the count goes up by the potions on the cell, the HUD
++      -- and the line say so, and none lies there any more.
++      local picked = events(t, "potion.picked", seen)
++      if #picked > 0 then
++        carried += #picked
++        if now.Player.potions ~= carried then error(string.format("carrying %d, not %d", now.Player.potions, carried), 0) end
++        local pos = now.Transform.pos
++        if potions_at(t, pos[1], pos[2]) ~= 0 then error("a potion still lies where the hero picked it up", 0) end
++        local line = shown(t, "@messages")
++        if not has(line, "You pick up a potion; you carry " .. carried .. ".") then error("the pickup's message: " .. tostring(line), 0) end
++        local hud = shown(t, "@turn")
++        if not has(hud, "Potions " .. carried .. ".") then error("the HUD: " .. tostring(hud), 0) end
++      end
++      seen = last_seq(t)
++    end
++
++    -- Every monster dead, every potion that dropped picked up and carried.
++    t.expect:count({ has = { "Monster" } }):eq(0)
++    t.expect:count({ has = { "Potion" } }):eq(0)
++    local deaths = #events(t, "death", from)
++    local drops = #events(t, "potion.dropped", from)
++    t.expect:events("potion.dropped"):count():gte(1)
++    t.expect:events("potion.picked"):count():eq(drops)
++    t.expect:field("@player", "Player.potions"):eq(drops)
++    -- Sometimes, not always.
++    if drops >= deaths then error(string.format("%d drops from %d kills", drops, deaths), 0) end
++    t.expect:snapshot("after_the_hunt", { select = { "Player.kills", "Player.potions" }, where = { has = { "Player" } } })
++    t:log(string.format("%d kills dropped %d potions, all picked up", deaths, drops))
++
++    -- The drops are the run's: back to the hunt's first turn and forward
++    -- again, the replay rolls the same ones (its events are checked
++    -- against the log).
++    local stop = t:status().tick
++    local s = t:call("sim.seek", { frame = 2 })
++    if s.diverged ~= nil then error("the replay to the start diverged", 0) end
++    t.expect:field("@player", "Player.potions"):eq(0)
++    s = t:call("sim.seek", { frame = stop })
++    if s.diverged ~= nil then error("the replay of the hunt diverged: " .. tostring(s.diverged), 0) end
++    t.expect:field("@player", "Player.potions"):eq(drops)
++
++    -- And one of them drunk, as the player would: wounded, it heals.
++    t:call("sim.set", { entity = "@player", path = "Health.cur", value = 2 })
++    t.input:tap("drink")
++    t:advance { by = "turn", n = 1 }
++    t.expect:field("@player", "Health.cur"):eq(6)
++    t.expect:field("@player", "Player.potions"):eq(drops - 1)
++  end,
++}
++
++local drinking = scenario "drinking heals a set amount, never above the maximum, and takes a turn; with none it only says so" {
++  scene = "delve", seeds = range(1, 5),
++  run = function(t)
++    t:advance { by = "turn", n = 1 }
++    local from = last_seq(t)
++    t:call("sim.set", { entity = "@player", path = "Player.potions", value = 3 })
++    t:call("sim.set", { entity = "@player", path = "Health.cur", value = 3 })
++    local heal = me(t).Player.potion_heal
++    local max = me(t).Health.max
++    if heal ~= 4 or max ~= 10 then error(string.format("a potion heals %d of %d", heal, max), 0) end
++
++    -- One drink, from the key the player presses (Q, as the window hands
++    -- it over, held over the turn): 3 + 4 is 7, a potion fewer, and the
++    -- turn is taken (the turn counts, and the monsters act).
++    local turn = t:call("world.get", { entity = "@turn" }).components.Turn.n
++    local ends = #events(t, "turn.end", from)
++    t:call("input.device", { events = { { key = "KeyQ", pressed = true } } })
++    t:advance { by = "turn", n = 1 }
++    t:call("input.device", { events = { { key = "KeyQ", pressed = false } } })
++    t.expect:field("@player", "Health.cur"):eq(7)
++    t.expect:field("@player", "Player.potions"):eq(2)
++    t.expect:field("@turn", "Turn.n"):eq(turn + 1)
++    if #events(t, "turn.end", from) ~= ends + 1 then error("the monsters did not act after the drink", 0) end
++    t.expect:field("@messages", "UiText.shown"):eq("You drink a potion and heal 4, to 7/10.")
++    if not has(shown(t, "@turn"), "HP 7/10. Potions 2.") then error("the HUD: " .. tostring(shown(t, "@turn")), 0) end
++
++    -- Never above the maximum: 7 + 4 stops at 10.
++    t.input:tap("drink")
++    t:advance { by = "turn", n = 1 }
++    t.expect:field("@player", "Health.cur"):eq(10)
++    t.expect:field("@player", "Player.potions"):eq(1)
++    t.expect:field("@messages", "UiText.shown"):eq("You drink a potion and heal 3, to 10/10.")
++
++    -- At full health it is drunk for nothing: no overheal, and the turn is
++    -- still taken.
++    t.input:tap("drink")
++    t:advance { by = "turn", n = 1 }
++    t.expect:field("@player", "Health.cur"):eq(10)
++    t.expect:field("@player", "Player.potions"):eq(0)
++    t.expect:field("@turn", "Turn.n"):eq(turn + 3)
++    t.expect:field("@messages", "UiText.shown"):eq("You drink a potion, but you are already at full health.")
++    local drunk = events(t, "potion.drunk", from)
++    if #drunk ~= 3 then error(#drunk .. " drinks", 0) end
++    local healed = {}
++    for _, d in ipairs(drunk) do table.insert(healed, d.fields.healed) end
++    if table.concat(healed, " ") ~= "4 3 0" then error("healed " .. table.concat(healed, " "), 0) end
++    -- No monster reached the hero meanwhile, so the hit points are the drinks'.
++    t.expect:events("damage", { target = "@player" }):count():eq(0)
++
++    -- With none: nothing but the words. No turn passes, no monster moves,
++    -- nothing heals.
++    local at = monster_cells(t)
++    ends = #events(t, "turn.end", from)
++    t:call("sim.set", { entity = "@player", path = "Health.cur", value = 5 })
++    t.input:tap("drink")
++    t:advance { by = "turn", n = 1 }
++    t.expect:events("potion.none"):count():eq(1)
++    t.expect:field("@messages", "UiText.shown"):eq("You have no potions to drink.")
++    t.expect:field("@player", "Health.cur"):eq(5)
++    t.expect:field("@player", "Player.potions"):eq(0)
++    t.expect:field("@turn", "Turn.n"):eq(turn + 3)
++    if #events(t, "turn.end", from) ~= ends then error("a turn passed on a drink with no potion", 0) end
++    for id, cell in pairs(monster_cells(t)) do
++      if at[id] ~= cell then error(id .. " moved on a drink with no potion: " .. tostring(at[id]) .. " to " .. cell, 0) end
++    end
++    -- The game goes on: the next turn passes as ever.
++    t:advance { by = "turn", n = 1 }
++    t.expect:field("@turn", "Turn.n"):eq(turn + 4)
++  end,
++}
++
++return { drops_and_pickups, drinking }

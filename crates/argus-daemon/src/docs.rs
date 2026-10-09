@@ -236,7 +236,9 @@ pub const TOOLS: &[ToolDoc] = &[
             opt("name", STRING, "an event name, e.g. \"player.fell\""),
             opt("entity", STRING, "events naming this entity"),
             opt("since", INTEGER, "events after this sequence number"),
+            opt("from_frame", INTEGER, "events from this frame on"),
             opt("limit", INTEGER, "default 50"),
+            opt("cursor", STRING, "the next page, from a previous answer's cursor"),
             opt("why", ANY, "an event's sequence number, or a name for the latest such event; job.idle: why that worker is idle, job by job"),
             opt("trace", OBJECT, "{entity, fields: [Component or Component.field], frames: n or [from, to]}"),
         ],
@@ -1032,7 +1034,7 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "input.bind",
-        doc: "Rebind an action on a device from now on (section 12: rebinding at runtime is a UI over the same table). The log records actions, not keys, so a replay survives it. save also writes it into input.toml. A game's controls menu does the same with InputBinding buttons. Emits input.rebound.",
+        doc: "Rebind an action on a device from now on (section 12: rebinding at runtime is a UI over the same table). The log records actions, not keys, so a replay survives it. save also writes it into input.toml. A game's controls menu does the same with InputBinding buttons. Emits input.rebound. Keyboard names are the window's key codes in lowercase, without Key, Digit, or Arrow: a to z, 0 to 9, up, down, left, right, space, enter, escape, tab, backspace, shiftleft, shiftright, controlleft, altleft, f1 to f12, period, comma, slash, semicolon, quote, minus, equal, numpad0 to numpad9; an axis2 also takes wasd, arrows, ijkl, or four names up,left,down,right; an axis1 takes neg/pos (minus/equal). Keyboard names are open-ended: one the keyboard never sends is accepted and never fires, so check a rebind with input.devices or input.device. Mouse (left, right, middle, back, forward) and gamepad names (input.glyphs lists them) are checked.",
         params: &[
             req("action", STRING, ""),
             opt("device", STRING, "keyboard (default), mouse, or gamepad"),
@@ -1051,7 +1053,7 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "input.device",
-        doc: "Device events from a client's viewport (phase 4 item 1), down the window's own path: F8 and its note prompt, F9 and F10 for a proposal, then the action map, so gameplay still sees actions and the input log records them as a window's. Keys by the window's names (KeyW, ArrowLeft, Space, F8, Enter), mouse buttons (left, right, middle, back, forward), the pointer in the pixels of this connection's render.stream, and release_all when the viewport loses focus. text is what was typed, for a mark's note. Not in the change feed key by key: the input log has them; what F8, F9, and F10 do is (mark.drop, proposal.show, ...).",
+        doc: "Device events from a client's viewport (phase 4 item 1), down the window's own path: F8 and its note prompt, F9 and F10 for a proposal, then the action map, so gameplay still sees actions and the input log records them as a window's. Keys by the window's names (KeyW, ArrowLeft, Space, F8, Enter), mouse buttons (left, right, middle, back, forward), the pointer in the pixels of this connection's render.stream, and release_all when the viewport loses focus. text is what was typed, for a mark's note. Actions are read when a tick runs, so a key pressed and released in one call, with no tick between, is never seen: on a discrete clock hold the key across the turn (press, advance, release). Not in the change feed key by key: the input log has them; what F8, F9, and F10 do is (mark.drop, proposal.show, ...).",
         params: &[
             opt("events", ARRAY, "[{key, pressed} | {mouse, pressed} | {pointer: [x, y]} | {release_all: true}]"),
             opt("text", ARRAY, "strings typed, in order"),
@@ -1511,7 +1513,7 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "obs.frame",
-        doc: "What the player sees. format \"semantic\" (section 8 L4) is data, about 3 KB, and needs no GPU: the camera and the world rect it shows; hud, the lines of entities on the screen rather than in the world; entities, the described and named ones in view with their Describe text filled in, bounds in pixels (x0, y0, x1, y1, y down) of a width x height frame, z, and how they are drawn, in reading order; groups, everything else by kind (their game components, else their name or look) with a count, bounds, and the first ids; effects on screen (camera shake, post passes, particles, materials); lighting, when the drawing camera has Lighting (phase 5 item 3): the ambient light and its level, and each Light reaching the view with where it is on the screen, how far it reaches in pixels, its colour and strength, a cone's direction and angle; tiles, what the tilemaps in view collide with, a character a cell; and bytes. The same frame is a screen-reader feed. format \"png\" (section 8 L5) renders the world as it is now and writes a PNG; with annotate: true the ids and bounds of the semantic frame are drawn over it (yellow for entities, cyan for groups) and returned as marks. Sprites come from the world and the view from the drawing camera (the active Camera with the highest priority, its shake included); described shapes need no asset.",
+        doc: "What the player sees. format \"semantic\" (section 8 L4) is data, about 3 KB, and needs no GPU: the camera and the world rect it shows; hud, the lines of entities on the screen rather than in the world; ui, the UI tree's text and buttons in reading order (id, text, bounds, and button, focused, disabled where they hold): a HUD built of UI nodes is here, not in hud; entities, the described and named ones in view with their Describe text filled in, bounds in pixels (x0, y0, x1, y1, y down) of a width x height frame, z, and how they are drawn, in reading order; groups, everything else by kind (their game components, else their name or look) with a count, bounds, and the first ids; effects on screen (camera shake, post passes, particles, materials); lighting, when the drawing camera has Lighting (phase 5 item 3): the ambient light and its level, and each Light reaching the view with where it is on the screen, how far it reaches in pixels, its colour and strength, a cone's direction and angle; tiles, what the tilemaps in view collide with, a character a cell; and bytes. The same frame is a screen-reader feed. format \"png\" (section 8 L5) renders the world as it is now and writes a PNG; with annotate: true the ids and bounds of the semantic frame are drawn over it (yellow for entities, cyan for groups) and returned as marks. Sprites come from the world and the view from the drawing camera (the active Camera with the highest priority, its shake included); described shapes need no asset.",
         params: &[
             opt("format", STRING, "\"png\" (default) | \"semantic\""),
             opt("width", INTEGER, "default 640"),
@@ -1720,6 +1722,18 @@ pub const METHODS: &[MethodDoc] = &[
         returns: "{armed, captured, ticks, path, from_tick}",
     },
 ];
+
+/// The scripting API (`argus_luau::api`) as Markdown, headings from
+/// `level`: what a game's Luau can declare and call (found at the phase 5
+/// gate: nothing described it, and agents learned it from games' scripts).
+pub fn scripting(level: usize) -> String {
+    argus_luau::api::markdown(level)
+}
+
+/// The scenario API (`argus_test::api`) as Markdown, headings from `level`.
+pub fn scenarios(level: usize) -> String {
+    argus_test::api::markdown(level)
+}
 
 /// Look a method up.
 pub fn find(name: &str) -> Option<&'static MethodDoc> {

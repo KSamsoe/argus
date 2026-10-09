@@ -182,6 +182,15 @@ Phase 0 item 3, "Luau binding with component and def schemas": this crate.
 |---|---|---|---|
 | (§6) What a script's `math` gives on each platform. | Done | `math_outputs(name, inputs, second)`: Luau's own `math.<name>` in a fresh VM, the C library Luau was built against; it gives Rust's `f64` results bit for bit on this PC, klab, and Chrome. Found: in the sandboxed VM a host's replacement of `math.sin` is not used (Luau's built-in fast path calls the C function), and `x ^ y` never goes through `math.pow`, so a common math library for Luau would have to be compiled into its C++. | `math::a_scripts_math_is_the_c_librarys_and_takes_two_arguments_where_it_needs_them` |
 
+## The phase 5 gate: the scripting API written down
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§16) "The engine's own reference documentation ships in the same shape": the scripting API. | Done | `api.rs`: every declaration, key, field type, `q` method and field, entity, random-stream, and tile-map method, with what it does; `argus docs` and every ARGUS.md print it (found at the phase 5 gate, where four agents each added a feature to a game with only the project, the tools, and their docs: all four learned the API from the games' own scripts). A test reads `bind.rs` and `decl.rs` and fails on a name the reference lacks. | `api::tests::every_method_and_field_a_script_can_call_is_in_the_reference`, `api::tests::every_declaration_key_and_field_type_is_in_the_reference` |
+| (§7) A malformed declaration is an error with its file and line. | Done | A system key the declaration does not take is refused, `before` with a hint (there is none; name this system in the other's `after`); it loaded silently before. | `system_keys::an_unknown_key_in_a_system_is_an_error_and_before_says_what_to_do` |
+| (§7) `script.errors` lists what is wrong until it is fixed. | Done | The run order's error after a reload (an `after` naming no system) is kept there (`set_order_error`) until a reload orders the systems; and once anything reloads, files that still have errors are tried again, so fixing a component clears the systems that failed because of it (both were in the reload's answer only, or stayed until a scene load). | the gate's trials; CI's games step |
+| (§12) `q:within` costs what the loop takes. | Done | Nearest first as before, ordered as the loop goes (a heap over `World::within_unordered`), so a loop that stops after a few of tens of thousands pays for those few: Swarm's music, counting to 30 of 49,000, went from 10.7 ms a tick to 0.47. The order is the sort's, ties by entity. | `argus-daemon` `plugins::perf_swarm_stress_tick_under_6_ms_with_its_chase_in_rust` (the window with the swarm on the hero); every game's suite |
+
 ## Known limitations, stated so they are decisions
 
 - One Luau VM per `ScriptHost`; a forked world needs its own host (or the same host with a different scheduler, since the VM holds no world state).

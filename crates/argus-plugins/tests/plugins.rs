@@ -236,6 +236,9 @@ fn a_compile_error_is_its_file_and_line_and_the_compilers_words() {
     assert_eq!(e.line, Some(4));
     assert_eq!(e.phase, "compile");
     assert!(e.message.contains("mismatched types"), "{e:?}");
+    // The row says what rustc said at the place, not only its headline
+    // (found at the phase 5 gate).
+    assert!(e.message.contains("expected `u32`"), "{e:?}");
     assert!(
         b.diagnostics[0].rendered.contains("expected `u32`"),
         "{:?}",

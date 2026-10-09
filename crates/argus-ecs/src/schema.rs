@@ -387,7 +387,9 @@ impl Registry {
                     schema.name
                 ),
             )
-            .hint("Bump the version and add a migration, or pick another name.")
+            // The way on is a scene load (found at the phase 5 gate: three
+            // agents met this on a reload and found `scene load` by trying).
+            .hint("A running world's rows cannot change shape: `argus scene load` starts the scene again with the new fields. To keep old saves loading, also raise the component's version and add a migration (its `migrate`; `argus docs`, Declarations).")
             .at(schema.source.clone()));
         }
         let id = ComponentId(self.schemas.len() as u32);

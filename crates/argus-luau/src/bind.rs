@@ -844,7 +844,19 @@ impl UserData for QueryHandle {
                     }
                     ids.push(id);
                 }
-                let found = c.within(x, y, r);
+                // Nearest first, as World::within sorts them, but ordered as
+                // the loop goes: a heap is built in one pass and yields the
+                // next nearest each step, so a loop that stops after a few
+                // of tens of thousands pays for those few (found at the
+                // phase 5 gate: Swarm's music counted to 30 of 49,000 and
+                // sorted them all, 10 ms a tick). Ties go by entity, as in
+                // the sort; a distance is never negative, so its bits order
+                // as it does.
+                let mut found: std::collections::BinaryHeap<std::cmp::Reverse<(u32, Entity)>> = c
+                    .within_unordered(x, y, r)
+                    .into_iter()
+                    .map(|(e, d)| std::cmp::Reverse((d.to_bits(), e)))
+                    .collect();
                 let refs: Vec<AnyUserData> = names
                     .iter()
                     .zip(&ids)
@@ -862,12 +874,10 @@ impl UserData for QueryHandle {
                     entity: Entity::NULL,
                     link: link.clone(),
                 })?;
-                let mut i = 0usize;
                 let iter = lua.create_function_mut(move |_, ()| {
                     let c = ctx(&link)?;
-                    while i < found.len() {
-                        let (e, d) = found[i];
-                        i += 1;
+                    while let Some(std::cmp::Reverse((bits, e))) = found.pop() {
+                        let d = f32::from_bits(bits);
                         if !c.is_alive(e) || !ids.iter().all(|&id| c.has(e, id)) {
                             continue;
                         }

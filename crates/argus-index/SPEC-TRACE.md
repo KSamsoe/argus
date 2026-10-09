@@ -56,6 +56,12 @@ Every statement in the design document (v0.3) that constrains the index (§4 "Th
 |---|---|---|---|
 | (§4) "The index still answers queries about rooms that aren't loaded." | Done | The evaluator takes `where.room` (a name or a list) and a `room` column; a `Source` says an entity's room (`Source::room`): the index from its `room` column, the live world from the scene's rooms. | Hollow's `tests/deep.luau` (7,486 crystals counted from the index, a room's glowing crystals read from it) |
 
+## The phase 5 gate: numbers by value
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§4) A where clause matches values. | Done | Equality compares numbers by value at any depth, so a vec2 `[12, 12]` matches the position `[12.0, 12.0]`; whole numbers in a list matched nothing. The incremental-index timing is the best of three (a cold first sync after a build paid 25 ms against a warm 15, and failed CI in phase 5 item 11). | the gate's Delve trial; `perf::full_sync_of_ten_thousand_entities_and_incremental_room_resync` |
+
 ## Known limitations, stated so they are decisions
 
 - File change detection is by size and mtime from a periodic scan (10 s idle) plus the daemon's own writes; a file watcher is a later refinement. An outside edit to the *loaded* scene updates the index when its scene is re-indexed from disk, but the live world keeps its state until `scene.load`.

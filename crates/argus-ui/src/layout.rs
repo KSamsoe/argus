@@ -218,6 +218,12 @@ struct TextItem {
     font: Rc<dyn FontFace>,
     size: f32,
     wrap: bool,
+    /// The widest its words may be: the node's `max` width less its
+    /// padding, when it has one. The layout measures a leaf before it
+    /// clamps it, so wrapping must know this itself (found at the phase 5
+    /// gate: a sign with a `max` width kept one line's height, and its
+    /// other lines spilled out below it).
+    cap: Option<f32>,
     memo: RefCell<Vec<Measured>>,
 }
 
@@ -537,6 +543,7 @@ fn layout(
             font,
             size,
             wrap: t.wrap,
+            cap: (it.node.max.x > 0.0).then(|| (it.node.max.x - 2.0 * it.node.pad.x).max(0.0)),
             memo: RefCell::new(Vec::new()),
         });
     }
@@ -682,6 +689,11 @@ fn layout(
                         AvailableSpace::MinContent => Some(0.0),
                         AvailableSpace::MaxContent => None,
                     });
+                    let max = match (max, t.cap) {
+                        (Some(m), Some(c)) => Some(m.min(c)),
+                        (None, c) => c,
+                        (m, None) => m,
+                    };
                     // Whole pixels up, so rounding the layout never leaves
                     // the words less room than they measured.
                     let (w, h) = t.size(max);

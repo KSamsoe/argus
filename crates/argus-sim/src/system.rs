@@ -422,6 +422,12 @@ impl<'a> SystemCtx<'a> {
         self.world.within(x, y, r)
     }
 
+    /// [`within`](SystemCtx::within) in no order, for a caller that orders
+    /// the nearest few itself (see `World::within_unordered`).
+    pub fn within_unordered(&self, x: f32, y: f32, r: f32) -> Vec<(Entity, f32)> {
+        self.world.within_unordered(x, y, r)
+    }
+
     /// Rebuild the shared broadphase from positions as they are now. The
     /// physics step calls this after moving bodies, so its contact pass and
     /// every later system this tick see where things are, not where they were.

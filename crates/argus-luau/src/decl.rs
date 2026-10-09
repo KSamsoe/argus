@@ -226,6 +226,11 @@ fn bad(msg: impl Into<String>, hint: &str, source: Option<String>) -> mlua::Erro
     )
 }
 
+/// The keys a `system "name" { ... }` declaration takes.
+pub(crate) const SYSTEM_KEYS: [&str; 10] = [
+    "stage", "run", "after", "reads", "writes", "clock", "rng", "doc", "on_load", "unfrozen",
+];
+
 fn here(lua: &Lua) -> String {
     let file = lua
         .app_data_ref::<Pending>()
@@ -240,7 +245,7 @@ fn here(lua: &Lua) -> String {
     }
 }
 
-const FIELD_TYPES: [&str; 15] = [
+pub(crate) const FIELD_TYPES: [&str; 15] = [
     "bool", "u8", "u16", "u32", "u64", "i8", "i16", "i32", "i64", "f32", "f64", "vec2", "str",
     "entity", "ref",
 ];
@@ -531,6 +536,29 @@ pub(crate) fn install_globals(lua: &Lua) -> LuaResult<()> {
         lua.create_function(|lua, name: String| {
             let source = here(lua);
             lua.create_function(move |lua, spec: Table| {
+                // A key the declaration does not know is a mistake, not a
+                // no-op (found at the phase 5 gate: `before = {...}` and a
+                // misspelt key loaded silently, the system wherever the
+                // scheduler put it).
+                for pair in spec.pairs::<LuaValue, LuaValue>() {
+                    let (k, _) = pair?;
+                    let key = match &k {
+                        LuaValue::String(s) => s.to_str()?.to_string(),
+                        other => format!("{other:?}"),
+                    };
+                    if !SYSTEM_KEYS.contains(&key.as_str()) {
+                        let hint = if key == "before" {
+                            "There is no before: name this system in the other's after instead, or put the other in this one's after.".to_string()
+                        } else {
+                            format!("A system takes {}.", SYSTEM_KEYS.join(", "))
+                        };
+                        return Err(bad(
+                            format!("system {name}: unknown key {key}"),
+                            &hint,
+                            Some(source.clone()),
+                        ));
+                    }
+                }
                 let stage: Option<String> = spec.get("stage")?;
                 let Some(stage) = stage else {
                     return Err(bad(

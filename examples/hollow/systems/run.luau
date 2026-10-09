@@ -27,6 +27,7 @@ return system "sim.run" {
       run.gems = 0
       run.done = false
       run.time = 0
+      run.number += 1
       for _, g in q:each("Gem") do
         g.taken = false
       end
@@ -60,6 +61,7 @@ return system "sim.run" {
           local g = other:get("Gem")
           if g.active and not g.taken then
             g.taken = true
+            g.taken_in = run.number
             run.gems += 1
             q:emit("gem.taken", { entity = other })
             q:play("sfx/gem")
@@ -74,9 +76,15 @@ return system "sim.run" {
       hero:get("KinematicBody").velocity = vector.create(0, 0, 0)
       hero:get("Sprite").visible = false
     end
-    -- A gem that is off, or taken, is not drawn.
+    -- A gem that is off, or taken, is not drawn. One taken in an earlier
+    -- run is back: a restart puts back only the gems whose rooms are in,
+    -- and a room streamed out remembers its gem as taken (found at the
+    -- phase 5 gate by the agent who added the feather).
     local gems = 0
     for e, g in q:each("Gem") do
+      if g.taken and g.taken_in ~= run.number then
+        g.taken = false
+      end
       if g.active then
         gems += 1
       end

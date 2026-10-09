@@ -170,6 +170,13 @@ Phase 0 item 9, "CLI": this crate, plus `argus_daemon::launch` (shared with `arg
 |---|---|---|---|
 | (§11) The daemon serves the browser client. | Done | `--web [local\|tailnet\|ip[:port]\|:port]` on `daemon start` and `daemon run` (`Invocation.web`; `local` when no value follows), parsed by `argus_daemon::web::parse_addr`. `start` refuses an address the listener may not use before starting a daemon, and notices a daemon that stops while it waits (a web port another daemon has), quoting its log's last line, where it waited 30 s before. | `web::an_address_off_this_machine_and_its_tailnet_is_refused_before_a_daemon_starts`, `web::a_daemon_that_cannot_listen_is_reported_at_once_with_its_reason` |
 
+## The phase 5 gate: ARGUS.md for an agent with no engine source
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§16) ARGUS.md is what a coding agent's instructions point at. | Done | It ends with the scripting and the scenario API (`argus_daemon::docs::scripting`, `scenarios`), points at the plugin SDK's own docs (`cargo doc` in `.argus/plugins/sdk`, offline), and no longer names engine source files for the engine's components (it said `Declared in crates\argus-...`). `argus docs` prints both APIs too. | the gate's trials |
+| `argus test` takes `--params` as every command does. | Done | `--params` first, flags and words on top; it was dropped without a word, and two agents ran whole suites by it. The `events` tool passes `from_frame` and `cursor` to `obs.events`. | the gate's trials |
+
 ## Known limitations, stated so they are decisions
 
 - A daemon started by the CLI outlives the shell; `argus daemon stop` ends it, and `.argus/daemon.json` is removed on a clean exit. `stop` returns once the daemon is gone (its record removed and its socket silent), not when it agreed to go: a command right after it used to reach the daemon on its way out and fail with "connection lost" (found after the phase-1 gate; `cli::the_binary_finds_starts_and_stops_a_project_daemon`). A daemon killed otherwise leaves a stale record, which `argus daemon status` reports and a method call replaces.

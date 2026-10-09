@@ -28,6 +28,12 @@ Every statement in the design document (v0.3) that constrains how a client reach
 |---|---|---|---|
 | A def row in a written line. | Done | Inside brackets, a colon between two word characters stays in the word, as the reader keeps it: `{def: item:meal, ...}`, not `"item:meal"`. | `command::tests::every_value_reads_back_the_same` |
 
+## The phase 5 gate: compact objects
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§16) `{k: v}` accepts bare words. | Done | An object's key ends at its colon however it is glued, so `rect={x:0,y:0,w:72,h:24}` is an object; a value keeps its glued colons (`item:key.brass`). Two of the gate's agents met it read as one string. | `command::tests::an_objects_keys_end_at_their_colon_however_it_is_glued` |
+
 ## Known limitations, stated so they are decisions
 
 - The line is for a POSIX shell (bash, and Git Bash on Windows), where the tests and the docs run. PowerShell reads single quotes the same way, but not `'\''` inside them.

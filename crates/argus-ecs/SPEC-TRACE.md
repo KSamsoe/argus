@@ -187,6 +187,12 @@ Phase 0 item 1, "ECS core with SoA columns, archetypes, and hierarchy": this cra
 |---|---|---|---|
 | (§6) Where two worlds differ, not only that they do. | Done | `World::digest_rows`: what `digest` reads, a line a field (`e:12 Transform.rot = -0.102 (bfba1db8c0000000)`), floats with their bits, through the same walk as the digest (`walk_digested`), so the digest is unchanged and two worlds' lines, diffed, name the first field that differs. | `persist::the_digest_rows_name_the_one_field_that_differs` |
 
+## The phase 5 gate: what a changed component needs
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§3) A changed component's schema on reload. | Done | The refusal says the way on: `argus scene load` starts over with the new fields, and a version and a migration keep old saves loading. Three of the gate's agents found `scene load` by trying. `World::within_unordered` serves `q:within`'s lazy order. | the gate's trials |
+
 ## Known limitations, stated so they are decisions
 
 - A parallel system may not add a string to the table (it may spawn with one: spawns are applied after its batch). A game whose parallel system writes text it composes writes it from a serial system instead.

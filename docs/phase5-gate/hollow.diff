@@ -1,0 +1,529 @@
+diff -ruN -x .argus -x ARGUS.md -x '*.png' -x target orig/hollow/audio.toml gate/hollow/audio.toml
+--- orig/hollow/audio.toml	2026-10-09 12:11:49.000000000 -0400
++++ gate/hollow/audio.toml	2026-10-09 12:27:03.801399100 -0400
+@@ -40,6 +40,18 @@
+ gain = 0.3
+ variations = [ { wave = "square", freq = 988, slide = 500, ms = 140, release_ms = 90 } ]
+ 
++# The feather: taken, a soft rising chime; a jump in mid-air, a flap.
++[sounds."sfx/feather"]
++spatial = false
++gain = 0.3
++variations = [ { wave = "sine", freq = 660, slide = 660, ms = 260, release_ms = 160 } ]
++
++[sounds."sfx/flap"]
++spatial = false
++gain = 0.35
++pitch_jitter = 0.1
++variations = [ { wave = "noise", ms = 70, release_ms = 60 } ]
++
+ [sounds."sfx/fell"]
+ spatial = false
+ gain = 0.4
+diff -ruN -x .argus -x ARGUS.md -x '*.png' -x target orig/hollow/components/feather.luau gate/hollow/components/feather.luau
+--- orig/hollow/components/feather.luau	1969-12-31 19:00:00.000000000 -0500
++++ gate/hollow/components/feather.luau	2026-10-09 12:25:19.030306200 -0400
+@@ -0,0 +1,17 @@
++-- The feather in the cave: a double jump. Taken on touch, it gives the hero
++-- a jump in mid-air for the rest of the run, back each time they land; a
++-- new run takes it away and puts the feather back. Feather is on the
++-- pickup (rooms/a/feather.toml), AirJump on the hero; sim.run takes the
++-- feather and sim.air_jump makes the jump (systems/feather.luau).
++component "Feather" {
++  doc = "A feather to take: touched, it gives the hero its jumps in mid-air (AirJump.max) for the rest of the run. Taken while the hero has them, so it is not drawn until a new run",
++  jumps = field.u32 { default = 1, doc = "Jumps in mid-air it gives the hero, each back when they land" },
++  taken = field.bool { default = false, doc = "The hero has its jumps this run (written by sim.run)" },
++}
++
++return component "AirJump" {
++  doc = "The hero's jumps in mid-air, the feather's gift: how many they have, how many are left before they land (each comes back then), and how high one goes",
++  max = field.u32 { default = 0, doc = "Jumps in mid-air the hero has, each back on landing: 0 until the feather is taken this run" },
++  left = field.u32 { default = 0, doc = "Jumps in mid-air left before the hero lands (written by sim.air_jump and sim.run)" },
++  height = field.f32 { default = 0, range = { 0, 20 }, tune = true, doc = "Height of a full jump in mid-air, in world units above where it starts; 0 is the CharacterController's jump_height" },
++}
+diff -ruN -x .argus -x ARGUS.md -x '*.png' -x target orig/hollow/scenes/hollow/rooms/a/feather.toml gate/hollow/scenes/hollow/rooms/a/feather.toml
+--- orig/hollow/scenes/hollow/rooms/a/feather.toml	1969-12-31 19:00:00.000000000 -0500
++++ gate/hollow/scenes/hollow/rooms/a/feather.toml	2026-10-09 12:28:52.311950000 -0400
+@@ -0,0 +1,49 @@
++# The feather (a double jump), early in the cave: on the plank over the
++# hermit's fire, at its far end, so a jump up through the plank and a step
++# along it takes it, and so does a jump up through it beneath the feather.
++# Taken, the hero can jump once more in mid-air, again each time they land,
++# for the rest of the run (systems/feather.luau, systems/run.luau); a new
++# run puts it back.
++[Transform]
++pos = [11.3, 4.6]
++
++[Sprite]
++atlas = "feather"
++size = [0.7, 0.875]
++z = 1.0
++
++[Collider]
++size = [0.6, 0.8]
++
++[Feather]
++jumps = 1
++
++[Describe]
++name = "feather"
++text = "A feather, light as air."
++
++# Pale in the dark of the cave mouth, so it is seen from the floor.
++[Emissive]
++amount = 0.8
++
++# Its words, over it while the hero is near and it is there to take
++# (systems/signs.luau): a UI tree hung from the feather itself. One line,
++# unwrapped, so the panel is as wide as the words in any language (a
++# panel with a max width does not grow taller for wrapped lines).
++[UiRoot]
++follow = "@feather"
++follow_offset = [0.0, 0.7]
++interactive = false
++
++[UiNode]
++pivot = [0.5, 1.0]
++pad = [8.0, 5.0]
++visible = false
++
++[UiPanel]
++color = "panel"
++border = 1.0
++
++[UiText]
++key = "sign.feather"
++wrap = false
+diff -ruN -x .argus -x ARGUS.md -x '*.png' -x target orig/hollow/scenes/hollow/rooms/persistent/player.toml gate/hollow/scenes/hollow/rooms/persistent/player.toml
+--- orig/hollow/scenes/hollow/rooms/persistent/player.toml	2026-10-09 12:11:49.000000000 -0400
++++ gate/hollow/scenes/hollow/rooms/persistent/player.toml	2026-10-09 12:27:00.780906000 -0400
+@@ -28,6 +28,10 @@
+ [Animator]
+ machine = "anim/hero"
+ 
++# The feather's gift (components/feather.luau): no jump in mid-air until
++# it is taken.
++[AirJump]
++
+ [Describe]
+ name = "hero"
+ text = "{Animator.state}"
+diff -ruN -x .argus -x ARGUS.md -x '*.png' -x target orig/hollow/strings/en.toml gate/hollow/strings/en.toml
+--- orig/hollow/strings/en.toml	2026-10-09 12:11:49.000000000 -0400
++++ gate/hollow/strings/en.toml	2026-10-09 12:28:54.209338500 -0400
+@@ -31,7 +31,7 @@
+ back = "Back"
+ 
+ [hud]
+-running = "Hollow. Find the way out. {falls}.{gem}"
++running = "Hollow. Find the way out. {falls}.{gem}{feather}"
+ done = "Out of the hollow in {time} s, {falls}{gem}. Press {again} to go again."
+ no_falls_yet = "No falls yet"
+ no_falls = "no falls"
+@@ -40,11 +40,13 @@
+ gem_found = " Gem found."
+ with_gem = ", with the gem"
+ gem_missed = ", gem missed"
++feather = " The feather: jump again in mid-air."
+ 
+ [sign]
+ shaft = "The top of the shaft. Something glints up here."
+ pit = "Mind the pit."
+ exit = "The way out."
++feather = "A feather: take it to jump in mid-air."
+ 
+ [hermit]
+ name = "The hermit"
+diff -ruN -x .argus -x ARGUS.md -x '*.png' -x target orig/hollow/strings/fr.toml gate/hollow/strings/fr.toml
+--- orig/hollow/strings/fr.toml	2026-10-09 12:11:49.000000000 -0400
++++ gate/hollow/strings/fr.toml	2026-10-09 12:28:56.008250700 -0400
+@@ -33,7 +33,7 @@
+ continue = "Continuer"
+ 
+ [hud]
+-running = "Hollow. Trouve la sortie. {falls}.{gem}"
++running = "Hollow. Trouve la sortie. {falls}.{gem}{feather}"
+ done = "Sorti en {time} s, {falls}{gem}. {again} pour rejouer."
+ no_falls_yet = "Aucune chute"
+ no_falls = "aucune chute"
+@@ -42,11 +42,13 @@
+ gem_found = " Gemme trouvée."
+ with_gem = ", avec la gemme"
+ gem_missed = ", gemme manquée"
++feather = " La plume : saute encore en l’air."
+ 
+ [sign]
+ shaft = "Le haut du puits. Quelque chose brille là-haut."
+ pit = "Attention au gouffre."
+ exit = "La sortie."
++feather = "Une plume : prends-la pour sauter en l’air."
+ 
+ [hermit]
+ name = "L’ermite"
+diff -ruN -x .argus -x ARGUS.md -x '*.png' -x target orig/hollow/systems/feather.luau gate/hollow/systems/feather.luau
+--- orig/hollow/systems/feather.luau	1969-12-31 19:00:00.000000000 -0500
++++ gate/hollow/systems/feather.luau	2026-10-09 12:30:13.206106600 -0400
+@@ -0,0 +1,46 @@
++-- The feather's gift: a jump in mid-air (components/feather.luau). The
++-- CharacterController (physics.control) jumps from the ground and in
++-- coyote time; a press it cannot use there, in mid-air, it only remembers
++-- for landing (its buffer). That press is this system's: while the hero
++-- has a jump in mid-air left, it jumps them as a jump from the ground
++-- would (the same take-off, held for a full one and cut when let go) and
++-- forgets the press, so landing does not jump again. Landing gives the
++-- jumps back. sim.run takes the feather and gives it back on a new run.
++return system "sim.air_jump" {
++  stage = "sim",
++  -- After the controller has had this tick's press; the scheduler puts it
++  -- before physics.move (there is no before key: script.systems shows it).
++  after = { "physics.control" },
++  reads = { "Actions", "AirJump", "CharacterController", "KinematicBody" },
++  writes = { "AirJump", "CharacterController", "KinematicBody" },
++  doc = "The feather's double jump: while the hero is in mid-air with a jump left (AirJump.left), a jump press the controller could only buffer jumps them instead, as high as a jump from the ground (AirJump.height, or the controller's jump_height), variable as it is, and emits hero.air_jump {entity, left}; on the ground AirJump.left is AirJump.max again.",
++  run = function(q)
++    local hero = q:entity("@player")
++    if not hero:has("AirJump") then return end
++    local air = hero:get("AirJump")
++    local body = hero:get("KinematicBody")
++    -- Standing (as the last move left them): every jump in mid-air is back.
++    if body.grounded then
++      if air.left ~= air.max then air.left = air.max end
++      return
++    end
++    if air.left == 0 or not hero:get("Actions").jump_pressed then return end
++    -- A press the controller used (a coyote jump) leaves no buffer; one it
++    -- could only remember for landing does.
++    local cc = hero:get("CharacterController")
++    if cc.buffer <= 0 then return end
++    -- The controller's rising gravity, from its jump's height and time to
++    -- the top, and the take-off speed that rises the height against it.
++    local gravity = 2 * cc.jump_height / (cc.jump_time * cc.jump_time)
++    local height = air.height > 0 and air.height or cc.jump_height
++    body.velocity = vector.create(body.velocity.x, math.sqrt(2 * gravity * height), 0)
++    -- The controller set this tick's gravity for a fall (fall_gravity);
++    -- the jump rises from this tick, as one from the ground does.
++    body.gravity = gravity
++    cc.rising = true
++    cc.buffer = 0
++    air.left -= 1
++    q:emit("hero.air_jump", { entity = hero, left = air.left })
++    q:play("sfx/flap")
++  end,
++}
+diff -ruN -x .argus -x ARGUS.md -x '*.png' -x target orig/hollow/systems/run.luau gate/hollow/systems/run.luau
+--- orig/hollow/systems/run.luau	2026-10-09 12:11:49.000000000 -0400
++++ gate/hollow/systems/run.luau	2026-10-09 12:27:36.373410600 -0400
+@@ -6,17 +6,21 @@
+ -- door, the hero is held there out of sight until R. "Put something up here
+ -- like a collectible": a gem, taken on touch and counted. Finishing plays
+ -- the outro timeline (defs/timeline.toml, phase 3 item 5); R skips it.
++-- The feather in the cave is the run's too: taken on touch, the hero has a
++-- jump in mid-air for the rest of it (AirJump, which sim.air_jump spends),
++-- and a new run takes the jump away and puts the feather back.
+ return system "sim.run" {
+   stage = "sim",
+   -- After the overlaps are known, so a touch is seen on its tick.
+   after = { "physics.overlap" },
+-  reads = { "Actions", "Run", "Gem", "InputGlyph" },
+-  writes = { "Run", "Gem", "UiText", "Transform", "KinematicBody", "Sprite", "Timeline" },
+-  doc = "Counts the hero's falls and gems, finishes the run at the exit (run.finished {time, falls, gems}), plays the outro timeline and holds the hero there out of sight, restarts it on the restart action (or the pause menu's, skipping the outro), and writes the HUD line.",
++  reads = { "Actions", "Run", "Gem", "InputGlyph", "Feather", "AirJump" },
++  writes = { "Run", "Gem", "UiText", "Transform", "KinematicBody", "Sprite", "Timeline", "Feather", "AirJump" },
++  doc = "Counts the hero's falls and gems, gives the hero the feather's jumps in mid-air when they touch it (feather.taken {entity, jumps}) for the rest of the run, finishes the run at the exit (run.finished {time, falls, gems}), plays the outro timeline and holds the hero there out of sight, restarts it on the restart action (or the pause menu's, skipping the outro; the feather goes back), and writes the HUD line.",
+   run = function(q)
+     local hero = q:entity("@player")
+     local hud = q:entity("@hud")
+     local run = hud:get("Run")
++    local air = hero:has("AirJump") and hero:get("AirJump") or nil
+     if hero:get("Actions").restart_pressed or run.restart then
+       run.restart = false
+       hero:get("Transform").pos = vector.create(3, 1.8, 0)
+@@ -30,6 +34,11 @@
+       for _, g in q:each("Gem") do
+         g.taken = false
+       end
++      -- The feather's gift is this run's: gone, and the feather back.
++      if air ~= nil then
++        air.max = 0
++        air.left = 0
++      end
+       -- A new run skips what is left of the outro.
+       for _, tl in q:each("Timeline") do
+         tl.skip = true
+@@ -64,9 +73,27 @@
+             q:emit("gem.taken", { entity = other })
+             q:play("sfx/gem")
+           end
++        elseif other ~= nil and other:has("Feather") and air ~= nil then
++          local f = other:get("Feather")
++          if not f.taken and f.jumps > air.max then
++            air.max = f.jumps
++            -- Usable at once, in mid-air too (the touch may be a jump's).
++            air.left = f.jumps
++            q:emit("feather.taken", { entity = other, jumps = f.jumps })
++            q:play("sfx/feather")
++          end
+         end
+       end
+     end
++    -- A feather is taken while the hero has its jumps: the hero's AirJump
++    -- is what counts, so one whose room streamed back in is as the run is.
++    local winged = air ~= nil and air.max > 0
++    for e, f in q:each("Feather") do
++      local taken = winged and air.max >= f.jumps
++      if f.taken ~= taken then f.taken = taken end
++      local sprite = e:get("Sprite")
++      if sprite.visible == taken then sprite.visible = not taken end
++    end
+     -- Through the door: held in the doorway, out of sight, until R.
+     if run.done then
+       local door = q:entity("@exit"):get("Transform").pos
+@@ -99,7 +126,11 @@
+       d.text = q:text("hud.done", { time = string.format("%.1f", run.time), falls = falls, gem = found, again = again })
+     else
+       local f = run.falls == 0 and q:text("hud.no_falls_yet") or (falls:sub(1, 1):upper() .. falls:sub(2))
+-      d.text = q:text("hud.running", { falls = f, gem = run.gems > 0 and q:text("hud.gem_found") or "" })
++      d.text = q:text("hud.running", {
++        falls = f,
++        gem = run.gems > 0 and q:text("hud.gem_found") or "",
++        feather = winged and q:text("hud.feather") or "",
++      })
+     end
+   end,
+ }
+diff -ruN -x .argus -x ARGUS.md -x '*.png' -x target orig/hollow/systems/signs.luau gate/hollow/systems/signs.luau
+--- orig/hollow/systems/signs.luau	2026-10-09 12:11:49.000000000 -0400
++++ gate/hollow/systems/signs.luau	2026-10-09 12:27:50.244280700 -0400
+@@ -1,18 +1,23 @@
+ -- A sign says what it says while the hero stands near it. Found by a mark
+ -- on the phase 2 playtest: "what is this thing?" The signs' words reached
+ -- the agent through the semantic frame and never the player. Since phase 3
+--- item 1 the words are a UI panel hung over the sign.
++-- item 1 the words are a UI panel hung over the sign. The feather says what
++-- it gives the same way, while it is there to take: from a little farther,
++-- since it sits up on the cave's plank, over the hero's head.
+ return system "late.signs" {
+   stage = "late",
+-  reads = { "Transform", "Describe" },
++  reads = { "Transform", "Describe", "Sprite" },
+   writes = { "UiNode" },
+-  doc = "Shows a sign's words over it (its UI panel) while the hero is within 2.5 units.",
++  doc = "Shows a sign's words over it (its UI panel) while the hero is within 2.5 units, and the feather's while it is drawn and the hero is within 3.",
+   run = function(q)
+     local hero = q:entity("@player"):get("Transform").pos
+-    for _, d, t, n in q:each("Describe", "Transform", "UiNode") do
++    for e, d, t, n in q:each("Describe", "Transform", "UiNode") do
+       if d.name == "sign" or d.name == "exit" then
+         local dx, dy = t.pos.x - hero.x, t.pos.y - hero.y
+         n.visible = dx * dx + dy * dy < 2.5 * 2.5
++      elseif d.name == "feather" then
++        local dx, dy = t.pos.x - hero.x, t.pos.y - hero.y
++        n.visible = e:get("Sprite").visible and dx * dx + dy * dy < 3 * 3
+       end
+     end
+   end,
+diff -ruN -x .argus -x ARGUS.md -x '*.png' -x target orig/hollow/tests/feather.luau gate/hollow/tests/feather.luau
+--- orig/hollow/tests/feather.luau	1969-12-31 19:00:00.000000000 -0500
++++ gate/hollow/tests/feather.luau	2026-10-09 12:31:50.413392300 -0400
+@@ -0,0 +1,158 @@
++-- The feather (a double jump), early in the cave: on the plank over the
++-- hermit's fire. Without it, jump pressed again in mid-air does nothing
++-- (the controller only remembers the press for landing). Taken, as a
++-- player takes it, running under the plank's far end and jumping up
++-- through it, a second press in mid-air jumps the hero again, once, and
++-- higher than one jump goes; the jump in mid-air is back each time they
++-- land, and the HUD says they have it. It is the run's: a fall into the
++-- pit keeps it, a new run takes it away and puts the feather back, even
++-- when the cave had streamed out.
++
++local function set(t, entity, path, value)
++  local tx = t:call("edit.begin", { author = "test:hollow", note = "the feather" }).tx
++  t:call("edit.set", { tx = tx, entity = entity, path = path, value = value })
++  t:call("edit.commit", { tx = tx })
++end
++
++local function y(t)
++  return t.expect:field("@player", "Transform.pos.y"):get()
++end
++
++local function rising(t)
++  return t.expect:field("@player", "KinematicBody.velocity.y"):get()
++end
++
++-- Jump from where the hero stands, holding it for a full jump, and press
++-- jump again (held as long) at each of `presses` ticks after the take-off;
++-- then come down. Returns how high above the take-off the hero got, and
++-- how fast they rose (below 0: fell) just after each press.
++local function jump(t, presses)
++  local from = y(t)
++  local top, after, tick = from, {}, 0
++  local function step()
++    t:step(1)
++    tick += 1
++    top = math.max(top, y(t))
++  end
++  t.input:hold("jump", true, 22)
++  for _, at in ipairs(presses) do
++    while tick < at do step() end
++    t.expect:field("@player", "KinematicBody.grounded"):eq(false)
++    t.input:hold("jump", true, 22)
++    step()
++    table.insert(after, rising(t))
++  end
++  -- Down again, onto what they took off from.
++  for _ = 1, 180 do
++    step()
++    if t.expect:field("@player", "KinematicBody.grounded"):get() then break end
++  end
++  t:step(2)
++  return top - from, after
++end
++
++-- From the cave mouth: run right under the plank's far end, where the
++-- feather is, and jump up through the plank onto it.
++local function take_the_feather(t)
++  t.input:hold("move", { 1, 0 }, 70)
++  t:step(90)
++  t.expect:field("@player", "Transform.pos.x"):between(10.8, 11.6)
++  t.input:hold("jump", true, 22)
++  t:run_until { event = "feather.taken", max_frames = 40 }
++  t:step(40)
++  t.expect:field("@player", "KinematicBody.on_one_way"):eq(true)
++end
++
++scenario "the feather gives one more jump in mid-air, back each time the hero lands" {
++  scene = "hollow", seeds = { 1, 2, 3 },
++  run = function(t)
++    t:step(5)
++    t.expect:field("@player", "AirJump.max"):eq(0)
++    t.expect:field("@feather", "Sprite.visible"):eq(true)
++    t.expect:field("@feather", "Feather.taken"):eq(false)
++
++    -- Without it: pressed again at the top of a jump, nothing; the hero
++    -- comes down as from one jump.
++    local single, plain = jump(t, { 24 })
++    t:log(string.format("without the feather: %.2f up; pressed again at the top, falling at %.2f", single, plain[1]))
++    if plain[1] >= 0 then error("without the feather a press in mid-air lifts the hero: " .. plain[1], 0) end
++    t.expect:events("hero.air_jump"):count():eq(0)
++    t.expect:field("@player", "Transform.pos.y"):near(1.8, 0.01)
++
++    -- The feather, taken as a player takes it; the HUD says what it gives.
++    take_the_feather(t)
++    t.expect:events("feather.taken"):count():eq(1)
++    t.expect:events("sound.played", { sound = "sfx/feather" }):count():eq(1)
++    t.expect:field("@player", "AirJump.max"):eq(1)
++    t.expect:field("@player", "AirJump.left"):eq(1)
++    t.expect:field("@feather", "Feather.taken"):eq(true)
++    t.expect:field("@feather", "Sprite.visible"):eq(false)
++    t.expect:field("@hud", "UiText.shown"):eq("Hollow. Find the way out. No falls yet. The feather: jump again in mid-air.")
++
++    -- With it, from the plank: pressed again at the top, the hero jumps
++    -- again, as from the ground; a third press, on the way down, nothing.
++    local double, winged = jump(t, { 24, 49 })
++    t:log(string.format("with the feather: %.2f up (one jump: %.2f); rising at %.2f after the second press, %.2f after the third",
++      double, single, winged[1], winged[2]))
++    if winged[1] < 15 then error("the second press jumps the hero again: rising at " .. winged[1], 0) end
++    if winged[2] >= 0 then error("a third press in mid-air lifts the hero: " .. winged[2], 0) end
++    if double < single + 2.5 then error(string.format("two jumps go higher than one: %.2f against %.2f", double, single), 0) end
++    t.expect:events("hero.air_jump"):count():eq(1)
++    t.expect:events("sound.played", { sound = "sfx/flap" }):count():eq(1)
++
++    -- Landed (on the plank again): the jump in mid-air is back, and goes
++    -- as high again.
++    t.expect:field("@player", "KinematicBody.on_one_way"):eq(true)
++    t.expect:field("@player", "AirJump.left"):eq(1)
++    local again = jump(t, { 24 })
++    t.expect:events("hero.air_jump"):count():eq(2)
++    if math.abs(again - double) > 0.05 then error(string.format("as high again: %.2f, then %.2f", double, again), 0) end
++    t.expect:field("@player", "AirJump.left"):eq(1)
++    local se = t:call("script.errors", {})
++    if se.total ~= 0 then error("script errors: " .. tostring(se.rows[1].message), 0) end
++  end,
++}
++
++return scenario "the feather lasts the run: a fall keeps it, a new run puts it back" {
++  scene = "hollow", seeds = { 1, 2, 3 },
++  run = function(t)
++    t:step(5)
++    take_the_feather(t)
++    t.expect:field("@player", "AirJump.max"):eq(1)
++
++    -- Into the hall's pit: back at the cave mouth, a fall counted, and the
++    -- jump in mid-air still theirs.
++    set(t, "@player", "Transform.pos", { 58, 3 })
++    t:run_until { event = "player.fell", max_frames = 120 }
++    t:step(30)
++    t.expect:field("@hud", "Run.falls"):eq(1)
++    t.expect:field("@player", "AirJump.max"):eq(1)
++    t.expect:field("@feather", "Sprite.visible"):eq(false)
++    local _, after = jump(t, { 24 })
++    if after[1] < 15 then error("after a fall the feather's jump is still there: " .. after[1], 0) end
++    t.expect:events("hero.air_jump"):count():eq(1)
++
++    -- Far down the deep, the cave streams out, remembering its feather
++    -- taken; a new run (R) brings the hero back to a feather to take.
++    set(t, "@player", "Transform.pos", { -259, -82.2 })
++    t:step(5)
++    t.expect:field("@player", "InRoom.room"):eq("deep-10-6")
++    t.expect:count({ has = { "Feather" } }):eq(0)
++    t.input:hold("restart", true, 2)
++    t:step(30)
++    t.expect:events("run.restarted"):count():eq(1)
++    t.expect:field("@player", "InRoom.room"):eq("a")
++    t.expect:field("@player", "AirJump.max"):eq(0)
++    t.expect:field("@feather", "Feather.taken"):eq(false)
++    t.expect:field("@feather", "Sprite.visible"):eq(true)
++    t.expect:field("@hud", "UiText.shown"):eq("Hollow. Find the way out. No falls yet.")
++
++    -- The new run has no jump in mid-air until the feather is taken again.
++    local _, plain = jump(t, { 24 })
++    if plain[1] >= 0 then error("a new run has no jump in mid-air: " .. plain[1], 0) end
++    t.expect:events("hero.air_jump"):count():eq(1)
++    take_the_feather(t)
++    t.expect:events("feather.taken"):count():eq(2)
++    t.expect:field("@player", "AirJump.max"):eq(1)
++  end,
++}
+diff -ruN -x .argus -x ARGUS.md -x '*.png' -x target orig/hollow/tools/art.py gate/hollow/tools/art.py
+--- orig/hollow/tools/art.py	2026-10-09 12:11:49.000000000 -0400
++++ gate/hollow/tools/art.py	2026-10-09 12:26:43.140833000 -0400
+@@ -192,6 +192,32 @@
+ )
+ 
+ 
++# A feather, 8 x 10: pale and leaning, on the cave's plank; taken, the hero
++# can jump once more in mid-air (components/feather.luau).
++FEATHER = grid(
++    [
++        "......Ww",
++        ".....WFw",
++        "....WFFw",
++        "...WFFw.",
++        "..WFFw..",
++        ".WFFw...",
++        ".Fsw....",
++        "..q.....",
++        ".q......",
++        "q.......",
++    ],
++    {
++        ".": CLEAR,
++        "W": hexc("FFFFFF"),
++        "F": hexc("D8E4F0"),
++        "w": hexc("9FB4CC"),
++        "s": hexc("B8C8DC"),
++        "q": hexc("C8A878"),
++    },
++)
++
++
+ def hero():
+     frames = [
+         frame("idle"),
+@@ -220,4 +246,5 @@
+     png("sign.png", 8, 18, SIGN)
+     png("exit.png", 12, 20, EXIT)
+     png("gem.png", 8, 8, GEM)
+-    print("wrote tiles/rock.png, tiles/plank.png, tiles/back.png, hero.png, sign.png, exit.png, gem.png")
++    png("feather.png", 8, 10, FEATHER)
++    print("wrote tiles/rock.png, tiles/plank.png, tiles/back.png, hero.png, sign.png, exit.png, gem.png, feather.png")

@@ -312,7 +312,7 @@ Decisions taken while building it:
 
 ## The gate
 
-**Status: to do.**
+**Status: met** (2026-10-09). The run is recorded in `docs/phase5-gate.md`: four agents, one a game, each added a feature with only the project, the tools, and their docs, and its whole suite passing (their changes in `docs/phase5-gate/`); the 22 gaps they named were fixed or recorded, two bugs they found fixed (Hollow's gem after a restart from the deep, and Swarm's stress target measured before the stress); all four games build as checked Windows releases; every earlier gate's tests pass. Kevin's hand check: whether any of the four features belongs in its game.
 
 - All four reference games ship as example projects, each with its test suite green in CI on the reference laptop.
 - An agent given any one of them can add a feature end to end without reading engine source: the project, the `argus` tools and their docs (§16), and `ARGUS.md` are enough.

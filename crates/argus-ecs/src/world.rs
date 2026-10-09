@@ -483,6 +483,19 @@ impl World {
         v
     }
 
+    /// [`within`](World::within) in no order: for a caller that takes the
+    /// nearest few of many (a script's `q:within` loop that stops early),
+    /// which orders them itself as it goes instead of sorting them all.
+    pub fn within_unordered(&self, x: f32, y: f32, r: f32) -> Vec<(Entity, f32)> {
+        let mut v = Vec::new();
+        self.broadphase.for_each_within(x, y, r, |e, ex, ey| {
+            if self.is_alive(e) {
+                v.push((e, ((ex - x) * (ex - x) + (ey - y) * (ey - y)).sqrt()));
+            }
+        });
+        v
+    }
+
     // ----- components -------------------------------------------------------
 
     pub(crate) fn archetype_for(&mut self, comps: Vec<ComponentId>) -> ArchetypeId {

@@ -158,7 +158,7 @@ impl Default for KinematicBody {
 #[derive(Component, Clone, Copy, Debug, PartialEq)]
 #[repr(C)]
 #[argus(
-    doc = "Turns actions into a platformer's run and jump on the entity's KinematicBody. Reads the Actions component when there is one (move_action, jump_action), else move_x, move_y, and jump as a script wrote them. The jump is set by its height and its time to the apex"
+    doc = "Turns actions into a platformer's run and jump on the entity's KinematicBody. Reads the Actions component when there is one (move_action, jump_action), else move_x, move_y, and jump as a script wrote them. The jump is set by its height and its time to the apex: gravity is 2 jump_height / jump_time squared (times fall_gravity once not rising), and take-off speed 2 jump_height / jump_time, written into the body's velocity.y. Each tick, in physics.control: a press arms buffer for jump_buffer seconds, and an armed buffer jumps when grounded or within coyote_time of leaving the ground (a press in mid-air with no coyote left only arms it, so it fires on landing); a jump sets rising until the body falls, and letting go while rising multiplies upward speed by jump_cut once; down and jump on a one-way platform drops through it. Emits body.jumped {entity, coyote, buffered} and body.dropped. A system after physics.control and before physics.move sees this tick's buffer, rising, and velocity, and may change them (an extra jump in the air, a dash)"
 )]
 pub struct CharacterController {
     /// Top running speed.

@@ -685,11 +685,27 @@ fn compare(v: &Json, cmp: Cmp, j: &Json) -> bool {
             Cmp::Gte => a >= b,
         };
     }
-    let equal = v == j;
+    let equal = same(v, j);
     match cmp {
         Cmp::Eq => equal,
         Cmp::Ne => !equal,
         _ => false,
+    }
+}
+
+/// Equal as values: numbers by value at any depth, so a vec2 `[12, 12]`
+/// is the position `[12.0, 12.0]` (found at the phase 5 gate: a list of
+/// whole numbers, as a script or a shell writes it, matched nothing).
+fn same(a: &Json, b: &Json) -> bool {
+    match (a, b) {
+        (Json::Number(x), Json::Number(y)) => x.as_f64() == y.as_f64(),
+        (Json::Array(x), Json::Array(y)) => {
+            x.len() == y.len() && x.iter().zip(y).all(|(p, q)| same(p, q))
+        }
+        (Json::Object(x), Json::Object(y)) => {
+            x.len() == y.len() && x.iter().all(|(k, p)| y.get(k).is_some_and(|q| same(p, q)))
+        }
+        _ => a == b,
     }
 }
 

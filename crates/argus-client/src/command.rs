@@ -390,6 +390,27 @@ mod tests {
         );
     }
 
+    /// Found at the phase 5 gate: two trial agents wrote `rect={x:0,y:0,w:72,h:24}`
+    /// as the help says `{k: v}` may be written, and it read as one string.
+    #[test]
+    fn an_objects_keys_end_at_their_colon_however_it_is_glued() {
+        use crate::words::value;
+        assert_eq!(
+            value("{x:0,y:0,w:72,h:24}").unwrap(),
+            json!({"x": 0, "y": 0, "w": 72, "h": 24})
+        );
+        assert_eq!(
+            value("{rect:{x:0,y:1.5},of:@player}").unwrap(),
+            json!({"rect": {"x": 0, "y": 1.5}, "of": "@player"})
+        );
+        // A value keeps its glued colons, in an object or a list.
+        assert_eq!(
+            value("{def:item:key.brass, defs:[item:meal, recipe:stew]}").unwrap(),
+            json!({"def": "item:key.brass", "defs": ["item:meal", "recipe:stew"]})
+        );
+        assert_eq!(value(r#"[{k:"a::b"}]"#).unwrap(), json!([{"k": "a::b"}]));
+    }
+
     #[test]
     fn a_shell_splits_the_words_as_written() {
         assert_eq!(

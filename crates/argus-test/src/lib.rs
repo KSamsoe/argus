@@ -11,6 +11,8 @@
 
 #![warn(missing_docs)]
 
+pub mod api;
+
 use mlua::{DeserializeOptions, Function, Lua, LuaSerdeExt, SerializeOptions, Table, Value};
 use serde_json::{json, Value as Json};
 use std::path::{Path, PathBuf};
@@ -153,6 +155,28 @@ fn prepare(root: &Path, day_seconds: Option<f64>) -> Result<(Lua, Table, Vec<Jso
             "golden_read",
             lua.create_function(move |_, rel: String| {
                 Ok(std::fs::read_to_string(g1.join(&rel)).ok())
+            })
+            .map_err(|e| e.to_string())?,
+        )
+        .map_err(|e| e.to_string())?;
+    // A seed that passes drops the replay an earlier failure of it saved,
+    // so `replay.list` shows only what still fails (found at the phase 5
+    // gate). `rel` is the seed's own folder under `.argus/replays/`.
+    let replays = root.join(".argus").join("replays");
+    harness_fns
+        .set(
+            "replay_clear",
+            lua.create_function(move |_, rel: String| {
+                let rel = std::path::Path::new(&rel);
+                let inside = rel
+                    .components()
+                    .all(|c| matches!(c, std::path::Component::Normal(_)));
+                let dir = replays.join(rel);
+                if inside && dir.is_dir() {
+                    std::fs::remove_dir_all(&dir).map_err(mlua::Error::external)?;
+                    return Ok(true);
+                }
+                Ok(false)
             })
             .map_err(|e| e.to_string())?,
         )

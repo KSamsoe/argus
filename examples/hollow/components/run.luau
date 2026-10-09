@@ -8,10 +8,12 @@ component "Run" {
   done = field.bool { default = false, doc = "The hero reached the way out" },
   time = field.f32 { default = 0, doc = "Seconds the run took, once done" },
   restart = field.bool { default = false, doc = "A new run was asked for (the pause menu); sim.run starts it" },
+  number = field.u32 { default = 0, doc = "Which run this is, from 0: each restart is the next" },
 }
 
 return component "Gem" {
   doc = "Something to find: taken when the hero touches it, and counted on the HUD. Off (active false), it is neither drawn nor taken",
   active = field.bool { default = false, doc = "In the game; off, it is neither drawn nor taken" },
   taken = field.bool { default = false, doc = "The hero has it this run" },
+  taken_in = field.u32 { default = 0, doc = "The run (Run.number) the hero took it in: taken in an earlier one, it is back" },
 }

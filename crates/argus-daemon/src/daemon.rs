@@ -4554,7 +4554,13 @@ impl Daemon {
         ses.scene
             .borrow_mut()
             .reresolve(&ses.project.ctx(&registry));
-        self.sched.validate()?;
+        // An order the systems cannot take is an error of the scripts too,
+        // listed in script.errors until a reload fixes it.
+        let order = self.sched.validate();
+        if let Some(ses) = self.session.as_mut() {
+            ses.host.set_order_error(order.as_ref().err());
+        }
+        order?;
         // Words, conversations, and timelines are read again with the
         // scripts.
         self.reload_strings();
@@ -5094,9 +5100,23 @@ impl Daemon {
         let since = json::u64_param(params, "since", 0)?;
         let from_frame = json::u64_param(params, "from_frame", 0)?;
         let name = json::opt_str(params, "name")?;
-        let entity = json::opt_str(params, "entity")?
-            .map(|r| self.world.entity(r))
-            .transpose()?;
+        // How events name the entity. A gone one is still in the log by the
+        // handle it had (found at the phase 5 gate: `entity=e:515` of a
+        // dead enemy was refused as not alive).
+        let entity = match json::opt_str(params, "entity")? {
+            Some(r) if r.starts_with("e:") => {
+                let e: Entity = r
+                    .parse()
+                    .map_err(|m: String| ArgusError::new(argus_ecs::codes::BAD_ID, m))?;
+                Some(if self.world.is_alive(e) {
+                    json::entity_str(&self.world, e)
+                } else {
+                    e.to_string()
+                })
+            }
+            Some(r) => Some(json::entity_str(&self.world, self.world.entity(r)?)),
+            None => None,
+        };
         let rows: Vec<Json> = self
             .events
             .records
@@ -5105,11 +5125,10 @@ impl Daemon {
             .map(|(seq, r)| event_json(&self.world, *seq, r))
             .filter(|row| {
                 name.is_none_or(|n| row["name"].as_str() == Some(n))
-                    && entity.is_none_or(|e| {
-                        let s = json::entity_str(&self.world, e);
+                    && entity.as_deref().is_none_or(|s| {
                         let f = &row["fields"];
                         f.as_object()
-                            .is_some_and(|o| o.values().any(|v| v.as_str() == Some(&s)))
+                            .is_some_and(|o| o.values().any(|v| v.as_str() == Some(s)))
                     })
             })
             .collect();
@@ -5285,11 +5304,16 @@ impl Daemon {
             hist.find(&id)
         });
         let Some(e) = e else {
-            return Err(self
-                .world
-                .entity(r)
-                .err()
-                .unwrap_or_else(|| ArgusError::new(codes::BAD_PARAMS, format!("no entity {r}"))));
+            return Err(match self.world.entity(r).err() {
+                // Gone, and not traced while it lived: say so, and how.
+                Some(err) if err.code == argus_ecs::codes::ENTITY_NOT_ALIVE => ArgusError::new(
+                    err.code,
+                    format!("{r} is gone, and it was not being traced while it lived"),
+                )
+                .hint("Named entities are traced from the start; another is traced from the first obs.trace of it, so ask while it lives. Its events are still in obs.events {entity}."),
+                Some(err) => err,
+                None => ArgusError::new(codes::BAD_PARAMS, format!("no entity {r}")),
+            });
         };
         let last = self.world.frame().saturating_sub(1);
         if !hist.traced(e) {

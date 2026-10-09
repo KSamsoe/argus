@@ -130,7 +130,10 @@ A hot path can be Rust instead: a crate in `plugins/<name>/` that `argus.toml`'s
 systems as Luau does (`System::new(name, stage).after(..).reads(&[..]).writes(&[..]).run(f)`, from the \
 `argus-plugin` crate the engine writes to `.argus/plugins/sdk`) and its components as `component!` structs, \
 field for field as the game declares them. `reload` builds and swaps it in; a compile error is an `errors` row \
-with its file and line, and the last good build keeps running.\n\n",
+with its file and line, and the last good build keeps running. The SDK is the plugin's API and documents itself: \
+`cargo doc --open --manifest-path .argus/plugins/sdk/Cargo.toml` (it has no dependencies, so this works offline).\n\n\
+The scripting API (what `components/`, `systems/`, and `defs/` declare and call) and the scenario API (what `tests/` \
+writes) are at the end of this file.\n\n",
     );
 
     o.push_str("## Scenes\n\n");
@@ -262,15 +265,26 @@ with its file and line, and the last good build keeps running.\n\n",
                 }
                 o.push('\n');
             }
+            // The game's are declared in its own files, where an agent edits
+            // them; the engine's source is not the agent's to read (found at
+            // the phase 5 gate: ARGUS.md pointed at `crates\argus-...`).
+            let from = if title.contains("engine") {
+                "Part of the engine: its fields are above, and `argus docs` has the methods that read and change it.".to_string()
+            } else {
+                format!("Declared in `{}`.", cell(&c["source"]))
+            };
             let _ = writeln!(
                 o,
-                "Written by {}; read by {}. Declared in `{}`.\n",
+                "Written by {}; read by {}. {from}\n",
                 or_none(&c["written_by"]),
                 or_none(&c["read_by"]),
-                cell(&c["source"])
             );
         }
     }
+    o.push_str("## Scripts: the Luau API\n\n");
+    o.push_str(&docs::scripting(3));
+    o.push_str("## Scenarios: the test API\n\n");
+    o.push_str(&docs::scenarios(3));
     Ok(o)
 }
 
@@ -296,6 +310,12 @@ The tools are what `argus mcp` serves and `argus <tool>` runs; every method is a
             params_table(&mut o, t.params);
         }
     }
+    // A game's own code: its scripts and its scenarios (found at the phase
+    // 5 gate: neither had a reference, only the games' files to copy from).
+    o.push_str("## Scripts: the Luau API\n\n");
+    o.push_str(&docs::scripting(3));
+    o.push_str("## Scenarios: the test API\n\n");
+    o.push_str(&docs::scenarios(3));
     o.push_str("## Methods\n\n");
     for m in docs::METHODS {
         let _ = writeln!(o, "### {}\n\n{}\n", m.name, m.doc);

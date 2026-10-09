@@ -518,13 +518,12 @@ local function make_t(ctx, spec, seed)
     local golden = "tests/goldens/" .. rel
     local params = { format = "png", width = opts.width or 640, height = opts.height or 360, software = true }
     local e = { kind = "image", desc = "image " .. name, golden = golden }
-    if not H.golden_exists(rel) or ctx.opts.update then
-      local was = H.golden_exists(rel)
+    if not H.golden_exists(rel) then
       params.path = golden
       callm("obs.frame", params)
       e.ok = true
       e.recorded = true
-      e.message = string.format("image %s: %s %s", name, was and "updated" or "recorded", golden)
+      e.message = string.format("image %s: recorded %s", name, golden)
       return record(ctx, e)
     end
     params.path = ".argus/test-images/" .. rel
@@ -533,6 +532,16 @@ local function make_t(ctx, spec, seed)
     local r = callm("obs.frame", params)
     local c = r.compare
     local max = opts.max or 0.001
+    -- With update, only a picture that no longer matches is drawn again:
+    -- one that still does keeps its file, byte for byte (found at the
+    -- phase 5 gate: an update rewrote every golden of the scenario).
+    if ctx.opts.update and c.fraction > max then
+      callm("obs.frame", { format = "png", width = params.width, height = params.height, software = true, path = golden })
+      e.ok = true
+      e.recorded = true
+      e.message = string.format("image %s: updated %s (%.2f%% of its pixels had changed)", name, golden, c.fraction * 100)
+      return record(ctx, e)
+    end
     e.ok = c.fraction <= max
     e.actual = r.path
     e.diff = c.diff
@@ -558,8 +567,10 @@ local function make_t(ctx, spec, seed)
     local rel = slug(spec.name) .. "/" .. slug(name) .. ".seed" .. tostring(seed) .. ".json"
     local text = H.golden_read(rel)
     local e = { kind = "snapshot", desc = "snapshot " .. name, golden = "tests/goldens/" .. rel }
-    if text == nil or ctx.opts.update then
-      H.golden_write(rel, H.json_encode(actual))
+    -- With update, only a snapshot whose rows changed is written again.
+    local fresh = H.json_encode(actual)
+    if text == nil or (ctx.opts.update and (string.gsub(text, "\r\n", "\n")) ~= fresh) then
+      H.golden_write(rel, fresh)
       e.ok = true
       e.recorded = true
       e.message = string.format("snapshot %s: %s %s", name, text == nil and "recorded" or "updated", e.golden)
@@ -730,6 +741,10 @@ local function run_seed(spec, seed, opts, series)
     ctx.result.ok = false
     ctx.result.error = tostring(err)
     save_failure(ctx, ctx.result.error)
+  end
+  -- A seed that passes now drops its old failure's replay.
+  if ctx.result.ok and opts.replays and ctx.result.seed ~= nil then
+    H.replay_clear(slug(spec.name) .. "/seed" .. tostring(ctx.result.seed))
   end
   -- Where the run ended and its world's digest: the same scenario, seed,
   -- and code on two machines should end on the same one (the

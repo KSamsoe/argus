@@ -105,9 +105,28 @@ pub fn value(s: &str) -> Result<Json, String> {
 pub fn quote_bare(s: &str) -> String {
     let cs: Vec<char> = s.chars().collect();
     let mut out = String::with_capacity(s.len() + 16);
+    // The brackets open here, and for the innermost object whether a key
+    // comes next: a key's colon ends it however it is glued, so `{x:0}` is
+    // an object (found at the phase 5 gate: `rect={x:0,y:0,w:72,h:24}`
+    // read as one string `"x:0"`), while a value keeps `item:key.brass`.
+    let mut open: Vec<char> = Vec::new();
+    let mut key_next = false;
     let mut i = 0;
     while i < cs.len() {
         let c = cs[i];
+        match c {
+            '{' | '[' => {
+                open.push(c);
+                key_next = c == '{';
+            }
+            '}' | ']' => {
+                open.pop();
+                key_next = false;
+            }
+            ',' => key_next = open.last() == Some(&'{'),
+            ':' if open.last() == Some(&'{') => key_next = false,
+            _ => {}
+        }
         if c == '"' {
             // Copy a quoted string through untouched.
             out.push(c);
@@ -127,13 +146,18 @@ pub fn quote_bare(s: &str) -> String {
             continue;
         }
         if is_bare_start(c) {
+            let is_key = key_next;
             let mut word = String::new();
             while i < cs.len() {
                 let d = cs[i];
                 // A colon stays in the word only when glued on both sides
-                // (`item:key.brass`); `of: @player` is a key and a value.
-                let glued_colon =
-                    d == ':' && i + 1 < cs.len() && is_bare_start(cs[i + 1]) && !word.is_empty();
+                // (`item:key.brass`) and the word is not an object's key;
+                // `of: @player` and `x:0` are a key and a value.
+                let glued_colon = d == ':'
+                    && !is_key
+                    && i + 1 < cs.len()
+                    && is_bare_start(cs[i + 1])
+                    && !word.is_empty();
                 // A call glued to a word is part of it: `count()`,
                 // `sum(Stockpile.food)`, `dist(@player)` (phase 3 item 3).
                 if d == '(' && !word.is_empty() {

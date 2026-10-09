@@ -1,0 +1,843 @@
+diff -ruN -x .argus -x ARGUS.md -x '*.png' -x target orig/outpost/components/colony.luau gate/outpost/components/colony.luau
+--- orig/outpost/components/colony.luau	2026-10-09 12:11:49.000000000 -0400
++++ gate/outpost/components/colony.luau	2026-10-09 12:27:27.372381400 -0400
+@@ -3,7 +3,8 @@
+ -- fields filled by themselves); item 3 is its core: a valley laid out from
+ -- the seed, fields that grow by day, jobs (harvest, haul, cook, eat,
+ -- sleep) done by colonists who walk to them, stockpiles, needs, and the
+--- day and night.
++-- day and night. Woodcutting came after: the valley's trees are felled
++-- for wood (a chop job) and grow back from their stumps.
+ --
+ -- The first week's save (tests/saves/week1.save) was written by the
+ -- skeleton, so every change here says how an older row becomes a newer
+@@ -11,7 +12,7 @@
+ 
+ component "Colony" {
+   doc = "The colony as a whole: its calendar and the rules of its economy (tune fields: a slider is a hypothesis about balance, section 10)",
+-  version = 3,
++  version = 4,
+   day = field.u32 { doc = "Days since the colony was founded; the game saves itself when one turns" },
+   clock = field.f64 { doc = "The colony's own seconds, which stand still while the game is paused (day and night follow it)" },
+   hunger_per_day = field.f32 { default = 1, range = {0, 10}, tune = true, doc = "Food a colonist needs a day (a meal is 1)" },
+@@ -24,6 +25,9 @@
+   meals_wanted = field.f32 { default = 24, range = {0, 1000}, tune = true, doc = "Cooks stop once the stockpiles hold this many meals" },
+   dusk = field.f32 { default = 0.65, range = {0.3, 1}, tune = true, doc = "How far into a day night falls; colonists sleep until the day turns" },
+   haul_open = field.u32 { default = 12, range = {0, 1000}, doc = "Haul jobs posted at a time for goods lying about" },
++  chop_open = field.u32 { default = 2, range = {0, 1000}, doc = "Chop jobs at a time (open or taken): at most this many woodcutters fell trees at once" },
++  tree_wood = field.f32 { default = 3, range = {0, 100}, tune = true, doc = "Wood a felled tree gives" },
++  tree_days = field.f32 { default = 3, range = {0.1, 30}, tune = true, doc = "Days of daylight a felled tree's stump takes to grow back into a tree" },
+   laid_out = field.bool { doc = "The valley is laid out: the ground, fields, stockpile, stove, beds (a save from before it was gets one)" },
+   size = field.vec2 { default = {40, 24}, doc = "The valley's size in cells, when it is laid out" },
+   colonists = field.u32 { default = 0, doc = "Colonists to found it with; 0: the founders of defs/founders.toml (the stress scene founds 200)" },
+@@ -37,22 +41,31 @@
+     -- set from outside the game (the editor's bar, sim.speed) never
+     -- reached it. The clock's speed is q:speed() now.
+     [3] = { drop = { "speed" } },
++    -- v3 had no woodcutting: chop_open, tree_wood, and tree_days come in
++    -- at their defaults.
++    [4] = {},
+   },
+ }
+ 
+ component "Stockpile" {
+   doc = "A stockpile: what the colony has stored there. Haulers bring goods in; cooks and the hungry take them out",
+-  version = 2,
++  version = 3,
+   food = field.f32 { default = 0, doc = "Food stored, in meals' worth: its meals and crops together (section 9 sums it)" },
+   meal = field.f32 { default = 0, doc = "Meals stored" },
+   crop = field.f32 { default = 0, doc = "Crops stored, to be cooked or eaten raw" },
+-  goods = field.f32 { default = 0, doc = "Other goods stored (stone, wood)" },
++  wood = field.f32 { default = 0, doc = "Wood stored, from felled trees" },
++  goods = field.f32 { default = 0, doc = "Other goods stored (stone)" },
+   migrate = {
+     -- v1 counted meals as food and stored nothing else.
+     [2] = function(row)
+       row.meal = row.food
+       return row
+     end,
++    -- v2 kept no wood (there were no woodcutters): none stored.
++    [3] = function(row)
++      row.wood = 0
++      return row
++    end,
+   },
+ }
+ 
+@@ -86,6 +99,13 @@
+   job = field.entity { doc = "Its haul job, while there is one" },
+ }
+ 
++component "Tree" {
++  doc = "A tree of the valley (systems/woods.luau): a woodcutter fells a standing one for Colony.tree_wood wood, and its stump grows back over Colony.tree_days days of daylight. It blocks the way (its NavCost) standing or felled",
++  growth = field.f32 { default = 1, range = {0, 1}, doc = "1 a standing tree; below, a stump (felled at 0) growing back" },
++  reach = field.bool { doc = "A woodcutter can get to it: a cell beside it is open ground joined to the stockpile's (found when the valley is laid out; only trees and the stove block the way, and they stay)" },
++  job = field.entity { doc = "Its chop job, while there is one" },
++}
++
+ component "Station" {
+   doc = "A work station: a cook makes its recipe here from what the stockpiles hold",
+   recipe = field.ref { default = "recipe:meal", doc = "What is made here (defs/recipes.toml)" },
+diff -ruN -x .argus -x ARGUS.md -x '*.png' -x target orig/outpost/defs/founders.toml gate/outpost/defs/founders.toml
+--- orig/outpost/defs/founders.toml	2026-10-09 12:11:49.000000000 -0400
++++ gate/outpost/defs/founders.toml	2026-10-09 12:22:30.732604300 -0400
+@@ -1,15 +1,15 @@
+-# Six colonists: everyone hauls; some farm, some cook.
++# Six colonists: everyone hauls; some farm, some cook, some fell trees.
+ ["Ada"]
+ skills = "farm cook"
+ 
+ ["Bram"]
+-skills = "farm"
++skills = "farm chop"
+ 
+ ["Cleo"]
+-skills = "cook"
++skills = "cook chop"
+ 
+ ["Dov"]
+-skills = "farm"
++skills = "farm chop"
+ 
+ ["Esme"]
+ skills = "farm cook"
+diff -ruN -x .argus -x ARGUS.md -x '*.png' -x target orig/outpost/defs/items.toml gate/outpost/defs/items.toml
+--- orig/outpost/defs/items.toml	2026-10-09 12:11:49.000000000 -0400
++++ gate/outpost/defs/items.toml	2026-10-09 12:22:26.513941400 -0400
+@@ -13,3 +13,9 @@
+ ["stone"]
+ name = "Stone"
+ color = "#8A8F99"
++
++# Logs from a felled tree (systems/woods.luau); a hauler takes them to the
++# stockpile, which counts them as Stockpile.wood.
++["wood"]
++name = "Wood"
++color = "#8B5A2B"
+diff -ruN -x .argus -x ARGUS.md -x '*.png' -x target orig/outpost/defs/jobs.toml gate/outpost/defs/jobs.toml
+--- orig/outpost/defs/jobs.toml	2026-10-09 12:11:49.000000000 -0400
++++ gate/outpost/defs/jobs.toml	2026-10-09 12:22:26.527941600 -0400
+@@ -21,3 +21,11 @@
+ ["haul"]
+ priority = 3
+ work = 0.5
++
++# Felling a tree (systems/woods.luau posts them, Colony.chop_open at a
++# time): below the food's jobs, so woodcutters chop only when nothing of
++# the colony's food wants them. The logs are hauled like the crops.
++["chop"]
++priority = 2
++skill = "chop"
++work = 4.0
+diff -ruN -x .argus -x ARGUS.md -x '*.png' -x target orig/outpost/defs/schemas.luau gate/outpost/defs/schemas.luau
+--- orig/outpost/defs/schemas.luau	2026-10-09 12:11:49.000000000 -0400
++++ gate/outpost/defs/schemas.luau	2026-10-09 12:22:32.737176000 -0400
+@@ -40,5 +40,5 @@
+   prefix = "founder",
+   key = "id",
+   id = field.str {},
+-  skills = field.str { doc = "What they can do (farm, cook); everyone hauls" },
++  skills = field.str { doc = "What they can do (farm, cook, chop); everyone hauls" },
+ }
+diff -ruN -x .argus -x ARGUS.md -x '*.png' -x target orig/outpost/strings/en.toml gate/outpost/strings/en.toml
+--- orig/outpost/strings/en.toml	2026-10-09 12:11:49.000000000 -0400
++++ gate/outpost/strings/en.toml	2026-10-09 12:26:10.054615900 -0400
+@@ -3,7 +3,7 @@
+ language.name = "English"
+ 
+ [hud]
+-line = "Day {day}, {hour}:00{night}   food {food} ({meals} meals, {crops} crops)   {colonists} colonists, {working} working   {speed}"
++line = "Day {day}, {hour}:00{night}   food {food} ({meals} meals, {crops} crops)   wood {wood}   {colonists} colonists, {working} working   {speed}"
+ night = " (night)"
+ paused = "paused"
+ speed = "{x}x"
+@@ -34,6 +34,7 @@
+ people = "{alive} colonists: {working} working, {idle} idle"
+ lost = "Lost: {lost}"
+ fields = "{fields} fields, {ripe} ripe; today's growth {growth}%"
++trees = "{trees} trees standing, {felled} felled and growing back, {chopping} being felled"
+ jobs = "Jobs: {open} open, {taken} taken"
+ idle = "Most idle: {why} ({n})"
+ 
+@@ -57,7 +58,7 @@
+ back = "Back"
+ 
+ [inspect.stores]
+-pile = "Stockpile: {meals} meals, {crops} crops, {goods} goods"
++pile = "Stockpile: {meals} meals, {crops} crops, {wood} wood, {goods} goods"
+ food = "Food stored: {food} meals' worth"
+ lying = "Lying about: {n} ({kinds})"
+ stove = "Stove: {state}"
+diff -ruN -x .argus -x ARGUS.md -x '*.png' -x target orig/outpost/systems/found.luau gate/outpost/systems/found.luau
+--- orig/outpost/systems/found.luau	2026-10-09 12:11:49.000000000 -0400
++++ gate/outpost/systems/found.luau	2026-10-09 12:34:43.585683700 -0400
+@@ -56,19 +56,115 @@
+   end
+ end
+ 
++local SIDES = { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } }
++
++-- The grid cell a place is in (the grid's cells are a unit, centred on
++-- whole numbers).
++local function cell(p)
++  return math.floor(p.x + 0.5), math.floor(p.y + 0.5)
++end
++
++-- Which trees a woodcutter can get to (Tree.reach): a cell beside one is
++-- open ground joined to the stockpile's. Joined four ways: the grid walks
++-- eight but never cuts a blocked corner, which joins the same cells. The
++-- trees (standing or felled) and the stove are all that block the way and
++-- none of them moves, so this is found once, when the valley is laid out.
++local function reach(q, W, H)
++  local blocked = {}
++  for _, nc, t in q:each("NavCost", "Transform") do
++    if nc.cost == 0 then
++      local x, y = cell(t.pos)
++      blocked[y * W + x] = true
++    end
++  end
++  local sx, sy = cell(q:entity("@colony"):get("Transform").pos)
++  local seen = { [sy * W + sx] = true }
++  local queue = { sy * W + sx }
++  local head = 1
++  while head <= #queue do
++    local c = queue[head]
++    head += 1
++    local x, y = c % W, c // W
++    for _, d in ipairs(SIDES) do
++      local nx, ny = x + d[1], y + d[2]
++      local n = ny * W + nx
++      if nx >= 0 and nx < W and ny >= 0 and ny < H and not seen[n] and not blocked[n] then
++        seen[n] = true
++        table.insert(queue, n)
++      end
++    end
++  end
++  for _, tree, t in q:each("Tree", "Transform") do
++    local x, y = cell(t.pos)
++    tree.reach = false
++    for _, d in ipairs(SIDES) do
++      local nx, ny = x + d[1], y + d[2]
++      if nx >= 0 and nx < W and ny >= 0 and ny < H and seen[ny * W + nx] then
++        tree.reach = true
++        break
++      end
++    end
++  end
++end
++
++-- A JobKind for each row of defs/jobs.toml the colony has none for.
++local function job_kinds(q)
++  local have = {}
++  for _, k in q:each("JobKind") do have[k.name] = true end
++  for _, row in ipairs(q:defs("jobs")) do
++    if not have[row.key] then
++      local k = q:spawn({ "JobKind" })
++      local kind = k:get("JobKind")
++      kind.name = row.key
++      kind.priority = row.priority
++      kind.skill = row.skill
++      kind.work = row.work
++    end
++  end
++end
++
++-- A valley laid out before trees could be felled (a save from then): its
++-- trees are the NavCost entities that are not the stove, and they stand;
++-- the colony learns the chop job, and each founder the skills
++-- defs/founders.toml gives them now that they lack (Bram, Cleo, and Dov
++-- fell trees).
++local function plant(q, rules)
++  local trees = {}
++  for e in q:each("NavCost") do
++    if not e:has("Station") then table.insert(trees, e:id()) end
++  end
++  for _, id in ipairs(trees) do
++    q:entity(id):insert("Tree", { growth = 1 })
++  end
++  reach(q, math.floor(rules.size.x), math.floor(rules.size.y))
++  job_kinds(q)
++  local skills = {}
++  for _, row in ipairs(q:defs("founders")) do skills[row.key] = row.skills end
++  for _, who, w in q:each("Colonist", "Worker") do
++    local base = string.match(who.name, "^(%a+)") or who.name
++    for skill in string.gmatch(skills[base] or "", "%S+") do
++      if w.skills ~= "*" and not string.find(" " .. w.skills .. " ", " " .. skill .. " ", 1, true) then
++        w.skills = if w.skills == "" then skill else w.skills .. " " .. skill
++      end
++    end
++  end
++end
++
+ return system "sim.colony.found" {
+   stage = "sim",
+   on_load = true, -- the colony is there before the first tick
+   reads = { "Colony", "Colonist", "Camera", "UiRoot", "JobKind" },
+-  writes = { "Colony", "Stockpile", "Colonist", "Needs", "Worker", "NavAgent", "NavGrid", "NavCost", "Transform", "Sprite", "Describe", "Field", "Station", "Bed", "JobKind", "Camera", "UiRoot", "UiNode", "UiPanel", "UiText", "PlayerSlot", "Actions", "Item", "Hud", "Light", "Lamp", "Emissive" },
++  writes = { "Colony", "Stockpile", "Colonist", "Needs", "Worker", "NavAgent", "NavGrid", "NavCost", "Transform", "Sprite", "Describe", "Field", "Station", "Bed", "Tree", "JobKind", "Camera", "UiRoot", "UiNode", "UiPanel", "UiText", "PlayerSlot", "Actions", "Item", "Hud", "Light", "Lamp", "Emissive" },
+   rng = "valley",
+-  doc = "Lays the valley out once (Colony.laid_out): a navigation grid of Colony.size with trees from the seed, the stockpile at the colony, a stove, ten fields, a bed each, the founders from defs/founders.toml (or Colony.colonists of them, their skills in turn), Colony.stones stones lying about, a JobKind per row of defs/jobs.toml, a camera, the HUD, and a campfire; the stove and the campfire are Lamps. An older save's colonists get a place, a Worker, a NavAgent, and a bed; a valley laid out without Lamps gets them.",
++  doc = "Lays the valley out once (Colony.laid_out): a navigation grid of Colony.size with trees from the seed (Trees, each knowing whether a woodcutter can get to it), the stockpile at the colony, a stove, ten fields, a bed each, the founders from defs/founders.toml (or Colony.colonists of them, their skills in turn), Colony.stones stones lying about, a JobKind per row of defs/jobs.toml, a camera, the HUD, and a campfire; the stove and the campfire are Lamps. An older save's colonists get a place, a Worker, a NavAgent, and a bed; a valley laid out without Lamps gets them, and one laid out before woodcutting has its trees made Trees, a chop JobKind, and its founders' new skills.",
+   run = function(q)
+     local colony = q:entity("@colony")
+     local rules = colony:get("Colony")
+     if rules.laid_out then
+       -- Laid out before the colony had lamps.
+       if q:count("Lamp") == 0 then light_up(q) end
++      -- Laid out before trees could be felled.
++      if q:count("Tree") == 0 then plant(q, rules) end
+       return
+     end
+     rules.laid_out = true
+@@ -89,7 +185,7 @@
+     sprite(ground, "rect", W, H, "#2F4A2A", -10)
+     for _ = 1, W * H // 20 do
+       local x, y = wild(rng, W, H)
+-      local t = q:spawn({ "Transform", "NavCost" })
++      local t = q:spawn({ "Transform", "NavCost", "Tree" })
+       t:get("Transform").pos = vector.create(x, y, 0)
+       sprite(t, "circle", 0.9, 0.9, "#1E3B1E", 1)
+     end
+@@ -104,12 +200,15 @@
+     if not colony:has("Transform") then colony:insert("Transform", { pos = PILE }) end
+     if not colony:has("Sprite") then sprite(colony, "rect", 3, 3, "#6B5B3E", -5) end
+     if not colony:has("Describe") then
+-      colony:insert("Describe", { name = "stockpile", text = "day {Colony.day}: food {Stockpile.food}, meals {Stockpile.meal}, crops {Stockpile.crop}" })
++      colony:insert("Describe", { name = "stockpile", text = "day {Colony.day}: food {Stockpile.food}, meals {Stockpile.meal}, crops {Stockpile.crop}, wood {Stockpile.wood}" })
+     end
+ 
+     local stove = q:spawn({ "Station", "Transform", "NavCost" })
+     stove:get("Transform").pos = vector.create(24, 12, 0)
+     sprite(stove, "rect", 0.9, 0.9, "#B04A2A", 2)
++    -- The trees a woodcutter can get to, now that all that blocks the way
++    -- is laid.
++    reach(q, W, H)
+ 
+     -- Sown at different times: the first harvests come over the first
+     -- days, not all at once.
+@@ -121,16 +220,7 @@
+     end
+ 
+     -- The kinds of job, as the colony weighs them (tune fields).
+-    if q:count("JobKind") == 0 then
+-      for _, row in ipairs(q:defs("jobs")) do
+-        local k = q:spawn({ "JobKind" })
+-        local kind = k:get("JobKind")
+-        kind.name = row.key
+-        kind.priority = row.priority
+-        kind.skill = row.skill
+-        kind.work = row.work
+-      end
+-    end
++    job_kinds(q)
+ 
+     -- The colonists: the founders, or an older save's, fitted out.
+     local skills = {}
+diff -ruN -x .argus -x ARGUS.md -x '*.png' -x target orig/outpost/systems/hud.luau gate/outpost/systems/hud.luau
+--- orig/outpost/systems/hud.luau	2026-10-09 12:11:49.000000000 -0400
++++ gate/outpost/systems/hud.luau	2026-10-09 12:26:27.126000300 -0400
+@@ -1,5 +1,5 @@
+ -- The line at the top of the screen (the day, the time, the food, the
+--- colonists, and the speed) and the notice under it (the colony's news: a
++-- wood, the colonists, and the speed) and the notice under it (the colony's news: a
+ -- day begun, a colonist lost), in the string tables' words (phase 3 item 4).
+ 
+ return system "late.colony.hud" {
+@@ -7,7 +7,7 @@
+   unfrozen = true,
+   reads = { "Colony", "Stockpile", "Colonist", "Worker", "Hud" },
+   writes = { "UiText" },
+-  doc = "Writes the HUD line twice a second (day and hour, food stored, colonists and how many are working, the speed) and the notice line when a day turns or a colonist dies, from the string tables (hud.*, notice.*).",
++  doc = "Writes the HUD line twice a second (day and hour, food stored, wood stored, colonists and how many are working, the speed) and the notice line when a day turns or a colonist dies, from the string tables (hud.*, notice.*).",
+   run = function(q)
+     local notice
+     for _, ev in ipairs(q:events("day.turned")) do
+@@ -19,11 +19,12 @@
+     local line
+     if q.tick % 30 == 0 then
+       local rules = q:entity("@colony"):get("Colony")
+-      local food, meal, crop = 0, 0, 0
++      local food, meal, crop, wood = 0, 0, 0, 0
+       for _, s in q:each("Stockpile") do
+         food += s.food
+         meal += s.meal
+         crop += s.crop
++        wood += s.wood
+       end
+       local n, busy = 0, 0
+       for _, _, w in q:each("Colonist", "Worker") do
+@@ -38,6 +39,7 @@
+         food = string.format("%.1f", food),
+         meals = math.floor(meal),
+         crops = math.floor(crop),
++        wood = math.floor(wood),
+         colonists = n,
+         working = busy,
+         -- The clock's speed, however it was set: the keys, the editor, the agent.
+diff -ruN -x .argus -x ARGUS.md -x '*.png' -x target orig/outpost/systems/inspector.luau gate/outpost/systems/inspector.luau
+--- orig/outpost/systems/inspector.luau	2026-10-09 12:11:49.000000000 -0400
++++ gate/outpost/systems/inspector.luau	2026-10-09 12:27:01.613202900 -0400
+@@ -13,7 +13,7 @@
+ -- one too.
+ 
+ local TABS = { "colony", "people", "stores", "jobs" }
+-local LINES = { colony = 7, people = 1, person = 5, stores = 4, jobs = 14 }
++local LINES = { colony = 8, people = 1, person = 5, stores = 4, jobs = 14 }
+ local ROWS = 10
+ 
+ local function pct(x)
+@@ -163,6 +163,15 @@
+   for _, j in q:each("Job") do
+     if j.worker ~= nil then taken += 1 else open += 1 end
+   end
++  local trees, felled, chopping = 0, 0, 0
++  for _, tr in q:each("Tree") do
++    if tr.growth < 1 then
++      felled += 1
++    else
++      trees += 1
++      if tr.job ~= nil and tr.job:alive() and tr.job:get("Job").worker ~= nil then chopping += 1 end
++    end
++  end
+   local speed = if rules.paused then q:text("hud.paused") else q:text("hud.speed", { x = q:speed() })
+   return {
+     q:text("inspect.colony.day", {
+@@ -177,6 +186,9 @@
+     q:text("inspect.colony.fields", { fields = fields, ripe = ripe, growth = pct(rules.growth) }),
+     q:text("inspect.colony.jobs", { open = open, taken = taken }),
+     if most ~= nil then q:text("inspect.colony.idle", { why = most, n = most_n }) else "",
++    -- Last, so a panel built before there were trees to fell (a save's,
++    -- with a line fewer) loses only this one.
++    q:text("inspect.colony.trees", { trees = trees, felled = felled, chopping = chopping }),
+   }
+ end
+ 
+@@ -230,10 +242,11 @@
+ end
+ 
+ local function stores_page(q)
+-  local meal, crop, goods, food = 0, 0, 0, 0
++  local meal, crop, wood, goods, food = 0, 0, 0, 0, 0
+   for _, s in q:each("Stockpile") do
+     meal += s.meal
+     crop += s.crop
++    wood += s.wood
+     goods += s.goods
+     food += s.food
+   end
+@@ -251,7 +264,7 @@
+     if s.job ~= nil and s.job:get("Job").worker ~= nil then cook = name_of(s.job:get("Job").worker) end
+   end
+   return {
+-    q:text("inspect.stores.pile", { meals = math.floor(meal), crops = math.floor(crop), goods = math.floor(goods) }),
++    q:text("inspect.stores.pile", { meals = math.floor(meal), crops = math.floor(crop), wood = math.floor(wood), goods = math.floor(goods) }),
+     q:text("inspect.stores.food", { food = string.format("%.1f", food) }),
+     q:text("inspect.stores.lying", { n = n, kinds = if #names > 0 then table.concat(names, ", ") else q:text("inspect.none") }),
+     q:text("inspect.stores.stove", { state = if cook ~= nil then q:text("inspect.stores.cooking", { who = cook }) else q:text("inspect.stores.cold") }),
+@@ -299,9 +312,9 @@
+   after = { "ui.input" },
+   -- It answers while the game is paused.
+   unfrozen = true,
+-  reads = { "Actions", "Colony", "Stockpile", "Colonist", "Needs", "Worker", "Job", "JobKind", "Field", "Item", "Station", "Grave", "Transform", "InspectPage", "InspectLine", "Vignette", "Menu" },
++  reads = { "Actions", "Colony", "Stockpile", "Colonist", "Needs", "Worker", "Job", "JobKind", "Field", "Tree", "Item", "Station", "Grave", "Transform", "InspectPage", "InspectLine", "Vignette", "Menu" },
+   writes = { "Inspector", "InspectRow", "UiRoot", "UiNode", "UiText", "UiButton", "UiPanel", "Camera" },
+-  doc = "Runs the inspector: Tab (inspect) opens and closes it, but not while the menu is open; its tabs, a colonist's button, Follow, Back, the page arrows, and cancel move between its pages; while it is open the arrows move its focus, not the view, and Follow has the view follow the person shown. Six times a second of the player's time (every ten ticks at 1x, a hundred at 10x) the page shown is written again from the world: the colony (day, food, people, the lost, fields, jobs, the most common reason for idling), the people ten at a time (fed, rest, what they are doing), one person (skills, needs, their job and how far along, or why they are idle), the stores (the stockpile, what is lying about, the stove), and the jobs (by kind, open and taken, and who has what).",
++  doc = "Runs the inspector: Tab (inspect) opens and closes it, but not while the menu is open; its tabs, a colonist's button, Follow, Back, the page arrows, and cancel move between its pages; while it is open the arrows move its focus, not the view, and Follow has the view follow the person shown. Six times a second of the player's time (every ten ticks at 1x, a hundred at 10x) the page shown is written again from the world: the colony (day, food, people, the lost, fields, trees, jobs, the most common reason for idling), the people ten at a time (fed, rest, what they are doing), one person (skills, needs, their job and how far along, or why they are idle), the stores (the stockpile, what is lying about, the stove), and the jobs (by kind, open and taken, and who has what).",
+   run = function(q)
+     local ie = nil
+     for e in q:each("Inspector") do
+diff -ruN -x .argus -x ARGUS.md -x '*.png' -x target orig/outpost/systems/woods.luau gate/outpost/systems/woods.luau
+--- orig/outpost/systems/woods.luau	1969-12-31 19:00:00.000000000 -0500
++++ gate/outpost/systems/woods.luau	2026-10-09 12:47:01.447701000 -0400
+@@ -0,0 +1,81 @@
++-- Woodcutting. The valley's trees are felled for wood: a standing tree a
++-- woodcutter can get to asks for one (a chop job, JobKind chop: skill
++-- chop), Colony.chop_open at a time, the nearest the stockpile first. The
++-- woodcutter walks to it and chops; sim.colony.work fells it (a stump),
++-- and its Colony.tree_wood logs fall at their feet for a hauler to take to
++-- the stockpile (Stockpile.wood). Trees regrow: a stump grows back by
++-- daylight over Colony.tree_days days, a sapling half way, and then stands
++-- again to be felled once more. So the valley never runs out of wood, but
++-- it gives no more than its trees regrow.
++--
++-- A tree blocks the way standing or felled (its NavCost stays), so the
++-- grid never changes under the colonists' paths.
++--
++-- All of it is done once a second of the colony's time, not every tick: a
++-- tree is slow, and the stress scene has three hundred of them.
++
++local SAPLING = { size = 0.55, color = "#3E6B35" }
++local TREE = { size = 0.9, color = "#1E3B1E" }
++
++local function show(e, look)
++  local s = e:get("Sprite")
++  s.color = look.color
++  s.size = vector.create(look.size, look.size, 0)
++end
++
++return system "sim.colony.woods" {
++  stage = "sim",
++  after = { "sim.colony.haul" },
++  reads = { "Colony", "Transform" },
++  writes = { "Tree", "Sprite", "Job" },
++  doc = "Once a second of the colony's time (its clock stands still while paused): grows each felled tree's stump back if the second was daylight (1 / Colony.tree_days a day), drawn a sapling half way and a tree again when grown (tree.grown); and, while there are fewer than Colony.chop_open chop jobs, posts one (JobKind chop: skill chop) for each standing tree nearest the stockpile that a woodcutter can get to (Tree.reach) and that has none. sim.colony.work fells it on job.done.",
++  run = function(q)
++    local colony = q:entity("@colony")
++    local rules = colony:get("Colony")
++    local now = rules.clock
++    if math.floor(now) == math.floor(now - q.dt) then return end
++    local dl = q.day_length
++    -- The colony's second just gone, by its middle: daylight, or night.
++    local daylight = ((math.floor(now) - 0.5) / dl) % 1 < rules.dusk
++    local grow = if daylight then 1 / (rules.tree_days * dl * rules.dusk) else 0
++
++    local jobs = 0
++    for _, j in q:each("Job") do
++      if j.kind == "chop" then jobs += 1 end
++    end
++    local want = rules.chop_open - jobs
++    local home = if colony:has("Transform") then colony:get("Transform").pos else nil
++    -- The standing trees within reach without a job, by distance from the
++    -- stockpile, in the order they were laid out among equals.
++    local free = {}
++    for e, tree, t in q:each("Tree", "Transform") do
++      if tree.growth < 1 then
++        if grow > 0 then
++          local was = tree.growth
++          tree.growth = math.min(1, was + grow)
++          if tree.growth >= 1 then
++            show(e, TREE)
++            q:emit("tree.grown", { tree = e })
++          elseif was < 0.5 and tree.growth >= 0.5 then
++            show(e, SAPLING)
++          end
++        end
++      elseif want > 0 and home ~= nil and tree.reach and (tree.job == nil or not tree.job:alive()) then
++        table.insert(free, { id = e:id(), d = vector.magnitude(t.pos - home), n = #free })
++      end
++    end
++    if #free == 0 then return end
++    table.sort(free, function(a, b)
++      if a.d ~= b.d then return a.d < b.d end
++      return a.n < b.n
++    end)
++    for i = 1, math.min(want, #free) do
++      local site = q:entity(free[i].id)
++      local j = q:spawn({ "Job" })
++      local job = j:get("Job")
++      job.kind = "chop"
++      job.site = site
++      site:get("Tree").job = j
++    end
++  end,
++}
+diff -ruN -x .argus -x ARGUS.md -x '*.png' -x target orig/outpost/systems/work.luau gate/outpost/systems/work.luau
+--- orig/outpost/systems/work.luau	2026-10-09 12:11:49.000000000 -0400
++++ gate/outpost/systems/work.luau	2026-10-09 12:47:09.571186400 -0400
+@@ -1,9 +1,10 @@
+ -- What a finished job does (the job system says job.done; section 12):
+--- a harvest leaves crops on the ground, a haul stores what it carried, a
+--- cook's meal goes into the stockpile, and a meal feeds whoever ate it.
++-- a harvest leaves crops on the ground, a felled tree leaves logs, a haul
++-- stores what it carried, a cook's meal goes into the stockpile, and a
++-- meal feeds whoever ate it.
+ --
+ -- It runs right after the job system and before anything that posts jobs
+--- (needs, fields, kitchen, haul), and forgets a job only where it is the
++-- (needs, fields, kitchen, haul, woods), and forgets a job only where it is the
+ -- one that finished: posting in between made a second cook job for the
+ -- stove, which this then orphaned (found in the first week's run).
+ 
+@@ -11,8 +12,8 @@
+   stage = "sim",
+   after = { "jobs.update", "sim.colony.day" },
+   reads = { "Colony" },
+-  writes = { "Field", "Item", "Stockpile", "Needs", "Station", "Transform", "Sprite" },
+-  doc = "On job.done: harvest drops Colony.crop_yield crops at the field and resets it; haul adds the goods to the stockpile it went to and removes them; cook adds its recipe's output to the stockpile with the most food; eat fills the eater from the stockpile, meals first. Emits colony.stored, colony.cooked, and colonist.ate.",
++  writes = { "Field", "Item", "Stockpile", "Needs", "Station", "Tree", "Transform", "Sprite" },
++  doc = "On job.done: harvest drops Colony.crop_yield crops at the field and resets it; chop fells the tree (Tree.growth 0, a stump) and drops Colony.tree_wood wood at the woodcutter's feet (tree.felled); haul adds the goods to the stockpile it went to (wood to Stockpile.wood) and removes them; cook adds its recipe's output to the stockpile with the most food; eat fills the eater from the stockpile, meals first. Emits colony.stored, colony.cooked, and colonist.ate.",
+   run = function(q)
+     local done = q:events("job.done")
+     if #done == 0 then return end
+@@ -37,12 +38,35 @@
+           s.meal += it.count
+         elseif it.kind == "item:crop" then
+           s.crop += it.count
++        elseif it.kind == "item:wood" then
++          s.wood += it.count
+         else
+           s.goods += it.count
+         end
+         s.food += it.count * def.food
+         q:emit("colony.stored", { kind = it.kind, count = it.count, pile = ev.to })
+         ev.carry:despawn()
++      elseif kind == "chop" and ev.site ~= nil and ev.site:alive() and ev.site:has("Tree") then
++        -- Felled: a stump, drawn so at once, that grows back
++        -- (systems/woods.luau draws the sapling and the tree), and its
++        -- logs at the woodcutter's feet, beside it, for a hauler.
++        local tree = ev.site:get("Tree")
++        if tree.job == ev.job then tree.job = nil end
++        tree.growth = 0
++        if ev.site:has("Sprite") then
++          local s = ev.site:get("Sprite")
++          s.color = "#7A5A38"
++          s.size = vector.create(0.45, 0.45, 0)
++        end
++        local at = ev.site:get("Transform").pos
++        if ev.worker ~= nil and ev.worker:alive() then at = ev.worker:get("Transform").pos end
++        local item = q:spawn({ "Item", "Transform" })
++        local it = item:get("Item")
++        it.kind = "item:wood"
++        it.count = rules.tree_wood
++        item:get("Transform").pos = at
++        item:insert("Sprite", { kind = "rect", size = vector.create(0.55, 0.25, 0), color = q:def("item:wood").color, z = 3 })
++        q:emit("tree.felled", { tree = ev.site, worker = ev.worker, wood = rules.tree_wood })
+       elseif kind == "cook" and ev.site ~= nil and ev.site:alive() then
+         local st = ev.site:get("Station")
+         if st.job == ev.job then st.job = nil end
+diff -ruN -x .argus -x ARGUS.md -x '*.png' -x target orig/outpost/tests/week1.luau gate/outpost/tests/week1.luau
+--- orig/outpost/tests/week1.luau	2026-10-09 12:11:49.000000000 -0400
++++ gate/outpost/tests/week1.luau	2026-10-09 12:28:40.443628500 -0400
+@@ -3,17 +3,19 @@
+ -- gate asks that it load at the end of the phase through at least one
+ -- migration: since item 3 it goes through four. Colony drops the rule the
+ -- fields replaced and, since phase 4, the speed its HUD used to show (the
+--- clock's is q:speed()), and Stockpile counts its food as meals (both declared);
+--- Colonist and Needs gained fields and come field by field. The skeleton
+--- had no valley, so the next tick lays one out around its six colonists,
+--- and the colony plays on.
++-- clock's is q:speed()), and since woodcutting gains its rules for trees;
++-- Stockpile counts its food as meals and, since woodcutting, stores no
++-- wood yet (both declared); Colonist and Needs gained fields and come
++-- field by field. The skeleton had no valley, so the next tick lays one
++-- out around its six colonists, its trees to be felled among it, and the
++-- colony plays on.
+ return scenario "the first week's save still loads" {
+   scene = "valley", seed = 1,
+   run = function(t)
+     local loaded = t:call("sim.load", { path = "tests/saves/week1.save" })
+     t.expect:events("component.migrated"):count():eq(4)
+-    t.expect:events("component.migrated", { component = "Colony", declared = true, from = 1, to = 3 }):count():eq(1)
+-    t.expect:events("component.migrated", { component = "Stockpile", declared = true, from = 1, to = 2 }):count():eq(1)
++    t.expect:events("component.migrated", { component = "Colony", declared = true, from = 1, to = 4 }):count():eq(1)
++    t.expect:events("component.migrated", { component = "Stockpile", declared = true, from = 1, to = 3 }):count():eq(1)
+     t.expect:field("@colony", "Colony.day"):eq(7)
+     t.expect:count({ has = { "Colonist" } }):eq(6)
+     t.expect:field("@colony", "Stockpile.food"):gte(6)
+@@ -24,7 +26,9 @@
+     t.expect:events("colony.laid_out", { day = 7, colonists = 6 }):count():eq(1)
+     t.expect:count({ has = { "Colonist", "Worker", "NavAgent", "Transform" } }):eq(6)
+     t.expect:count({ has = { "Field" } }):eq(10)
+-    t.expect:count({ has = { "JobKind" } }):eq(5)
++    t.expect:count({ has = { "JobKind" } }):eq(6)
++    t.expect:field("@colony", "Stockpile.wood"):eq(0)
++    t.expect:count({ has = { "Tree", "NavCost" }, ["Tree.reach"] = true }):gte(1)
+     -- A day more: nobody starves, and the colony works.
+     t:step(3600)
+     t.expect:field("@colony", "Colony.day"):eq(8)
+diff -ruN -x .argus -x ARGUS.md -x '*.png' -x target orig/outpost/tests/woodcutting.luau gate/outpost/tests/woodcutting.luau
+--- orig/outpost/tests/woodcutting.luau	1969-12-31 19:00:00.000000000 -0500
++++ gate/outpost/tests/woodcutting.luau	2026-10-09 12:35:02.866088700 -0400
+@@ -0,0 +1,202 @@
++-- Woodcutting: the valley's trees are felled for wood. A chop job is
++-- taken like any other, by skill (chop: Bram, Cleo, and Dov) and priority
++-- (below the food's jobs); the woodcutter walks to the tree, chops it a
++-- while, and its logs are hauled to the stockpile, which counts them
++-- (Stockpile.wood) and the HUD shows. Trees regrow: a stump grows back
++-- into a tree over Colony.tree_days days of daylight and is felled again.
++-- The 30-day food scenario (tests/outpost_food.luau) is the proof that
++-- nobody starves for it.
++
++local STUMP, TREE = "#7A5A38", "#1E3B1E"
++
++local function one(t, select, where)
++  local q = t:call("world.query", { select = select, where = where })
++  if #q.rows ~= 1 then error("one row for " .. select[1] .. ", not " .. #q.rows, 0) end
++  return q.rows[1]
++end
++
++local function who(t, name)
++  return one(t, { "id" }, { ["Colonist.name"] = name })[1]
++end
++
++-- The HUD's line, as the player reads it.
++local function hud_line(t)
++  return one(t, { "UiText.text" }, { ["Hud.kind"] = "line" })[1]
++end
++
++-- The first event of a name whose fields match, or nil.
++local function first(t, name, match)
++  local ev = t:call("obs.events", { name = name, limit = 1000 })
++  for _, r in ipairs(ev.rows) do
++    local ok = true
++    for k, v in pairs(match or {}) do
++      if r.fields[k] ~= v then ok = false end
++    end
++    if ok then return r end
++  end
++  return nil
++end
++
++scenario "woodcutters fell trees and the wood reaches the stockpile in the first two days" {
++  scene = "valley", seeds = range(1, 10),
++  run = function(t)
++    t.expect:count({ has = { "Tree", "NavCost" } }):gte(40)
++    t.expect:count({ has = { "JobKind" }, ["JobKind.name"] = "chop" }):eq(1)
++    t:run_until { sim_time = days(2) }
++    -- Chopped, by woodcutters only.
++    t.expect:events("job.claimed", { kind = "chop" }):exists()
++    t.expect:events("job.done", { kind = "chop" }):exists()
++    t.expect:events("tree.felled"):exists()
++    for _, name in ipairs({ "Ada", "Esme", "Finn" }) do
++      t.expect:events("job.claimed", { kind = "chop", worker = who(t, name) }):count():eq(0)
++    end
++    local claims = t:call("obs.events", { name = "job.claimed", limit = 1000 })
++    local choppers = {}
++    for _, r in ipairs(claims.rows) do
++      if r.fields.kind == "chop" then
++        local c = t:call("world.get", { entity = r.fields.worker }).components
++        if not string.find(" " .. c.Worker.skills .. " ", " chop ", 1, true) then
++          error(c.Colonist.name .. " chopped without the skill", 0)
++        end
++        choppers[c.Colonist.name] = true
++      end
++    end
++    local names = {}
++    for name in pairs(choppers) do table.insert(names, name) end
++    table.sort(names)
++    t:log("chopped by " .. table.concat(names, ", "))
++    -- Hauled in, and counted.
++    t.expect:events("colony.stored", { kind = "item:wood" }):exists()
++    t.expect:sum("Stockpile.wood"):gte(3)
++    local felled = first(t, "tree.felled")
++    local stored = first(t, "colony.stored", { kind = "item:wood" })
++    local wood = t.expect:field("@colony", "Stockpile.wood"):get()
++    t:log(string.format("first tree felled at %.2f days, first wood stored at %.2f days; %d wood by day 2",
++      felled.frame / 3600, stored.frame / 3600, wood))
++    -- The HUD shows it (written twice a second, so at most what is stored).
++    local line = hud_line(t)
++    local shown = tonumber(string.match(line, "wood (%d+)"))
++    if shown == nil or shown < 3 or shown > wood then error("the HUD shows the wood: " .. line, 0) end
++    -- Nobody went hungry for it.
++    t.expect:events("colonist.died"):count():eq(0)
++    t.expect:count({ has = { "Colonist" } }):eq(6)
++  end,
++}
++
++scenario "a felled tree is a stump that grows back and is felled again" {
++  scene = "valley", seeds = range(1, 3),
++  run = function(t)
++    t:run_until { event = "tree.felled", max_ticks = days(2) * 60 }
++    local ev = first(t, "tree.felled")
++    local tree = ev.fields.tree
++    t.expect:field(tree, "Tree.growth"):lt(0.01)
++    t.expect:field(tree, "Sprite.color"):eq(STUMP)
++    -- It still stands in the way, so no path changes under the colony.
++    t.expect:count({ has = { "Tree", "NavCost" } }):gte(40)
++    -- Its logs lie beside it until a hauler takes them.
++    t.expect:count({ has = { "Item" }, ["Item.kind"] = "item:wood" }):gte(1)
++    -- Three days of daylight later it is a tree again.
++    local days_to_grow = t.expect:field("@colony", "Colony.tree_days"):get()
++    t:run_until { event = "tree.grown", max_ticks = math.ceil((days_to_grow + 1) * 3600) }
++    local grown = first(t, "tree.grown", { tree = tree })
++    if grown == nil then error("the first tree felled is the first to grow back", 0) end
++    t:log(string.format("felled at %.2f days, stood again at %.2f days", ev.frame / 3600, grown.frame / 3600))
++    t.expect:field(tree, "Tree.growth"):eq(1)
++    t.expect:field(tree, "Sprite.color"):eq(TREE)
++    -- And it is felled again: the valley's wood does not run out.
++    t:run_until { sim_time = days(9) }
++    local again = t:call("obs.events", { name = "tree.felled", limit = 1000 })
++    local n = 0
++    for _, r in ipairs(again.rows) do
++      if r.fields.tree == tree then n += 1 end
++    end
++    if n < 2 then error("the tree is felled again once it has grown back: " .. n .. " times", 0) end
++    t:log(string.format("by day 9: %d trees felled, this one %d times; %d wood stored",
++      again.total, n, t.expect:field("@colony", "Stockpile.wood"):get()))
++    t.expect:events("colonist.died"):count():eq(0)
++  end,
++}
++
++scenario "the inspector counts the trees and the wood" {
++  scene = "valley", seed = 1,
++  run = function(t)
++    t:run_until { sim_time = days(1.3) }
++    t.input:tap("inspect")
++    t:step(2)
++    local function lines(page)
++      local q = t:call("world.query", {
++        select = { "UiText.shown", "UiRect.shown", "InspectLine.n" },
++        where = { has = { "InspectLine" }, ["InspectLine.page"] = page },
++      })
++      local out = {}
++      for _, r in ipairs(q.rows) do
++        if r[2] and r[1] ~= "" then out[r[3]] = r[1] end
++      end
++      return out
++    end
++    local colony = lines("colony")
++    local trees = colony[8]
++    t:log("colony: " .. tostring(trees))
++    if trees == nil or not string.find(trees, "^%d+ trees standing, %d+ felled and growing back, %d+ being felled$") then
++      error("the colony page counts the trees: " .. tostring(trees), 0)
++    end
++    local felled = tonumber(string.match(trees, "(%d+) felled"))
++    if felled < 1 then error("some are felled by now: " .. trees, 0) end
++    -- The Stores tab: the wood in the stockpile.
++    local tabs = t:call("world.query", { select = { "id", "UiButton.event" }, where = { has = { "UiButton" } } })
++    local stores
++    for _, r in ipairs(tabs.rows) do
++      if r[2] == "inspect.tab.stores" then stores = r[1] end
++    end
++    t.input:tap("ui_move", { 1, 0 })
++    t:step(2)
++    t.input:tap("ui_move", { 1, 0 })
++    t:step(2)
++    t.expect:field(stores, "UiButton.focused"):eq(true)
++    t.input:tap("ui_confirm")
++    t:step(2)
++    local pile = lines("stores")[1]
++    t:log("stores: " .. tostring(pile))
++    if pile == nil then error("the stores page is shown", 0) end
++    local wood = math.floor(t.expect:field("@colony", "Stockpile.wood"):get())
++    if wood < 1 or not string.find(pile, ", " .. wood .. " wood, ", 1, true) then
++      error("the stores page shows the stockpile's wood (" .. wood .. "): " .. pile, 0)
++    end
++  end,
++}
++
++-- A valley laid out before trees could be felled (a save from then): its
++-- trees were no Trees, it had no chop JobKind, and its founders had their
++-- old skills. The next tick makes its trees Trees, gives it the chop job,
++-- and teaches Bram, Cleo, and Dov to fell trees; then they go to work.
++return scenario "a valley laid out before woodcutting gets its trees and woodcutters" {
++  scene = "valley", seed = 2,
++  run = function(t)
++    t:step(2)
++    local trees = t:call("world.query", { select = { "id" }, where = { has = { "Tree" } }, limit = 1000 })
++    local n = #trees.rows
++    local tx = t:call("edit.begin", { author = "test:outpost", note = "a valley from before woodcutting" }).tx
++    for _, r in ipairs(trees.rows) do
++      t:call("edit.remove", { tx = tx, entity = r[1], component = "Tree" })
++    end
++    t:call("edit.despawn", { tx = tx, entity = one(t, { "id" }, { ["JobKind.name"] = "chop" })[1] })
++    local old = { Bram = "farm", Cleo = "cook", Dov = "farm" }
++    for name, skills in pairs(old) do
++      t:call("edit.set", { tx = tx, entity = who(t, name), path = "Worker.skills", value = skills })
++    end
++    t:call("edit.commit", { tx = tx })
++    t.expect:count({ has = { "Tree" } }):eq(0)
++    t.expect:count({ has = { "JobKind" } }):eq(5)
++    t:step(1)
++    t.expect:count({ has = { "Tree", "NavCost" } }):eq(n)
++    t.expect:count({ has = { "Tree", "Station" } }):eq(0)
++    t.expect:count({ has = { "Tree" }, ["Tree.reach"] = true }):gte(1)
++    t.expect:count({ has = { "JobKind" }, ["JobKind.name"] = "chop" }):eq(1)
++    t.expect:field(who(t, "Bram"), "Worker.skills"):eq("farm chop")
++    t.expect:field(who(t, "Cleo"), "Worker.skills"):eq("cook chop")
++    t.expect:field(who(t, "Finn"), "Worker.skills"):eq("")
++    t:run_until { sim_time = days(1.5) }
++    t.expect:events("tree.felled"):exists()
++    t.expect:events("job.claimed", { kind = "chop", worker = who(t, "Finn") }):count():eq(0)
++  end,
++}

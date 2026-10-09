@@ -253,4 +253,23 @@ fn perf_swarm_stress_tick_under_6_ms_with_its_chase_in_rust() {
     println!("Swarm stress, {enemies} enemies: tick p95 {p95:.3} ms, sim.chase mean {chase:.3} ms");
     assert!(enemies >= 49_000, "{enemies}");
     assert!(p95 < 6.0, "tick p95 {p95} ms");
+    // And once the swarm has reached the hero, the heavy part of the run:
+    // the window above ends before it, and the music's count of everything
+    // near the hero cost 10.7 ms a tick there, a p95 of 12 to 13 ms (found
+    // at the phase 5 gate by the agent who added the dasher).
+    d.call(0, "sim.step", &json!({ "n": 930 })).unwrap();
+    let p = d.call(0, "prof.systems", &json!({ "last": 120 })).unwrap();
+    let close = p["tick_p95_ms"].as_f64().unwrap();
+    let music = p["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r[0] == "late.music")
+        .map(|r| r[2].as_f64().unwrap())
+        .unwrap_or(0.0);
+    println!("  at tick 1,200, the swarm on the hero: tick p95 {close:.3} ms, late.music mean {music:.3} ms");
+    assert!(
+        close < 6.0,
+        "tick p95 {close} ms with the swarm on the hero"
+    );
 }

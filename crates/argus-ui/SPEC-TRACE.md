@@ -73,6 +73,12 @@ Every statement in the design document (v0.3) that constrains the UI tree (§12 
 | (§17) "UI tree, 2,000 nodes with text: < 1 ms layout" ("inspector panels and overview screens are most of what the player looks at"). | Done | Re-measured at the gate: 0.909 ms mean over 2,001 nodes in release; Outpost's inspector, 62 nodes, `ui.layout` p95 0.030 ms in the stress scene. | `ui::perf_2000_nodes_with_text_lay_out_in_a_millisecond`; argus-daemon `perf_outpost` |
 | A hidden tree costs almost nothing. | Done | `layout.rs`: a node under a hidden one keeps last tick's words while its text, key, and the world's language are the same (not read from the string tables again, nor its holes filled); a language chosen still reaches a hidden menu at once. Found at the gate: Outpost's closed inspector doubled a debug tick. Debug builds optimize this crate and taffy too (the workspace's dev profile). | Hollow's `tests/hermit.luau` (French reaches the hidden pause page); Outpost's tests |
 
+## The phase 5 gate: wrapped text in a max width
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§12) Text wraps to its node. | Done | A text node's words wrap at its `max` width less its padding (the layout measures a leaf before clamping it), so the node is as tall as its lines; a sign with `max` kept one line's height and spilled its other lines below (the gate's Hollow trial, and Hollow's own shaft sign). | `wrap::words_wrap_at_a_nodes_max_width_and_the_node_is_as_tall_as_its_lines` |
+
 ## Known limitations, stated so they are decisions
 
 - The canvas is one fixed size per project (`ui.toml`, 960 x 540 by default), scaled to fit the window whole and centred. A wider window shows the world beside it; the UI stays in the canvas.
