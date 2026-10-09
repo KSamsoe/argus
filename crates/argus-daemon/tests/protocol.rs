@@ -53,6 +53,7 @@ fn session_open_gives_the_one_screen_summary() {
             "jobs.update",
             "dialogue.update",
             "input.rebind",
+            "input.glyphs",
             "sim.damage",
             "sim.move",
             "physics.move",
@@ -553,7 +554,7 @@ fn sim_and_events_answer_why_the_bat_died() {
     assert_eq!(pf["tick"], 64, "the last tick that ran, numbered from 0");
     assert_eq!(pf["systems"][0][0], "post.hitstop", "stage order");
     let ps = ok(&mut d, "prof.systems", json!({ "last": 10 }));
-    assert_eq!(ps["rows"][8][0], "sim.damage");
+    assert_eq!(ps["rows"][9][0], "sim.damage");
     assert!(
         ok(&mut d, "prof.worst", json!({ "n": 2 }))["rows"]
             .as_array()
@@ -578,7 +579,7 @@ fn sim_and_events_answer_why_the_bat_died() {
     let pa = ok(&mut d, "prof.alloc", json!({ "last": 10 }));
     assert_eq!(pa["counted"], true);
     assert_eq!(
-        pa["rows"][8][0], "sim.damage",
+        pa["rows"][9][0], "sim.damage",
         "stage order, like prof.systems"
     );
     let physics: Vec<&serde_json::Value> = pa["rows"]
@@ -694,8 +695,8 @@ fn scripts_reload_in_place_and_errors_are_data() {
     project(t.path());
     let mut d = open(t.path());
     let sys = ok(&mut d, "script.systems", json!({}));
-    assert_eq!(sys["total"], 22);
-    let dmg = &sys["rows"][8];
+    assert_eq!(sys["total"], 23);
+    let dmg = &sys["rows"][9];
     assert_eq!(dmg["name"], "sim.damage");
     assert_eq!(dmg["stage"], "sim");
     assert_eq!(dmg["writes"], json!(["Health"]));

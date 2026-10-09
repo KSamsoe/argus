@@ -170,6 +170,12 @@ Phase 0 item 3, "Luau binding with component and def schemas": this crate.
 |---|---|---|---|
 | Procedural generation onto an engine map (Delve). | Done | `q:tiles(map)`, `map` a Tilemap entity or its "@id": `size`, `layers`, `get(layer, x, y)`, and on a runtime map `set`, `fill`, and `paint(layer, x, y, rows, legend)` (a floor of characters in one call); `cell(pos)` and `center(x, y)` between world places and cells, so a game whose y goes up needs no flip; a read off any edge is empty, as the physics has it. Reading a map's tiles is reading its `Tilemap`, writing them writing it: a system declares them, or the call is refused naming the list. The host is given the maps by the player's assembly (`ScriptHost::set_tiles`, the `Tiles` trait); the project's own maps are refused. | `argus-daemon` `runtime_map::a_script_writes_only_a_runtime_maps_tiles_and_only_when_it_says_so` |
 
+## Phase 5, item 9: what a game asks of its platform
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§15) "Game code calls one API." | Done | `q:achieve(id)` unlocks an achievement `platform.toml` declares, `q:achieve(id, current, max)` shows progress towards it, `q:presence(key, value)` sets a rich presence key (no value clears it), `q:overlay(page)` opens the overlay at a page. Each is an event, as `q:play` is (`achievement.unlock`, `achievement.progress`, `presence.set`, `overlay.open`), handed to the platform between ticks; nothing comes back into the world. | argus-daemon `platform`; Hollow's `platform` and `platform_deep`; Outpost's `cloud` |
+
 ## Known limitations, stated so they are decisions
 
 - One Luau VM per `ScriptHost`; a forked world needs its own host (or the same host with a different scheduler, since the VM holds no world state).

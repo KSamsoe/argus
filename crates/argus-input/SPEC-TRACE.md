@@ -81,6 +81,13 @@ In the daemon: `Daemon::device_input(events)` is the one entry point; `poll_devi
 |---|---|---|---|
 | (§6, §15) A report replays to the same world after the player rebound a key. | Done | Found: a rebind was in neither the journal nor a keyframe, so a replay showed the game's old keys in the controls page (world state) and drifted. The key a waiting action took is journaled (`Command::Took`, Escape too), as is `input.bind` (`Command::Bind`), and a snapshot holds the map's bindings, toggles, and what waits for a key (replay files from version 4), so a seek back before a rebind undoes it. `map_mut` sets a run's starting map (a player's settings). | `argus-player` `tests/release_settings.rs` (a report from before the rebind and one from after) |
 
+## Phase 5, item 9: input glyphs and the platform's overlay
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§15) "Input glyphs" follow the device in use. | Done | Every map has the engine's own action `device`: the kind of device the player last pressed something on, a `Family` (0 keyboard and mouse, 1 Xbox, 2 PlayStation, 3 Switch, 4 another gamepad; a pad's family from its name, or the host's `DeviceInput::PadFamily`). It is resolved per slot like any action and logged like one, so a replay shows the run's prompts, and an inject makes a test's player a pad's. `InputGlyph` on a UI node names an action; `input.glyphs` writes its `label` (`Space`, `A`, `Cross`, `B` on a Switch's south) for a UiText hole and its `image`, the sprite `glyph/<family>/<input>` a platform with pictures supplies, which the node's UiPanel draws when `panel` is set. | `glyphs::the_device_in_use_is_the_one_last_pressed`, `glyphs::a_prompt_names_the_button_on_the_device_in_use`, `glyphs::tests`; Hollow's `platform` (the finish line's "Press R" is "Press View" on an Xbox pad) |
+| (§15) The overlay. | Done | The device `platform`, with one input, `overlay`, held while the platform's overlay is open (`DeviceInput::Platform`), feeding every slot: a game binds its pause to it (`platform = ["overlay"]`), and it is logged like a key. | `glyphs::the_overlay_is_an_input_a_game_binds`; Hollow's `platform` |
+
 ## Known limitations, stated so they are decisions
 
 - Keyboard and mouse arrive only through the daemon's window; gamepads are polled only while a window is open.

@@ -2,6 +2,9 @@ name = "hollow"
 clock = "continuous@60"
 default_scene = "hollow"
 plugins = []
+# Steam (phase 5 item 9): a release runs on it when Steam is there
+# (platform.toml says which app), on the null platform when it is not.
+modules = ["steam"]
 
 # Where a desktop build sends its players' reports: klab's playtest server,
 # by its tailnet address (docs/playtest.md), as the web page posts to it.

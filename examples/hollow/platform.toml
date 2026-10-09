@@ -1,0 +1,25 @@
+# Hollow on its platform (phase 5 item 9). Until Hollow has a Steam app of
+# its own it runs as Spacewar (480, Valve's test app every account owns),
+# its achievements mapped to Spacewar's five.
+[steam]
+app_id = 480
+
+[achievements.out_of_the_hollow]
+name = "Out of the hollow"
+doc = "Reach the way out at the end of the hall"
+steam = "ACH_WIN_ONE_GAME"
+
+[achievements.sure_footed]
+name = "Sure-footed"
+doc = "Reach the way out without falling once"
+steam = "ACH_TRAVEL_FAR_SINGLE"
+
+[achievements.deep_diver]
+name = "Deep diver"
+doc = "Reach the bottom row of the deep (shown as progress on the way down)"
+steam = "ACH_TRAVEL_FAR_ACCUM"
+
+[achievements.gem_finder]
+name = "Gem finder"
+doc = "Take the gem in the shaft"
+steam = "ACH_WIN_100_GAMES"

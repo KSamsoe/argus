@@ -74,6 +74,9 @@ pub struct Assembly {
     /// The rigid bodies' store, when the game uses the module (phase 5
     /// item 7), which a keyframe keeps.
     pub rigid: crate::keyframe::RigidSource,
+    /// `platform.toml`: the game's achievements and Steam's app id (phase
+    /// 5 item 9).
+    pub platform: argus_platform::PlatformConfig,
     /// The Luau host (scripts, defs).
     pub host: ScriptHost,
     /// The Rust plugins `argus.toml` lists, loaded and installed, and what
@@ -395,6 +398,8 @@ fn assemble_layers(
     let contacts = Rc::new(RefCell::new(argus_physics::Contacts::default()));
     argus_physics::install_with(&mut world, &mut sched, tiles.clone(), contacts.clone())?;
     let rigid = install_rigid(&mut world, &mut sched, &tiles, cfg)?;
+    // The platform's setup (phase 5 item 9): the game's own, not a mod's.
+    let platform = argus_platform::PlatformConfig::load(root)?;
     // Navigation over the tilemaps; its agents move after the physics.
     let nav = Rc::new(RefCell::new(argus_nav::NavStore::new(
         root,
@@ -444,6 +449,9 @@ fn assemble_layers(
             tables.borrow().strings.text(&lang, "input.press_a_key")
         });
         argus_input::rebind::install_with(&mut world, &mut sched, st.clone(), prompt)?;
+        // Button prompts for the device in use (phase 5 item 9), after the
+        // rebinding, so a rebind shows at once.
+        argus_input::glyphs::install(&mut world, &mut sched, st.clone())?;
     }
     let mut host = ScriptHost::new(ScriptConfig {
         day_seconds: cfg.day_seconds,
@@ -529,6 +537,7 @@ fn assemble_layers(
         particles,
         contacts,
         rigid,
+        platform,
         host,
         plugins,
         project,

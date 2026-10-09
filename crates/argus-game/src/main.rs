@@ -161,6 +161,9 @@ fn run(args: Args) -> Result<(), String> {
     if let Some(e) = p.plugins.errors.first() {
         return Err(format!("{}: {}", e.at(), e.message));
     }
+    // The platform (phase 5 item 9), before the window: Steam's overlay
+    // draws into the graphics device made after it starts.
+    let platform_said = start_platform(&mut p);
     let save = argus_player::save::save_dir(&p.name);
     // The player's settings (phase 5 item 2), before the first tick and the
     // recorder's first keyframe, so a report replays with them.
@@ -170,15 +173,15 @@ fn run(args: Args) -> Result<(), String> {
         p.step(n).map_err(|e| e.message)?;
         let mut saves = Vec::new();
         for (name, bytes) in p.take_saves(CODE) {
-            saves.push(
-                write_save(save.as_deref(), &name, &bytes)?
-                    .display()
-                    .to_string(),
-            );
+            let path = save_file(save.as_deref(), &name).ok();
+            let went = p
+                .store_save(path.as_deref(), &name, &bytes)
+                .map_err(|e| e.message)?;
+            saves.push(json!({ "name": name, "path": path, "went": went }));
         }
         println!(
             "{}",
-            json!({ "packs": packs, "status": p.status(), "code": CODE, "save": save, "saves": saves, "mods": p.mods.to_json() })
+            json!({ "packs": packs, "status": p.status(), "code": CODE, "save": save, "saves": saves, "mods": p.mods.to_json(), "platform": platform_said })
         );
         return Ok(());
     }
@@ -187,8 +190,9 @@ fn run(args: Args) -> Result<(), String> {
     let mut game = Game::open(p, key, save, cfg.reports_url.clone(), settings)?;
     // Reports that did not go last time go now.
     game.send_later();
-    // Mods that did not load, or a load order that did not read.
-    if let Some(line) = left_out.or(mods_said) {
+    // Mods that did not load, or a load order that did not read; Steam
+    // that did not start.
+    if let Some(line) = left_out.or(mods_said).or(platform_said) {
         game.toast = Some((line, Instant::now()));
     }
     loop {
@@ -245,6 +249,7 @@ impl Game {
         let window = host.window().ok_or("the window did not open")?;
         let mut r = Renderer::windowed(window, false).map_err(|e| e.message)?;
         r.load_catalog(&p.assets).map_err(|e| e.message)?;
+        load_glyphs(&mut r, &mut p);
         if let Some(a) = p.audio.as_mut() {
             let _ = a.open_device();
         }
@@ -424,6 +429,9 @@ impl Game {
         if !devs.is_empty() {
             self.p.devices(&devs);
         }
+        // The platform's callbacks, and its overlay as an input (phase 5
+        // item 9).
+        self.p.poll_platform();
         if click {
             let _ = self
                 .p
@@ -493,13 +501,23 @@ impl Game {
     /// to mention.
     fn saves_and_loads(&mut self) {
         for (name, bytes) in self.p.take_saves(CODE) {
-            if let Err(e) = write_save(self.save.as_deref(), &name, &bytes) {
-                self.toast = Some((format!("The game could not be saved: {e}"), Instant::now()));
+            // On the disk and in the platform's cloud (phase 5 item 9).
+            let path = save_file(self.save.as_deref(), &name).ok();
+            if let Err(e) = self.p.store_save(path.as_deref(), &name, &bytes) {
+                self.toast = Some((
+                    format!("The game could not be saved: {}", e.message),
+                    Instant::now(),
+                ));
             }
         }
         for name in self.p.take_loads() {
-            let r = read_save(self.save.as_deref(), &name)
-                .and_then(|bytes| self.p.load(&bytes).map_err(|e| e.message));
+            // The newer of the disk's and the cloud's.
+            let path = save_file(self.save.as_deref(), &name).ok();
+            let r = self
+                .p
+                .fetch_save(path.as_deref(), &name)
+                .map_err(|e| e.message)
+                .and_then(|(bytes, _)| self.p.load(&bytes).map_err(|e| e.message));
             if let Err(e) = r {
                 self.toast = Some((
                     format!("The save {name:?} could not be loaded: {e}"),
@@ -621,16 +639,61 @@ fn save_file(save: Option<&Path>, name: &str) -> Result<PathBuf, String> {
     Ok(dir.join(argus_player::savegame::file_name(name)))
 }
 
-fn write_save(save: Option<&Path>, name: &str, bytes: &[u8]) -> Result<PathBuf, String> {
-    let path = save_file(save, name)?;
-    if let Some(d) = path.parent() {
-        std::fs::create_dir_all(d).map_err(|e| e.to_string())?;
+/// Start the game's platform (phase 5 item 9): Steam, when the game was
+/// built with it, `platform.toml` names its app, and Steam is running;
+/// else the null platform, with a line for the player when Steam was meant
+/// to be there.
+fn start_platform(p: &mut Player) -> Option<String> {
+    #[cfg(feature = "steam")]
+    if let Some(app) = p.platform_cfg.steam_app_id {
+        return match argus_steam::SteamPlatform::init(app) {
+            Ok(s) => {
+                p.set_platform(Box::new(s));
+                None
+            }
+            Err(e) => Some(format!(
+                "Playing without Steam: achievements and cloud saves wait for it. ({})",
+                e.message
+            )),
+        };
     }
-    std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
-    Ok(path)
+    let _ = p;
+    None
 }
 
-fn read_save(save: Option<&Path>, name: &str) -> Result<Vec<u8>, String> {
-    let path = save_file(save, name)?;
-    std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))
+/// The platform's pictures of the pad buttons the action map binds (Steam
+/// Input's), as the sprites `glyph/<family>/<input>` that a UI's
+/// InputGlyph panels draw. Without them a prompt is its label.
+fn load_glyphs(r: &mut Renderer, p: &mut Player) -> usize {
+    let Some(map) = p.action_map() else {
+        return 0;
+    };
+    let inputs: std::collections::BTreeSet<String> = map
+        .actions
+        .iter()
+        .filter_map(|a| a.bindings.get("gamepad"))
+        .flatten()
+        .cloned()
+        .collect();
+    let mut n = 0;
+    for f in [
+        argus_platform::Family::Xbox,
+        argus_platform::Family::PlayStation,
+        argus_platform::Family::Switch,
+    ] {
+        for i in &inputs {
+            if let Some(g) = p.platform.glyph_image(f, i) {
+                r.gpu_mut().add_atlas_frames(
+                    &format!("glyph/{}/{i}", f.name()),
+                    g.width,
+                    g.height,
+                    &g.rgba,
+                    vec![[0.0, 0.0, 1.0, 1.0]],
+                    vec![[0.5, 0.5]],
+                );
+                n += 1;
+            }
+        }
+    }
+    n
 }

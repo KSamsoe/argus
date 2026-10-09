@@ -8,7 +8,7 @@ return system "sim.colony.day" {
   reads = { "Stockpile" },
   writes = { "Colony" },
   rng = "weather",
-  doc = "Moves the colony's clock; when a day turns, draws the day's growth from the weather, emits day.turned with the food stored, and the game saves itself as \"auto\".",
+  doc = "Moves the colony's clock; when a day turns, draws the day's growth from the weather, emits day.turned with the food stored, and the game saves itself as \"auto\" (to the platform's cloud too), tells the platform the day (rich presence), and asks for the first week's achievement on the seventh.",
   run = function(q)
     local rules = q:entity("@colony"):get("Colony")
     rules.clock += q.dt
@@ -20,5 +20,10 @@ return system "sim.colony.day" {
     for _, s in q:each("Stockpile") do food += s.food end
     q:emit("day.turned", { day = day, food = food, growth = rules.growth })
     q:save("auto")
+    -- What friends see, and the first week (phase 5 item 9).
+    q:presence("status", "Day " .. day .. " in the valley")
+    if day == 7 then
+      q:achieve("first_week")
+    end
   end,
 }

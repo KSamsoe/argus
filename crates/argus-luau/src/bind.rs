@@ -1091,6 +1091,62 @@ impl UserData for QueryHandle {
                 Ok(())
             },
         );
+        // achieve("out_of_the_dark") / achieve("collector", 3, 10): unlock
+        // an achievement platform.toml declares, or show progress towards
+        // it; presence("status", "In the caves") / presence("status"):
+        // set or clear a rich presence key; overlay("achievements"): open
+        // the platform's overlay at a page. Requests, as play is (section
+        // 15, phase 5 item 9): `achievement.unlock`, `achievement.progress`,
+        // `presence.set`, `overlay.open` events whatever runs the game
+        // hands its platform (Steam, or the null one) between ticks.
+        // Nothing comes back into the world, so a run replays the same
+        // with Steam or without it.
+        m.add_method(
+            "achieve",
+            |_, this, (id, current, max): (String, Option<u32>, Option<u32>)| {
+                let c = ctx(&this.link)?;
+                match (current, max) {
+                    (None, None) => {
+                        c.emit("achievement.unlock", vec![("id".to_string(), Value::Str(id))])
+                    }
+                    (Some(cur), Some(max)) if max > 0 => c.emit(
+                        "achievement.progress",
+                        vec![
+                            ("current".to_string(), Value::UInt(cur.min(max) as u64)),
+                            ("id".to_string(), Value::Str(id)),
+                            ("max".to_string(), Value::UInt(max as u64)),
+                        ],
+                    ),
+                    _ => {
+                        return Err(mlua::Error::runtime(format!(
+                            "achieve({id:?}, current, max): progress needs both, max above 0; achieve({id:?}) unlocks it"
+                        )))
+                    }
+                }
+                Ok(())
+            },
+        );
+        m.add_method(
+            "presence",
+            |_, this, (key, value): (String, Option<String>)| {
+                if key.is_empty() {
+                    return Err(mlua::Error::runtime(
+                        "presence(key, value): the key is a name (status, steam_display)",
+                    ));
+                }
+                let mut f = vec![("key".to_string(), Value::Str(key))];
+                if let Some(v) = value {
+                    f.push(("value".to_string(), Value::Str(v)));
+                }
+                ctx(&this.link)?.emit("presence.set", f);
+                Ok(())
+            },
+        );
+        m.add_method("overlay", |_, this, page: Option<String>| {
+            let page = page.unwrap_or_else(|| "friends".to_string());
+            ctx(&this.link)?.emit("overlay.open", vec![("page".to_string(), Value::Str(page))]);
+            Ok(())
+        });
         // save("auto") / load("auto"): ask whatever runs the game to save
         // it, or load a save, between ticks (section 6; phase 3 item 0). A
         // `save.requested` or `load.requested` event: the save holds the

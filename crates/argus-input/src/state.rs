@@ -63,6 +63,9 @@ impl ActionValue {
                     kind.name(),
                     match kind {
                         ActionKind::Button => "true or false",
+                        ActionKind::Axis if action == crate::map::DEVICE_ACTION => {
+                            "a kind of device: 0 keyboard and mouse, 1 Xbox, 2 PlayStation, 3 Switch, 4 another gamepad"
+                        }
                         ActionKind::Axis => "a number in [-1, 1]",
                         ActionKind::Axis2 => "[x, y] with each in [-1, 1]",
                         ActionKind::Pointer => "[x, y] in canvas pixels",
@@ -80,6 +83,13 @@ impl ActionValue {
             (ActionKind::Button, Json::Bool(b)) => ActionValue::Button(*b),
             (ActionKind::Button, Json::Number(n)) => {
                 ActionValue::Button(n.as_f64().unwrap_or(0.0) != 0.0)
+            }
+            (ActionKind::Axis, Json::Number(n)) if action == crate::map::DEVICE_ACTION => {
+                let v = n.as_f64().unwrap_or(-1.0);
+                if !(0.0..=4.0).contains(&v) || v.fract() != 0.0 {
+                    return Err(bad(&format!("{v}")));
+                }
+                ActionValue::Axis(v as f32)
             }
             (ActionKind::Axis, Json::Number(n)) => {
                 ActionValue::Axis(clamp(n.as_f64().unwrap_or(0.0))?)
@@ -1062,6 +1072,18 @@ impl InputState {
             }
         }
         out
+    }
+
+    /// An action's value for a slot this tick (its rest value when nothing
+    /// set it); `None` for an action the map lacks.
+    pub fn value(&self, slot: u8, action: &str) -> Option<ActionValue> {
+        let kind = self.map.action(action).ok()?.kind;
+        Some(
+            self.current
+                .get(&(slot, action.to_string()))
+                .copied()
+                .unwrap_or(ActionValue::default_for(kind)),
+        )
     }
 
     /// Current values of a slot, for `input.state`.

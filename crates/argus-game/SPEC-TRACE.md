@@ -37,6 +37,12 @@ The release executable (§15, phase 2 item 7): what a player double-clicks. The 
 | (§12) The semantic frame "can drive a player's narrator": the player's own screen reader. | Done | While a screen reader is reading, each frame's `ui` and `hud` go to it as an AccessKit tree (`argus-render` `access`, the window's adapter); a press it asks for is the pointer on the button and `ui_click`, recorded input like a mouse's. The window opens hidden until the adapter is attached, as AccessKit needs. | `argus-player` `tests/release_access.rs` (Hollow's menu read, the focus following, Controls pressed); Kevin's hand check with Narrator or NVDA |
 | Settings that last between launches. | Done | `argus_player::settings::Store`: `settings.toml` in the save location, read and put in before the first tick and the recorder, written when the player changes one. | `argus-player` `tests/release_settings.rs` |
 
+## Phase 5, item 9: the game on Steam
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§15) The Steam implementation where the game is on Steam, the null one everywhere else. | Done | Built with the `steam` feature (`argus build` passes it for `modules = ["steam"]`), the game starts Steam for `platform.toml`'s app before its window, so Steam's overlay draws into the graphics device; without Steam it runs on the null platform and the bottom line says so. Each frame polls the platform (callbacks, the overlay as an input). Steam's pictures of the pad buttons the action map binds become the sprites `glyph/<family>/<input>`. Saves go to the disk and Steam Cloud, and a load takes the newer. | argus-steam `steam_live`; argus-player `platform` |
+
 ## Known limitations, stated so they are decisions
 
 - The window opens at 1280x720 and can be resized. It fills the screen (borderless) while the game's `UiSettings.fullscreen` says so, read each frame (phase 3 item 1); a game's settings screen is its own UI (every reference game's pause menu has one). Settings last between launches (phase 5 item 2).

@@ -20,11 +20,19 @@
 //!   `right_x`, `right_y`, `lt`, `rt`; sticks `left_stick`, `right_stick`,
 //!   `dpad` for an `axis2`.
 //!
+//! - platform: `overlay`, held while the platform's overlay (Steam's) is
+//!   open (phase 5 item 9), so a game binds its pause to it.
+//!
 //! A slot's `devices` list says which devices feed it: `keyboard`,
 //! `mouse`, `gamepad` (any pad), `gamepad:N` (the Nth pad connected,
-//! from 0), so two gamepads are two players (§12).
+//! from 0), so two gamepads are two players (§12). The platform feeds
+//! every slot.
+//!
+//! The device a slot's player last pressed something on is its
+//! [`Family`], the value of the map's `device` action.
 
-use crate::map::{ActionKind, ActionMap};
+use crate::glyphs::Family;
+use crate::map::{ActionKind, ActionMap, DEVICE_ACTION};
 use crate::state::ActionValue;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -85,6 +93,22 @@ pub enum DeviceInput {
         /// Canvas y, from the top.
         y: f32,
     },
+    /// What kind of pad it is, when the host knows better than its name
+    /// (Steam Input does; phase 5 item 9).
+    PadFamily {
+        /// Pad index from 0.
+        pad: u32,
+        /// Its kind.
+        family: Family,
+    },
+    /// Something of the platform's held or let go: `overlay` (phase 5
+    /// item 9).
+    Platform {
+        /// Its name.
+        name: String,
+        /// Held.
+        on: bool,
+    },
     /// Focus lost: everything held is released (no stuck keys).
     ReleaseAll,
 }
@@ -116,8 +140,18 @@ pub fn key_name(s: &str) -> String {
 #[derive(Clone, Debug, Default)]
 struct Pad {
     name: String,
+    family: Option<Family>,
     buttons: BTreeSet<String>,
     axes: BTreeMap<String, f32>,
+    /// When something was last pressed on it (the devices' own count).
+    used: u64,
+}
+
+impl Pad {
+    fn family(&self) -> Family {
+        self.family
+            .unwrap_or_else(|| Family::of_pad_name(&self.name))
+    }
 }
 
 /// Raw state of every device.
@@ -127,6 +161,11 @@ pub struct Devices {
     mouse: BTreeSet<String>,
     pointer: Option<(f32, f32)>,
     pads: BTreeMap<u32, Pad>,
+    platform: BTreeSet<String>,
+    /// A count of presses: what was used last has the highest.
+    uses: u64,
+    /// When a key or the mouse was last used.
+    keyboard_used: u64,
     /// Events seen, for `input.devices`.
     pub events_seen: u64,
 }
@@ -140,6 +179,8 @@ impl Devices {
                 let k = key_name(name);
                 if *pressed {
                     self.keys.insert(k);
+                    self.uses += 1;
+                    self.keyboard_used = self.uses;
                 } else {
                     self.keys.remove(&k);
                 }
@@ -148,6 +189,8 @@ impl Devices {
                 let b = button.to_ascii_lowercase();
                 if *pressed {
                     self.mouse.insert(b);
+                    self.uses += 1;
+                    self.keyboard_used = self.uses;
                 } else {
                     self.mouse.remove(&b);
                 }
@@ -160,17 +203,36 @@ impl Devices {
                 let p = self.pads.entry(*pad).or_default();
                 if *pressed {
                     p.buttons.insert(button.clone());
+                    self.uses += 1;
+                    p.used = self.uses;
                 } else {
                     p.buttons.remove(button);
                 }
             }
-            DeviceInput::Pointer { x, y } => self.pointer = Some((*x, *y)),
+            DeviceInput::Pointer { x, y } => {
+                // A mouse that moves is the mouse in use.
+                if self
+                    .pointer
+                    .is_some_and(|(px, py)| (px - x).abs() + (py - y).abs() > 2.0)
+                {
+                    self.uses += 1;
+                    self.keyboard_used = self.uses;
+                }
+                self.pointer = Some((*x, *y));
+            }
             DeviceInput::PadAxis { pad, axis, value } => {
-                self.pads
-                    .entry(*pad)
-                    .or_default()
-                    .axes
-                    .insert(axis.clone(), value.clamp(-1.0, 1.0));
+                let p = self.pads.entry(*pad).or_default();
+                let v = value.clamp(-1.0, 1.0);
+                let was = p.axes.get(axis).copied().unwrap_or(0.0);
+                let past = |v: f32| match axis.as_str() {
+                    "lt" | "rt" => v > TRIGGER_PRESS,
+                    _ => v.abs() > 0.5,
+                };
+                if past(v) && !past(was) {
+                    self.uses += 1;
+                    p.used = self.uses;
+                }
+                p.axes.insert(axis.clone(), v);
             }
             DeviceInput::PadConnected {
                 pad,
@@ -181,6 +243,16 @@ impl Devices {
                     self.pads.entry(*pad).or_default().name = name.clone();
                 } else {
                     self.pads.remove(pad);
+                }
+            }
+            DeviceInput::PadFamily { pad, family } => {
+                self.pads.entry(*pad).or_default().family = Some(*family);
+            }
+            DeviceInput::Platform { name, on } => {
+                if *on {
+                    self.platform.insert(name.clone());
+                } else {
+                    self.platform.remove(name);
                 }
             }
             DeviceInput::ReleaseAll => {
@@ -208,6 +280,24 @@ impl Devices {
 
     fn key(&self, k: &str) -> bool {
         self.keys.contains(&key_name(k))
+    }
+
+    /// The kind of device a slot's player last pressed something on: the
+    /// keyboard and mouse if they feed it and nothing else was used since,
+    /// else the pad used last (a pad never used counts if nothing was);
+    /// `None` when nothing feeds the slot (its `device` is left to
+    /// injects, as an action no device binds is).
+    pub fn family(&self, map: &ActionMap, slot: u8) -> Option<Family> {
+        let s = map.slot(slot).ok()?;
+        let keyboard = s.devices.iter().any(|d| d == "keyboard" || d == "mouse");
+        let mut best: Option<(u64, Family)> =
+            keyboard.then_some((self.keyboard_used, Family::Keyboard));
+        for p in self.pads_for(&s.devices) {
+            if best.is_none_or(|(u, _)| p.used > u) {
+                best = Some((p.used, p.family()));
+            }
+        }
+        best.map(|(_, f)| f)
     }
 
     fn pad_axis(p: &Pad, axis: &str) -> f32 {
@@ -261,10 +351,17 @@ impl Devices {
         let pads = self.pads_for(&s.devices);
         let mut out = Vec::new();
         for a in &map.actions {
+            if a.name == DEVICE_ACTION {
+                if let Some(f) = self.family(map, slot) {
+                    out.push((a.name.clone(), ActionValue::Axis(f.index())));
+                }
+                continue;
+            }
             let kb = a.bindings.get("keyboard").filter(|_| keyboard);
             let ms = a.bindings.get("mouse").filter(|_| mouse);
             let gp = a.bindings.get("gamepad").filter(|_| !pads.is_empty());
-            if kb.is_none() && ms.is_none() && gp.is_none() {
+            let pf = a.bindings.get("platform");
+            if kb.is_none() && ms.is_none() && gp.is_none() && pf.is_none() {
                 continue;
             }
             let v = match a.kind {
@@ -278,6 +375,9 @@ impl Devices {
                     }
                     for b in gp.into_iter().flatten() {
                         on |= pads.iter().any(|p| Self::pad_button(p, b));
+                    }
+                    for b in pf.into_iter().flatten() {
+                        on |= self.platform.contains(b);
                     }
                     ActionValue::Button(on)
                 }
@@ -395,3 +495,6 @@ pub const PAD_NAMES: &[&str] = &[
 
 /// Mouse names this module understands.
 pub const MOUSE_NAMES: &[&str] = &["left", "right", "middle", "back", "forward"];
+
+/// The platform's names: its overlay, held while it is open.
+pub const PLATFORM_NAMES: &[&str] = &["overlay"];

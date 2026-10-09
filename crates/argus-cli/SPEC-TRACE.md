@@ -158,6 +158,12 @@ Phase 0 item 9, "CLI": this crate, plus `argus_daemon::launch` (shared with `arg
 |---|---|---|---|
 | (§12, §15) A release without the module does not carry it. | Done | `argus build` passes the engine's optional modules the game's `argus.toml` names as cargo features to the executable's build and the page's (`--features rigid`); a game that names none gets an executable without Rapier. The toybox's build: `toybox.exe`, the same world after 300 ticks from the project, the packs, and the executable. | `argus build` of the toybox |
 
+## Phase 5, item 9: Steam in a release build
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§15) A release of a game on Steam carries Steam's library. | Done | `modules = ["steam"]` builds the executable with the `steam` feature and copies the Steamworks library the build linked against (`steam_api64.dll`, `libsteam_api.so`, `libsteam_api.dylib`, from steamworks-sys's build output) beside it. A web build leaves the module out: a page runs on the null platform. | Hollow's and Outpost's release builds (`argus build`) |
+
 ## Known limitations, stated so they are decisions
 
 - A daemon started by the CLI outlives the shell; `argus daemon stop` ends it, and `.argus/daemon.json` is removed on a clean exit. `stop` returns once the daemon is gone (its record removed and its socket silent), not when it agreed to go: a command right after it used to reach the daemon on its way out and fail with "connection lost" (found after the phase-1 gate; `cli::the_binary_finds_starts_and_stops_a_project_daemon`). A daemon killed otherwise leaves a stale record, which `argus daemon status` reports and a method call replaces.

@@ -345,6 +345,7 @@ dependencies = [
  "argus-nav",
  "argus-particles",
  "argus-physics",
+ "argus-platform",
  "argus-player",
  "argus-plugins",
  "argus-post",
@@ -410,11 +411,13 @@ name = "argus-game"
 version = "0.0.1"
 dependencies = [
  "argus-input",
+ "argus-platform",
  "argus-player",
  "argus-plugins",
  "argus-render",
  "argus-scene",
  "argus-sim",
+ "argus-steam",
  "argus-ui",
  "serde_json",
 ]
@@ -520,6 +523,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "argus-platform"
+version = "0.0.1"
+dependencies = [
+ "argus-ecs",
+ "argus-input",
+ "argus-os",
+ "argus-scene",
+ "serde_json",
+ "toml_edit 0.22.27",
+]
+
+[[package]]
 name = "argus-player"
 version = "0.0.1"
 dependencies = [
@@ -538,6 +553,7 @@ dependencies = [
  "argus-os",
  "argus-particles",
  "argus-physics",
+ "argus-platform",
  "argus-plugins",
  "argus-post",
  "argus-render",
@@ -645,6 +661,19 @@ dependencies = [
  "argus-ecs",
  "argus-render",
  "argus-sim",
+]
+
+[[package]]
+name = "argus-steam"
+version = "0.0.1"
+dependencies = [
+ "argus-assets",
+ "argus-ecs",
+ "argus-input",
+ "argus-platform",
+ "serde_json",
+ "steamworks",
+ "steamworks-sys",
 ]
 
 [[package]]
@@ -4215,6 +4244,24 @@ name = "static_assertions"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
+
+[[package]]
+name = "steamworks"
+version = "0.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5ff29921f6a7e8c85b0c971ec3c42002b9f535e3b8f4358cb22911d43709739a"
+dependencies = [
+ "bitflags 2.13.2",
+ "paste",
+ "steamworks-sys",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "steamworks-sys"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ae139f051204a4af015d4f0ed3a1f7a51020d03a44c7cf249168c543d88131e9"
 
 [[package]]
 name = "strict-num"

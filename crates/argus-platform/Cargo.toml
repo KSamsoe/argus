@@ -1,0 +1,15 @@
+[package]
+name = "argus-platform"
+description = "Argus Engine's platform layer: one API for achievements, cloud saves, rich presence, input glyphs, and the overlay, with a null implementation for everything but a platform's own (Steam's is argus-steam)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+argus-ecs = { path = "../argus-ecs", version = "0.0.1" }
+argus-os = { path = "../argus-os", version = "0.0.1" }
+argus-scene = { path = "../argus-scene", version = "0.0.1" }
+argus-input = { path = "../argus-input", version = "0.0.1" }
+serde_json = "1"
+toml_edit = "0.22"

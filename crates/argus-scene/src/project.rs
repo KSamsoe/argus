@@ -22,7 +22,7 @@ use argus_sim::Clock;
 use std::path::{Path, PathBuf};
 
 /// The engine's optional modules, as `argus.toml`'s `modules` names them.
-pub const MODULES: &[&str] = &["rigid"];
+pub const MODULES: &[&str] = &["rigid", "steam"];
 
 /// Whether the project uses an optional module.
 impl ProjectConfig {

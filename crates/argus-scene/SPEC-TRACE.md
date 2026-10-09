@@ -135,6 +135,12 @@ Phase 0 item 5, "TOML scenes, rooms, defs, and prefab overrides": this crate.
 |---|---|---|---|
 | (§12) An optional module is the game's choice. | Done | `argus.toml`'s `modules` (`ProjectConfig::modules`, `uses`): the engine's optional modules the game uses, `rigid` for now (`MODULES`); a name the engine does not have is refused with the list. The daemon installs, and a release build carries, only those. | argus-daemon `rigid`; the toybox |
 
+## Phase 5, item 9: Steam as a module
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§15) A game names the platform it ships on. | Done | `steam` joins the optional modules (`MODULES`): a game whose `argus.toml` lists it is built with Steam (argus-cli); `platform.toml` says which app (argus-platform). | argus-cli build; Hollow's and Outpost's `argus.toml` |
+
 ## Known limitations, stated so they are decisions
 
 - A child entity that exists only because a prefab declares it is not an "instance" of that prefab (`instances_of`), but it is counted among the entities a prefab change touched (`reapply_prefab`).

@@ -403,6 +403,13 @@ Phase 0 item 4, "JSON-RPC daemon with session, world, edit, sim (play, pause, st
 | (§3, §5) The module's components and system are the world's like any. | Done | `world.describe Skeleton` (and `SkeletonPart`) with their docs and tune fields; `skeletal.pose` in `script.systems` after `anim.update`, and a script orders itself after it. | `skeletal::the_components_are_described_and_the_system_follows_the_animator` |
 | (§6) A seek replays skeletons to the same world. | Done | Their state is in components; the system's caches of interned strings are dropped when the world's frame does not follow the last one, since a restored world brings its own string table (found here: a tint first seen after the keyframe drew as no tint after a seek). | `skeletal::a_seek_replays_the_puppets_to_the_same_world` |
 
+## Phase 5, item 9: the platform through the protocol
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§15) "Tests run without Steam present." | Done | The daemon runs a game on the null platform, one a project, its cloud `.argus/platform/cloud`, kept across scene loads as an account is. Each request is answered in the log right after it (`platform.achieved {id, api, new}`, `platform.error {request, code, message}`), as the mixer answers sounds. `platform.status` shows it, the game's achievements on it, and `platform.toml`; `platform.overlay {open}` opens and closes the overlay, as Shift+Tab does on Steam; `platform.reset {cloud?}` forgets. | `platform::the_null_platform_takes_the_games_requests_and_says_so`, `platform::the_overlay_is_an_input_and_a_seek_replays_across_requests` |
+| (§15) Cloud saves. | Done | A save kept in `.argus/saves/` goes to the platform's cloud too (`game.saved` says `cloud`); `sim.load {name}` takes the newer of the two and says which (`from`); a save at a path of its own stays out of the cloud. | `platform::a_save_loads_from_the_cloud_when_the_disk_has_none`; Outpost's `cloud` |
+
 ## Known limitations, stated so they are decisions
 
 - A tuning session's values live in this daemon until its end: a fork made during one, and a mark's or a replay's file, start from the files, without the session's def rows or effects.

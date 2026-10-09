@@ -156,6 +156,13 @@ Every statement in the design document (v0.3) that constrains a game as players 
 |---|---|---|---|
 | (§13) Skeletons pose wherever the game runs. | Done | `assemble` installs argus-skeletal after argus-anim, on the animator's store (refreshed after every import), in every assembly: it is the engine's own code without a dependency and costs nothing without a Skeleton, so it is not a module a game names. A keyframe needs nothing more: the pose is in components. | `release_skeletal::the_puppets_ship_and_play_from_their_packs_as_from_their_folder`; the puppet example's suite |
 
+## Phase 5, item 9: the platform in every assembly
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§15) The game's requests reach its platform. | Done | `Player::platform`, the null platform unless the host sets another (`set_platform`); `pump` hands each request to it and keeps the answers (`platform_answers`, `platform_status`). `poll_platform`, once a frame, lets it work and turns its overlay into the `overlay` input. `assemble` reads `platform.toml` and installs `input.glyphs`. | `platform::requests_reach_the_platform_and_the_overlay_is_an_input` |
+| (§15) Cloud saves. | Done | `store_save` keeps a save on the disk and in the platform's cloud under one name; `fetch_save` takes the newer of the two (`savegame::newer`, by `saved_at`; the disk's on a tie), so a second machine sharing the cloud loads the first's save. | `platform::a_save_in_the_cloud_loads_on_another_machine` |
+
 ## Known limitations, stated so they are decisions
 
 - A desktop report goes over plain HTTP to the server's tailnet address (`[reports] url`): a player off the tailnet keeps theirs, and it goes when they are on it, or they send the file.

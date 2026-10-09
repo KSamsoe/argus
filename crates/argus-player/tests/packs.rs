@@ -110,8 +110,8 @@ fn hollow_from_its_packs_plays_as_hollow_from_its_folder() {
         "the base's is the game's"
     );
     assert_eq!(
-        r["scripts_compiled"], 10,
-        "the Run and Hermit components, and the pit, run, signs, pause, pause menu, hermit, music, and light systems"
+        r["scripts_compiled"], 12,
+        "the Run, Hermit, and Feats components, and the pit, run, signs, pause, pause menu, hermit, music, light, and feats systems"
     );
     assert!(r["sprites"].as_u64().unwrap() >= 3, "{r}");
     let left_out = r["sources_left_out"].to_string();

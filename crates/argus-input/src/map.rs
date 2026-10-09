@@ -18,11 +18,21 @@
 //! type   = "button"
 //! toggle = true                  # accessibility: a press toggles instead of holding
 //!
+//! [actions.pause.bindings]
+//! keyboard = ["escape"]
+//! platform = ["overlay"]         # held while the platform's overlay is open
+//!
 //! [slots.1]
 //! devices = ["keyboard", "gamepad:0"]
 //! [slots.2]
 //! devices = ["gamepad:1"]
 //! ```
+//!
+//! Every map also has the engine's own action [`DEVICE_ACTION`], `device`:
+//! the kind of device the player last used, an axis whose value is a
+//! [`crate::glyphs::Family`] (0 keyboard and mouse, 1 Xbox, 2 PlayStation,
+//! 3 Switch, 4 another gamepad; phase 5 item 9). It is logged like any
+//! action, so the button prompts a replay shows are the run's.
 
 use crate::codes;
 use argus_ecs::{ArgusError, ComponentSchema, FieldType, Result, SchemaBuilder, Value};
@@ -104,7 +114,12 @@ pub struct ActionMap {
     pub file: String,
 }
 
-const DEVICES: &[&str] = &["keyboard", "mouse", "gamepad"];
+const DEVICES: &[&str] = &["keyboard", "mouse", "gamepad", "platform"];
+
+/// The engine's own action in every map: the kind of device the player
+/// last used (a [`crate::glyphs::Family`] index), which button prompts
+/// follow.
+pub const DEVICE_ACTION: &str = "device";
 
 impl ActionMap {
     /// Read `input.toml` under `root`; `None` when the project has none.
@@ -186,6 +201,7 @@ impl ActionMap {
                             "mouse" if kind == ActionKind::Pointer => &["position"],
                             "mouse" => crate::devices::MOUSE_NAMES,
                             "gamepad" => crate::devices::PAD_NAMES,
+                            "platform" => crate::devices::PLATFORM_NAMES,
                             _ => &[],
                         };
                         if !known.is_empty() {
@@ -211,6 +227,20 @@ impl ActionMap {
                 });
             }
         }
+        if let Some(a) = actions.iter().find(|a| a.name == DEVICE_ACTION) {
+            return Err(bad(
+                format!("actions.{DEVICE_ACTION} is the engine's: the kind of device the player last used, which button prompts follow"),
+                a.at.clone(),
+            ));
+        }
+        actions.push(Action {
+            name: DEVICE_ACTION.to_string(),
+            kind: ActionKind::Axis,
+            doc: "The kind of device the player last used (the engine's): 0 keyboard and mouse, 1 Xbox, 2 PlayStation, 3 Switch, 4 another gamepad".to_string(),
+            bindings: BTreeMap::new(),
+            toggle: false,
+            at: "argus-input".to_string(),
+        });
         actions.sort_by(|a, b| a.name.cmp(&b.name));
         let mut slots = Vec::new();
         if let Some(s) = t.get("slots") {
@@ -266,6 +296,7 @@ impl ActionMap {
             "mouse" if kind == ActionKind::Pointer => &["position"],
             "mouse" => crate::devices::MOUSE_NAMES,
             "gamepad" => crate::devices::PAD_NAMES,
+            "platform" => crate::devices::PLATFORM_NAMES,
             _ => &[],
         };
         if let Some(bad_name) = names
@@ -419,7 +450,12 @@ impl ActionMap {
                     &a.name,
                     FieldType::F32,
                     Value::Float(0.0),
-                    Some((-1.0, 1.0)),
+                    // The device action holds a family's index, 0 to 4.
+                    Some(if a.name == DEVICE_ACTION {
+                        (0.0, 4.0)
+                    } else {
+                        (-1.0, 1.0)
+                    }),
                     doc,
                     false,
                 ),

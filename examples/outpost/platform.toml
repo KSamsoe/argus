@@ -1,0 +1,14 @@
+# Outpost on its platform (phase 5 item 9). Until Outpost has a Steam app
+# of its own it runs as Spacewar (480, Valve's test app). Its daily
+# autosave goes to the platform's cloud as well as the disk, and a load
+# takes the newer.
+[steam]
+app_id = 480
+
+[cloud]
+saves = true
+
+[achievements.first_week]
+name = "A week in the valley"
+doc = "Keep the colony going for seven days"
+steam = "NEW_ACHIEVEMENT_0_4"

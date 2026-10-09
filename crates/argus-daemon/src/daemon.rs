@@ -240,6 +240,14 @@ pub struct Daemon {
     /// `session.open {mods}`, kept by `scene.load` and forks, set by a
     /// replay, a mark, or a save from the mods it recorded.
     mods_asked: Vec<String>,
+    /// The platform the game's requests go to (phase 5 item 9): the null
+    /// one, its cloud a folder (`.argus/platform/cloud`), kept across scene
+    /// loads as a player's account is.
+    platform: argus_platform::NullPlatform,
+    /// `platform.toml`.
+    platform_cfg: argus_platform::PlatformConfig,
+    /// The project the platform is for.
+    platform_root: Option<PathBuf>,
 }
 
 impl Default for Daemon {
@@ -298,6 +306,9 @@ impl Daemon {
             call_depth: 0,
             fast_forward: None,
             mods_asked: Vec::new(),
+            platform: argus_platform::NullPlatform::new(),
+            platform_cfg: argus_platform::PlatformConfig::default(),
+            platform_root: None,
         }
     }
 
@@ -537,6 +548,9 @@ impl Daemon {
             "input.bindings" => Ok(self.input()?.borrow().map().to_json()),
             "input.bind" => self.input_bind(params),
             "input.devices" => Ok(self.input_devices()),
+            "platform.status" => self.platform_status(),
+            "platform.overlay" => self.platform_overlay(params),
+            "platform.reset" => self.platform_reset(params),
             "input.state" => {
                 let slot = json::u64_param(params, "slot", 1)? as u8;
                 let st = self.input()?;
@@ -1426,8 +1440,17 @@ impl Daemon {
             #[cfg(feature = "audio")]
             audio,
             mods,
+            platform,
             ..
         } = a;
+        // The null platform, one a project (phase 5 item 9).
+        if self.platform_root.as_deref() != Some(root.as_path()) {
+            self.platform = argus_platform::NullPlatform::with_cloud(
+                root.join(".argus").join("platform").join("cloud"),
+            );
+            self.platform_root = Some(root.clone());
+        }
+        self.platform_cfg = platform;
         self.world = world;
         self.sched = sched;
         let history = Rc::new(RefCell::new(crate::history::History::default()));
@@ -4839,6 +4862,53 @@ impl Daemon {
         self.answer_save_requests();
     }
 
+    /// `platform.status`: the null platform, the game's achievements on it,
+    /// and `platform.toml`.
+    fn platform_status(&mut self) -> Result<Json> {
+        self.require_session()?;
+        let mut j = argus_platform::status(&mut self.platform, &self.platform_cfg);
+        j["config"] = self.platform_cfg.to_json();
+        Ok(j)
+    }
+
+    /// `platform.overlay {open}`: the overlay opens or closes, as a
+    /// player's Shift+Tab does on Steam: the action map's `platform =
+    /// ["overlay"]` input, logged like a key.
+    fn platform_overlay(&mut self, params: &Json) -> Result<Json> {
+        self.require_session()?;
+        let open = params.get("open").and_then(Json::as_bool).ok_or_else(|| {
+            ArgusError::new(
+                codes::BAD_PARAMS,
+                "platform.overlay needs open: true or false",
+            )
+        })?;
+        self.platform.set_overlay(open);
+        let turns = self.device_input(&[argus_input::DeviceInput::Platform {
+            name: "overlay".to_string(),
+            on: open,
+        }]);
+        Ok(json!({ "open": open, "turns_taken": turns }))
+    }
+
+    /// `platform.reset {cloud?}`: the null platform forgets what it was
+    /// told (achievements, progress, presence, overlay pages), and its
+    /// cloud's files too with `cloud: true`.
+    fn platform_reset(&mut self, params: &Json) -> Result<Json> {
+        let root = self.require_session()?.root.clone();
+        let mut deleted = 0;
+        if params.get("cloud").and_then(Json::as_bool) == Some(true) {
+            use argus_platform::Platform;
+            for f in self.platform.cloud_files() {
+                self.platform.cloud_delete(&f.name)?;
+                deleted += 1;
+            }
+        }
+        self.platform = argus_platform::NullPlatform::with_cloud(
+            root.join(".argus").join("platform").join("cloud"),
+        );
+        Ok(json!({ "reset": true, "cloud_files_deleted": deleted }))
+    }
+
     /// Move the world's pending events into the log and notify subscribers.
     fn pump_events(&mut self) {
         self.finish_capture();
@@ -4896,6 +4966,31 @@ impl Daemon {
                 }));
             }
         }
+        // The platform answers each request right after it, as the mixer
+        // does (phase 5 item 9); a trial's parked world is not heard.
+        let records = if self.backstage {
+            records
+        } else {
+            let mut out = Vec::with_capacity(records.len());
+            for rec in records {
+                let answers = match &rec.event {
+                    Event::Game { name, fields } => {
+                        argus_platform::answer(&mut self.platform, &self.platform_cfg, name, fields)
+                    }
+                    _ => None,
+                };
+                let frame = rec.frame;
+                out.push(rec);
+                for (name, fields) in answers.into_iter().flatten() {
+                    out.push(EventRecord {
+                        frame,
+                        event: Event::Game { name, fields },
+                        by: None,
+                    });
+                }
+            }
+            out
+        };
         for rec in records {
             if let Event::Game { name, fields } = &rec.event {
                 if name == "load.requested" && self.from_ticks && !self.backstage {

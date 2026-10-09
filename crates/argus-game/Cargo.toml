@@ -13,6 +13,10 @@ path = "src/main.rs"
 # The rigid-body module, for a game whose argus.toml lists it (argus build
 # passes it).
 rigid = ["argus-player/rigid"]
+# Steam, for a game whose argus.toml lists modules = ["steam"] (phase 5
+# item 9): the game runs on it when Steam is there, on the null platform
+# when it is not.
+steam = ["dep:argus-steam"]
 
 [dependencies]
 argus-player = { path = "../argus-player", version = "0.0.1", features = ["desktop"] }
@@ -22,4 +26,6 @@ argus-ui = { path = "../argus-ui", version = "0.0.1" }
 argus-input = { path = "../argus-input", version = "0.0.1" }
 argus-scene = { path = "../argus-scene", version = "0.0.1" }
 argus-sim = { path = "../argus-sim", version = "0.0.1" }
+argus-platform = { path = "../argus-platform", version = "0.0.1" }
+argus-steam = { path = "../argus-steam", version = "0.0.1", optional = true }
 serde_json = "1"

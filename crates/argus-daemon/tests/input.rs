@@ -15,9 +15,11 @@ fn injected_actions_reach_gameplay_and_never_name_keys() {
 
     let b = ok(&mut d, "input.bindings", json!({}));
     assert_eq!(b["file"], "input.toml");
-    assert_eq!(b["actions"][0]["name"], "fire");
+    // After the engine's own device action (phase 5 item 9).
+    assert_eq!(b["actions"][0]["name"], "device");
+    assert_eq!(b["actions"][1]["name"], "fire");
     assert_eq!(
-        b["actions"][1]["bindings"]["gamepad"],
+        b["actions"][2]["bindings"]["gamepad"],
         json!(["left_stick"])
     );
     assert_eq!(b["slots"][1]["devices"], json!(["gamepad:1"]));
@@ -30,7 +32,10 @@ fn injected_actions_reach_gameplay_and_never_name_keys() {
         .iter()
         .map(|f| f["name"].as_str().unwrap())
         .collect();
-    assert_eq!(fields, ["fire", "fire_pressed", "fire_released", "move"]);
+    assert_eq!(
+        fields,
+        ["device", "fire", "fire_pressed", "fire_released", "move"]
+    );
     assert_eq!(desc["rows"][0]["written_by"], json!(["input.actions"]));
     assert_eq!(
         desc["rows"][0]["read_by"],
@@ -337,8 +342,8 @@ fn input_bind_rebinds_an_action_and_save_keeps_it_in_the_file() {
     let p = ok(&mut d, "world.get", json!({ "entity": "@player" }));
     assert_eq!(p["components"]["Actions"]["fire"], true);
     let b = ok(&mut d, "input.bindings", json!({}));
-    assert_eq!(b["actions"][0]["bindings"]["keyboard"], json!(["f"]));
-    assert_eq!(b["actions"][0]["bindings"]["gamepad"], json!(["south"]));
+    assert_eq!(b["actions"][1]["bindings"]["keyboard"], json!(["f"]));
+    assert_eq!(b["actions"][1]["bindings"]["gamepad"], json!(["south"]));
     // Not saved: the file is as it was.
     let file = std::fs::read_to_string(t.path().join("input.toml")).unwrap();
     assert!(file.contains("keyboard = [\"space\"]"), "{file}");

@@ -34,7 +34,7 @@ continue = "Continuer"
 
 [hud]
 running = "Hollow. Trouve la sortie. {falls}.{gem}"
-done = "Sorti en {time} s, {falls}{gem}. R pour rejouer."
+done = "Sorti en {time} s, {falls}{gem}. {again} pour rejouer."
 no_falls_yet = "Aucune chute"
 no_falls = "aucune chute"
 one_fall = "1 chute"

@@ -73,6 +73,16 @@ impl Daemon {
             std::fs::create_dir_all(d).map_err(|e| save_io(path, e))?;
         }
         std::fs::write(path, &bytes).map_err(|e| save_io(path, e))?;
+        // A save kept where saves are goes to the platform's cloud too
+        // (phase 5 item 9), unless platform.toml says not.
+        let cloud = self.platform_cfg.cloud_saves
+            && path.starts_with(root.join(".argus").join("saves"))
+            && {
+                use argus_platform::Platform;
+                self.platform
+                    .cloud_write(&savegame::file_name(name), &bytes)
+                    .is_ok()
+            };
         let ms = t.elapsed().as_secs_f64() * 1000.0;
         let shown = path
             .strip_prefix(&root)
@@ -86,6 +96,7 @@ impl Daemon {
                 ("path".into(), Value::Str(shown.clone())),
                 ("tick".into(), Value::UInt(k.tick)),
                 ("bytes".into(), Value::UInt(bytes.len() as u64)),
+                ("cloud".into(), Value::Bool(cloud)),
             ],
         });
         self.pump_events();
@@ -94,6 +105,7 @@ impl Daemon {
             "path": shown,
             "tick": k.tick,
             "bytes": bytes.len(),
+            "cloud": cloud,
             "ms": (ms * 100.0).round() / 100.0,
         }))
     }
@@ -106,13 +118,28 @@ impl Daemon {
     pub(super) fn sim_load(&mut self, params: &Json) -> Result<Json> {
         let t = Instant::now();
         let (name, path) = self.save_path(params)?;
-        let bytes = std::fs::read(&path).map_err(|e| {
-            ArgusError::new(
-                codes::BAD_SAVE,
-                format!("no save {name:?} at {}: {e}", path.display()),
-            )
-            .hint("sim.save {name} writes one; saves are kept in .argus/saves/.")
-        })?;
+        let read = std::fs::read(&path);
+        // A named save is the newer of the disk's and the cloud's (phase 5
+        // item 9); a path is that file.
+        let cloud = if params.get("path").is_none() && self.platform_cfg.cloud_saves {
+            use argus_platform::Platform;
+            self.platform
+                .cloud_read(&savegame::file_name(&name))
+                .unwrap_or(None)
+        } else {
+            None
+        };
+        let (bytes, from) = match savegame::newer(read.as_deref().ok(), cloud.as_deref()) {
+            Some((b, from)) => (b.to_vec(), from),
+            None => {
+                let e = read.err().map(|e| e.to_string()).unwrap_or_default();
+                return Err(ArgusError::new(
+                    codes::BAD_SAVE,
+                    format!("no save {name:?} at {}: {e}", path.display()),
+                )
+                .hint("sim.save {name} writes one; saves are kept in .argus/saves/ and the platform's cloud."));
+            }
+        };
         let file = savegame::decode(&bytes)?;
         let root = self.require_session()?.root.clone();
         // A game loaded while playing plays on (a fresh scene's clock starts
@@ -146,7 +173,10 @@ impl Daemon {
             }
             Ok(_) => {}
         }
-        r
+        r.map(|mut j| {
+            j["from"] = json!(from);
+            j
+        })
     }
 
     /// The rest of `sim.load`, into a fresh session.

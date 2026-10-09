@@ -28,10 +28,11 @@ gamepad = ["north"]
 
 [actions.pause]
 type = "button"
-doc = "Open or close the pause menu"
+doc = "Open or close the pause menu; the platform's overlay opening (Steam's Shift+Tab) pauses the game too"
 [actions.pause.bindings]
 keyboard = ["escape"]
 gamepad = ["start"]
+platform = ["overlay"]
 
 # The menus' actions (the UI reads these names).
 [actions.ui_move]

@@ -61,7 +61,8 @@ fn rig(discrete: bool) -> (World, Scheduler, Rc<RefCell<InputState>>) {
 fn the_map_parses_and_becomes_a_component() {
     let m = map();
     let names: Vec<&str> = m.actions.iter().map(|a| a.name.as_str()).collect();
-    assert_eq!(names, ["crouch", "fire", "move", "throttle"]);
+    // And the engine's own: the kind of device the player last used.
+    assert_eq!(names, ["crouch", "device", "fire", "move", "throttle"]);
     assert_eq!(m.action("move").unwrap().kind, ActionKind::Axis2);
     assert_eq!(
         m.action("move").unwrap().bindings["gamepad"],
@@ -72,7 +73,7 @@ fn the_map_parses_and_becomes_a_component() {
     assert_eq!(m.slot(2).unwrap().devices, ["gamepad:1"]);
     let e = m.action("jump").unwrap_err();
     assert_eq!(e.code, codes::UNKNOWN_ACTION);
-    assert!(e.hint.contains("crouch, fire, move, throttle"));
+    assert!(e.hint.contains("crouch, device, fire, move, throttle"));
     assert_eq!(m.slot(3).unwrap_err().code, codes::BAD_SLOT);
 
     let schema = m.schema().unwrap();
@@ -84,6 +85,7 @@ fn the_map_parses_and_becomes_a_component() {
             "crouch",
             "crouch_pressed",
             "crouch_released",
+            "device",
             "fire",
             "fire_pressed",
             "fire_released",
@@ -118,7 +120,8 @@ fn the_map_parses_and_becomes_a_component() {
     assert_eq!(m.slots[0].index, 1);
     assert_eq!(m.action("jump").unwrap().kind, ActionKind::Button);
     let j = m.to_json();
-    assert_eq!(j["actions"][0]["name"], "jump");
+    // After the engine's device action, by name.
+    assert_eq!(j["actions"][1]["name"], "jump");
 }
 
 #[test]

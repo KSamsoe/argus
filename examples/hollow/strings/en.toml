@@ -32,7 +32,7 @@ back = "Back"
 
 [hud]
 running = "Hollow. Find the way out. {falls}.{gem}"
-done = "Out of the hollow in {time} s, {falls}{gem}. Press R to go again."
+done = "Out of the hollow in {time} s, {falls}{gem}. Press {again} to go again."
 no_falls_yet = "No falls yet"
 no_falls = "no falls"
 one_fall = "1 fall"

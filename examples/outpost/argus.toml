@@ -2,6 +2,9 @@ name = "outpost"
 clock = "continuous@60"
 default_scene = "valley"
 plugins = []
+# Steam (phase 5 item 9): the daily autosave goes to Steam Cloud too, so a
+# colony carries over to another machine.
+modules = ["steam"]
 
 # A day is a minute of sim time (decided with Kevin, phase 3): §9's 30-day
 # starvation scenario is 108,000 ticks, under a minute a seed at §17's

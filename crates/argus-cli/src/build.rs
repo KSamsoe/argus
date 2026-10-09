@@ -605,7 +605,52 @@ fn desktop(
     let exe = out.join(format!("{game}{ext}"));
     std::fs::copy(&built, &exe)
         .map_err(|e| format!("{} to {}: {e}", built.display(), exe.display()))?;
+    // Steam's library beside the executable, as Valve's SDK ships it
+    // (phase 5 item 9): the copy the build linked against.
+    if modules.iter().any(|m| m == "steam") {
+        let profile_dir = target_dir.join(if release { "ship" } else { "debug" });
+        let lib = steam_library(&profile_dir)?;
+        let to = out.join(lib.file_name().unwrap_or_default());
+        std::fs::copy(&lib, &to)
+            .map_err(|e| format!("{} to {}: {e}", lib.display(), to.display()))?;
+    }
     Ok(exe)
+}
+
+/// The Steamworks library a build linked against: steamworks-sys copies
+/// it into its build output (the newest, when several builds are there).
+fn steam_library(profile_dir: &Path) -> Result<PathBuf, String> {
+    let name = if cfg!(windows) {
+        "steam_api64.dll"
+    } else if cfg!(target_os = "macos") {
+        "libsteam_api.dylib"
+    } else {
+        "libsteam_api.so"
+    };
+    let build = profile_dir.join("build");
+    let mut best: Option<(std::time::SystemTime, PathBuf)> = None;
+    for e in std::fs::read_dir(&build).map_err(|e| format!("{}: {e}", build.display()))? {
+        let Ok(e) = e else { continue };
+        if !e
+            .file_name()
+            .to_string_lossy()
+            .starts_with("steamworks-sys-")
+        {
+            continue;
+        }
+        let p = e.path().join("out").join(name);
+        if let Ok(m) = std::fs::metadata(&p).and_then(|m| m.modified()) {
+            if best.as_ref().is_none_or(|(t, _)| m > *t) {
+                best = Some((m, p));
+            }
+        }
+    }
+    best.map(|(_, p)| p).ok_or_else(|| {
+        format!(
+            "the build has no {name} under {}: the steam module's build should have made one",
+            build.display()
+        )
+    })
 }
 
 /// The environment the wasm build of Luau needs (tools/web/env.sh says why).
@@ -679,6 +724,12 @@ fn web(
     if release {
         c.arg("--release");
     }
+    // A page has no Steam: it runs on the null platform (phase 5 item 9).
+    let modules: Vec<&str> = modules
+        .iter()
+        .map(String::as_str)
+        .filter(|m| *m != "steam")
+        .collect();
     if !modules.is_empty() {
         c.args(["--features", &modules.join(",")]);
     }

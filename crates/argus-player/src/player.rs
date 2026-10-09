@@ -67,6 +67,15 @@ pub struct Player {
     /// The project's Rust plugins, and what went wrong with any (phase 5
     /// item 6).
     pub plugins: argus_plugins::Plugins,
+    /// The platform the game's requests go to (phase 5 item 9): the null
+    /// one unless the host sets another ([`Player::set_platform`]).
+    pub platform: Box<dyn argus_platform::Platform>,
+    /// `platform.toml`.
+    pub platform_cfg: argus_platform::PlatformConfig,
+    /// What the platform said to the last requests, newest last.
+    pub platform_answers: Vec<argus_platform::Answer>,
+    /// Whether the overlay was open at the last poll.
+    overlay_held: bool,
     /// Where they come from, which a load uses again.
     plugin_source: argus_plugins::Source,
 }
@@ -165,6 +174,10 @@ impl Player {
             mods_asked: mods,
             plugins: a.plugins,
             plugin_source: plugins,
+            platform: Box::new(argus_platform::NullPlatform::new()),
+            platform_cfg: a.platform,
+            platform_answers: Vec::new(),
+            overlay_held: false,
         };
         let (saves, sources) = (p.saves.clone(), p.sources.clone());
         p.sched.on_tick_end(Box::new(move |world, sched| {
@@ -378,6 +391,103 @@ impl Player {
         0
     }
 
+    /// The action map, as it stands (rebinds included).
+    pub fn action_map(&self) -> Option<argus_input::ActionMap> {
+        self.input.as_ref().map(|s| s.borrow().map().clone())
+    }
+
+    /// Run on another platform (Steam's): the game's requests go to it
+    /// from the next tick.
+    pub fn set_platform(&mut self, p: Box<dyn argus_platform::Platform>) {
+        self.platform = p;
+    }
+
+    /// Let the platform do its work, once a frame, and hear its overlay: an
+    /// overlay opening or closing is the `overlay` input of the action map
+    /// (`platform = ["overlay"]`), logged like a key. Returns the turns a
+    /// discrete game took.
+    pub fn poll_platform(&mut self) -> u64 {
+        self.platform.update();
+        let open = self.platform.overlay_open();
+        if open == self.overlay_held {
+            return 0;
+        }
+        self.overlay_held = open;
+        self.devices(&[DeviceInput::Platform {
+            name: "overlay".to_string(),
+            on: open,
+        }])
+    }
+
+    /// Keep a save the game asked for (phase 5 item 9): on the disk at
+    /// `path` when there is one, and in the platform's cloud when it has
+    /// one and `platform.toml` keeps saves there (it does unless `[cloud]
+    /// saves = false`), under the same file name. Where it went.
+    pub fn store_save(
+        &mut self,
+        path: Option<&Path>,
+        name: &str,
+        bytes: &[u8],
+    ) -> Result<Vec<&'static str>> {
+        let mut went = Vec::new();
+        if let Some(p) = path {
+            if let Some(d) = p.parent() {
+                argus_os::fs::create_dir_all(d)
+                    .map_err(|e| ArgusError::new(1, format!("{}: {e}", d.display())))?;
+            }
+            argus_os::fs::write(p, bytes)
+                .map_err(|e| ArgusError::new(1, format!("{}: {e}", p.display())))?;
+            went.push("disk");
+        }
+        if self.platform_cfg.cloud_saves && self.platform.cloud_enabled() {
+            self.platform
+                .cloud_write(&crate::savegame::file_name(name), bytes)?;
+            went.push("cloud");
+        }
+        Ok(went)
+    }
+
+    /// The save to load by name: the newer of the disk's copy at `path`
+    /// and the cloud's ([`crate::savegame::newer`]), and where it came from.
+    pub fn fetch_save(
+        &mut self,
+        path: Option<&Path>,
+        name: &str,
+    ) -> Result<(Vec<u8>, &'static str)> {
+        let disk = path
+            .filter(|p| argus_os::fs::is_file(p))
+            .map(|p| {
+                argus_os::fs::read(p)
+                    .map_err(|e| ArgusError::new(1, format!("{}: {e}", p.display())))
+            })
+            .transpose()?;
+        let cloud = if self.platform_cfg.cloud_saves && self.platform.cloud_enabled() {
+            self.platform
+                .cloud_read(&crate::savegame::file_name(name))
+                .unwrap_or(None)
+        } else {
+            None
+        };
+        crate::savegame::newer(disk.as_deref(), cloud.as_deref())
+            .map(|(b, from)| (b.to_vec(), from))
+            .ok_or_else(|| {
+                ArgusError::new(1, format!("there is no save {name:?}"))
+                    .hint("A game saves with q:save(name); the disk and the platform's cloud hold none by this name.")
+            })
+    }
+
+    /// The platform, the game's achievements on it, and what it said last.
+    pub fn platform_status(&mut self) -> Json {
+        let mut j = argus_platform::status(&mut *self.platform, &self.platform_cfg);
+        j["answers"] = Json::Array(
+            self.platform_answers
+                .iter()
+                .map(argus_platform::answer_json)
+                .collect(),
+        );
+        j
+    }
+
     /// Losing focus lets go of every key.
     pub fn release_all(&mut self) {
         self.devices.apply(&DeviceInput::ReleaseAll);
@@ -459,6 +569,17 @@ impl Player {
                     self.loads.push(crate::savegame::request_name(fields));
                 }
             }
+            if let Event::Game { name, fields } = &rec.event {
+                if let Some(answers) =
+                    argus_platform::answer(&mut *self.platform, &self.platform_cfg, name, fields)
+                {
+                    self.platform_answers.extend(answers);
+                    let n = self.platform_answers.len();
+                    if n > 64 {
+                        self.platform_answers.drain(..n - 64);
+                    }
+                }
+            }
             self.events += 1;
             let key = format!("{}|{:?}", rec.frame, rec.event);
             fnv(&mut self.events_digest, key.as_bytes());
@@ -517,6 +638,7 @@ impl Player {
             "events_digest": format!("{:016x}", self.events_digest),
             "script_bytes": self.host.memory_used(),
             "strings": self.world.strings().len(),
+            "platform": self.platform.name(),
         })
     }
 

@@ -10,7 +10,7 @@ return system "sim.run" {
   stage = "sim",
   -- After the overlaps are known, so a touch is seen on its tick.
   after = { "physics.overlap" },
-  reads = { "Actions", "Run", "Gem" },
+  reads = { "Actions", "Run", "Gem", "InputGlyph" },
   writes = { "Run", "Gem", "UiText", "Transform", "KinematicBody", "Sprite", "Timeline" },
   doc = "Counts the hero's falls and gems, finishes the run at the exit (run.finished {time, falls, gems}), plays the outro timeline and holds the hero there out of sight, restarts it on the restart action (or the pause menu's, skipping the outro), and writes the HUD line.",
   run = function(q)
@@ -91,7 +91,12 @@ return system "sim.run" {
       if gems > 0 then
         found = q:text(run.gems > 0 and "hud.with_gem" or "hud.gem_missed")
       end
-      d.text = q:text("hud.done", { time = string.format("%.1f", run.time), falls = falls, gem = found })
+      -- What restart is pressed with, on the device in use (phase 5 item 9).
+      local again = hud:get("InputGlyph").label
+      if again == "" then
+        again = "R"
+      end
+      d.text = q:text("hud.done", { time = string.format("%.1f", run.time), falls = falls, gem = found, again = again })
     else
       local f = run.falls == 0 and q:text("hud.no_falls_yet") or (falls:sub(1, 1):upper() .. falls:sub(2))
       d.text = q:text("hud.running", { falls = f, gem = run.gems > 0 and q:text("hud.gem_found") or "" })

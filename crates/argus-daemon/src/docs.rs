@@ -979,6 +979,24 @@ pub const METHODS: &[MethodDoc] = &[
         returns: "{total, columns, rows: [[tick, slot, action, value]], recording, clock, next}",
     },
     MethodDoc {
+        name: "platform.status",
+        doc: "The platform the game runs on (section 15; phase 5 item 9): the daemon's is the null platform, which keeps what the game asks of it, so achievements, rich presence, cloud saves, and the overlay are tested without Steam. A game asks with q:achieve(id) or q:achieve(id, current, max), q:presence(key, value), and q:overlay(page): achievement.unlock, achievement.progress, presence.set, and overlay.open events, each answered in the log by platform.achieved {id, api, new} or platform.error {request, code, message} (an achievement platform.toml does not declare is refused). Saves go to its cloud (.argus/platform/cloud) as well as .argus/saves/ unless platform.toml says [cloud] saves = false.",
+        params: &[],
+        returns: "{platform, user, steam_app_id, achievements: [{id, api, name, unlocked}], state: {achieved, progress, presence, cloud: {where, files}, overlay: {open, pages}, log}, config: {file, steam_app_id, cloud_saves, achievements}}",
+    },
+    MethodDoc {
+        name: "platform.overlay",
+        doc: "The platform's overlay opens or closes, as a player's Shift+Tab does on Steam (phase 5 item 9): the action map's platform = [\"overlay\"] input, held while it is open and logged like a key, so a game binds its pause to it.",
+        params: &[req("open", BOOLEAN, "true opens it, false closes it")],
+        returns: "{open, turns_taken}",
+    },
+    MethodDoc {
+        name: "platform.reset",
+        doc: "The null platform forgets what the game told it: achievements, progress, rich presence, the overlay's pages; with cloud: true its cloud's files too (phase 5 item 9).",
+        params: &[opt("cloud", BOOLEAN, "also delete the cloud's files (default false)")],
+        returns: "{reset, cloud_files_deleted}",
+    },
+    MethodDoc {
         name: "input.devices",
         doc: "Real devices feeding the action map (phase 1): keys and mouse buttons held, gamepads connected in slot order, events seen. Keyboard and mouse arrive through the window; gamepads are polled while a window is open.",
         params: &[],

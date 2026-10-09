@@ -226,6 +226,34 @@ pub fn file_name(name: &str) -> String {
     format!("{}.save", if s.is_empty() { "save" } else { &s })
 }
 
+/// When a save was written, from its identity (`saved_at`, seconds since
+/// 1970); `None` for bytes that are not a save.
+pub fn saved_at(bytes: &[u8]) -> Option<u64> {
+    let mut r = Reader::new(bytes, "save file");
+    r.magic(TAG, VERSION).ok()?;
+    let meta: Json = serde_json::from_str(&r.str().ok()?).ok()?;
+    meta["saved_at"].as_u64()
+}
+
+/// Which copy of a save to load, the disk's or the cloud's (phase 5 item
+/// 9): the one saved later; the disk's when they were saved in the same
+/// second or the cloud's does not read as a save.
+pub fn newer<'a>(
+    disk: Option<&'a [u8]>,
+    cloud: Option<&'a [u8]>,
+) -> Option<(&'a [u8], &'static str)> {
+    match (disk, cloud) {
+        (Some(d), Some(c)) => match (saved_at(d), saved_at(c)) {
+            (Some(a), Some(b)) if b > a => Some((c, "cloud")),
+            (None, Some(_)) => Some((c, "cloud")),
+            _ => Some((d, "disk")),
+        },
+        (Some(d), None) => Some((d, "disk")),
+        (None, Some(c)) => saved_at(c).map(|_| (c, "cloud")),
+        (None, None) => None,
+    }
+}
+
 /// The report of a load as JSON: each component migrated (§6: "Health
 /// migrated v2→v3 for 1,204 entities"), remapped, or dropped.
 pub fn report_json(l: &Loaded) -> Json {

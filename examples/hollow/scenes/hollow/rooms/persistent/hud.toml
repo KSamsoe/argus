@@ -16,3 +16,12 @@ text = "Hollow. Find the way out. No falls yet."
 
 # The run the HUD reports on (systems/run.luau keeps it).
 [Run]
+
+# What Hollow has told its platform (systems/feats.luau).
+[Feats]
+
+# What the restart action is pressed with, for the finish line's "Press R
+# to go again" (phase 5 item 9): R on a keyboard, the pad's own name for its
+# button on a pad.
+[InputGlyph]
+action = "restart"

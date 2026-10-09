@@ -19,12 +19,14 @@
 #![warn(missing_docs)]
 
 pub mod devices;
+pub mod glyphs;
 pub mod map;
 pub mod rebind;
 pub mod state;
 pub mod system;
 
 pub use devices::{key_name, DeviceInput, Devices};
+pub use glyphs::{Family, InputGlyph, GLYPHS};
 pub use map::{Action, ActionKind, ActionMap, Slot};
 pub use rebind::{InputBinding, InputToggle, REBIND};
 pub use state::{
