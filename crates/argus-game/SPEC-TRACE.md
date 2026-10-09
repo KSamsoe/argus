@@ -41,7 +41,7 @@ The release executable (§15, phase 2 item 7): what a player double-clicks. The 
 
 | Spec | Status | Where | Test |
 |---|---|---|---|
-| (§15) The Steam implementation where the game is on Steam, the null one everywhere else. | Done | Built with the `steam` feature (`argus build` passes it for `modules = ["steam"]`), the game starts Steam for `platform.toml`'s app before its window, so Steam's overlay draws into the graphics device; without Steam it runs on the null platform and the bottom line says so. Each frame polls the platform (callbacks, the overlay as an input). Steam's pictures of the pad buttons the action map binds become the sprites `glyph/<family>/<input>`. Saves go to the disk and Steam Cloud, and a load takes the newer. | argus-steam `steam_live`; argus-player `platform` |
+| (§15) The Steam implementation where the game is on Steam, the null one everywhere else. | Done | Built with the `steam` feature (`argus build` passes it for `modules = ["steam"]`), the game starts Steam for `platform.toml`'s app before its window, so Steam's overlay draws into the graphics device; without Steam it runs on the null platform and the bottom line says so. A headless run (`argus build`'s check, which CI's release-build test makes) stays on the null platform and never starts Steam. Each frame polls the platform (callbacks, the overlay as an input). Steam's pictures of the pad buttons the action map binds become the sprites `glyph/<family>/<input>`. Saves go to the disk and Steam Cloud, and a load takes the newer. | argus-steam `steam_live`; argus-player `platform` |
 
 ## Known limitations, stated so they are decisions
 

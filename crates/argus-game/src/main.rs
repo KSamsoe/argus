@@ -161,9 +161,6 @@ fn run(args: Args) -> Result<(), String> {
     if let Some(e) = p.plugins.errors.first() {
         return Err(format!("{}: {}", e.at(), e.message));
     }
-    // The platform (phase 5 item 9), before the window: Steam's overlay
-    // draws into the graphics device made after it starts.
-    let platform_said = start_platform(&mut p);
     let save = argus_player::save::save_dir(&p.name);
     // The player's settings (phase 5 item 2), before the first tick and the
     // recorder's first keyframe, so a report replays with them.
@@ -181,10 +178,15 @@ fn run(args: Args) -> Result<(), String> {
         }
         println!(
             "{}",
-            json!({ "packs": packs, "status": p.status(), "code": CODE, "save": save, "saves": saves, "mods": p.mods.to_json(), "platform": platform_said })
+            json!({ "packs": packs, "status": p.status(), "code": CODE, "save": save, "saves": saves, "mods": p.mods.to_json() })
         );
         return Ok(());
     }
+    // The platform (phase 5 item 9), before the window: Steam's overlay
+    // draws into the graphics device made after it starts. A headless run
+    // (the build's own check, a script's) has no player and stays on the
+    // null platform: it never starts Steam.
+    let platform_said = start_platform(&mut p);
     let key = cfg.mark_key.unwrap_or_else(|| "F8".to_string());
     let left_out = p.mods.left_out_line();
     let mut game = Game::open(p, key, save, cfg.reports_url.clone(), settings)?;
