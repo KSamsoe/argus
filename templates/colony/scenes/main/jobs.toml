@@ -1,0 +1,32 @@
+# The kinds of job, as the colony weighs them: an engine JobKind each, here
+# as the children of this one entity. A worker takes the open job with the
+# highest priority it can do, the nearest among equals; skill is a word a
+# Worker's skills must have (empty: anyone); work is seconds of work.
+#
+# To change first: the priorities. A new kind of job is a child here, and
+# a system that posts Jobs of that kind (systems/sources.luau is one).
+
+# Eating outranks everything, so a hungry colonist drops what they carry.
+[children.eat.JobKind]
+name = "eat"
+priority = 50.0
+work = 1.0
+
+# Picking a ripe bush: anyone can.
+[children.gather.JobKind]
+name = "gather"
+priority = 5.0
+work = 2.0
+
+# Carrying goods to the stockpile: anyone can.
+[children.haul.JobKind]
+name = "haul"
+priority = 3.0
+work = 0.5
+
+# Felling a tree: only those with the chop skill, when nothing above wants them.
+[children.chop.JobKind]
+name = "chop"
+priority = 2.0
+skill = "chop"
+work = 4.0

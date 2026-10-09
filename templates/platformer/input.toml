@@ -1,0 +1,40 @@
+# The player's actions, and the keys and buttons bound to them. Scripts
+# never see keys: they read an action by name (Actions.jump,
+# Actions.restart_pressed), so a player can rebind it and a replay or a
+# test can play it. A button also gets <name>_pressed and <name>_released
+# for the tick it went down or up.
+#
+# The hero's CharacterController reads "move" and "jump" by itself
+# (scenes/level/player.toml); the other two are read by systems/.
+
+[actions.move]
+type = "axis2"
+doc = "Run left and right (only x is used)"
+[actions.move.bindings]
+keyboard = ["arrows", "wasd"]
+gamepad = ["left_stick", "dpad"]
+
+[actions.jump]
+type = "button"
+doc = "Jump; hold it for a higher jump, let go early for a short hop"
+[actions.jump.bindings]
+keyboard = ["space", "z"]
+gamepad = ["south"]
+
+[actions.restart]
+type = "button"
+doc = "Start the level again from the beginning"
+[actions.restart.bindings]
+keyboard = ["r"]
+gamepad = ["select"]
+
+[actions.pause]
+type = "button"
+doc = "Pause the game, or go on"
+[actions.pause.bindings]
+keyboard = ["escape", "p"]
+gamepad = ["start"]
+
+# Player 1 plays with the keyboard, the mouse, and the first gamepad.
+[slots.1]
+devices = ["keyboard", "mouse", "gamepad:0"]

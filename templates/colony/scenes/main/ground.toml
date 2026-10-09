@@ -1,0 +1,21 @@
+# The meadow: what the colonists walk on. NavGrid is the engine's
+# navigation grid, a cell a unit, 32 by 18; colonists find their way over
+# it (A*), around what blocks it (the pond, the trees: NavCost).
+# Cells are centred on whole numbers, so (0, 0) to (31, 17) are on it.
+[NavGrid]
+origin = [-0.5, -0.5]
+width = 32
+height = 18
+diagonal = true
+
+[Transform]
+pos = [15.5, 8.5]
+
+[Sprite]
+kind = "rect"
+size = [32.0, 18.0]
+color = "#3B5A32"
+z = -10.0
+
+[Describe]
+name = "meadow"

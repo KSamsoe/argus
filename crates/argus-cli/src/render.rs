@@ -432,3 +432,36 @@ pub fn semantic(v: &Json) -> String {
     let _ = writeln!(out, "({} bytes)", cell(&v["bytes"]));
     out
 }
+
+/// `argus projects`: the open project, the recent ones, those under a
+/// folder, and the templates.
+pub fn projects(r: &Json) -> String {
+    let mut out = String::new();
+    let line = |out: &mut String, p: &Json| {
+        let _ = writeln!(out, "  {:<24} {}", cell(&p["name"]), cell(&p["path"]));
+    };
+    if !r["open"].is_null() {
+        let _ = writeln!(out, "here:");
+        line(&mut out, &r["open"]);
+    }
+    let recent = r["recent"].as_array().cloned().unwrap_or_default();
+    if recent.is_empty() {
+        let _ = writeln!(out, "no projects opened yet; `argus new <dir>` makes one");
+    } else {
+        let _ = writeln!(out, "recent:");
+        for p in &recent {
+            line(&mut out, p);
+        }
+    }
+    if let Some(under) = r["under"].as_array() {
+        let _ = writeln!(out, "under the folder: {}", under.len());
+        for p in under {
+            line(&mut out, p);
+        }
+    }
+    let _ = writeln!(out, "templates (argus new <dir> --template <name>):");
+    for t in r["templates"].as_array().into_iter().flatten() {
+        let _ = writeln!(out, "  {:<12} {}", cell(&t["name"]), cell(&t["about"]));
+    }
+    out
+}

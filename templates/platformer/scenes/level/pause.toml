@@ -1,0 +1,15 @@
+# The pause panel: hidden until the pause action (systems/pause.luau). It
+# darkens the whole screen; its words are pause.text.toml, a child. For a
+# menu, make it interactive and give it UiButton children (ARGUS.md:
+# UiRoot, UiButton), with ui_move and ui_confirm actions in input.toml.
+[UiRoot]
+layer = 10
+interactive = false
+
+[UiNode]
+justify = "center"
+align = "center"
+visible = false
+
+[UiPanel]
+color = "#05070ACC"

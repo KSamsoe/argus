@@ -1,0 +1,16 @@
+# Ada, who gathers and hauls (no skills). A colonist is prefabs/colonist.toml plus
+# what this file sets. Their NavAgent's goal is where they stand, so they
+# wait there until they have a job.
+prefab = "colonist"
+
+[Colonist]
+name = "Ada"
+
+[Worker]
+skills = ""
+
+[Transform]
+pos = [14.0, 6.0]
+
+[NavAgent]
+goal = [14.0, 6.0]

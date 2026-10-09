@@ -1,0 +1,3 @@
+# The turn counter, on an entity of its own. sim.hero_turn adds one each
+# turn the hero acts; the HUD line (hud.toml) shows it.
+[Turn]

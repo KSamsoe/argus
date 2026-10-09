@@ -1,0 +1,5 @@
+# On the ledge, on the way to the flag.
+prefab = "coin"
+
+[Transform]
+pos = [40.0, 3.2]

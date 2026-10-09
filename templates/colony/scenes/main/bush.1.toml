@@ -1,0 +1,6 @@
+# A berry bush (prefabs/bush.toml says what one is). Copy this file for
+# another, at another place.
+prefab = "bush"
+
+[Transform]
+pos = [5.0, 5.0]

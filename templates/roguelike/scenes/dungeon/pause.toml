@@ -1,0 +1,15 @@
+# The pause screen: hidden until the pause action (Escape, or Start on a
+# gamepad) shows it; while it shows no turn passes (systems/pause.luau).
+# It dims the whole screen; its words are in pause.text.toml. A menu with
+# buttons goes here later (Delve's scenes show one).
+[UiRoot]
+layer = 10
+interactive = false
+
+[UiNode]
+justify = "center"
+align = "center"
+visible = false
+
+[UiPanel]
+color = "#05070AB0"

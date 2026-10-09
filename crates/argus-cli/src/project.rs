@@ -101,6 +101,7 @@ fn connect_quiet(inv: &Invocation, err: &mut dyn Write) -> Result<Client, String
         return Client::connect(s).map_err(|e| format!("cannot connect to socket {s}: {e}"));
     }
     let root = find_project(inv.project.as_deref())?;
+    crate::projects::remember(&root);
     if let Some((c, _)) = try_connect(&root) {
         return Ok(c);
     }

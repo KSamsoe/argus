@@ -1,0 +1,29 @@
+# The dungeon's grid: a runtime map. Its layers are set here; its cells are
+# the run's, painted by systems/dungeon.luau from the picture at its top
+# (so to change the dungeon, change that picture, not this file). Keyframes,
+# replays, and saves carry the cells, so nothing is written to disk.
+#
+# width and height must be the picture's size: change them with it.
+kind = "tilemap"
+runtime = true
+width = 30
+height = 11
+tile_size = 1.0
+chunk = 16
+cell = 1
+
+# What is drawn: the floor tile on every open cell.
+[[layers]]
+name = "floor"
+tileset = "tiles/floor"
+z = 0.0
+
+# What blocks: the rock tile on every wall cell, drawn near-black and
+# solid (assets/tiles/rock.toml says so). The hero's moves, the monsters'
+# way to the hero (the navigation grid), and the semantic frame all read
+# this layer.
+[[layers]]
+name = "walls"
+tileset = "tiles/rock"
+z = 0.0
+collision = true

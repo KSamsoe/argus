@@ -1,0 +1,28 @@
+# The hero: the one entity with an input slot, so it gets the Actions of
+# player 1 every tick. Its numbers (speed, fire rate, range) are in the
+# Player component: try them in the editor's tuning panel, then write the
+# ones you like here.
+tags = ["player"]
+
+[PlayerSlot]
+slot = 1
+
+[Actions]
+
+[Transform]
+pos = [0.0, 0.0]
+
+[Player]
+speed = 7.0
+fire_every = 12
+range = 12.0
+
+[Health]
+cur = 5
+max = 5
+
+[Sprite]
+kind = "circle"
+size = [1.0, 1.0]
+color = "#F2C14E"
+z = 2.0

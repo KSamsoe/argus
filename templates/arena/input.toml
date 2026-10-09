@@ -1,0 +1,27 @@
+# The player's actions, and the keys and buttons bound to them. A script
+# reads an action by name (Actions.move, Actions.pause_pressed); a player
+# can rebind it. The hero fires on its own, so there is no fire action:
+# add one here (type = "button") when you want firing on a button.
+[actions.move]
+type = "axis2"
+doc = "Walk direction (eight ways on keys, any way on a stick)"
+[actions.move.bindings]
+keyboard = ["wasd", "arrows"]
+gamepad = ["left_stick"]
+
+[actions.pause]
+type = "button"
+doc = "Pause the game, or go on"
+[actions.pause.bindings]
+keyboard = ["escape", "p"]
+gamepad = ["start"]
+
+[actions.restart]
+type = "button"
+doc = "After game over, play again from wave 1"
+[actions.restart.bindings]
+keyboard = ["enter", "r"]
+gamepad = ["south"]
+
+[slots.1]
+devices = ["keyboard", "mouse", "gamepad:0"]

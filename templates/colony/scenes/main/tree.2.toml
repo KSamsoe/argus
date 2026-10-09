@@ -1,0 +1,6 @@
+# A tree (prefabs/tree.toml says what one is). Copy this file for
+# another, at another place.
+prefab = "tree"
+
+[Transform]
+pos = [28.0, 10.0]

@@ -349,7 +349,7 @@ pub const METHODS: &[MethodDoc] = &[
         name: "session.status",
         doc: "What is open: project, scene, seed, clock, and whether the sim is playing.",
         params: &[],
-        returns: "{project, scene, seed, clock, playing, paused, tick, time, frame}",
+        returns: "{project, scene, seed, clock, playing, paused, tick, time, frame, engine: {version, revision, os, arch}}",
     },
     MethodDoc {
         name: "session.identify",

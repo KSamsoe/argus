@@ -1,0 +1,4 @@
+name = "arena"
+clock = "continuous@60"
+default_scene = "main"
+plugins = []

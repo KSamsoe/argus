@@ -1,0 +1,10 @@
+name = "colony"
+clock = "continuous@60"
+default_scene = "main"
+plugins = []
+
+# How long a day is, in sim seconds: a minute. Scripts read it as
+# q.day_length, and scenarios count in days(n). Make it longer for a slower
+# colony; the hunger and regrowth rules are per day, so they keep pace.
+[time]
+day = 60

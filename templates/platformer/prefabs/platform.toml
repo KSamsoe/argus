@@ -1,0 +1,21 @@
+# A solid block of the level: the hero stands on its top and is stopped by
+# its sides and its underside. The ground, the walls, and the ledge are all
+# this prefab (prefab = "platform" in their files), each with its own place
+# and size. Change the colour here and every block changes.
+#
+# A KinematicBody with solid = true is a solid: actors (the hero) cannot
+# pass through it. With no velocity it stays where it is; give it one and
+# it is a moving platform that carries the hero standing on it. Add
+# one_way = true for a platform the hero jumps up through from below.
+[Sprite]
+kind = "rect"
+color = "#3F5A3A"
+z = 0.0
+
+[Collider]
+
+[KinematicBody]
+solid = true
+
+[Describe]
+name = "ground"

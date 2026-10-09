@@ -1,0 +1,5 @@
+# Over the spikes: taken in the jump over them.
+prefab = "coin"
+
+[Transform]
+pos = [26.0, 3.6]

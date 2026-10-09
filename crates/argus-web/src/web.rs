@@ -36,6 +36,24 @@ pub struct WebPlayer {
     owed: f64,
     frames: u64,
     drawn: usize,
+    /// The game's code revision, which reports, marks, and saves record:
+    /// its packs', since one prebuilt module plays any game (distribution
+    /// item 1), else what the module was built for.
+    code: String,
+}
+
+/// The module's own code (`argus build` sets it when it compiles one for a
+/// game), when the packs name none.
+fn built_for() -> String {
+    option_env!("ARGUS_CODE").unwrap_or("none").to_string()
+}
+
+/// The code a pack report names, when it names one.
+fn code_of(report: &Json) -> String {
+    match report["code"].as_str() {
+        Some(c) if !c.is_empty() => c.to_string(),
+        _ => built_for(),
+    }
 }
 
 #[wasm_bindgen]
@@ -50,13 +68,14 @@ impl WebPlayer {
         seed: Option<u32>,
     ) -> Result<WebPlayer, JsValue> {
         hook();
-        let files = if pack.starts_with(b"ARGP") {
+        let (files, code) = if pack.starts_with(b"ARGP") {
             let p = argus_player::pack::Pack::decode(pack).map_err(js)?;
-            argus_player::pack::resolve(&[p], None).map_err(js)?.0
+            let (files, report) = argus_player::pack::resolve(&[p], None).map_err(js)?;
+            (files, code_of(&report))
         } else {
-            crate::unpack(pack).map_err(js)?
+            (crate::unpack(pack).map_err(js)?, built_for())
         };
-        WebPlayer::open(files, scene, seed)
+        WebPlayer::open(files, scene, seed, code)
     }
 
     /// A release build's packs (`data/packs.json` lists them): the game, its
@@ -73,14 +92,15 @@ impl WebPlayer {
             let bytes = js_sys::Uint8Array::new(&v).to_vec();
             all.push(argus_player::pack::Pack::decode(&bytes).map_err(js)?);
         }
-        let (files, _) = argus_player::pack::resolve(&all, lang.as_deref()).map_err(js)?;
-        WebPlayer::open(files, scene, seed)
+        let (files, report) = argus_player::pack::resolve(&all, lang.as_deref()).map_err(js)?;
+        WebPlayer::open(files, scene, seed, code_of(&report))
     }
 
     fn open(
         files: Vec<(String, Vec<u8>)>,
         scene: Option<String>,
         seed: Option<u32>,
+        code: String,
     ) -> Result<WebPlayer, JsValue> {
         argus_os::fs::mount(ROOT, files);
         let mut p =
@@ -95,6 +115,7 @@ impl WebPlayer {
             owed: 0.0,
             frames: 0,
             drawn: 0,
+            code,
         })
     }
 
@@ -323,16 +344,14 @@ impl WebPlayer {
     /// `argus mark pull` turns into marks.
     pub fn report(&self, note: &str) -> Vec<u8> {
         self.p
-            .report(note, "report", option_env!("ARGUS_CODE").unwrap_or("none"))
+            .report(note, "report", &self.code)
             .unwrap_or_default()
     }
 
     /// A mark of this moment, as JSON, with the build's code revision (the
     /// spike's: its whole input log from the load).
     pub fn mark(&self, note: &str) -> String {
-        self.p
-            .mark(note, option_env!("ARGUS_CODE").unwrap_or("none"))
-            .to_string()
+        self.p.mark(note, &self.code).to_string()
     }
 
     /// The saves the game asked for since the last call (`q:save`), as
@@ -340,10 +359,8 @@ impl WebPlayer {
     /// (IndexedDB; phase 3 item 0, decided with Kevin).
     pub fn take_saves(&mut self) -> js_sys::Array {
         let out = js_sys::Array::new();
-        for (name, bytes) in self
-            .p
-            .take_saves(option_env!("ARGUS_CODE").unwrap_or("none"))
-        {
+        let code = self.code.clone();
+        for (name, bytes) in self.p.take_saves(&code) {
             let pair = js_sys::Array::new();
             pair.push(&JsValue::from_str(&name));
             pair.push(&js_sys::Uint8Array::from(bytes.as_slice()));

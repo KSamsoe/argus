@@ -1,0 +1,6 @@
+# The one scene. Each other file here is one entity, named by its file
+# (player.toml is @player). The seed feeds the scripts' random streams:
+# the same seed, the same monsters in the same places, every time (seed 9
+# rolls two rats and two goblins; seed 1 rolls four goblins, a hard start).
+clock = "discrete"
+seed = 9

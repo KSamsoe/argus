@@ -1,0 +1,18 @@
+# The HUD: one line of text at the top left of the screen. The {...} holes
+# are filled from the world every frame ({@arena:Waves.wave} is @arena's
+# Waves.wave), so no script writes it. Add a number to the HUD by adding a
+# hole here. UI sizes are pixels on a 960 x 540 canvas.
+[UiRoot]
+interactive = false
+layer = 1
+
+[UiNode]
+absolute = true
+offset = [10.0, 8.0]
+pad = [8.0, 4.0]
+
+[UiPanel]
+color = "#05070AB0"
+
+[UiText]
+text = "Wave {@arena:Waves.wave}   Enemies {@arena:Waves.alive}   Score {@player:Player.score}   HP {@player:Health.cur}/{@player:Health.max}"

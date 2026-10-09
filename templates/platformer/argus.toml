@@ -1,0 +1,4 @@
+name = "platformer"
+clock = "continuous@60"
+default_scene = "level"
+plugins = []

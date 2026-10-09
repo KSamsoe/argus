@@ -1,0 +1,14 @@
+# The pause screen's words, a child of @pause.
+[Parent]
+entity = "@pause"
+
+[UiNode]
+pad = [28.0, 18.0]
+
+[UiPanel]
+color = "#262C34"
+border = 2.0
+
+[UiText]
+text = "Paused. Escape to go on."
+align = "center"

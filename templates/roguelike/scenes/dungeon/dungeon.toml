@@ -1,0 +1,19 @@
+# The dungeon: its cells on a tilemap, painted by sim.dungeon
+# (systems/dungeon.luau) when the scene loads.
+[Dungeon]
+
+# The Transform is the top-left corner of cell (0, 0). At [-0.5, 10.5] on
+# an 11-row map, every cell's centre is a whole number, so the hero and the
+# monsters always stand on whole numbers (row 0 is the top, at y = 10).
+# Change the y with the map's height: height - 0.5.
+[Transform]
+pos = [-0.5, 10.5]
+
+[Tilemap]
+map = "maps/dungeon.tilemap.toml"
+
+# The same cells as a navigation grid: a wall is blocked, the rest open.
+# The hero's NavField (player.toml) is found on it, and the monsters
+# follow that field toward the hero.
+[NavGrid]
+tilemap = "@dungeon"

@@ -41,12 +41,19 @@ use std::path::{Path, PathBuf};
 use std::sync::{mpsc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-/// The code this executable was built from (`argus build` sets it), which
-/// every report records.
-const CODE: &str = match option_env!("ARGUS_CODE") {
-    Some(c) => c,
-    None => "dev",
-};
+/// The code this executable was built from, when `argus build` compiled it
+/// for the game (`ARGUS_CODE`).
+const BUILT_FOR: Option<&str> = option_env!("ARGUS_CODE");
+
+/// The game's code, which every report and save records: the packs' since
+/// a prebuilt runtime serves any game (distribution item 1), else what this
+/// executable was built for, else "dev".
+static CODE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+fn code() -> &'static str {
+    CODE.get()
+        .map_or(BUILT_FOR.unwrap_or("dev"), String::as_str)
+}
 
 /// The last panic's message and place, for a crash report.
 static PANIC: Mutex<Option<String>> = Mutex::new(None);
@@ -150,6 +157,9 @@ fn run(args: Args) -> Result<(), String> {
     let root = dir.join("game");
     let packs = argus_player::pack::mount_dir(&data, &root, args.lang.as_deref())
         .map_err(|e| format!("{} {}", e.message, e.hint))?;
+    if let Some(c) = packs["code"].as_str().filter(|c| !c.is_empty()) {
+        let _ = CODE.set(c.to_string());
+    }
     let cfg = argus_scene::ProjectConfig::load(&root).map_err(|e| e.message)?;
     // The player's mods, over the game in memory (phase 3 item 8).
     let (mods, mods_said) = player_mods(&root, &cfg, &args);
@@ -169,7 +179,7 @@ fn run(args: Args) -> Result<(), String> {
     if let Some(n) = args.headless {
         p.step(n).map_err(|e| e.message)?;
         let mut saves = Vec::new();
-        for (name, bytes) in p.take_saves(CODE) {
+        for (name, bytes) in p.take_saves(code()) {
             let path = save_file(save.as_deref(), &name).ok();
             let went = p
                 .store_save(path.as_deref(), &name, &bytes)
@@ -178,7 +188,7 @@ fn run(args: Args) -> Result<(), String> {
         }
         println!(
             "{}",
-            json!({ "packs": packs, "status": p.status(), "code": CODE, "save": save, "saves": saves, "mods": p.mods.to_json() })
+            json!({ "packs": packs, "status": p.status(), "code": code(), "engine": env!("CARGO_PKG_VERSION"), "save": save, "saves": saves, "mods": p.mods.to_json() })
         );
         return Ok(());
     }
@@ -502,7 +512,7 @@ impl Game {
     /// failure is said on the bottom line; a save that worked is the game's
     /// to mention.
     fn saves_and_loads(&mut self) {
-        for (name, bytes) in self.p.take_saves(CODE) {
+        for (name, bytes) in self.p.take_saves(code()) {
             // On the disk and in the platform's cloud (phase 5 item 9).
             let path = save_file(self.save.as_deref(), &name).ok();
             if let Err(e) = self.p.store_save(path.as_deref(), &name, &bytes) {
@@ -547,7 +557,7 @@ impl Game {
     fn write_report(&self, note: &str, kind: &str) -> Result<PathBuf, String> {
         let bytes = self
             .p
-            .report(note, kind, CODE)
+            .report(note, kind, code())
             .ok_or("the recorder is off")?;
         let dir = self
             .save

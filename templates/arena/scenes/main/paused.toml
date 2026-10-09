@@ -1,0 +1,25 @@
+# "Paused", in the middle of the screen: hidden until the pause action
+# (systems/pause.luau) shows it. The whole canvas, dimmed, with the word
+# in a panel in its centre.
+[UiRoot]
+interactive = false
+layer = 10
+
+[UiNode]
+justify = "center"
+align = "center"
+visible = false
+
+[UiPanel]
+color = "#05070A99"
+
+[children.label.UiNode]
+pad = [24.0, 12.0]
+
+[children.label.UiPanel]
+color = "#1E2A30"
+border = 2.0
+
+[children.label.UiText]
+text = "Paused"
+align = "center"

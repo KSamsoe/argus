@@ -1,0 +1,49 @@
+# The hero. Everything about how it runs, jumps, and collides is the
+# engine's: a box (Collider) moved by a KinematicBody against the solid
+# blocks, and a CharacterController that turns the move and jump actions
+# into its velocity, with gravity, coyote time, a jump buffer, and a
+# shorter hop when jump is let go early. Hero is the game's own part
+# (components/level.luau).
+tags = ["player"]
+
+[Transform]
+pos = [3.0, 1.0]
+
+[Sprite]
+kind = "rect"
+size = [0.8, 1.2]
+color = "#F2A541"
+z = 5.0
+
+# The Collider is what stands and bumps, the Sprite only what shows: keep
+# them the same size.
+[Collider]
+size = [0.8, 1.2]
+
+[KinematicBody]
+
+# What to change first: the feel. run_speed is units a second; a jump is
+# set by how high it goes (jump_height) and how long it takes to get there
+# (jump_time). These are tune fields: change them while the game runs
+# from the editor's tuning panel, and the scenarios in tests/ say whether
+# the level can still be played.
+[CharacterController]
+run_speed = 7.0
+jump_height = 3.2
+jump_time = 0.36
+
+# Player 1's actions land on this entity as its Actions component.
+[PlayerSlot]
+slot = 1
+
+[Actions]
+
+# start is where a hazard or a restart puts the hero: keep it with the
+# Transform's pos above.
+[Hero]
+start = [3.0, 1.0]
+fall_y = -6.0
+
+[Describe]
+name = "hero"
+text = "coins {Hero.coins}, falls {Hero.falls}"

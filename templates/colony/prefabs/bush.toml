@@ -1,0 +1,22 @@
+# A berry bush: a Source of food that anyone can gather (a gather job).
+# Ripe it is red with berries; picked, it is green until it grows back.
+#
+# To change first: yield (food a picking gives) and regrow_days.
+[Source]
+job_kind = "gather"
+gives = "food"
+yield = 2.0
+regrow_days = 1.0
+ripe_color = "#C2405A"
+bare_color = "#4E7A3A"
+drop_color = "#D9604A"
+
+[Sprite]
+kind = "circle"
+size = [0.9, 0.9]
+color = "#C2405A"
+z = 1.0
+
+[Describe]
+name = "berry bush"
+text = "grown {Source.growth}"

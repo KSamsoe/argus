@@ -2,6 +2,20 @@
 
 A general-purpose 2D game engine whose primary user interface is a protocol. The editor, the CLI, the test runner, and the coding agent are all clients of the same daemon. The full design is in [docs/argus-engine-design-v0.3.html](docs/argus-engine-design-v0.3.html); the build plan is its section 18, and progress against phase 0 is tracked in [docs/phase0-checklist.md](docs/phase0-checklist.md).
 
+## Use it
+
+Argus installs on Windows and Linux from a release on this repository, and needs no Rust to make or release a game. [docs/install.md](docs/install.md) covers it in full: what a machine needs, installing, a first game, connecting AI tools (Claude Code, Claude Desktop, Cursor, VS Code, Codex CLI, Gemini CLI), and releasing a game. In short, with the GitHub CLI signed in:
+
+```sh
+gh release download --repo KSamsoe/argus --pattern install.ps1   # install.sh on Linux
+powershell -ExecutionPolicy Bypass -File install.ps1                 # sh install.sh
+argus new my-game --template platformer                              # or blank, roguelike, arena, colony
+cd my-game
+argus mcp setup claude-code                                          # or claude-desktop, cursor, vscode, codex, gemini
+```
+
+From a checkout of this repository instead, `cargo build --release` makes `target/release/argus`, which builds games from the engine's source.
+
 ## What exists today
 
 Phase 0, piece 1: the ECS core, in [crates/argus-ecs](crates/argus-ecs).
@@ -217,6 +231,16 @@ docs/
   web-spike.md                    what the web spike found (phase 2, item 1)
   playtest.md                     the playtest server on klab: the link, reports into marks, new builds (phase 2, item 7)
 ```
+
+## Distribution
+
+After phase 5, Argus ran only where it was built from source. This work makes it something a person installs and connects to the AI tools they already use; the plan, agreed with Kevin, is [docs/distribution-checklist.md](docs/distribution-checklist.md), and the user's guide is [docs/install.md](docs/install.md).
+
+- **A version.** `argus version` says the engine's version, the commit it was built from, and the platform; the same is in the daemon's status, every ARGUS.md, every release's `build.json`, and the saves, reports, and marks a game writes.
+- **Releasing a game needs no Rust.** An install carries prebuilt game runtimes: one for any game, one with Steam, and the web player. `argus build` puts a game's packs beside the right one and checks the result plays and looks as the project does, as before; a Linux release can be made on Windows from the Linux runtime. Only a game with Rust plugins needs Rust, and `argus build` says so. Tried on a staged install with Rust out of reach: every example released for Windows and the web, Hollow on the Steam runtime, Swarm refused until Rust was there.
+- **`argus new`.** A working game from a template, its tests run before it says done, with the files an AI agent reads first (AGENTS.md, CLAUDE.md, and the game's own ARGUS.md). Five templates: blank, and a platformer, a roguelike, an arena shooter, and a colony sim, each the core of one of the example games, written by AI agents from the games and checked by their own tests.
+- **Connecting AI tools.** `argus mcp setup <tool>` adds Argus to Claude Code, Claude Desktop, Cursor, VS Code, Codex CLI, or Gemini CLI, in that tool's own file, leaving the rest of the file as it was. Set up once for the user, the agent starts with no game open and can list the games, open one, or make one. Claude Desktop also gets a one-click bundle (`argus.mcpb`).
+- **Installing and updating.** `install.ps1` and `install.sh` install a release for one user, checked against its checksums, and `argus self-update` and `argus uninstall` keep it current or take it out; the version before stays until the new one has started.
 
 ## Phase 5
 

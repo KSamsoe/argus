@@ -1,0 +1,17 @@
+# A coin: a gold circle the hero takes by touching it (systems/pickups.luau).
+# Its Collider has no KinematicBody, so it is not solid: it only reports
+# the touch. Each coin in the level is a file with prefab = "coin" and a
+# Transform saying where it is.
+[Sprite]
+kind = "circle"
+size = [0.6, 0.6]
+color = "#FFD84A"
+z = 2.0
+
+[Collider]
+radius = 0.3
+
+[Coin]
+
+[Describe]
+name = "coin"

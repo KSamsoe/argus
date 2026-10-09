@@ -1,0 +1,37 @@
+# The hero. sim.dungeon puts it on the @ of the map picture at the start of
+# every run. Change its hit points here and its damage in Player.atk.
+tags = ["player"]
+
+# Player slot 1's actions (input.toml) land on this entity's Actions.
+[PlayerSlot]
+slot = 1
+
+[Actions]
+
+[Transform]
+pos = [0.0, 0.0]
+
+[Player]
+atk = 2
+
+[Health]
+cur = 20
+max = 20
+
+# A described shape, no image needed: swap in an atlas for art.
+[Sprite]
+kind = "circle"
+size = [0.8, 0.8]
+color = "#F2E6C8"
+z = 5.0
+
+# What the semantic frame (and a screen reader) says about the hero.
+[Describe]
+name = "hero"
+text = "HP {Health.cur}/{Health.max}"
+
+# A flow field toward the hero: every open cell's number of steps to it,
+# found again whenever the hero moves. This is how a monster decides its
+# step (systems/monsters.luau): to the next cell with fewer steps.
+[NavField]
+grid = "@dungeon"

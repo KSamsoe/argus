@@ -1,0 +1,16 @@
+# The line along the top of the screen. It needs no script: the holes
+# {@id:Component.field} are filled from the world every frame. Add a field
+# to show by adding a hole.
+[UiRoot]
+interactive = false
+
+[UiNode]
+absolute = true
+offset = [10.0, 8.0]
+pad = [8.0, 4.0]
+
+[UiPanel]
+color = "#05070AB0"
+
+[UiText]
+text = "Turn {@turn:Turn.n}    HP {@player:Health.cur}/{@player:Health.max}    Kills {@player:Player.kills}"

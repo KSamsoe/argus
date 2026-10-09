@@ -1,0 +1,9 @@
+# Something to walk over, so the walking shows.
+[Transform]
+pos = [0.0, 0.0]
+
+[Sprite]
+kind = "rect"
+size = [30.0, 30.0]
+color = "#2B3A42"
+z = 0.0

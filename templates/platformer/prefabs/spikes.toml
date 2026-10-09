@@ -1,0 +1,63 @@
+# A row of spikes, two units wide: touching it sends the hero back to the
+# start (the Hazard; systems/hazards.luau). The entity itself is only the
+# touch: a Collider, flat along the ground. What shows is its four teeth,
+# children placed relative to it: squares turned 45 degrees, half sunk
+# behind the ground (a lower z), so each shows as a triangle. A child's
+# Transform is relative to its parent only when it also has a
+# GlobalTransform (the engine fills that in: where it is in the world).
+[Collider]
+size = [1.8, 0.4]
+offset = [0.0, 0.2]
+
+[Hazard]
+
+[Describe]
+name = "spikes"
+
+[children.tooth1.Transform]
+pos = [-0.75, 0.0]
+rot = 0.7853982
+
+[children.tooth1.GlobalTransform]
+
+[children.tooth1.Sprite]
+kind = "rect"
+size = [0.5, 0.5]
+color = "#E04848"
+z = -1.0
+
+[children.tooth2.Transform]
+pos = [-0.25, 0.0]
+rot = 0.7853982
+
+[children.tooth2.GlobalTransform]
+
+[children.tooth2.Sprite]
+kind = "rect"
+size = [0.5, 0.5]
+color = "#E04848"
+z = -1.0
+
+[children.tooth3.Transform]
+pos = [0.25, 0.0]
+rot = 0.7853982
+
+[children.tooth3.GlobalTransform]
+
+[children.tooth3.Sprite]
+kind = "rect"
+size = [0.5, 0.5]
+color = "#E04848"
+z = -1.0
+
+[children.tooth4.Transform]
+pos = [0.75, 0.0]
+rot = 0.7853982
+
+[children.tooth4.GlobalTransform]
+
+[children.tooth4.Sprite]
+kind = "rect"
+size = [0.5, 0.5]
+color = "#E04848"
+z = -1.0

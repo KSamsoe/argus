@@ -26,10 +26,16 @@ pub mod agentdoc;
 pub mod build;
 pub mod client;
 pub mod help;
+pub mod install;
+pub mod jsonedit;
 pub mod mcp;
 pub mod params;
 pub mod project;
+pub mod projects;
 pub mod render;
+pub mod runtime;
+pub mod scaffold;
+pub mod setup;
 pub mod tools;
 
 use argus_daemon::METHODS;
@@ -61,6 +67,8 @@ pub struct Invocation {
     pub follow: bool,
     /// `--help`.
     pub help: bool,
+    /// `--version`: the engine's version.
+    pub version: bool,
     /// `--project <dir>`.
     pub project: Option<PathBuf>,
     /// `--socket <name>`: connect here instead of discovering.
@@ -95,6 +103,18 @@ pub struct Invocation {
     pub since: Option<PathBuf>,
     /// `--mod <id>`: `argus build` makes that mod's pack (phase 3 item 8).
     pub mod_id: Option<String>,
+    /// `--from-source`: `argus build` compiles the runtime from the engine's
+    /// source instead of using the install's (distribution item 1).
+    pub from_source: bool,
+    /// `--template <name>`: the template `argus new` starts from.
+    pub template: Option<String>,
+    /// `--name <name>`: the game's name for `argus new` (default: the
+    /// directory's).
+    pub name: Option<String>,
+    /// `--no-git`: `argus new` makes no repository.
+    pub no_git: bool,
+    /// `--scope project|user`: where `argus mcp setup` writes.
+    pub scope: Option<String>,
     /// `--mods a,b`: the mods `daemon start` and `daemon run` open with.
     pub mods: Vec<String>,
     /// `--web [addr]`: `daemon start` and `daemon run` serve the web client
@@ -120,8 +140,14 @@ pub fn parse(argv: &[String]) -> Result<Invocation, String> {
             "--json" | "-j" => inv.json = true,
             "--follow" | "-f" => inv.follow = true,
             "--help" | "-h" => inv.help = true,
+            "--version" | "-V" => inv.version = true,
             "--no-start" => inv.no_start = true,
-            "--project" | "-P" => inv.project = Some(PathBuf::from(need(&mut it)?)),
+            "--project" | "-P" => {
+                // Empty is none: an MCP bundle passes the folder setting
+                // through, and an unset one is empty.
+                let v = need(&mut it)?;
+                inv.project = (!v.is_empty()).then(|| PathBuf::from(v));
+            }
             "--socket" => inv.socket = Some(need(&mut it)?),
             "--params" | "-p" => inv.params_json.push(need(&mut it)?),
             "--scene" => inv.scene = Some(need(&mut it)?),
@@ -132,6 +158,11 @@ pub fn parse(argv: &[String]) -> Result<Invocation, String> {
             "--no-replays" => inv.no_replays = true,
             "--play" => inv.play = true,
             "--release" => inv.release = true,
+            "--from-source" => inv.from_source = true,
+            "--no-git" => inv.no_git = true,
+            "--scope" => inv.scope = Some(need(&mut it)?),
+            "--template" => inv.template = Some(need(&mut it)?),
+            "--name" => inv.name = Some(need(&mut it)?),
             "--for-agent" => inv.for_agent = true,
             "--target" => inv.target = Some(need(&mut it)?),
             "--out" => inv.out = Some(PathBuf::from(need(&mut it)?)),
@@ -219,8 +250,22 @@ pub enum Command {
     Tool(&'static str, Vec<String>),
     /// `argus mcp`: the MCP server on stdio (§16).
     Mcp,
+    /// `argus mcp setup [client]`: the server in an agent host's config
+    /// (distribution item 3).
+    McpSetup(Vec<String>),
     /// `argus docs [--for-agent]`: the reference, or the project's ARGUS.md.
     Docs,
+    /// `argus version`: the engine's version, revision, and platform.
+    Version,
+    /// `argus new <dir>`: a project from a template (distribution item 2).
+    New(Vec<String>),
+    /// `argus projects [under=dir]`: the projects this machine knows.
+    Projects,
+    /// `argus self-update [version]`: the install, updated (distribution
+    /// item 6).
+    SelfUpdate(Vec<String>),
+    /// `argus uninstall`: the install, removed.
+    Uninstall,
     /// Nothing recognisable.
     Unknown(Vec<String>),
 }
@@ -237,8 +282,16 @@ pub fn resolve(words: &[String]) -> Command {
         "daemon" => return Command::Daemon(words[1..].to_vec()),
         "editor" if words.len() == 1 => return Command::Editor,
         "build" => return Command::Build,
+        "mcp" if words.get(1).map(String::as_str) == Some("setup") => {
+            return Command::McpSetup(words[2..].to_vec())
+        }
         "mcp" => return Command::Mcp,
         "docs" => return Command::Docs,
+        "version" => return Command::Version,
+        "new" => return Command::New(words[1..].to_vec()),
+        "projects" if words.len() == 1 => return Command::Projects,
+        "self-update" => return Command::SelfUpdate(words[1..].to_vec()),
+        "uninstall" if words.len() == 1 => return Command::Uninstall,
         "test" if words.len() == 1 || !METHODS.iter().any(|m| m.name == words[..2].join(".")) => {
             return Command::Test(words[1..].to_vec())
         }
@@ -278,7 +331,11 @@ pub fn run(argv: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
             return EXIT_USAGE;
         }
     };
-    let cmd = resolve(&inv.words);
+    let cmd = if inv.version {
+        Command::Version
+    } else {
+        resolve(&inv.words)
+    };
     if inv.help {
         let _ = write!(out, "{}", help::for_command(&cmd));
         return EXIT_OK;
@@ -306,7 +363,39 @@ pub fn run(argv: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
         Command::Build => build::build_command(&inv, out, err),
         Command::Tool(name, bare) => tool_command(&inv, name, bare, out, err),
         Command::Mcp => mcp::serve(&inv, err),
+        Command::McpSetup(words) => setup::command(&inv, &words, out, err),
         Command::Docs => agentdoc::command(&inv, out, err),
+        Command::SelfUpdate(words) => install::self_update(&inv, &words, out, err),
+        Command::Uninstall => install::uninstall(out, err),
+        Command::Projects => {
+            let under = inv.args.iter().find_map(|a| a.strip_prefix("under="));
+            let open = project::find_project(inv.project.as_deref()).ok();
+            let r = mcp::projects_report(open.as_deref(), under);
+            if inv.json {
+                let _ = writeln!(out, "{r}");
+            } else {
+                let _ = write!(out, "{}", render::projects(&r));
+            }
+            EXIT_OK
+        }
+        Command::New(words) => {
+            let words = [words, inv.args.clone()].concat();
+            scaffold::new_command(&inv, &words, out, err)
+        }
+        Command::Version => {
+            use argus_daemon::daemon::{version_json, REVISION, VERSION};
+            if inv.json {
+                let _ = writeln!(out, "{}", version_json());
+            } else {
+                let _ = writeln!(
+                    out,
+                    "argus {VERSION} ({REVISION}, {} {})",
+                    std::env::consts::OS,
+                    std::env::consts::ARCH
+                );
+            }
+            EXIT_OK
+        }
         Command::Method(method, bare) => {
             let mut args = bare;
             args.extend(inv.args.iter().cloned());

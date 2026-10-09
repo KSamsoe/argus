@@ -1,0 +1,22 @@
+# The player: the entity with the input slot, and the camera follows it.
+tags = ["player"]
+
+[PlayerSlot]
+slot = 1
+
+[Actions]
+
+[Player]
+speed = 6.0
+
+[Transform]
+pos = [0.0, 0.0]
+
+[Sprite]
+kind = "rect"
+size = [1.0, 1.0]
+color = "#F2C14E"
+z = 2.0
+
+[Camera]
+height = 20.0

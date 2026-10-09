@@ -10,36 +10,98 @@
 //! call's answer begins with the command line that reruns it from a shell.
 //! Nothing but protocol messages is written to stdout; the daemon's startup
 //! chatter goes to stderr.
+//!
+//! With no project (a user-level entry in an agent host, distribution item
+//! 3), it starts on none: `projects` lists the ones this machine knows,
+//! `open_project` points the tools at one, and `new_project` makes one from
+//! a template. Those three work with a project open too, to switch.
 
 use crate::client::Client;
 use crate::{project, tools, Invocation};
-use argus_daemon::docs;
+use argus_daemon::docs::{self, opt, req, ToolDoc, STRING};
 use serde_json::{json, Value as Json};
 use std::io::{BufRead, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// The protocol versions this server speaks, newest first.
 pub const VERSIONS: &[&str] = &["2025-06-18", "2025-03-26", "2024-11-05"];
 
 /// Tools that only read; an agent host may run them without asking.
-const READ_ONLY: &[&str] = &["summary", "query", "describe", "observe", "events"];
+const READ_ONLY: &[&str] = &[
+    "summary", "query", "describe", "observe", "events", "projects",
+];
 
-/// The tool list as `tools/list` gives it.
+/// The tools that choose the project the others work on (distribution
+/// item 3). They run in this server, not the daemon.
+pub const PROJECT_TOOLS: &[ToolDoc] = &[
+    ToolDoc {
+        name: "projects",
+        doc: "The Argus projects on this machine: the one the tools are on now (open), the ones opened before, most recent first (recent), the templates a new one can start from, and with under, every project in that folder. From a shell: argus projects [under=<dir>].",
+        params: &[opt("under", STRING, "a folder: the projects in it, a few levels down")],
+        calls: &[],
+    },
+    ToolDoc {
+        name: "open_project",
+        doc: "Point the tools at a project: its daemon is found or started, and the answer is its world.summary. From a shell: argus --project <dir> <command>.",
+        params: &[req("path", STRING, "the project's directory, the one with argus.toml (a path from projects)")],
+        calls: &["world.summary"],
+    },
+    ToolDoc {
+        name: "new_project",
+        doc: "Make a project from a template, run its scenarios (they pass), write its ARGUS.md, AGENTS.md, and CLAUDE.md, and open it. Read its ARGUS.md next. From a shell: argus new <dir> --template <t>.",
+        params: &[
+            req("dir", STRING, "where: a new or empty directory"),
+            opt("template", STRING, "one of the templates projects lists; default blank"),
+            opt("name", STRING, "the game's name; default the directory's"),
+        ],
+        calls: &["test.run", "world.summary"],
+    },
+];
+
+fn listed(t: &ToolDoc, description: String) -> Json {
+    let mut o = json!({
+        "name": t.name,
+        "description": description,
+        "inputSchema": docs::input_schema(t.params),
+    });
+    if READ_ONLY.contains(&t.name) {
+        o["annotations"] = json!({ "readOnlyHint": true });
+    }
+    o
+}
+
+/// The tool list as `tools/list` gives it: the engine's, then the
+/// project tools.
 pub fn tool_list() -> Vec<Json> {
     docs::TOOLS
         .iter()
-        .map(|t| {
-            let mut o = json!({
-                "name": t.name,
-                "description": docs::tool_description(t),
-                "inputSchema": docs::input_schema(t.params),
-            });
-            if READ_ONLY.contains(&t.name) {
-                o["annotations"] = json!({ "readOnlyHint": true });
-            }
-            o
-        })
+        .map(|t| listed(t, docs::tool_description(t)))
+        .chain(PROJECT_TOOLS.iter().map(|t| listed(t, t.doc.to_string())))
         .collect()
+}
+
+/// What `projects` answers: the open one, the recent ones, the templates,
+/// and those under a folder.
+pub fn projects_report(open: Option<&Path>, under: Option<&str>) -> Json {
+    let mut r = json!({
+        "open": open.map(|p| crate::projects::describe(p, None)),
+        "recent": crate::projects::recent(),
+        "templates": crate::scaffold::root()
+            .map(|t| crate::scaffold::list(&t))
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(name, about)| json!({ "name": name, "about": about }))
+            .collect::<Vec<_>>(),
+    });
+    if let Some(d) = under {
+        r["under"] = json!(crate::projects::under(Path::new(d)));
+    }
+    r
+}
+
+/// What the agent is told when no project is open.
+fn no_project() -> String {
+    "No project is open: list them with projects, open one with open_project, or make one with new_project.".to_string()
 }
 
 /// What the server tells the agent on connect, with the world's summary.
@@ -58,6 +120,7 @@ The project's ARGUS.md (argus docs --for-agent) lists its components, systems, p
             s.push_str("The world now (world.summary):\n");
             s.push_str(&v.to_string());
         }
+        Err(e) if e.starts_with(&no_project()) => s.push_str(&e),
         Err(e) => {
             s.push_str("The project's daemon could not be reached yet: ");
             s.push_str(&e);
@@ -92,7 +155,8 @@ pub fn base64(data: &[u8]) -> String {
 }
 
 struct Server<'a> {
-    inv: &'a Invocation,
+    /// The command line, with `project` set to the project open.
+    inv: Invocation,
     root: Option<PathBuf>,
     client: Option<Client>,
     err: &'a mut dyn Write,
@@ -101,9 +165,12 @@ struct Server<'a> {
 impl Server<'_> {
     /// The daemon, found or started.
     fn client(&mut self) -> Result<&mut Client, String> {
+        if self.root.is_none() && self.inv.socket.is_none() {
+            return Err(no_project());
+        }
         if self.client.is_none() {
             self.client = Some(project::connect_as(
-                self.inv,
+                &self.inv,
                 self.err,
                 Some("agent:claude"),
             )?);
@@ -111,14 +178,61 @@ impl Server<'_> {
         Ok(self.client.as_mut().expect("connected"))
     }
 
+    /// Point the tools at a project; its summary.
+    fn open(&mut self, path: &str) -> Result<Json, Json> {
+        let root =
+            project::find_project(Some(Path::new(path))).map_err(|e| json!({ "message": e }))?;
+        let root = root.canonicalize().unwrap_or(root);
+        self.client = None;
+        self.root = Some(root.clone());
+        self.inv.project = Some(root.clone());
+        self.inv.socket = None;
+        let c = self.client().map_err(|e| json!({ "message": e }))?;
+        let summary = tools::run(c, "summary", &json!({}))?;
+        Ok(json!({
+            "open": crate::projects::describe(&root, None),
+            "summary": summary,
+            "next": "Read the project's ARGUS.md (in its directory) before changing it.",
+        }))
+    }
+
+    /// The tools that choose the project.
+    fn project_tool(&mut self, name: &str, args: &Json) -> Result<Json, Json> {
+        let s = |k: &str| args.get(k).and_then(Json::as_str);
+        match name {
+            "projects" => Ok(projects_report(self.root.as_deref(), s("under"))),
+            "open_project" => {
+                let path =
+                    s("path").ok_or_else(|| json!({ "message": "open_project needs path" }))?;
+                self.open(path)
+            }
+            _ => {
+                let dir = s("dir").ok_or_else(|| json!({ "message": "new_project needs dir" }))?;
+                let made =
+                    crate::scaffold::make(Path::new(dir), s("template"), s("name"), true, self.err)
+                        .map_err(|e| json!({ "message": e }))?;
+                let mut opened = self.open(made["dir"].as_str().unwrap_or(dir))?;
+                opened["made"] = made;
+                Ok(opened)
+            }
+        }
+    }
+
     fn initialize(&mut self, params: &Json) -> Json {
         let asked = params.get("protocolVersion").and_then(Json::as_str);
         let version = asked
             .filter(|v| VERSIONS.contains(v))
             .unwrap_or(VERSIONS[0]);
-        let summary = self
-            .client()
-            .and_then(|c| tools::run(c, "summary", &json!({})).map_err(|e| e.to_string()));
+        let summary = if self.root.is_none() && self.inv.socket.is_none() {
+            Err(format!(
+                "{} The projects: {}",
+                no_project(),
+                projects_report(None, None)
+            ))
+        } else {
+            self.client()
+                .and_then(|c| tools::run(c, "summary", &json!({})).map_err(|e| e.to_string()))
+        };
         json!({
             "protocolVersion": version,
             "capabilities": { "tools": { "listChanged": false } },
@@ -131,9 +245,13 @@ impl Server<'_> {
         let name = params.get("name").and_then(Json::as_str).unwrap_or("");
         let args = params.get("arguments").cloned().unwrap_or(json!({}));
         let rerun = format!("argus {name} --params '{args}'");
-        let res = match self.client() {
-            Ok(c) => tools::run(c, name, &args),
-            Err(e) => Err(json!({ "message": e })),
+        let res = if PROJECT_TOOLS.iter().any(|t| t.name == name) {
+            self.project_tool(name, &args)
+        } else {
+            match self.client() {
+                Ok(c) => tools::run(c, name, &args),
+                Err(e) => Err(json!({ "message": e })),
+            }
         };
         match res {
             Ok(r) => {
@@ -180,6 +298,10 @@ impl Server<'_> {
 /// `argus mcp`: serve until stdin closes.
 pub fn serve(inv: &Invocation, err: &mut dyn Write) -> i32 {
     let root = project::find_project(inv.project.as_deref()).ok();
+    let mut inv = inv.clone();
+    if let Some(r) = &root {
+        inv.project = Some(r.clone());
+    }
     let mut server = Server {
         inv,
         root,
@@ -246,7 +368,7 @@ mod tests {
     #[test]
     fn every_tool_has_a_schema_and_the_read_only_ones_say_so() {
         let list = tool_list();
-        assert_eq!(list.len(), docs::TOOLS.len());
+        assert_eq!(list.len(), docs::TOOLS.len() + PROJECT_TOOLS.len());
         for t in &list {
             assert_eq!(t["inputSchema"]["type"], "object", "{t}");
             assert!(t["description"]

@@ -1,0 +1,11 @@
+# The player's actions, and the keys and buttons bound to them. A script
+# reads an action by name (Actions.move); a player can rebind it.
+[actions.move]
+type = "axis2"
+doc = "Walk direction"
+[actions.move.bindings]
+keyboard = ["wasd", "arrows"]
+gamepad = ["left_stick"]
+
+[slots.1]
+devices = ["keyboard", "mouse", "gamepad:0"]

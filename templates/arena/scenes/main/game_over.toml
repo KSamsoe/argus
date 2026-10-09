@@ -1,0 +1,24 @@
+# "Game over", in the middle of the screen: hidden until the hero dies
+# (systems/hits.luau shows it, systems/restart.luau hides it again).
+[UiRoot]
+interactive = false
+layer = 10
+
+[UiNode]
+justify = "center"
+align = "center"
+visible = false
+
+[UiPanel]
+color = "#05070A99"
+
+[children.label.UiNode]
+pad = [24.0, 12.0]
+
+[children.label.UiPanel]
+color = "#1E2A30"
+border = 2.0
+
+[children.label.UiText]
+text = "Game over: score {@player:Player.score}, wave {@arena:Waves.wave}. Enter or R to play again."
+align = "center"

@@ -162,10 +162,18 @@ effects = \"actor:Health.cur = 4\"
     // The list is the schema's.
     let list = m.request("tools/list", json!({}));
     let tools = list["result"]["tools"].as_array().unwrap();
-    assert_eq!(tools.len(), docs::TOOLS.len());
+    // The engine's tools, then the ones that choose the project
+    // (distribution item 3).
+    let project_tools = argus_cli::mcp::PROJECT_TOOLS;
+    assert_eq!(tools.len(), docs::TOOLS.len() + project_tools.len());
     for (t, d) in tools.iter().zip(docs::TOOLS) {
         assert_eq!(t["name"], d.name);
         assert_eq!(t["description"], docs::tool_description(d));
+        assert_eq!(t["inputSchema"], docs::input_schema(d.params));
+    }
+    for (t, d) in tools[docs::TOOLS.len()..].iter().zip(project_tools) {
+        assert_eq!(t["name"], d.name);
+        assert_eq!(t["description"], d.doc);
         assert_eq!(t["inputSchema"], docs::input_schema(d.params));
     }
 

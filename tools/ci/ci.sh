@@ -21,6 +21,8 @@ cd "$(dirname "$0")/../.."
 
 export PATH="${CARGO_HOME:-$USERPROFILE/.cargo}/bin:$PATH" CARGO_TERM_COLOR=never
 LOGS=target/ci
+# Where cargo builds: a worktree may share another checkout's cache.
+TARGET=${CARGO_TARGET_DIR:-target}
 EXE=""
 [ "${OS:-}" = "Windows_NT" ] && EXE=.exe
 
@@ -30,9 +32,9 @@ EXE=""
 # that was cancelled (a newer push cancels it) are stopped, since a running
 # one locks its binary against the next build.
 if [ "${CI:-}" = true ]; then
-  if [ -x "target/debug/argus$EXE" ]; then
+  if [ -x "$TARGET/debug/argus$EXE" ]; then
     for g in swarm delve hollow outpost toybox puppet; do
-      "target/debug/argus$EXE" --project "examples/$g" daemon stop > /dev/null 2>&1
+      "$TARGET/debug/argus$EXE" --project "examples/$g" daemon stop > /dev/null 2>&1
     done
   fi
   # robocopy's listing on Windows: du takes minutes over the cache's
@@ -65,8 +67,8 @@ step_games() {
   local failed=0
   for g in swarm delve hollow outpost toybox puppet; do
     echo "=== $g"
-    "target/debug/argus$EXE" --project "examples/$g" test --software || failed=1
-    "target/debug/argus$EXE" --project "examples/$g" daemon stop
+    "$TARGET/debug/argus$EXE" --project "examples/$g" test --software || failed=1
+    "$TARGET/debug/argus$EXE" --project "examples/$g" daemon stop
   done
   return $failed
 }
@@ -86,7 +88,7 @@ step_web() {
   # tap on a phone-size page, the viewport watched, over the daemon's web
   # listener on this machine.
   cargo build -q -p argus-cli || return 1
-  timeout 300 node tools/web/editor-check.mjs > "$LOGS/editor-check.json" || { cat "$LOGS/editor-check.json"; return 1; }
+  ARGUS="$TARGET/debug/argus$EXE" timeout 300 node tools/web/editor-check.mjs > "$LOGS/editor-check.json" || { cat "$LOGS/editor-check.json"; return 1; }
 }
 
 STEPS=("$@")

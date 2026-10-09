@@ -1,0 +1,15 @@
+# The line at the top left of the screen: a UI tree of one node, on the
+# screen rather than in the world. systems/hud.luau writes its words.
+[UiRoot]
+interactive = false
+
+[UiNode]
+absolute = true
+offset = [12.0, 10.0]
+pad = [8.0, 4.0]
+
+[UiPanel]
+color = "#05070A99"
+
+[UiText]
+text = "Coins 0/3    Falls 0"

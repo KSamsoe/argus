@@ -30,9 +30,17 @@ pub fn overview() -> String {
         let _ = writeln!(out, "    {:<22} {}", t.name, first_sentence(t.doc));
     }
     out.push_str(
-        "    mcp                    serve the tools over MCP on stdio (for an agent host)\n",
+        "    mcp                    serve the tools over MCP on stdio (for an agent host)\n    mcp setup <client>     put that server in an agent host's config (claude-code, cursor, vscode, ...)\n    projects               the projects this machine knows, and the templates for a new one\n",
     );
     out.push_str("    docs --for-agent       write the project's ARGUS.md from the live daemon\n");
+    out.push_str("    version                the engine's version, the source it was built from, the platform\n");
+    out.push_str(
+        "    self-update [version]  this install, updated to the latest release (or that one)\n",
+    );
+    out.push_str(
+        "    uninstall              this install removed; projects and settings are kept\n",
+    );
+    out.push_str("\n  new\n    new <dir>              a working project from a template, ready for an agent (--template, --name)\n");
     out.push_str("\n  build\n    build                  a release: the executable and its packs, or the web page (--target, --release)\n");
     out.push_str("\n  daemon\n    daemon start           start the project's daemon in the background (a method does this too when needed)\n    daemon stop            session.shutdown on the running daemon\n    daemon status          is a daemon running for this project, and which\n    daemon run             run the daemon in the foreground (what argusd --project does)\n");
     out
@@ -56,7 +64,7 @@ pub fn topic(words: &[String]) -> String {
     if docs::tool(&joined).is_some() {
         return tool_topic(&joined);
     }
-    if joined == "mcp" {
+    if matches!(joined.as_str(), "mcp" | "mcp.setup" | "projects") {
         return mcp();
     }
     if joined == "docs" {
@@ -64,6 +72,12 @@ pub fn topic(words: &[String]) -> String {
     }
     if joined == "test" {
         return test();
+    }
+    if joined == "new" {
+        return new_help();
+    }
+    if matches!(joined.as_str(), "self-update" | "uninstall") {
+        return install_help();
     }
     if METHODS
         .iter()
@@ -150,7 +164,7 @@ pub fn tool_topic(name: &str) -> String {
 
 /// Help for `argus mcp`.
 pub fn mcp() -> String {
-    "usage: argus mcp [--project <dir>]\n\nServe the agent tools over the Model Context Protocol on stdin and stdout (section 16),\nfor an agent host: {\"command\": \"argus\", \"args\": [\"mcp\", \"--project\", \"<dir>\"]}. It finds or starts the\nproject's daemon, and on connect runs world.summary into its instructions. Tool descriptions and\ninput schemas come from the same table as this help; `argus help` lists the tools.\n".to_string()
+    "usage: argus mcp [--project <dir>]\n\nServe the agent tools over the Model Context Protocol on stdin and stdout (section 16),\nfor an agent host: {\"command\": \"argus\", \"args\": [\"mcp\", \"--project\", \"<dir>\"]}. It finds or starts the\nproject's daemon, and on connect runs world.summary into its instructions. Tool descriptions and\ninput schemas come from the same table as this help; `argus help` lists the tools.\n\nWith no project it starts on none: its projects, open_project, and new_project tools list the\nprojects this machine knows, open one, or make one, so one user-level entry serves them all.\n\nusage: argus mcp setup [client] [--scope project|user] [--project <dir>] [--json]\n\nPut the server in an agent host's own config file, merged with what is there (a file it changes\nis kept beside it as <file>.argus-backup; run again, it changes nothing). Clients: claude-code,\nclaude-desktop, cursor, vscode, codex, gemini; with none it lists them and which are here.\n--scope: project (the default in a project: that project's file, opening that project) or user\n(the client's own file; opening no project unless --project names one). Claude Desktop has\nonly user.\n".to_string()
 }
 
 /// Help for `argus editor`.
@@ -165,7 +179,35 @@ pub fn docs_help() -> String {
 
 /// Help for `argus build`.
 pub fn build() -> String {
-    "usage: argus build [--target windows|linux|macos|web] [--release] [--out dir] [--since dir] [--json]\n       argus build --mod <id> [--out dir] [--json]\n\nA release of the project (section 15): one directory with the executable, named for the game,\nand data/ with the game's pack and a pack per language (lang/<code>/ in the project). The web\ntarget writes the page and the wasm module instead of an executable. Packs are built from the\nimport cache with the scripts compiled; a failed import or a script error stops the build.\n\n--target: default this machine's; a desktop build is made on its own platform. web needs wasi-sdk\n          (WASI_SDK) and wasm-bindgen-cli.\n--release: optimised. --out: default <project>/dist/<target>.\n--since: a previous build's directory; the game goes into a patch with only what changed.\n\nThe build checks itself: the game from its packs, and the executable run headless, reach the\nsame world as the project after the same ticks. build.json in the directory says what was made.\nA player's report key saves a replay file; `argus mark import path=<file>` makes it a mark.\n\n--mod <id>: the pack of the mod in mods/<id>/ (phase 3 item 8), <id>.pack, for a player's mods\n          folder (the save location's mods/, in the order its load-order.toml declares). The game's\n          own pack never holds mods/. It checks the mod loads with the game, nothing left out, and\n          that the game plays the same with the mod from its pack as from its directory.\n          --out: default <project>/dist/mods.\n".to_string()
+    "usage: argus build [--target windows|linux|macos|web] [--release] [--out dir] [--since dir] [--from-source] [--json]\n       argus build --mod <id> [--out dir] [--json]\n\nA release of the project (section 15): one directory with the executable, named for the game,\nand data/ with the game's pack and a pack per language (lang/<code>/ in the project). The web\ntarget writes the page and the wasm module instead of an executable. Packs are built from the\nimport cache with the scripts compiled; a failed import or a script error stops the build.\n\nThe executable and the page's module are the install's prebuilt runtimes (runtime/ beside bin/,\nor $ARGUS_RUNTIME), so no compiler is needed; a game with Rust plugins needs cargo for those.\nFrom a checkout, with --from-source, or with $ARGUS_ENGINE, they are compiled from the engine's\nsource instead.\n\n--target: default this machine's. From an install, any platform it has a runtime for (a game with\n          plugins is released on its own platform). From source, a desktop build is made on its\n          own platform, and web needs wasi-sdk (WASI_SDK) and wasm-bindgen-cli.\n--release: optimised (a prebuilt runtime always is). --out: default <project>/dist/<target>.\n--since: a previous build's directory; the game goes into a patch with only what changed.\n\nThe build checks itself: the game from its packs, and the executable run headless, reach the\nsame world as the project after the same ticks. build.json in the directory says what was made.\nA player's report key saves a replay file; `argus mark import path=<file>` makes it a mark.\n\n--mod <id>: the pack of the mod in mods/<id>/ (phase 3 item 8), <id>.pack, for a player's mods\n          folder (the save location's mods/, in the order its load-order.toml declares). The game's\n          own pack never holds mods/. It checks the mod loads with the game, nothing left out, and\n          that the game plays the same with the mod from its pack as from its directory.\n          --out: default <project>/dist/mods.\n".to_string()
+}
+
+/// Help for `argus new`, with the templates there are.
+pub fn new_help() -> String {
+    let mut out = String::from(
+        "usage: argus new <dir> [--template name] [--name name] [--no-git] [--json]\n\nA new project in <dir> (new, or empty) from a template, named for the directory unless --name says.\nIts scenarios are run before it says done, and it gets ARGUS.md (written from its own daemon),\nAGENTS.md, and CLAUDE.md, so an agent knows where to read first. It is made a git repository\nunless it is inside one already, or --no-git.\n\ntemplates:\n",
+    );
+    match crate::scaffold::root() {
+        Ok(root) => {
+            for (name, about) in crate::scaffold::list(&root) {
+                let default = if name == crate::scaffold::DEFAULT {
+                    " (the default)"
+                } else {
+                    ""
+                };
+                let _ = writeln!(out, "  {name:<12} {about}{default}");
+            }
+        }
+        Err(e) => {
+            let _ = writeln!(out, "  (none found: {e})");
+        }
+    }
+    out
+}
+
+/// Help for `argus self-update` and `argus uninstall`.
+pub fn install_help() -> String {
+    "usage: argus self-update [version]   the latest release (or that one), in place of this install\n       argus uninstall                 this install removed; projects and settings are kept\n\nBoth run the installer the install carries (install.ps1 or install.sh beside bin/). A release is\nfetched from the private repository with a GitHub token (GITHUB_TOKEN, or gh auth token) and checked\nagainst its SHA256SUMS. The version before stays until the new one starts. On Windows the installer\nwaits for this argus to exit, and stops daemons and agent hosts' servers running from the install.\n".to_string()
 }
 
 /// Help for `argus test`.
@@ -187,8 +229,11 @@ pub fn for_command(cmd: &Command) -> String {
         Command::Test(_) => test(),
         Command::Build => build(),
         Command::Tool(name, _) => tool_topic(name),
-        Command::Mcp => mcp(),
+        Command::Mcp | Command::McpSetup(_) | Command::Projects => mcp(),
+        Command::SelfUpdate(_) | Command::Uninstall => install_help(),
         Command::Docs => docs_help(),
+        Command::New(_) => new_help(),
+        Command::Version => "usage: argus version [--json]      (also argus --version, -V)\n\nThe engine's version, the source it was built from (`dev` for a build from a\ncheckout), and the platform.\n".to_string(),
         Command::Help(t) => topic(t),
         Command::Unknown(_) => overview(),
     }

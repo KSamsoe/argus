@@ -1,0 +1,17 @@
+# The flag's cloth: a child of the pole (@goal). With a Parent and a
+# GlobalTransform, its Transform is relative to the parent: up near the
+# top of the pole, to its right. Move the pole and the cloth goes with it.
+[Parent]
+entity = "@goal"
+
+[Transform]
+pos = [0.55, 1.1]
+
+# Where the engine puts it in the world, worked out from the parent's.
+[GlobalTransform]
+
+[Sprite]
+kind = "rect"
+size = [0.9, 0.6]
+color = "#4ADE80"
+z = 1.0

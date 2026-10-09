@@ -1,0 +1,12 @@
+# The ground past the pit, x 19 to 36, its top at y 0. The pit is the gap
+# between this and ground.start: make it wider and the jump gets harder.
+prefab = "platform"
+
+[Transform]
+pos = [27.5, -2.0]
+
+[Sprite]
+size = [17.0, 4.0]
+
+[Collider]
+size = [17.0, 4.0]

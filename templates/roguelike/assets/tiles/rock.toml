@@ -1,0 +1,9 @@
+# A rock cell (the walls layer of maps/dungeon.tilemap.toml): one 32 x 32
+# frame of near-black, edge to edge, so the rock reads as one dark mass
+# around the rooms. solid = true is what makes it block: the navigation
+# grid, the semantic frame, and anything that collides read it.
+grid = [1, 1]
+
+[[frames]]
+index = 0
+properties = { solid = true }

@@ -1,0 +1,14 @@
+# The pause panel's words, a child of @pause, so it shows and hides with it.
+[Parent]
+entity = "@pause"
+
+[UiNode]
+pad = [24.0, 14.0]
+
+[UiPanel]
+color = "#1E2A3A"
+border = 2.0
+
+[UiText]
+text = "Paused. Press Esc to go on."
+align = "center"

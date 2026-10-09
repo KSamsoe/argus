@@ -1,0 +1,7 @@
+# Spikes on the ground past the pit, x 25 to 27: jump over them. pos is the
+# middle of the row, on the ground's top (y 0). Copy this file (spikes.2.toml)
+# and change pos for more.
+prefab = "spikes"
+
+[Transform]
+pos = [26.0, 0.0]

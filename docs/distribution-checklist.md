@@ -21,6 +21,8 @@ After phase 5, Argus runs only where it was built: a clone of the private reposi
 - `argus version`, and the version in `session.status`, ARGUS.md, a release's `build.json`, and marks and reports (they carry the code revision already).
 - One version for the engine, the CLI, the editor, and the runtimes. A release is a version tag and an archive per platform with a manifest listing every file and its SHA-256.
 
+**Built.** `argus version` (also `--version`, `-V`, `--json`) says the workspace's version, the revision, and the platform: `argus 0.0.1 (dev, windows x86_64)` from a checkout, the commit when `tools/release/stage.sh` built it (`ARGUS_REVISION`, with `-dirty` for uncommitted changes). The same `engine` object is in `session.status`; ARGUS.md's first line names it; `build.json` has it; saves, reports, and marks record the engine's version beside the game's code revision. The staged install's `manifest.json` lists every file with its size and SHA-256. Tags and archives come with item 5.
+
 ## 1. Game runtimes in the install
 
 - A prebuilt game runtime for each platform: `argus-game` with every module but Steam, and a Steam variant. A game without Steam must not need Steam's library.
@@ -30,10 +32,24 @@ After phase 5, Argus runs only where it was built: a clone of the private reposi
 - A release for the other platform (Linux from Windows) takes that platform's runtime from the install, so an install carries the runtimes of every supported platform, or fetches them on demand.
 - Plugins: the runtime loads a game's plugin libraries as the daemon does, built with the installed SDK. Rust is needed for those alone, and `argus build` says so.
 
+**Built.** One game executable serves any game: both runtimes (`argus-game` and the web module) now take the game's code revision from its packs, not from a value compiled in, and every engine module but Steam checks at run time whether the game's `argus.toml` asks for it, so a runtime with the rigid-body module compiled in plays a game without it unchanged. An install's `runtime/` (beside `bin/`, or `$ARGUS_RUNTIME`) holds `<os>/standard/` (every module but Steam), `<os>/steam/` (with Steam's library beside it), and `web/`, each with a `runtime.json` (version, revision, variant, modules) that `argus build` checks against itself: a runtime from another version is refused with a reinstall hint, a game that names a module the runtime lacks is refused, and a missing variant says which ones are there (`crates/argus-cli/src/runtime.rs`). From an install, `argus build` compiles nothing for the game; from a checkout, with `--from-source`, or with `$ARGUS_ENGINE`, it compiles as before. A release for the other desktop platform is made from that platform's runtime, and its executable is not run here (the packs' check stands for it, and `build.json` says so); a game with Rust plugins is released on its own platform. `tools/release/stage.sh` builds an install for this platform (the programs, both runtimes, the web runtime, the manifest), and `tools/release/check.sh` releases every example from it with cargo off the PATH, Swarm included: without cargo it must say that its plugin needs Rust, and with cargo it is released. Fetching the other platform's runtimes is item 5's.
+
 ## 2. `argus new`, and a project an agent can start in
 
 - `argus new <dir> [--template blank|platformer|roguelike|arena|colony]`: a working project from a template (the four games trimmed to a start), its first scenario passing.
 - Each new project gets its ARGUS.md, and an `AGENTS.md` and a `CLAUDE.md` that point at it and at `argus docs`, so any agent knows where to read first.
+
+**Built, with the blank template.** `argus new <dir> [--template t] [--name n] [--no-git]` copies a template from the install's `templates/` (or `$ARGUS_TEMPLATES`, or the checkout's), names the game, makes it a git repository unless it is inside one, and runs its scenarios in a daemon in its own process: it says done only when they pass, and no daemon is left running. Then it writes ARGUS.md from that daemon, an `AGENTS.md` (what Argus is, read ARGUS.md first, `argus docs`, where things live, `argus test` before done, `argus build`), and a `CLAUDE.md` that imports it (`@AGENTS.md`). Five templates, each under 35 KB, with no plugins and no modules:
+
+| Template | From | The start | Scenarios |
+|---|---|---|---|
+| blank | | a square that walks over a floor | 1 |
+| platformer | Hollow | run, jump a pit and spikes, three coins, climb a ledge to a flag; the pit and spikes send the hero back | 4 |
+| roguelike | Delve | a turn a key press on a hand-drawn map, rats and goblins that chase by the hero's flow field and bite, bump to attack, death and a new run | 4 (8 runs) |
+| arena | Swarm | walk and auto-fire, waves from the edges that chase (in Luau: Swarm's own chase is a plugin), touch damage with grace, game over and restart | 4 (8 runs) |
+| colony | Outpost | four colonists take jobs over the navigation grid (berries, wood, hauling, eating), a day a minute, a pause and three speeds | 4 (8 runs) |
+
+Four AI agents (Opus 5.5) wrote the game templates in parallel from the games, each in its own folder with the game read-only, and each broke its own rules in a copy to see its scenarios fail. `argus-cli`'s `new` test makes a project from every template and runs its scenarios, so a template that stops working fails CI. The gaps the agents met in the docs are listed for the next round of fixes: the file formats (scene, entity, prefab, input, tilemap) are not in `argus docs`, nor the engine's component fields outside a project's ARGUS.md; a `Parent` does nothing without a `GlobalTransform`; a `NavAgent` with no goal walks to (0,0); `q.time` runs on while `q:freeze()` pauses; `observe` and `obs.frame` disagree about the default format; and a few smaller ones.
 
 ## 3. MCP for the local clients
 
@@ -51,20 +67,28 @@ After phase 5, Argus runs only where it was built: a clone of the private reposi
 - `argus mcp setup` with no client lists the ones it finds installed. Each file's location is checked against the client's own docs when the item is built, since these move.
 - A project-free MCP mode for the user-level clients: `argus mcp` with no project offers the projects it knows (recent, or under a folder), opens one, and makes a new one, so one global entry serves every project.
 
+**Built.** Each client's file was checked against its docs on 2026-10-09 (the table above held, with two additions: Claude Desktop installed from the Microsoft Store reads a copy inside its package folder, which setup writes too, and VS Code now also reads a "portable" `.mcp.json`, which is newer than `.vscode/mcp.json`, so setup keeps to the latter, which every VS Code with MCP reads). `argus mcp setup <client>` edits the file as text, putting in or replacing the one `argus` entry and leaving the rest as it was, its order, spacing, and comments; a second run changes nothing; a changed file is kept beside it as `<file>.argus-backup`. The command is this program's own path, since an agent host may not start from a shell. A project entry opens that project; a user entry opens none unless `--project` names one, and Claude Code's user entry goes through `claude mcp add-json` when `claude` is here. A Gemini project also gets a `GEMINI.md` that imports AGENTS.md. With no project, `argus mcp` starts on none, and three more tools (beside the engine's) list the projects (`projects`: the open one, the recent ones, the templates, those under a folder), open one (`open_project`), or make one from a template and open it (`new_project`); the engine's tools then work on it. A project is remembered when any `argus` command connects to it or `argus new` makes it, in Argus's own data folder (`projects.json`), unless it is in the temp folder. `argus projects` lists them from a shell. Still to check: Claude Code connected for real (the gate).
+
 ## 4. Claude Desktop in one click
 
 - `argus.mcpb`, an MCP Bundle (manifest_version 0.3, server type `binary`), built with each Windows release. It asks for the project folder (a `directory` setting) and runs the bundled `argus mcp`. Double-clicking it installs it.
+
+**Built; installing it in Claude Desktop is the gate's.** `python tools/release/mcpb.py` makes `argus-<version>.mcpb` from a staged install, to the MCPB schema as published on 2026-10-09: `bin/argus.exe` and `templates/` (14 MB; the runtimes stay out, since no MCP tool builds a release), a manifest with the server's own tools (asked of the staged argus's `tools/list`), and an optional `directory` setting for the project. Left empty, it reaches the server as `--project ""`, which now means no project, so the server starts on none and offers them. Run as Claude Desktop runs it (unpacked, its `${__dirname}` and `${user_config.project}` filled in), it started on no project, made a game with `new_project` from its own templates (the scenario passing), and answered `query` on it.
 
 ## 5. The release pipeline
 
 - `tools/release/`: builds the Windows archive here and the Linux one on klab, checks them (each runtime builds and runs a game; the editor starts headless), writes the manifest and checksums, and makes a GitHub release on the private repository with `gh`.
 - klab as a second self-hosted runner, so a release is one workflow. Installing the runner is a download, so it is Kevin's to allow.
 
+**Written, not yet run.** `tools/release/release.sh` makes a release from this machine with klab over ssh, so klab needs no GitHub access and no runner: it stages and checks the Windows install here, sends the commit to klab as a git bundle (`~/argus-release`), stages and checks the Linux install there, gives each install the other's runtimes and the web one (rewriting the manifests, `tools/release/manifest.sh`), and writes the Windows zip, the Linux tar.gz, the Claude Desktop bundle, the two installers, and `SHA256SUMS` to `target/release/v<version>/`; with `--publish`, a draft GitHub release on the private repository. Waiting on Kevin for the first run: the build on klab is a long one, and the release is the repository's first.
+
 ## 6. Installing and updating
 
 - `install.ps1` and `install.sh`: fetch the latest release from the private repository with a GitHub token (`gh auth token`, or `GITHUB_TOKEN`), check the checksums, install for the user alone (`%LOCALAPPDATA%\Argus`, `~/.local/share/argus` with `~/.local/bin`), and put `argus` on the PATH.
 - `argus self-update` (the same, in place, keeping the old version until the new one starts) and `argus uninstall`.
 - What a machine needs, said up front: a GPU driver with DX12 or Vulkan, or the software rasteriser (WARP is in Windows; Linux needs Mesa's lavapipe). On Linux, ALSA and X11 or Wayland libraries. Kept as few as the build allows.
+
+**Built; the download and the PATH are checked on clean machines (item 7).** `tools/release/install.ps1` and `install.sh` install from a release (the GitHub API with a token, the archive checked against `SHA256SUMS` before anything moves) or from an archive already here (`-Archive`, `--archive`). They unpack beside the install, check the new `argus version` starts, swap `app` for it (the old one is put back if it does not start, and removed once it does), stop daemons running from the old one, and put `app\bin` on the user PATH (`~/.local/bin` links on Linux), writing the PATH only to add or remove that one entry. The staged install carries its installer, and `argus self-update [version]` and `argus uninstall` run it: on Windows the installer waits for this argus to exit, since a running program holds its folder; a checkout's argus says it updates with git pull instead. Tried here on a staged archive in a scratch folder: install, then with only the system folders on the PATH (no git, no cargo), `argus new`, `argus test`, and `argus build` from the installed runtime, the release checked and run; an upgrade over it; `argus uninstall` (gone in 1.5 s, the project kept, the user PATH unchanged).
 
 ## 7. Clean machines
 
@@ -81,6 +105,8 @@ After phase 5, Argus runs only where it was built: a clone of the private reposi
 
 - `docs/install.md`: installing, the first project, connecting each client, releasing a game.
 - The README's top says what Argus is and how to install it, before the build history.
+
+**Written.** `docs/install.md`: what a machine needs, installing (from a release with the GitHub CLI, or from an archive), a first game and the templates, connecting each AI tool (with what to do next in each), releasing a game, updating and uninstalling, and what to do when something is wrong. The README now starts with how to use it, and its history has a Distribution section. Both describe the release commands as they will be once the first release exists (item 5).
 
 ## The gate
 

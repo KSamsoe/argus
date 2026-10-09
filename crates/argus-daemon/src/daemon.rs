@@ -47,8 +47,28 @@ mod tuning;
 /// Identifies a client connection for subscriptions.
 pub type ConnId = u64;
 
-/// Protocol version string.
-pub const VERSION: &str = "0.0.1";
+/// The engine's version: the workspace's, one for the CLI, the daemon, the
+/// editor, and the game runtimes (distribution item 0).
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// The source this was built from: the commit (with `-dirty` for
+/// uncommitted changes) for a staged release, which
+/// `tools/release/stage.sh` sets as `ARGUS_REVISION`, else "dev".
+pub const REVISION: &str = match option_env!("ARGUS_REVISION") {
+    Some(r) => r,
+    None => "dev",
+};
+
+/// The version, the revision, and the platform, as `argus version --json`
+/// says them.
+pub fn version_json() -> Json {
+    json!({
+        "version": VERSION,
+        "revision": REVISION,
+        "os": std::env::consts::OS,
+        "arch": std::env::consts::ARCH,
+    })
+}
 
 struct Session {
     root: PathBuf,
@@ -1596,7 +1616,9 @@ impl Daemon {
 
     fn session_status(&self) -> Json {
         match &self.session {
-            None => json!({ "project": null, "scene": null, "playing": false }),
+            None => {
+                json!({ "project": null, "scene": null, "playing": false, "engine": version_json() })
+            }
             Some(s) => {
                 let mut st = self.sim_status();
                 st["project"] = json!(s.project.config.name);
@@ -1611,6 +1633,7 @@ impl Daemon {
                 st["index_error"] = json!(s.index_error);
                 // The queue an agent works through (section 10).
                 st["marks_open"] = json!(marks::open_count(&s.root));
+                st["engine"] = version_json();
                 st
             }
         }
@@ -1619,6 +1642,7 @@ impl Daemon {
     fn capabilities(&self) -> Json {
         json!({
             "version": VERSION,
+            "revision": REVISION,
             "phase": 0,
             "transports": ["stdio", "local-socket"],
             "methods": docs::METHODS.iter().map(|m| json!({

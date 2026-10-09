@@ -1,0 +1,20 @@
+# The flag at the end, on the ledge: touching it finishes the run
+# (systems/goal.luau). This entity is the pole and the touch; the cloth is
+# goal.flag.toml, a child placed relative to it.
+[Transform]
+pos = [46.0, 4.0]
+
+[Sprite]
+kind = "rect"
+size = [0.2, 3.0]
+color = "#E8E8E8"
+z = 1.0
+
+[Collider]
+size = [0.8, 3.0]
+
+[Goal]
+
+[Describe]
+name = "flag"
+text = "The end of the level."

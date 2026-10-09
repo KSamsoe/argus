@@ -1,0 +1,5 @@
+# The scene: one TOML file per entity in this folder, its name the
+# entity's id (colony.toml is @colony). The seed decides what the scripts'
+# random streams draw (how much a bush gives); a scenario can run others.
+clock = "continuous@60"
+seed = 1

@@ -1,0 +1,4 @@
+name = "blank"
+clock = "continuous@60"
+default_scene = "main"
+plugins = []

@@ -1,0 +1,26 @@
+# The camera: follows the hero (target) and keeps its view inside the
+# scene's bounds (scene.toml). The hero moves inside the dead zone without
+# moving the camera; past it the camera catches up over smoothing seconds
+# and looks a little ahead the way the hero runs. height is how many world
+# units show top to bottom: lower is closer.
+[Transform]
+pos = [3.0, 3.0]
+
+[Camera]
+height = 12.0
+target = "@player"
+offset = [0.0, 1.5]
+dead_zone = [1.5, 1.0]
+lookahead = [0.25, 0.0]
+
+# A hazard flashes the screen red and shakes it (systems/hazards.luau emits
+# hero.hurt). Delete these two to have none.
+[PostFlash]
+on = "hero.hurt"
+color = "#FF3030"
+peak = 0.45
+decay = 2.0
+
+[PostShake]
+on = "hero.hurt"
+trauma = 0.6

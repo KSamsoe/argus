@@ -1,0 +1,13 @@
+# The first ground, x 1 to 16, its top at y 0. A block is placed by its
+# centre: pos is the middle, size the whole width and height. Keep the
+# Sprite and the Collider the same size.
+prefab = "platform"
+
+[Transform]
+pos = [8.5, -2.0]
+
+[Sprite]
+size = [15.0, 4.0]
+
+[Collider]
+size = [15.0, 4.0]

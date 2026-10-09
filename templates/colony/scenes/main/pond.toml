@@ -1,0 +1,17 @@
+# A pond: water nobody walks through. NavCost with cost 0 blocks the grid's
+# cells under its size, so colonists going to the trees walk around it.
+[NavCost]
+cost = 0
+size = [5.0, 4.0]
+
+[Transform]
+pos = [22.0, 12.5]
+
+[Sprite]
+kind = "rect"
+size = [5.0, 4.0]
+color = "#3A6EA5"
+z = -4.0
+
+[Describe]
+name = "pond"

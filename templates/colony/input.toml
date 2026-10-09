@@ -1,0 +1,36 @@
+# The player's actions and the keys and buttons bound to them. Scripts
+# read an action by name on the colony's Actions (a.pause_pressed); a
+# player can rebind them. The colonists need no input: they choose their
+# own jobs.
+
+[actions.pause]
+type = "button"
+doc = "Pause the colony, or go on"
+[actions.pause.bindings]
+keyboard = ["space", "p"]
+gamepad = ["start"]
+
+[actions.speed]
+type = "button"
+doc = "Play faster: 1x, 3x, 10x, then 1x again"
+[actions.speed.bindings]
+keyboard = ["f"]
+gamepad = ["north"]
+
+# The camera's: the engine's Camera reads these by name (scenes/main/camera.toml).
+[actions.pan]
+type = "axis2"
+doc = "Move the view"
+[actions.pan.bindings]
+keyboard = ["wasd", "arrows"]
+gamepad = ["left_stick"]
+
+[actions.zoom]
+type = "axis"
+doc = "Zoom in and out"
+[actions.zoom.bindings]
+keyboard = ["minus/equal"]
+gamepad = ["right_y"]
+
+[slots.1]
+devices = ["keyboard", "mouse", "gamepad:0"]

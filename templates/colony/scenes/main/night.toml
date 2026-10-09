@@ -1,0 +1,14 @@
+# The dark at night: a see-through sheet over the meadow, drawn over
+# everything in the world (z). systems/day.luau sets how dark it is.
+[Transform]
+pos = [15.5, 8.5]
+
+[Sprite]
+kind = "rect"
+size = [200.0, 200.0]
+color = "#0B163000"
+z = 50.0
+
+# Not a thing in the world: the semantic frame and a screen reader leave it out.
+[Describe]
+hidden = true

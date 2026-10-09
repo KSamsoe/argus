@@ -1,0 +1,10 @@
+# The sky: one big rect behind everything (lowest z), the size of the
+# scene's bounds.
+[Transform]
+pos = [24.5, 4.0]
+
+[Sprite]
+kind = "rect"
+size = [49.0, 16.0]
+color = "#1E2A3A"
+z = -10.0

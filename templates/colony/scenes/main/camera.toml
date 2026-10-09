@@ -1,0 +1,12 @@
+# The view: the whole meadow. The pan and zoom actions (input.toml) move it.
+[Transform]
+pos = [15.5, 9.0]
+
+[Camera]
+height = 20.0
+pan_action = "pan"
+pan_speed = 0.8
+zoom_action = "zoom"
+zoom_min = 6.0
+zoom_max = 40.0
+bounded = false

@@ -1,0 +1,13 @@
+# The ledge, x 36 to 48, its top at y 2.5: too high to walk up
+# (CharacterController.step_height is 0.3), low enough to jump up to
+# (jump_height is 3.2). The flag stands on it.
+prefab = "platform"
+
+[Transform]
+pos = [42.0, -0.75]
+
+[Sprite]
+size = [12.0, 6.5]
+
+[Collider]
+size = [12.0, 6.5]

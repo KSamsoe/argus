@@ -1,0 +1,11 @@
+# The left wall: the hero cannot run off the start of the level.
+prefab = "platform"
+
+[Transform]
+pos = [0.5, 4.0]
+
+[Sprite]
+size = [1.0, 16.0]
+
+[Collider]
+size = [1.0, 16.0]

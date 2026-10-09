@@ -1,0 +1,20 @@
+# The arena: the floor you see is also the walls. Its Sprite's size is the
+# arena's size: the hero is kept inside it (sim.move) and enemies come in
+# from its edges (sim.waves). Make it bigger here, and make the wall
+# (wall.toml) and the camera's height (camera.toml) bigger to match.
+#
+# It also holds the wave director: change the waves' numbers here.
+[Transform]
+pos = [0.0, 0.0]
+
+[Sprite]
+kind = "rect"
+size = [32.0, 18.0]
+color = "#1E2A30"
+z = 0.0
+
+[Waves]
+first = 6
+more = 4
+enemy_health = 2
+gap = 90

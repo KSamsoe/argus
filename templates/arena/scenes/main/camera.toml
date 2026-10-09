@@ -1,0 +1,9 @@
+# The camera: it stays still over the arena, high enough to show all of
+# it, and a little above its middle so the HUD has room at the top. To
+# follow the hero through a bigger arena instead, set target = "@player"
+# (and see Camera's dead_zone and smoothing in ARGUS.md).
+[Transform]
+pos = [0.0, 0.6]
+
+[Camera]
+height = 21.0

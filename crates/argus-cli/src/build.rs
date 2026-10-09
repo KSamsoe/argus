@@ -11,9 +11,13 @@
 //!
 //! Packs come from `argus_player::pack::build`: the import cache and
 //! compiled scripts. With `--since` (a previous build's directory) the game
-//! goes into a patch holding only what changed, beside the old packs. The
-//! executable is built from the engine's source with cargo, for the machine
-//! it runs on: a Linux build is made on Linux, a macOS build on a Mac.
+//! goes into a patch holding only what changed, beside the old packs.
+//!
+//! The executable (or the page's module) is the install's prebuilt runtime
+//! (distribution item 1, `crate::runtime`): no compiler, and a Linux
+//! release can be made on Windows from the install's Linux runtime. From a
+//! checkout, or with `--from-source` or `$ARGUS_ENGINE`, it is built from
+//! the engine's source with cargo, for the machine it runs on.
 //!
 //! Before it says done, the build checks itself: the game from its packs
 //! must reach the same world as the project after the same ticks, and a
@@ -91,7 +95,7 @@ pub fn engine_dir() -> Result<PathBuf, String> {
     Ok(dir)
 }
 
-fn plain(p: &Path) -> String {
+pub(crate) fn plain(p: &Path) -> String {
     p.to_string_lossy().trim_start_matches(r"\\?\").to_string()
 }
 
@@ -244,25 +248,53 @@ fn build(inv: &Invocation, err: &mut dyn Write) -> Result<Json, String> {
             .ok_or_else(|| format!("no target {t:?}: windows, linux, macos, or web"))?,
         None => Target::host(),
     };
-    if target != Target::Web && target != Target::host() {
-        return Err(format!(
-            "a {} build is made on {}: the executable links that platform's window, audio, and gamepad libraries, so build it there (this machine builds {} and web)",
-            target.name(),
-            target.name(),
-            Target::host().name()
-        ));
-    }
     let root = crate::project::find_project(inv.project.as_deref())?;
     let root = root.canonicalize().unwrap_or(root);
-    let engine = engine_dir()?;
     let cfg = argus_scene::ProjectConfig::load(&root).map_err(|e| e.message)?;
+    // The install's runtime, unless this is engine work.
+    let from_source = inv.from_source
+        || std::env::var("ARGUS_ENGINE").is_ok_and(|d| !d.is_empty())
+        || crate::runtime::root().is_none();
+    let runtime = if from_source {
+        None
+    } else {
+        crate::runtime::find(target.name(), &cfg.modules)?
+    };
+    let native = target == Target::Web || target == Target::host();
+    if !native && runtime.is_none() {
+        return Err(format!(
+            "a {} build from source is made on {}: the executable links that platform's window, audio, and gamepad libraries, so build it there (this machine builds {} and web), or from an install with the {} runtime",
+            target.name(),
+            target.name(),
+            Target::host().name(),
+            target.name()
+        ));
+    }
+    if !native && !cfg.plugins.is_empty() {
+        return Err(format!(
+            "{} has Rust plugins ({}), which are compiled for the machine they run on, so its {} release is made on {}",
+            cfg.name,
+            cfg.plugins.join(", "),
+            target.name(),
+            target.name()
+        ));
+    }
+    let engine = match runtime {
+        Some(_) => None,
+        None => Some(engine_dir()?),
+    };
     let game = argus_player::save::folder_name(&cfg.name);
     let out_dir = inv
         .out
         .clone()
         .unwrap_or_else(|| root.join("dist").join(target.name()));
     let code = argus_daemon::daemon::code_version(&root);
-    let profile = if inv.release { "release" } else { "debug" };
+    // A runtime is built once, optimised.
+    let profile = if inv.release || runtime.is_some() {
+        "release"
+    } else {
+        "debug"
+    };
     if target == Target::Web && !cfg.plugins.is_empty() {
         return Err(format!(
             "{} has Rust plugins ({}), and the page cannot load a library, so the game has no web build: the browser runs its Luau only",
@@ -334,14 +366,25 @@ fn build(inv: &Invocation, err: &mut dyn Write) -> Result<Json, String> {
         "profile": profile,
         "out": plain(&out_dir),
         "code": code,
+        "engine": argus_daemon::daemon::version_json(),
         "packs": built.report,
         "written": written,
         "plugins": plugins,
+        "runtime": match (&runtime, &engine) {
+            (Some(rt), _) => rt.report(),
+            (None, Some(e)) => json!({ "prebuilt": false, "engine": plain(e) }),
+            (None, None) => Json::Null,
+        },
     });
-    match target {
-        Target::Web => {
+    match (target, &runtime, &engine) {
+        (Target::Web, Some(rt), _) => {
+            crate::runtime::place_web(rt, &out_dir)?;
+            packs_json(&out_dir, &built.packs, &code)?;
+            report["site"] = json!(plain(&out_dir));
+        }
+        (Target::Web, None, Some(engine)) => {
             web(
-                &engine,
+                engine,
                 &out_dir,
                 &built.packs,
                 &code,
@@ -351,33 +394,47 @@ fn build(inv: &Invocation, err: &mut dyn Write) -> Result<Json, String> {
             )?;
             report["site"] = json!(plain(&out_dir));
         }
-        _ => {
-            let exe = desktop(
-                &engine,
-                &out_dir,
-                &game,
-                &code,
-                inv.release,
-                &cfg.modules,
-                err,
-            )?;
-            // The executable, headless: the same world again.
-            let o = Command::new(&exe)
-                .arg("--headless")
-                .arg(CHECK_TICKS.to_string())
-                .output()
-                .map_err(|e| format!("{}: {e}", exe.display()))?;
-            let line = String::from_utf8_lossy(&o.stdout);
-            let said: Json = serde_json::from_str(line.trim()).map_err(|_| {
-                format!(
-                    "{} --headless did not answer: {}",
-                    exe.display(),
-                    String::from_utf8_lossy(&o.stderr).trim()
-                )
-            })?;
-            check["executable"] = said["status"]["digest"].clone();
-            check["save"] = said["save"].clone();
+        (_, rt, engine) => {
+            let exe = match (rt, engine) {
+                (Some(rt), _) => crate::runtime::place_desktop(rt, &out_dir, &game, target.name())?,
+                (None, Some(engine)) => desktop(
+                    engine,
+                    &out_dir,
+                    &game,
+                    &code,
+                    inv.release,
+                    &cfg.modules,
+                    err,
+                )?,
+                (None, None) => unreachable!("a build has a runtime or the engine's source"),
+            };
             report["executable"] = json!(plain(&exe));
+            if !native {
+                // Another platform's executable does not run here: the
+                // packs' check stands for it.
+                check["executable_run"] = json!(format!(
+                    "not run: a {} executable, made on {}",
+                    target.name(),
+                    Target::host().name()
+                ));
+            } else {
+                // The executable, headless: the same world again.
+                let o = Command::new(&exe)
+                    .arg("--headless")
+                    .arg(CHECK_TICKS.to_string())
+                    .output()
+                    .map_err(|e| format!("{}: {e}", exe.display()))?;
+                let line = String::from_utf8_lossy(&o.stdout);
+                let said: Json = serde_json::from_str(line.trim()).map_err(|_| {
+                    format!(
+                        "{} --headless did not answer: {}",
+                        exe.display(),
+                        String::from_utf8_lossy(&o.stderr).trim()
+                    )
+                })?;
+                check["executable"] = said["status"]["digest"].clone();
+                check["save"] = said["save"].clone();
+            }
         }
     }
     let plays = check["packs"] == check["project"]
@@ -752,6 +809,11 @@ fn web(
         std::fs::copy(engine.join("tools/web").join(f), out.join(f))
             .map_err(|e| format!("tools/web/{f}: {e}"))?;
     }
+    packs_json(out, packs, code)
+}
+
+/// `data/packs.json`: the packs the page loads, its languages, its code.
+fn packs_json(out: &Path, packs: &[Pack], code: &str) -> Result<(), String> {
     let names: Vec<String> = std::fs::read_dir(out.join("data"))
         .map_err(|e| e.to_string())?
         .flatten()

@@ -1,0 +1,16 @@
+# Dov, a woodcutter (the chop skill). A colonist is prefabs/colonist.toml plus
+# what this file sets. Their NavAgent's goal is where they stand, so they
+# wait there until they have a job.
+prefab = "colonist"
+
+[Colonist]
+name = "Dov"
+
+[Worker]
+skills = "chop"
+
+[Transform]
+pos = [16.0, 12.0]
+
+[NavAgent]
+goal = [16.0, 12.0]

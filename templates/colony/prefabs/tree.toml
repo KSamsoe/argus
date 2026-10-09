@@ -1,0 +1,24 @@
+# A tree: a Source of wood that only a colonist with the chop skill fells
+# (a chop job). Felled, it is a stump until it grows back. It blocks the
+# way (NavCost, cost 0), so a woodcutter works it from beside it.
+[Source]
+job_kind = "chop"
+gives = "wood"
+yield = 2.0
+regrow_days = 2.0
+ripe_color = "#1E4A24"
+bare_color = "#7A5A38"
+drop_color = "#8B5A2B"
+
+[NavCost]
+cost = 0
+
+[Sprite]
+kind = "circle"
+size = [0.9, 0.9]
+color = "#1E4A24"
+z = 1.0
+
+[Describe]
+name = "tree"
+text = "grown {Source.growth}"

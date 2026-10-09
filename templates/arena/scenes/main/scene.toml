@@ -1,0 +1,5 @@
+# The one scene. Each other file here is one entity, named by its file
+# (player.toml is @player). The seed starts every random stream; the tests
+# set their own.
+clock = "continuous@60"
+seed = 1

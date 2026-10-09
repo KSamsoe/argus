@@ -1,0 +1,31 @@
+# The colony: its rules (Colony), and its stockpile, where haulers bring
+# goods and the hungry come to eat. It is also where the player's actions
+# arrive (PlayerSlot, Actions): the pause and speed keys.
+#
+# To change first: the food it starts with, and how fast colonists get
+# hungry (Colony.hunger_per_day; the defaults are in components/colony.luau).
+[Colony]
+hunger_per_day = 1.0
+
+[Stockpile]
+food = 4.0
+wood = 0.0
+
+[PlayerSlot]
+slot = 1
+
+[Actions]
+
+[Transform]
+pos = [16.0, 9.0]
+
+[Sprite]
+kind = "rect"
+size = [3.0, 3.0]
+color = "#6B5B3E"
+z = -5.0
+
+# What the semantic frame (argus observe) and a screen reader say about it.
+[Describe]
+name = "stockpile"
+text = "food {Stockpile.food}, wood {Stockpile.wood}"

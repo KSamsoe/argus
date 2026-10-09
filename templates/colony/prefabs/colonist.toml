@@ -1,0 +1,24 @@
+# A colonist: what every scenes/main/colonist.*.toml file starts from (its
+# prefab), which then sets their name, skills, and place.
+#
+# Colonist is the game's (fed, hunger); Worker is the engine's job system
+# (skills, the job they have, why they are idle); NavAgent walks them over
+# the meadow's grid at speed (world units a second).
+[Colonist]
+fed = 1.0
+
+[Worker]
+skills = ""
+
+[NavAgent]
+speed = 4.0
+
+[Sprite]
+kind = "circle"
+size = [0.7, 0.7]
+color = "#F2E6C8"
+z = 5.0
+
+[Describe]
+name = "colonist"
+text = "{Colonist.name}, fed {Colonist.fed}: {Worker.idle}"

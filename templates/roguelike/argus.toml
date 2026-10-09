@@ -1,0 +1,6 @@
+name = "roguelike"
+# Discrete: the game moves one turn at a time, a turn for each key the
+# player presses (and `argus run turns=n` for an agent or a test).
+clock = "discrete"
+default_scene = "dungeon"
+plugins = []

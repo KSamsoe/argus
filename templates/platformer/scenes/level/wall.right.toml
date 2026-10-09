@@ -1,0 +1,11 @@
+# The right wall, behind the flag: the end of the level.
+prefab = "platform"
+
+[Transform]
+pos = [48.5, 4.0]
+
+[Sprite]
+size = [1.0, 16.0]
+
+[Collider]
+size = [1.0, 16.0]

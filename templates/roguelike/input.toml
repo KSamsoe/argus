@@ -1,0 +1,35 @@
+# The player's actions, and the keys and buttons bound to them. Scripts
+# read an action by name on the hero's Actions component (a.move,
+# a.wait_pressed); a player can rebind them. On the discrete clock every
+# press of a bound key is one turn, and letting go of it is nothing.
+
+[actions.move]
+type = "axis2"
+doc = "Step one cell; walking into a monster attacks it. One step is one turn"
+[actions.move.bindings]
+keyboard = ["arrows", "wasd"]
+gamepad = ["dpad"]
+
+[actions.wait]
+type = "button"
+doc = "Stand still for a turn; the monsters still act"
+[actions.wait.bindings]
+keyboard = ["period", "space"]
+gamepad = ["east"]
+
+[actions.restart]
+type = "button"
+doc = "Start a new run (after the hero dies, or any time)"
+[actions.restart.bindings]
+keyboard = ["r"]
+gamepad = ["south"]
+
+[actions.pause]
+type = "button"
+doc = "Pause or go on; while paused no turn passes"
+[actions.pause.bindings]
+keyboard = ["escape"]
+gamepad = ["start"]
+
+[slots.1]
+devices = ["keyboard", "mouse", "gamepad:0"]
