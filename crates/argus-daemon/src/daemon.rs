@@ -248,6 +248,8 @@ pub struct Daemon {
     platform_cfg: argus_platform::PlatformConfig,
     /// The project the platform is for.
     platform_root: Option<PathBuf>,
+    /// Where the web client is served, when it is (phase 5 item 10).
+    web: Option<std::net::SocketAddr>,
 }
 
 impl Default for Daemon {
@@ -309,6 +311,7 @@ impl Daemon {
             platform: argus_platform::NullPlatform::new(),
             platform_cfg: argus_platform::PlatformConfig::default(),
             platform_root: None,
+            web: None,
         }
     }
 
@@ -549,6 +552,7 @@ impl Daemon {
             "input.bind" => self.input_bind(params),
             "input.devices" => Ok(self.input_devices()),
             "platform.status" => self.platform_status(),
+            "token.issue" | "token.list" | "token.revoke" => self.token_call(conn, method, params),
             "platform.overlay" => self.platform_overlay(params),
             "platform.reset" => self.platform_reset(params),
             "input.state" => {
@@ -4860,6 +4864,67 @@ impl Daemon {
         self.from_ticks = false;
         self.events.through = self.events.through.max(self.world.frame());
         self.answer_save_requests();
+    }
+
+    /// Serve the web client at this address (the server says where it
+    /// bound).
+    pub fn set_web(&mut self, addr: Option<std::net::SocketAddr>) {
+        self.web = addr;
+    }
+
+    /// `token.issue {scope, hours, label}`, `token.list`, `token.revoke
+    /// {id}` (section 5: remote access "through a token issued by `argus
+    /// token` with a scope (observe, review, edit) and an expiry"; phase 5
+    /// item 10). A client on this machine only: a browser's call is refused
+    /// before it gets here, and refused here too.
+    fn token_call(&mut self, conn: ConnId, method: &str, params: &Json) -> Result<Json> {
+        use crate::web::tokens;
+        if conn >= crate::web::WEB_CONN_BASE {
+            return Err(ArgusError::new(
+                codes::FORBIDDEN,
+                format!("{method} is the daemon's own: only a client on this machine makes it"),
+            ));
+        }
+        let root = self.require_session()?.root.clone();
+        match method {
+            "token.issue" => {
+                let scope_name = json::opt_str(params, "scope")?.unwrap_or("review");
+                let scope = tokens::Scope::parse(scope_name).ok_or_else(|| {
+                    bad_params(format!("scope {scope_name:?}: observe, review, or edit"))
+                })?;
+                let hours = params.get("hours").and_then(Json::as_f64).unwrap_or(12.0);
+                let label = json::opt_str(params, "label")?.unwrap_or("");
+                let (secret, t) = tokens::issue(&root, scope, hours, label)?;
+                let url = self.web.map(|w| format!("http://{w}/#t={secret}"));
+                Ok(json!({
+                    "token": secret,
+                    "id": t.id,
+                    "scope": scope.name(),
+                    "label": t.label,
+                    "expires_at": t.expires_at,
+                    "url": url,
+                    "hint": if url.is_some() {
+                        "Open the url on the phone or tablet (on this machine's tailnet). The token is shown once; token.revoke {id} ends it."
+                    } else {
+                        "No web client is served: argus daemon start --web tailnet (or --web for this machine only) serves it."
+                    },
+                }))
+            }
+            "token.list" => {
+                let now = tokens::now();
+                let rows: Vec<Json> = tokens::load(&root).iter().map(|t| t.row(now)).collect();
+                Ok(json!({
+                    "total": rows.len(),
+                    "rows": rows,
+                    "web": self.web.map(|w| format!("http://{w}/")),
+                }))
+            }
+            _ => {
+                let id = json::opt_str(params, "id")?
+                    .ok_or_else(|| bad_params("token.revoke needs the token's id (token.list)"))?;
+                Ok(json!({ "id": id, "revoked": tokens::revoke(&root, id)? }))
+            }
+        }
     }
 
     /// `platform.status`: the null platform, the game's achievements on it,

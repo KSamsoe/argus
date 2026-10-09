@@ -357,6 +357,7 @@ dependencies = [
  "argus-timeline",
  "argus-tween",
  "argus-ui",
+ "getrandom 0.2.17",
  "interprocess",
  "serde_json",
  "toml_edit 0.22.27",

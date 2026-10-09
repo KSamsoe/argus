@@ -150,8 +150,13 @@ pub fn start(root: &Path, inv: &Invocation, err: &mut dyn Write) -> Result<Json,
     if !inv.mods.is_empty() {
         cmd.arg("--mods").arg(inv.mods.join(","));
     }
+    if let Some(w) = &inv.web {
+        // Refused here, not after the wait for a daemon that will not come.
+        argus_daemon::web::parse_addr(w).map_err(|e| format!("--web: {e}"))?;
+        cmd.arg("--web").arg(w);
+    }
     detach(&mut cmd);
-    let child = cmd
+    let mut child = cmd
         .spawn()
         .map_err(|e| format!("cannot start the daemon: {e}"))?;
     let pid = child.id();
@@ -166,6 +171,17 @@ pub fn start(root: &Path, inv: &Invocation, err: &mut dyn Write) -> Result<Json,
     let deadline = Instant::now() + Duration::from_secs(30);
     while Instant::now() < deadline {
         std::thread::sleep(Duration::from_millis(50));
+        // A daemon that stopped (a web port another daemon has, a scene
+        // that does not load) says why in its log's last line.
+        if let Ok(Some(status)) = child.try_wait() {
+            let said = std::fs::read_to_string(log_dir.join("daemon.log")).unwrap_or_default();
+            let last = said
+                .lines()
+                .rev()
+                .find(|l| !l.trim().is_empty())
+                .unwrap_or("");
+            return Err(format!("the daemon stopped ({status}): {last}"));
+        }
         if let Some(info) = daemon_info(root) {
             if info["pid"].as_u64() == Some(pid as u64) && Client::connect(&socket).is_ok() {
                 return Ok(info);
@@ -316,6 +332,14 @@ pub fn daemon_command(
                     return EXIT_USAGE;
                 }
             };
+            let web = match inv.web.as_deref().map(argus_daemon::web::parse_addr) {
+                Some(Ok(a)) => Some(a),
+                Some(Err(e)) => {
+                    let _ = writeln!(err, "argus: --web: {e}");
+                    return EXIT_USAGE;
+                }
+                None => None,
+            };
             launch(Launch {
                 project: Some(root),
                 scene: inv.scene.clone(),
@@ -324,6 +348,7 @@ pub fn daemon_command(
                 window: inv.window,
                 play: inv.play,
                 mods: inv.mods.clone(),
+                web,
             })
         }
         "start" => {

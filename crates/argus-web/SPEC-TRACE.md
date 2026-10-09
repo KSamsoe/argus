@@ -56,6 +56,12 @@ Every statement in the design document (v0.3) that constrains the web spike (pha
 | (§12) The semantic frame read by the player's screen reader, in the page. | Done | `tools/web/main.js` reads `semantic` every ten frames into hidden HTML the browser's screen reader reads: the canvas an application named for the game, a button for each of the frame's UI buttons with its words, the focused one's words in a polite live region, the HUD's lines in another. A button pressed there is the pointer on it and `ui_click`, recorded input. | `tools/web/check.mjs` (`reader`: Hollow's menu as buttons, the focus said, Controls pressed through the mirror) |
 | Settings that last between launches. | Done | `WebPlayer::apply_settings` (before the recorder starts again) and `settings_changed`; the page keeps the text in the browser's storage (`argus:<game>:settings`). | `argus-player` `tests/release_settings.rs` (the same `Store`) |
 
+## Phase 5, item 10: the sound in an AudioWorklet
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (Carried in.) Web audio in an AudioWorklet. | Done | `WebPlayer::open_worklet(rate)` and `audio_pull(frames)`. `tools/web/main.js` opens an AudioContext on the first key or click, adds the worklet (`argus-out`, from a blob), and keeps its queue about 100 ms deep (`?audio_ms=`) with a block every 10 ms; the worklet plays on the browser's audio thread and counts the 128-frame blocks it could not fill. With no AudioWorklet (not a secure context) or `?cpal`, cpal's Web Audio output as before. Measured at 48 kHz: no block short while running or through three 60 ms stalls of the page's thread; 75 through three 150 ms stalls. | `tools/web/check.mjs` (`audio.worklet`; the check fails if the sound opens another way or runs short while the page runs) |
+
 ## Known limitations, stated so they are decisions
 
 - `Player::open` copies the daemon's `open_scene`. Item 7 shares one assembly.

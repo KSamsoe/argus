@@ -672,3 +672,39 @@ fn a_change_waits_for_the_bar_and_starts_on_it() {
     .unwrap_err();
     assert!(bad.message.contains("needs a bpm"), "{bad:?}");
 }
+
+/// Phase 5 item 10: the web player's AudioWorklet is an output the host
+/// drives. Opening it rebuilds the sounds at its rate, it is the device's
+/// name, its blocks are the mixer's, and while the game is not playing
+/// they are silence and the mixer waits.
+#[test]
+fn an_external_output_runs_the_mixer_at_its_rate_and_pulls_its_blocks() {
+    let dir = project("external", TOML);
+    let (w, _) = world_with_listener();
+    let mut e = AudioEngine::load(&dir, 1).unwrap();
+    e.open_external(44_100, "AudioWorklet");
+    assert_eq!(e.rate(), 44_100);
+    assert_eq!(e.device_name().as_deref(), Some("AudioWorklet"));
+    e.request(
+        &w,
+        "sound.play",
+        &[("sound".into(), Value::Str("ui/click".into()))],
+    );
+    let mut block = vec![0.0f32; 4410 * 2];
+    e.pull(&mut block);
+    assert!(peak(&block, 0) > 0.01, "{}", peak(&block, 0));
+    assert_eq!(e.rendered_frames(), 4410);
+
+    e.set_hold(true);
+    let mut held = vec![1.0f32; 128 * 2];
+    e.pull(&mut held);
+    assert!(held.iter().all(|s| *s == 0.0));
+    assert_eq!(e.rendered_frames(), 4410, "held, the mixer waits");
+    e.set_hold(false);
+
+    // The click is 300 ms at 44.1 kHz: 13230 frames, then no voice.
+    let mut rest = vec![0.0f32; 9000 * 2];
+    e.pull(&mut rest);
+    assert_eq!(e.voices(), 0);
+    std::fs::remove_dir_all(&*dir).ok();
+}

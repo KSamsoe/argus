@@ -31,6 +31,7 @@ pub use argus_player::replay;
 pub mod ring;
 pub mod rpc;
 pub mod server;
+pub mod web;
 
 pub use daemon::{ConnId, Daemon};
 pub use docs::{MethodDoc, METHODS};
@@ -73,6 +74,10 @@ pub mod codes {
     /// A review request that cannot be asked (its frames are gone from the
     /// ring) or answered (it was answered already).
     pub const BAD_REVIEW: u32 = 4716;
+    /// A web connection's token does not allow the call (its scope), or
+    /// the call is the daemon's own (tokens, another project, a window on
+    /// this machine); phase 5 item 10.
+    pub const FORBIDDEN: u32 = 4717;
     /// The renderer's: this machine has no graphics adapter at all, not
     /// even a software one (argus-render's 5001, here for clients that
     /// build without the renderer).

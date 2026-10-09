@@ -55,6 +55,9 @@ argus-audio = { path = "../argus-audio", version = "0.0.1", optional = true }
 serde_json = "1"
 toml_edit = "0.22"
 interprocess = "2"
+# The operating system's randomness, for the web client's tokens (phase 5
+# item 10; already in the tree).
+getrandom = "0.2"
 
 [dev-dependencies]
 # The player with its renderer and mixer, to check a web mark against this

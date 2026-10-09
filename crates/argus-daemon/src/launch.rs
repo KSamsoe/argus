@@ -3,7 +3,7 @@
 //! the binary cannot drift in how a project is opened.
 
 use crate::daemon::daemon_info_path;
-use crate::{serve, socket_name_for, Daemon, Transport};
+use crate::{socket_name_for, Daemon, Transport};
 use serde_json::json;
 use std::path::PathBuf;
 
@@ -27,6 +27,9 @@ pub struct Launch {
     /// Mods from the project's `mods/` to open with, in load order
     /// (phase 3 item 8).
     pub mods: Vec<String>,
+    /// Serve the web client and the protocol over a WebSocket here too
+    /// (phase 5 item 10): this machine or its tailnet only.
+    pub web: Option<std::net::SocketAddr>,
 }
 
 /// Open the project (if any), announce on stderr, serve until told to
@@ -107,7 +110,12 @@ pub fn launch(l: Launch) -> i32 {
         eprintln!("argusd: listening on {name}");
     }
     let is_socket = matches!(transport, Transport::Socket(_));
-    let code = match serve(daemon, transport, root.as_deref()) {
+    if let Some(w) = l.web {
+        eprintln!(
+            "argusd: the web client at http://{w}/ (argus token issue scope=review makes its link)"
+        );
+    }
+    let code = match crate::server::serve_with(daemon, transport, root.as_deref(), l.web) {
         Ok(()) => 0,
         Err(e) => {
             eprintln!("argusd: {e}");

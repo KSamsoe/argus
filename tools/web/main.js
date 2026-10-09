@@ -4,10 +4,58 @@
 //
 // Query parameters: scene, seed; lang (a language pack); webgl (force
 // WebGL2); paused (draw but do not advance: how the headless checks step
-// the sim exactly).
+// the sim exactly); audio_ms (the sound queue's depth); cpal (the sound
+// through cpal's Web Audio output, not the AudioWorklet).
 import init, { WebPlayer, open_renderer } from "./pkg/argus_web.js";
 
 const q = new URLSearchParams(location.search);
+
+// The sound's AudioWorklet (phase 5 item 10): plays the blocks the page
+// posts, in order, on the browser's audio thread; counts the render quanta
+// it could not fill once it has started (underruns); says how much it has
+// played, which is how deep the page keeps the queue.
+const WORKLET = `
+class Out extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.q = [];
+    this.at = 0;
+    this.played = 0;
+    this.under = 0;
+    this.started = false;
+    this.n = 0;
+    this.port.onmessage = (e) => this.q.push(e.data);
+  }
+  process(inputs, outputs) {
+    const [l, r] = outputs[0];
+    let i = 0;
+    while (i < l.length && this.q.length) {
+      const b = this.q[0];
+      const take = Math.min(l.length - i, (b.length - this.at) / 2);
+      for (let k = 0; k < take; k++) {
+        l[i + k] = b[this.at + 2 * k];
+        if (r) r[i + k] = b[this.at + 2 * k + 1];
+      }
+      i += take;
+      this.at += take * 2;
+      this.played += take;
+      if (this.at >= b.length) {
+        this.q.shift();
+        this.at = 0;
+      }
+    }
+    if (i < l.length) {
+      l.fill(0, i);
+      if (r) r.fill(0, i);
+      if (this.started) this.under++;
+    }
+    if (i > 0) this.started = true;
+    if (++this.n % 8 === 0) this.port.postMessage({ played: this.played, under: this.under });
+    return true;
+  }
+}
+registerProcessor("argus-out", Out);
+`;
 const status = document.getElementById("status");
 const said = document.getElementById("said");
 const canvas = document.getElementById("game");
@@ -118,16 +166,64 @@ try {
   let run = !q.has("paused");
 
   // A browser lets a page make sound only once the player has pressed a
-  // key or clicked, so the first of those opens the audio.
+  // key or clicked, so the first of those opens the audio. It plays on the
+  // browser's audio thread, in an AudioWorklet, from a queue this page keeps
+  // about 100 ms deep (?audio_ms= for another depth), so a slow frame here
+  // does not starve it while the queue lasts (phase 5 item 10). Where there
+  // is no AudioWorklet (a page over plain http from another machine is not
+  // a secure context), or with ?cpal, cpal's Web Audio output plays it,
+  // whose buffers this thread schedules.
+  const sound = { mode: "none", rate: 0, depth_ms: Number(q.get("audio_ms") ?? 100), sent: 0, played: 0, under: 0 };
+  let out = null;
+  const feed = () => {
+    if (!out) return;
+    let need = Math.round((sound.rate * sound.depth_ms) / 1000) - (sound.sent - sound.played);
+    while (need >= 128) {
+      const n = Math.min(need - (need % 128), 2048);
+      const block = player.audio_pull(n);
+      out.port.postMessage(block, [block.buffer]);
+      sound.sent += n;
+      need -= n;
+    }
+  };
+  const openWorklet = async () => {
+    if (q.has("cpal")) throw new Error("the page asked for cpal");
+    const ctx = new AudioContext({ latencyHint: "interactive" });
+    try {
+      if (!ctx.audioWorklet) throw new Error("not a secure context");
+      const url = URL.createObjectURL(new Blob([WORKLET], { type: "text/javascript" }));
+      await ctx.audioWorklet.addModule(url);
+      URL.revokeObjectURL(url);
+      out = new AudioWorkletNode(ctx, "argus-out", { numberOfInputs: 0, outputChannelCount: [2] });
+      out.port.onmessage = (e) => {
+        sound.played = e.data.played;
+        sound.under = e.data.under;
+      };
+      out.connect(ctx.destination);
+      if (ctx.state !== "running") await ctx.resume();
+    } catch (e) {
+      out = null;
+      ctx.close();
+      throw e;
+    }
+    player.open_worklet(ctx.sampleRate);
+    Object.assign(sound, { mode: "worklet", rate: ctx.sampleRate });
+    feed();
+    setInterval(feed, 10);
+  };
   let audio = false;
   const openAudio = () => {
     if (audio) return;
     audio = true;
-    try {
-      player.open_audio();
-    } catch (e) {
-      console.warn("no audio: " + e);
-    }
+    openWorklet().catch((e) => {
+      console.warn(`no AudioWorklet (${e.message ?? e}): cpal's Web Audio output instead`);
+      try {
+        player.open_audio();
+        sound.mode = "cpal";
+      } catch (e) {
+        console.warn("no audio: " + e);
+      }
+    });
   };
 
   // F8: pause and ask what happened.
@@ -193,6 +289,9 @@ try {
 
   // What the headless checks reach for.
   window.argus = { player, setRunning: (r) => (run = r), report: (n) => player.report(n), send, store, savesAndLoads };
+  // The sound's queue: how deep it is now, and the render quanta (128
+  // frames each) the worklet could not fill since it started.
+  window.argus.sound = () => ({ ...sound, queued_ms: sound.rate ? Math.round(((sound.sent - sound.played) * 1000) / sound.rate) : 0 });
 
   // The game's settings say whether it fills the screen (phase 3 item 1).
   // A browser allows that only shortly after a key press or a click, which

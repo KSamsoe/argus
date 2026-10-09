@@ -273,11 +273,23 @@ Decisions taken while building it:
 
 ## 10. Browser editor spike
 
-**Status: to do.**
+**Status: done** (2026-10-09) in the daemon (`web/`: the web listener, its page, tokens, and their checks; `token.issue`, `token.list`, `token.revoke`; `--web`), `argus-cli` (`--web` on `daemon start` and `daemon run`; a daemon that cannot start is reported at once), `argus-audio` (`open_external` and `pull`), `argus-web` (`open_worklet`, `audio_pull`), and the web page (`tools/web/main.js`: the AudioWorklet and its queue). The write-up is `docs/browser-editor-spike.md`. Checked in headless Chrome as a phone (`tools/web/editor-check.mjs`, now in CI's web step): a review request answered by a tap, the game watched at 88 frames a second, a call over the WebSocket in 1.88 ms against 1.77 ms on the local socket. Traces: the daemon's, `argus-cli`'s, `argus-audio`'s, `argus-web`'s.
 
-- §11 open: a browser editor served by the daemon. §19's open question: "Review requests over a phone during a couch playtest: worth a small web client early, or does that wait for the browser editor?"
-- A spike answers the question: what the editor needs that only a native window has (the shared-memory frames, the local socket), and what a browser would use instead.
-- Web audio in an AudioWorklet (carried in).
+- §11 open: a browser editor served by the daemon. §19's open question: "Review requests over a phone during a couch playtest: worth a small web client early, or does that wait for the browser editor?" Answered: worth it, and built.
+- A spike answers the question: what the editor needs that only a native window has (the shared-memory frames, the local socket), and what a browser would use instead. Answered in the write-up's table.
+- Web audio in an AudioWorklet (carried in). Done.
+
+Decisions taken while building it:
+
+- **The tailnet in place of TLS (Kevin, 2026-10-08).** §5 says remote access is by token "over TLS". The listener binds only to this machine or its Tailscale address, which Tailscale already encrypts, so no certificate and no TLS crate; any other address is refused when the daemon starts. TLS beyond the tailnet is left for later.
+- **The same protocol over a WebSocket.** The page is one more client: the JSON-RPC lines go over `/ws`, and a call costs what it costs on the local socket. The only new methods are the tokens'. The WebSocket and SHA-1 are the engine's own (no new dependency; `getrandom` was already in the tree).
+- **Tokens as §5 says: a scope and an expiry.** observe reads, review also answers reviews and marks, edit does what the editor does. No token can reach the daemon's own calls (sessions, shutdown, windows, shared memory, tokens). Scopes are checked in the web layer before the daemon hears a call. Only a token's hash is kept; a revoked or expired token is cut off mid-session within a second.
+- **Frames as files, not shared memory.** The page asks `obs.frame` for a PNG under `.argus/frames` and fetches it with its token: 88 frames a second at 480 x 270 here, which review needs and more. Binary WebSocket frames are the next step if a full-size remote viewport is wanted.
+- **The desktop editor stays the editor.** eframe's web runner compiles for wasm with the editor's features (checked offline), so a full browser editor later is the egui editor compiled to wasm with a WebSocket transport in `argus-client`, not a rewrite. The web client stays small: reviews, watch, tune, feed.
+- **The sound in an AudioWorklet, fed from a queue.** The page keeps the worklet's queue 100 ms deep, a block every 10 ms; the browser's audio thread plays it. No block ran short while the page ran or through 60 ms stalls; a 150 ms stall is a gap of about 67 ms. A page over plain http from another machine has no AudioWorklet and falls back to cpal's output.
+- **Found: a daemon that could not start kept the CLI waiting 30 s.** A refused address is now refused before the daemon starts, and a daemon that stops while `start` waits is reported at once with its log's last line (a port another daemon's web client has).
+- **Found: a revoked token's open connection kept working.** Each connection now re-checks its token once a second.
+- **Left as limitations.** No game input from the page; frames one PNG per request; no TLS beyond the tailnet; opening the link on Kevin's phone over the tailnet is the gate's hand check.
 
 ## 11. Cross-platform determinism spike
 

@@ -127,6 +127,9 @@ function verdict() {
   if (!(report.cold_load?.ms <= report.cold_load?.bound_ms)) failures.push(`cold load ${report.cold_load?.ms} ms`);
   if (!(report.render?.drawn > 0)) failures.push("nothing drawn");
   if (report.webgl && !(report.webgl.drawn > 0)) failures.push("nothing drawn with WebGL2");
+  const w = report.audio?.worklet;
+  if (w && w.mode !== "worklet") failures.push(`the sound opened as ${w.mode}, not in an AudioWorklet`);
+  if (w && w.under_running_2s !== 0) failures.push(`the sound ran short ${w.under_running_2s} times while the page ran`);
   if (report.reader) {
     if (!(report.reader.buttons?.length >= 4)) failures.push("the screen reader sees no menu");
     if (!report.reader.said) failures.push("the screen reader is not told the focus");
@@ -260,8 +263,28 @@ try {
   await sleep(300);
   s = await status();
   report.keys = { before, after: s.player, tick: s.tick, sounds: s.sounds, moved: s.player[0] - before[0] };
-  // The first key press opened Web Audio; the mixer is pulled by it now.
+  // The first key press opened the sound; the AudioWorklet pulls the mixer
+  // through the page's queue now (phase 5 item 10). Its underruns (render
+  // quanta it could not fill): while the page runs, then after stalls of
+  // the page's thread shorter and longer than the queue's 100 ms, which a
+  // slow frame is.
   report.audio = { ...s.audio, levels: JSON.parse(await evaluate("argus.player.audio_levels()")) };
+  const sound = async () => JSON.parse(await evaluate("JSON.stringify(argus.sound())"));
+  await sleep(2000);
+  const settled = await sound();
+  report.audio.worklet = { mode: settled.mode, rate: settled.rate, depth_ms: settled.depth_ms, queued_ms: settled.queued_ms, under_at_start: settled.under };
+  const stalls = async (ms) => {
+    const from = (await sound()).under;
+    for (let i = 0; i < 3; i++) {
+      await evaluate(`{ const t = performance.now(); while (performance.now() - t < ${ms}); }`);
+      await sleep(400);
+    }
+    return (await sound()).under - from;
+  };
+  await sleep(2000);
+  report.audio.worklet.under_running_2s = (await sound()).under - settled.under;
+  report.audio.worklet.under_3_stalls_60ms = await stalls(60);
+  report.audio.worklet.under_3_stalls_150ms = await stalls(150);
   // A mark of that moment: what the desktop replays (the mark_replay example).
   await evaluate("argus.setRunning(false)");
   const mark = await evaluate(`argus.player.mark("held the right arrow for a second and a half")`);

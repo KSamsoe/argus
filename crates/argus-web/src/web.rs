@@ -237,6 +237,30 @@ impl WebPlayer {
         Ok(a.device_name().unwrap_or_default())
     }
 
+    /// Play the sound through the page's AudioWorklet (phase 5 item 10):
+    /// the mixer at the AudioContext's rate, its blocks taken with
+    /// `audio_pull` and posted to the worklet, whose own thread plays them
+    /// from a queue, so a slow frame on the page does not starve the sound
+    /// while the queue lasts. Says what opened.
+    pub fn open_worklet(&mut self, rate: u32) -> String {
+        match self.p.audio.as_mut() {
+            Some(a) => {
+                a.open_external(rate, "AudioWorklet");
+                format!("AudioWorklet at {rate} Hz")
+            }
+            None => "this project has no audio".into(),
+        }
+    }
+
+    /// The next `frames` of sound for the worklet, stereo interleaved.
+    pub fn audio_pull(&mut self, frames: u32) -> Vec<f32> {
+        let mut out = vec![0.0f32; frames.min(48_000) as usize * 2];
+        if let Some(a) = &self.p.audio {
+            a.pull(&mut out);
+        }
+        out
+    }
+
     /// Output levels since the last call, as JSON: the peak and RMS after
     /// the limiter, in dBFS.
     pub fn audio_levels(&self) -> String {

@@ -176,6 +176,9 @@ pub struct AudioEngine {
     rng: Pcg32,
     #[cfg(feature = "device")]
     device: Option<device::Output>,
+    /// An output the host drives and pulls blocks for (the browser's
+    /// AudioWorklet, phase 5 item 10): its name.
+    external: Option<String>,
     /// Set while the game is not playing: the device sends silence and the
     /// mixer waits (phase 4 item 1: the editor opened the sound before its
     /// Play, and the music played).
@@ -302,6 +305,7 @@ impl AudioEngine {
             rng: argus_sim::rng::stream(seed, "audio"),
             #[cfg(feature = "device")]
             device: None,
+            external: None,
             hold: Arc::new(AtomicBool::new(false)),
             spatial: Vec::new(),
             music: None,
@@ -1133,6 +1137,9 @@ impl AudioEngine {
 
     /// The device's name, when open.
     pub fn device_name(&self) -> Option<String> {
+        if let Some(n) = &self.external {
+            return Some(n.clone());
+        }
         #[cfg(feature = "device")]
         {
             self.device.as_ref().map(|d| d.name.clone())
@@ -1141,6 +1148,39 @@ impl AudioEngine {
         {
             None
         }
+    }
+
+    /// Run at the output's rate: sounds rebuilt at it (voices playing are
+    /// dropped), as for a device that wants another rate.
+    fn use_rate(&mut self, rate: u32) {
+        if rate != self.rate {
+            self.rate = rate;
+            *self.lock() = Mixer::new(rate, &self.config);
+            self.spatial.clear();
+            self.music = None;
+            self.outgoing = None;
+            self.due = None;
+            self.load_sounds();
+        }
+    }
+
+    /// Play to an output the host drives (phase 5 item 10: the browser's
+    /// AudioWorklet, whose own thread plays from a queue the page keeps
+    /// full): sounds rebuilt at its rate; the host takes blocks with
+    /// [`AudioEngine::pull`].
+    pub fn open_external(&mut self, rate: u32, name: &str) {
+        self.use_rate(rate.max(8000));
+        self.external = Some(name.to_string());
+    }
+
+    /// The next block for an external output, stereo interleaved: the
+    /// mixer's, or silence while the game is not playing (the mixer waits).
+    pub fn pull(&self, stereo: &mut [f32]) {
+        if self.hold.load(std::sync::atomic::Ordering::Relaxed) {
+            stereo.fill(0.0);
+            return;
+        }
+        self.lock().render(stereo);
     }
 
     /// Open the system's default output. If the device wants another rate,
@@ -1156,15 +1196,7 @@ impl AudioEngine {
                     .hint("Headless runs need no device: sounds are still events, and audio.clip renders them.")
             };
             let rate = device::probe(RATE).map_err(e)?;
-            if rate != self.rate {
-                self.rate = rate;
-                *self.lock() = Mixer::new(rate, &self.config);
-                self.spatial.clear();
-                self.music = None;
-                self.outgoing = None;
-                self.due = None;
-                self.load_sounds();
-            }
+            self.use_rate(rate);
             self.device =
                 Some(device::open(self.mixer.clone(), rate, self.hold.clone()).map_err(e)?);
             Ok(())

@@ -17,12 +17,12 @@ use std::path::PathBuf;
 static ALLOC: argus_sim::alloc::Counting = argus_sim::alloc::Counting;
 
 fn usage() -> ! {
-    eprintln!("usage: argusd [--project <dir>] [--scene <name>] [--seed <n>] [--stdio | --socket [name]] [--headless | --window [WxH]] [--play] [--mods a,b]");
+    eprintln!("usage: argusd [--project <dir>] [--scene <name>] [--seed <n>] [--stdio | --socket [name]] [--headless | --window [WxH]] [--play] [--mods a,b] [--web [local | tailnet | addr]]");
     std::process::exit(2)
 }
 
 fn main() {
-    let mut args = std::env::args().skip(1);
+    let mut args = std::env::args().skip(1).peekable();
     let mut project: Option<PathBuf> = None;
     let mut scene: Option<String> = None;
     let mut seed: Option<u64> = None;
@@ -30,6 +30,7 @@ fn main() {
     let mut window: Option<(u32, u32)> = None;
     let mut play = false;
     let mut mods: Vec<String> = Vec::new();
+    let mut web: Option<std::net::SocketAddr> = None;
     while let Some(a) = args.next() {
         match a.as_str() {
             "--project" | "-p" => {
@@ -68,6 +69,19 @@ fn main() {
                     _ => (1280, 720),
                 })
             }
+            "--web" => {
+                let v = match args.peek() {
+                    Some(s) if !s.starts_with('-') => args.next().unwrap_or_default(),
+                    _ => "local".to_string(),
+                };
+                web = match argus_daemon::web::parse_addr(&v) {
+                    Ok(a) => Some(a),
+                    Err(e) => {
+                        eprintln!("argusd: --web: {e}");
+                        std::process::exit(2)
+                    }
+                };
+            }
             "--help" | "-h" => usage(),
             _ => usage(),
         }
@@ -80,5 +94,6 @@ fn main() {
         window,
         play,
         mods,
+        web,
     }));
 }

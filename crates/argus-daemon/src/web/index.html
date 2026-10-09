@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<title>Argus</title>
+<style>
+:root {
+  --bg: #12151b; --panel: #1b2029; --line: #2b3340; --text: #e7ebf1; --dim: #9aa5b4;
+  --accent: #e8a33d; --good: #5cc28b; --bad: #e0645a; --radius: 12px;
+}
+@media (prefers-color-scheme: light) {
+  :root { --bg: #f4f1ea; --panel: #fffdf8; --line: #ddd5c6; --text: #1f2328; --dim: #646b75; --accent: #b4690e; --good: #2e8a57; --bad: #b8402f; }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { position: sticky; top: 0; z-index: 2; background: var(--bg); border-bottom: 1px solid var(--line); padding: 10px 16px 0; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.title { font-weight: 650; letter-spacing: .02em; }
+.status { color: var(--dim); font-size: 14px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--bad); display: inline-block; }
+.dot.on { background: var(--good); }
+nav { display: flex; gap: 4px; margin-top: 10px; overflow-x: auto; }
+nav button { flex: 1; min-width: 72px; background: none; color: var(--dim); border: 0; border-bottom: 3px solid transparent; padding: 10px 6px; font: inherit; font-weight: 600; }
+nav button.on { color: var(--text); border-bottom-color: var(--accent); }
+main { padding: 16px; max-width: 760px; margin: 0 auto; }
+section { display: none; }
+section.on { display: block; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; margin-bottom: 14px; }
+.card h3 { margin: 0 0 6px; font-size: 17px; }
+.meta { color: var(--dim); font-size: 13px; }
+.clip { width: 100%; border-radius: 8px; background: #000; margin: 10px 0; image-rendering: pixelated; }
+.choices { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; margin-top: 8px; }
+button.act { background: var(--accent); color: #1a1205; border: 0; border-radius: 10px; padding: 14px 12px; font: inherit; font-weight: 650; min-height: 48px; }
+button.plain { background: none; color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 12px; font: inherit; min-height: 44px; }
+input[type=text] { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 12px; font: inherit; }
+.empty { color: var(--dim); text-align: center; padding: 32px 8px; }
+#frame { width: 100%; border-radius: 8px; background: #000; display: block; }
+.tune label { display: block; font-weight: 600; margin-top: 12px; }
+.tune input[type=range] { width: 100%; accent-color: var(--accent); }
+.feed-row { border-bottom: 1px solid var(--line); padding: 8px 0; font-size: 14px; }
+.feed-row code { color: var(--dim); font-size: 12px; word-break: break-all; }
+.toast { position: fixed; left: 16px; right: 16px; bottom: 16px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; display: none; }
+.toast.on { display: block; }
+</style>
+</head>
+<body>
+<header>
+  <div class="row"><span id="dot" class="dot"></span><span class="title" id="game">Argus</span><span class="status" id="status">connecting</span></div>
+  <nav>
+    <button data-tab="reviews" class="on">Reviews</button>
+    <button data-tab="watch">Watch</button>
+    <button data-tab="tune">Tune</button>
+    <button data-tab="feed">Feed</button>
+  </nav>
+</header>
+<main>
+  <section id="reviews" class="on"><div id="review-list"><p class="empty">No review requests yet.</p></div></section>
+  <section id="watch">
+    <div class="card">
+      <img id="frame" alt="The game">
+      <div class="row" style="margin-top:10px">
+        <button class="act" id="watch-toggle">Watch</button>
+        <button class="plain" id="play" hidden>Play</button>
+        <button class="plain" id="pause" hidden>Pause</button>
+        <span class="meta" id="fps"></span>
+      </div>
+    </div>
+  </section>
+  <section id="tune"><div id="tune-list"><p class="empty">Loading the tune fields.</p></div></section>
+  <section id="feed"><div class="card" id="feed-list"><p class="empty">Nothing in the feed yet.</p></div></section>
+</main>
+<div class="toast" id="toast"></div>
+<script>
+"use strict";
+// The web client (phase 5 item 10): the daemon's protocol over a
+// WebSocket. The token comes in the address's fragment, which the browser
+// never sends anywhere, and travels as the socket's subprotocol and a file
+// request's Authorization header.
+const S = { token: null, ws: null, next: 1, waiting: new Map(), scope: "observe", label: "", watching: false, frameName: "web-" + Math.random().toString(36).slice(2, 8) + ".png", lat: [] };
+const $ = (id) => document.getElementById(id);
+
+function takeToken() {
+  const m = location.hash.match(/t=([A-Za-z0-9-]+)/);
+  if (m) {
+    try { sessionStorage.setItem("argus-token", m[1]); } catch (e) {}
+    history.replaceState(null, "", location.pathname);
+    return m[1];
+  }
+  try { return sessionStorage.getItem("argus-token"); } catch (e) { return null; }
+}
+
+function toast(text) {
+  const t = $("toast");
+  t.textContent = text;
+  t.classList.add("on");
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => t.classList.remove("on"), 4000);
+}
+
+function call(method, params) {
+  return new Promise((resolve, reject) => {
+    if (!S.ws || S.ws.readyState !== 1) return reject(new Error("not connected"));
+    const id = S.next++;
+    S.waiting.set(id, { resolve, reject, at: performance.now() });
+    S.ws.send(JSON.stringify({ jsonrpc: "2.0", id, method, params: params || {} }));
+  });
+}
+
+async function file(abs) {
+  // A path the protocol named, from .argus/ on.
+  const rel = String(abs).replace(/\\/g, "/").split("/.argus/").pop();
+  const r = await fetch("/file/" + rel.split("/").map(encodeURIComponent).join("/"), { headers: { Authorization: "Bearer " + S.token }, cache: "no-store" });
+  if (!r.ok) throw new Error(r.status + " " + (await r.text()));
+  return URL.createObjectURL(await r.blob());
+}
+
+function connect() {
+  S.token = takeToken();
+  if (!S.token) {
+    $("status").textContent = "no token: open the link argus token issue prints";
+    return;
+  }
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  const ws = new WebSocket(proto + "://" + location.host + "/ws", ["argus", "t." + S.token]);
+  S.ws = ws;
+  ws.onopen = () => { $("dot").classList.add("on"); $("status").textContent = "connected"; start(); };
+  ws.onclose = () => {
+    $("dot").classList.remove("on");
+    $("status").textContent = "disconnected; trying again";
+    for (const w of S.waiting.values()) w.reject(new Error("disconnected"));
+    S.waiting.clear();
+    setTimeout(connect, 2000);
+  };
+  ws.onmessage = (e) => {
+    const m = JSON.parse(e.data);
+    if (m.id !== undefined && S.waiting.has(m.id)) {
+      const w = S.waiting.get(m.id);
+      S.waiting.delete(m.id);
+      S.lat.push(performance.now() - w.at);
+      if (S.lat.length > 50) S.lat.shift();
+      if (m.error) w.reject(new Error(m.error.message)); else w.resolve(m.result);
+      return;
+    }
+    if (m.method) notified(m.method, m.params || {});
+  };
+}
+
+function notified(method, p) {
+  if (method === "web.hello") {
+    S.scope = p.scope; S.label = p.label;
+    const edit = p.scope === "edit";
+    $("play").hidden = !edit; $("pause").hidden = !edit;
+    document.querySelector('[data-tab="tune"]').hidden = !edit;
+  } else if (method === "web.expired") {
+    toast(p.why === "revoked" ? "The token was revoked: ask for a new link." : "The token has expired: ask for a new link.");
+  } else if (method === "review.asked" || method === "review.answered") {
+    loadReviews();
+    if (method === "review.asked") toast("A new review request.");
+  } else if (method === "edit.committed" || method === "edit.command" || method === "tune.changed") {
+    feedRow(p);
+  }
+}
+
+// The header: the scene and the tick, from the status every few seconds,
+// and from each frame while watching.
+function showTick(tick) {
+  $("status").textContent = (S.scene || "") + " · tick " + (tick ?? "?") + " · " + S.scope;
+}
+async function refresh() {
+  try {
+    const st = await call("session.status");
+    $("game").textContent = st.project ? String(st.project).replace(/\\/g, "/").split("/").pop() : "Argus";
+    S.scene = st.scene;
+    showTick(st.tick);
+  } catch (e) { $("status").textContent = e.message; }
+}
+
+async function start() {
+  await refresh();
+  if (!S.ticking) S.ticking = setInterval(() => { if (!S.watching && S.ws && S.ws.readyState === 1) refresh(); }, 3000);
+  try { await call("obs.subscribe", { topics: ["reviews", "edits", "tune"] }); } catch (e) {}
+  loadReviews();
+  loadFeed();
+  if (S.scope === "edit") loadTune();
+}
+
+function el(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k === "class") e.className = v; else if (k.startsWith("on")) e.addEventListener(k.slice(2), v); else e.setAttribute(k, v);
+  }
+  for (const k of kids) e.append(k);
+  return e;
+}
+
+async function loadReviews() {
+  const box = $("review-list");
+  let r;
+  try { r = await call("review.list"); } catch (e) { box.replaceChildren(el("p", { class: "empty" }, e.message)); return; }
+  if (!r.rows.length) { box.replaceChildren(el("p", { class: "empty" }, "No review requests waiting.")); return; }
+  const cards = [];
+  for (const q of r.rows) {
+    const card = el("div", { class: "card" },
+      el("h3", {}, q.question || "A question"),
+      el("div", { class: "meta" }, "frames " + q.from + " to " + q.to + " · asked by " + (q.asked_by || "?")));
+    if (q.clip) {
+      const img = el("img", { class: "clip", alt: "The clip" });
+      file(q.clip).then((u) => { img.src = u; }).catch(() => { img.alt = "The clip did not load"; });
+      card.append(img);
+    }
+    const answer = async (a) => {
+      try { await call("review.answer", { id: q.id, answer: a }); toast("Answered: " + a); }
+      catch (e) { toast(e.message); }
+    };
+    if (S.scope !== "observe") {
+      const choices = el("div", { class: "choices" });
+      for (const o of q.options || []) choices.append(el("button", { class: "act", onclick: () => answer(o) }, o));
+      const text = el("input", { type: "text", placeholder: "Or say it in a sentence", enterkeyhint: "send" });
+      text.addEventListener("keydown", (e) => { if (e.key === "Enter" && text.value.trim()) answer(text.value.trim()); });
+      card.append(choices, el("div", { style: "margin-top:8px" }, text));
+    }
+    cards.push(card);
+  }
+  box.replaceChildren(...cards);
+}
+
+async function watchLoop() {
+  let n = 0, t0 = performance.now();
+  while (S.watching) {
+    const t = performance.now();
+    try {
+      const f = await call("obs.frame", { format: "png", width: 480, height: 270, path: ".argus/frames/" + S.frameName });
+      showTick(f.tick);
+      const u = await file(f.path);
+      const img = $("frame");
+      const old = img.src;
+      img.src = u;
+      if (old.startsWith("blob:")) URL.revokeObjectURL(old);
+      n++;
+      const s = (performance.now() - t0) / 1000;
+      if (s > 1) {
+        const lat = S.lat.reduce((a, b) => a + b, 0) / Math.max(1, S.lat.length);
+        $("fps").textContent = (n / s).toFixed(1) + " frames/s · a frame " + (performance.now() - t).toFixed(0) + " ms · a call " + lat.toFixed(1) + " ms";
+        n = 0; t0 = performance.now();
+      }
+    } catch (e) { $("fps").textContent = e.message; await new Promise((r) => setTimeout(r, 1000)); }
+  }
+}
+
+async function loadTune() {
+  const box = $("tune-list");
+  let r;
+  try { r = await call("tune.fields"); } catch (e) { box.replaceChildren(el("p", { class: "empty" }, e.message)); return; }
+  const card = el("div", { class: "card tune" });
+  for (const f of r.rows.slice(0, 40)) {
+    if (typeof f.value !== "number") continue;
+    const [lo, hi] = f.range || [0, Math.max(1, Math.abs(f.value) * 2)];
+    const out = el("span", { class: "meta" }, " " + f.value);
+    const slider = el("input", { type: "range", min: lo, max: hi, step: (hi - lo) / 200, value: f.value });
+    const target = {};
+    for (const k of ["entity", "def", "asset"]) if (f[k] !== undefined) target[k] = f[k];
+    slider.addEventListener("input", () => {
+      out.textContent = " " + Number(slider.value).toFixed(3);
+      call("tune.set", { ...target, path: f.path, value: Number(slider.value) }).catch((e) => toast(e.message));
+    });
+    card.append(el("label", {}, (f.label || f.path) + " ", out), slider);
+  }
+  const keep = el("button", { class: "act", onclick: () => call("tune.end", { commit: true }).then(() => toast("Kept.")).catch((e) => toast(e.message)) }, "Keep these");
+  const undo = el("button", { class: "plain", onclick: () => call("tune.end", { commit: false }).then(() => { toast("Put back."); loadTune(); }).catch((e) => toast(e.message)) }, "Put them back");
+  card.append(el("div", { class: "row", style: "margin-top:14px" }, keep, undo));
+  box.replaceChildren(card);
+}
+
+function feedRow(p) {
+  const box = $("feed-list");
+  if (box.querySelector(".empty")) box.replaceChildren();
+  const what = p.note || p.method || p.kind || "a change";
+  const row = el("div", { class: "feed-row" }, el("div", {}, (p.author || "?") + ": " + what), el("code", {}, p.command || ""));
+  box.prepend(row);
+  while (box.children.length > 60) box.lastChild.remove();
+}
+
+async function loadFeed() {
+  try {
+    const r = await call("edit.feed", { limit: 30 });
+    for (const row of r.rows) feedRow(row);
+  } catch (e) {}
+}
+
+for (const b of document.querySelectorAll("nav button")) {
+  b.addEventListener("click", () => {
+    for (const x of document.querySelectorAll("nav button")) x.classList.toggle("on", x === b);
+    for (const s of document.querySelectorAll("section")) s.classList.toggle("on", s.id === b.dataset.tab);
+  });
+}
+$("watch-toggle").addEventListener("click", () => {
+  S.watching = !S.watching;
+  $("watch-toggle").textContent = S.watching ? "Stop" : "Watch";
+  if (S.watching) watchLoop();
+});
+$("play").addEventListener("click", () => call("sim.play").catch((e) => toast(e.message)));
+$("pause").addEventListener("click", () => call("sim.pause").catch((e) => toast(e.message)));
+connect();
+</script>
+</body>
+</html>

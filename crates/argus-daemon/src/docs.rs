@@ -979,6 +979,28 @@ pub const METHODS: &[MethodDoc] = &[
         returns: "{total, columns, rows: [[tick, slot, action, value]], recording, clock, next}",
     },
     MethodDoc {
+        name: "token.issue",
+        doc: "A token for the web client (section 5: remote access goes through a token with a scope and an expiry; phase 5 item 10): observe reads (frames, the queue, the feed), review also answers review requests and drops and notes marks, edit does what the editor does but for the daemon's own (tokens, another project, stopping the daemon, a window on this machine). The token is shown once; .argus/tokens.json keeps its hash. With the daemon serving the web (argus daemon start --web tailnet), url is the link to open on the phone. A client on this machine only.",
+        params: &[
+            opt("scope", STRING, "observe | review (default) | edit"),
+            opt("hours", NUMBER, "how long it lasts, up to 720; default 12"),
+            opt("label", STRING, "what it is for, as the change feed names its calls (web:<label>)"),
+        ],
+        returns: "{token, id, scope, label, expires_at, url, hint}",
+    },
+    MethodDoc {
+        name: "token.list",
+        doc: "The web client's tokens: id, label, scope, when made, when they expire, and whether they have; and where the web client is served. Never a token itself.",
+        params: &[],
+        returns: "{total, rows: [{id, label, scope, made_at, expires_at, expired}], web}",
+    },
+    MethodDoc {
+        name: "token.revoke",
+        doc: "End a token now: a new connection with it is refused, and one already open is sent web.expired {why: \"revoked\"} and closed within a second (as it is when the token runs out, why \"expired\"). A web connection's first notification is web.hello {scope, label, expires_at}.",
+        params: &[req("id", STRING, "the token's id (token.list)")],
+        returns: "{id, revoked}",
+    },
+    MethodDoc {
         name: "platform.status",
         doc: "The platform the game runs on (section 15; phase 5 item 9): the daemon's is the null platform, which keeps what the game asks of it, so achievements, rich presence, cloud saves, and the overlay are tested without Steam. A game asks with q:achieve(id) or q:achieve(id, current, max), q:presence(key, value), and q:overlay(page): achievement.unlock, achievement.progress, presence.set, and overlay.open events, each answered in the log by platform.achieved {id, api, new} or platform.error {request, code, message} (an achievement platform.toml does not declare is refused). Saves go to its cloud (.argus/platform/cloud) as well as .argus/saves/ unless platform.toml says [cloud] saves = false.",
         params: &[],

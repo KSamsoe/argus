@@ -24,7 +24,7 @@ Every statement in the design document (v0.3) that constrains the `argus` comman
 | The engine's own reference documentation ships in the same shape. | Done | `argus docs` (without `--for-agent`) prints the tools and every method with their parameter tables, from the same schema. | same |
 | `argus mcp` starts a stdio MCP server exposing about a dozen tools: summary, query, describe, edit, run, seek, observe, events, test, reload, marks, propose. | Done | `mcp.rs`: MCP over stdin and stdout, newline-delimited JSON-RPC 2.0 (`initialize` with protocol 2025-06-18, 2025-03-26, or 2024-11-05; `tools/list`; `tools/call`; `ping`); it finds or starts the project's daemon like every command. The twelve tools are `docs::TOOLS`; the five that only read say so (`readOnlyHint`). A tool's failure is an answer with `isError`, and a lost daemon is found again on the next call. `observe` with `format: "png"` returns the picture as an image. | `mcp::argus_mcp_serves_the_tools_of_the_one_schema` |
 | (§5) The MCP shim runs `world.summary` on connect. | Done | `initialize` runs the summary tool and puts it in the server's instructions, after a paragraph on the tools, so the agent starts oriented. | same |
-| `argus token` for remote access. | Deferred | Decided with Kevin at phase 4's start (docs/phase4-checklist.md): tokens, TLS, and a phone page for review requests wait for the first remote client; the editor connects on the local socket. | |
+| `argus token` for remote access. | Done | Decided with Kevin at phase 4's start (docs/phase4-checklist.md) to wait for the first remote client, which phase 5 item 10's web client is: `argus token issue`, `list`, and `revoke` resolve to the daemon's `token.*` methods like every command (the daemon's trace has the tokens). TLS is the tailnet's (see that section). | `tools/web/editor-check.mjs` |
 | `argus build --release`. | Done | Phase 2 item 7; see its section below. | |
 | `argus test`. | Done | `argus test [name] [--seeds 1..50] [--file tests/x.luau] [--update] [--json]` calls `test.run` and prints the compact report (`render::test_report`): PASS/FAIL per scenario, a line per failing seed and expectation, a summary; exit 0 only when every run passed. `argus test run` still reaches the method directly. | `cli::the_cli_talks_to_a_daemon_over_its_socket` |
 
@@ -163,6 +163,12 @@ Phase 0 item 9, "CLI": this crate, plus `argus_daemon::launch` (shared with `arg
 | Spec | Status | Where | Test |
 |---|---|---|---|
 | (§15) A release of a game on Steam carries Steam's library. | Done | `modules = ["steam"]` builds the executable with the `steam` feature and copies the Steamworks library the build linked against (`steam_api64.dll`, `libsteam_api.so`, `libsteam_api.dylib`, from steamworks-sys's build output) beside it. A web build leaves the module out: a page runs on the null platform. | Hollow's and Outpost's release builds (`argus build`) |
+
+## Phase 5, item 10: the web client
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§11) The daemon serves the browser client. | Done | `--web [local\|tailnet\|ip[:port]\|:port]` on `daemon start` and `daemon run` (`Invocation.web`; `local` when no value follows), parsed by `argus_daemon::web::parse_addr`. `start` refuses an address the listener may not use before starting a daemon, and notices a daemon that stops while it waits (a web port another daemon has), quoting its log's last line, where it waited 30 s before. | `web::an_address_off_this_machine_and_its_tailnet_is_refused_before_a_daemon_starts`, `web::a_daemon_that_cannot_listen_is_reported_at_once_with_its_reason` |
 
 ## Known limitations, stated so they are decisions
 

@@ -21,9 +21,13 @@ pub enum Transport {
     Socket(String),
 }
 
-enum Msg {
+/// What a connection's threads tell the daemon thread.
+pub(crate) enum Msg {
+    /// A connection opened, and where its replies go.
     Open(ConnId, Sender<String>),
+    /// One request.
     Line(ConnId, String),
+    /// It went away.
     Closed(ConnId),
 }
 
@@ -40,11 +44,39 @@ const STDIO: ConnId = 1;
 /// when given, gets a `.argus/daemon.json` with the socket name and pid so
 /// clients can find the daemon.
 pub fn serve(
-    mut daemon: Daemon,
+    daemon: Daemon,
     transport: Transport,
     project_root: Option<&Path>,
 ) -> std::io::Result<()> {
+    serve_with(daemon, transport, project_root, None)
+}
+
+/// [`serve`], and with `web` given, the web client and the protocol over
+/// a WebSocket served there too (phase 5 item 10; `crate::web`), for the
+/// project at `project_root`.
+pub fn serve_with(
+    mut daemon: Daemon,
+    transport: Transport,
+    project_root: Option<&Path>,
+    web: Option<std::net::SocketAddr>,
+) -> std::io::Result<()> {
     let (tx, rx) = mpsc::channel::<Msg>();
+    let mut web_bound = None;
+    if let (Some(addr), Some(root)) = (web, project_root) {
+        let bound = crate::web::start(addr, root.to_path_buf(), tx.clone()).map_err(|e| {
+            let hint = if e.kind() == std::io::ErrorKind::AddrInUse {
+                " (another daemon's web client? --web :PORT picks another port)"
+            } else {
+                ""
+            };
+            std::io::Error::new(
+                e.kind(),
+                format!("the web client cannot listen on {addr}: {e}{hint}"),
+            )
+        })?;
+        daemon.set_web(Some(bound));
+        web_bound = Some(bound);
+    }
     match &transport {
         Transport::Stdio => {
             let (out_tx, out_rx) = mpsc::channel::<String>();
@@ -77,12 +109,15 @@ pub fn serve(
         Transport::Socket(name) => {
             let listener = ListenerOptions::new().name(to_name(name)?).create_sync()?;
             if let Some(root) = project_root {
-                let info = format!(
-                    "{{\"socket\": {:?}, \"pid\": {}, \"version\": {:?}}}\n",
-                    name,
-                    std::process::id(),
-                    crate::daemon::VERSION
-                );
+                let mut info = serde_json::json!({
+                    "socket": name,
+                    "pid": std::process::id(),
+                    "version": crate::daemon::VERSION,
+                });
+                if let Some(w) = web_bound {
+                    info["web"] = serde_json::json!(format!("http://{w}/"));
+                }
+                let info = format!("{info}\n");
                 let p = daemon_info_path(root);
                 if let Some(d) = p.parent() {
                     let _ = std::fs::create_dir_all(d);

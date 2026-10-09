@@ -50,7 +50,7 @@ The first run of Swarm's first wave with sound read `sfx peak +18 dB` in `audio.
 
 | Spec | Status | Where | Test |
 |---|---|---|---|
-| (Phase 2 item 1.) Audio in the browser. | Partial (the spike) | The same `device.rs` over cpal's Web Audio backend (`argus-web` turns on cpal's `wasm-bindgen` feature). A browser allows sound only after a key press or a click, so the page opens the device on the first one (`WebPlayer::open_audio`). `rendered_frames` reports what the device pulled. cpal mixes on the page's main thread two 2048-frame buffers ahead (about 85 ms). Moving the mixer into an AudioWorklet was on the web spike's list for phase 2 item 7 (docs/web-spike.md) and was not done there or carried into a checklist; found in phase 3 item 7 and left open, since the design asks nothing of the audio thread: a frame slower than 85 ms on the page would starve the sound. | `tools/web/check.mjs`: 2.4 s mixed at 48 kHz, peak -24.7 dBFS from the footsteps, with Chrome muted |
+| (Phase 2 item 1.) Audio in the browser. | Done (finished in phase 5 item 10: the AudioWorklet row below) | The same `device.rs` over cpal's Web Audio backend (`argus-web` turns on cpal's `wasm-bindgen` feature). A browser allows sound only after a key press or a click, so the page opens the device on the first one (`WebPlayer::open_audio`). `rendered_frames` reports what the device pulled. cpal mixes on the page's main thread two 2048-frame buffers ahead (about 85 ms). Moving the mixer into an AudioWorklet was on the web spike's list for phase 2 item 7 (docs/web-spike.md) and was not done there or carried into a checklist; found in phase 3 item 7 and left open, since the design asks nothing of the audio thread: a frame slower than 85 ms on the page would starve the sound. | `tools/web/check.mjs`: 2.4 s mixed at 48 kHz, peak -24.7 dBFS from the footsteps, with Chrome muted |
 | The core hosts audio (§2). | Done | `device.rs` (cpal 0.15, feature `device`): the output callback pulls blocks straight from the shared mixer, so sound runs in real time even on a discrete scene where nothing ticks between turns. The device prefers 48 kHz and the mixer rebuilds at the device's rate if it differs. `render.window` opens it with the window; `audio.device {open}` by hand; headless runs never open it. | (manual: `audio.device` opened the laptop's speakers and closed them) |
 
 ## Phase 3, item 7: tempo and changes on the grid
@@ -87,6 +87,12 @@ The first run of Swarm's first wave with sound read `sfx peak +18 dB` in `audio.
 |---|---|---|---|
 | (§15) "Audio in the platform's preferred codec." | Done | `sound::decode`: a WAV or Ogg Vorbis (`lewton`) from its bytes, told apart by them; `sound::load` reads through `argus_os::fs`, so a release build's sounds, in memory, load (they did not: `hound` opened the disk). `.ogg` files under `assets/` are sounds as WAVs are. | `argus-player` `tests/release_audio.rs` |
 
+## Phase 5, item 10: the browser's AudioWorklet
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (Carried in from the web spike.) Web audio in an AudioWorklet, off the page's main thread. | Done | `AudioEngine::open_external(rate, name)`: an output the host drives, the sounds rebuilt at its rate as for a device (`use_rate`), its name the device's; `pull(stereo)` renders the next block, or silence while the game is not playing, when the mixer waits. The page's worklet and its queue are argus-web's. | `audio::an_external_output_runs_the_mixer_at_its_rate_and_pulls_its_blocks`; `tools/web/check.mjs` (`audio.worklet`) |
+
 ## Known limitations, stated so they are decisions
 
 - WAV only; OGG and other formats come with the importer.
@@ -94,6 +100,6 @@ The first run of Swarm's first wave with sound read `sfx peak +18 dB` in `audio.
 - Voices started in one frame start on the next audio block, not at their tick's exact sample. At 60 Hz and 256-frame blocks the error is under 6 ms. A music change on the grid starts on its exact frame; the stop of the track it leaves begins on the block holding that frame.
 - Layers come and go with intensity by a smooth fade, not on the grid.
 - There is no event per bar or beat; `audio.status` says where the music is. With a device open the grid is the device's clock, so music events are the mixer's answers (as `sound.played` is), not part of a replay's check.
-- The web page mixes on its main thread (see Output).
+- The web page mixes on its main thread, a block every 10 ms to keep the worklet's queue 100 ms deep; a stall longer than the queue is a gap (phase 5 item 10). Over plain http from another machine there is no AudioWorklet, and the page plays through cpal's Web Audio output as before.
 - The mixer is locked briefly by the daemon thread when it starts voices and moves spatial ones; the callback holds the same lock while it renders a block.
 - Music layer events are observations of the frame they were noticed in; a headless run and a windowed run of the same inputs can report a layer turning on a frame apart. `sound.played` is exact.

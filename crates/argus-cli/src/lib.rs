@@ -97,6 +97,10 @@ pub struct Invocation {
     pub mod_id: Option<String>,
     /// `--mods a,b`: the mods `daemon start` and `daemon run` open with.
     pub mods: Vec<String>,
+    /// `--web [addr]`: `daemon start` and `daemon run` serve the web client
+    /// too (phase 5 item 10): `local` (the default), `tailnet`, or an
+    /// address of either.
+    pub web: Option<String>,
     /// `--for-agent`: `argus docs` writes the project's ARGUS.md.
     pub for_agent: bool,
 }
@@ -133,6 +137,15 @@ pub fn parse(argv: &[String]) -> Result<Invocation, String> {
             "--out" => inv.out = Some(PathBuf::from(need(&mut it)?)),
             "--since" => inv.since = Some(PathBuf::from(need(&mut it)?)),
             "--mod" => inv.mod_id = Some(need(&mut it)?),
+            "--web" => {
+                inv.web = Some(match it.clone().next() {
+                    Some(s) if !s.starts_with('-') => {
+                        it.next();
+                        s.clone()
+                    }
+                    _ => "local".to_string(),
+                });
+            }
             "--mods" => {
                 inv.mods = need(&mut it)?
                     .split(',')

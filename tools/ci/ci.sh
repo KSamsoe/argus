@@ -9,7 +9,8 @@
 # software rasteriser (section 9). perf: the release-only tests, which gate
 # every section 17 target but the web page's (the Outpost hand-tuning gate,
 # 21 minutes, is left to phase gates). web: Hollow's page built and checked
-# in headless Chrome, its cold load over 20 Mbit included.
+# in headless Chrome, its cold load over 20 Mbit included, and the
+# daemon's browser editor page checked as a phone uses it.
 #
 # Every step runs; the script says which failed and exits 1 if any did.
 # Each step's output is in target/ci/<step>.log, which the workflow keeps.
@@ -81,6 +82,11 @@ step_web() {
   # once waited two hours on a Chrome that did not answer).
   timeout 600 node tools/web/check.mjs > "$LOGS/web-check.json" || { cat "$LOGS/web-check.json"; return 1; }
   node -e 'const r = JSON.parse(require("fs").readFileSync(process.argv[1])); console.log(`cold load ${r.cold_load.ms} ms, ${r.cold_load.bytes} bytes (${r.cold_load.link})`)' "$LOGS/web-check.json"
+  # The browser editor's page (phase 5 item 10): a review answered by a
+  # tap on a phone-size page, the viewport watched, over the daemon's web
+  # listener on this machine.
+  cargo build -q -p argus-cli || return 1
+  timeout 300 node tools/web/editor-check.mjs > "$LOGS/editor-check.json" || { cat "$LOGS/editor-check.json"; return 1; }
 }
 
 STEPS=("$@")
