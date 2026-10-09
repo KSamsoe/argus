@@ -4,6 +4,11 @@
 //! system to Rust without changing anything around it"). The game with the
 //! Rust chase runs its systems in the same order and reaches the same
 //! world, tick for tick, as the game with the Luau chase it replaced.
+//!
+//! Since the phase 5 gate the plugin also holds the dasher (`sim.dash`,
+//! from the gate's Swarm trial), which has no Luau twin: both games here
+//! are copies with no dashers (`Director.dash_share` 0), so the chase is
+//! compared alone, as before; the dasher's own scenarios are Swarm's.
 
 use argus_player::Player;
 use std::path::{Path, PathBuf};
@@ -60,17 +65,34 @@ fn copy_dir(from: &Path, to: &Path) {
     }
 }
 
-/// Swarm as it was: the Luau chase, no plugins.
-fn luau_swarm(tag: &str) -> Temp {
-    let root = std::env::temp_dir().join(format!("argus-swarm-luau-{tag}-{}", std::process::id()));
+/// Swarm with no dashers: a wave's share of them 0.
+fn without_dashers(name: &str) -> Temp {
+    let root = std::env::temp_dir().join(format!("argus-swarm-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     copy_dir(&swarm(), &root);
+    let c = root.join("components/swarm.luau");
+    let src = std::fs::read_to_string(&c).unwrap();
+    let off = src.replace(
+        "dash_share = field.f32 { default = 0.1,",
+        "dash_share = field.f32 { default = 0,",
+    );
+    assert_ne!(src, off, "Director.dash_share's default moved");
+    std::fs::write(&c, off).unwrap();
+    // Their looks follow the dasher's rules, which the Luau game lacks.
+    std::fs::remove_file(root.join("systems/dash_look.luau")).unwrap();
+    Temp(root)
+}
+
+/// Swarm as it was: the Luau chase, no plugins (and no dashers).
+fn luau_swarm(tag: &str) -> Temp {
+    let t = without_dashers(&format!("luau-{tag}"));
+    let root = t.0.clone();
     std::fs::remove_dir_all(root.join("plugins")).unwrap();
     std::fs::write(root.join("systems/chase.luau"), CHASE_LUAU).unwrap();
     let toml = std::fs::read_to_string(root.join("argus.toml")).unwrap();
     let toml = toml.replace("plugins = [\"swarm-hot\"]", "plugins = []");
     std::fs::write(root.join("argus.toml"), toml).unwrap();
-    Temp(root)
+    t
 }
 
 fn order(p: &mut Player) -> Vec<String> {
@@ -85,14 +107,18 @@ fn order(p: &mut Player) -> Vec<String> {
 
 fn same_run(scene: &str, ticks: u64) {
     let old = luau_swarm(scene);
+    let new = without_dashers(&format!("rust-{scene}"));
     let mut luau = Player::open(&old.0, Some(scene), Some(7)).unwrap();
-    let mut rust = Player::open(&swarm(), Some(scene), Some(7)).unwrap();
+    let mut rust = Player::open(&new.0, Some(scene), Some(7)).unwrap();
     assert!(rust.plugins.errors.is_empty(), "{:?}", rust.plugins.errors);
     assert_eq!(rust.plugins.of_system("sim.chase"), Some("swarm-hot"));
     assert_eq!(luau.plugins.of_system("sim.chase"), None);
+    // The same order, the dasher's rules apart (only the plugin has them).
+    let mut rust_order = order(&mut rust);
+    rust_order.retain(|s| s != "sim.dash");
     assert_eq!(
         order(&mut luau),
-        order(&mut rust),
+        rust_order,
         "the same systems in the same order"
     );
     for t in 0..ticks {

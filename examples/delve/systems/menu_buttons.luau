@@ -33,6 +33,7 @@ return system "sim.menu_buttons" {
       pl.kills = 0
       pl.dead = false
       pl.descend = false
+      pl.potions = 0
       local hp = pe:get("Health")
       hp.cur = hp.max
       q:entity("@floor"):get("Floor").n = 0

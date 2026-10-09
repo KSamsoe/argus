@@ -50,7 +50,7 @@ Two agents checked their own scenarios could fail. Hollow's ran them with the ex
 
 - **Their transcripts.** Every tool call the four agents made, 415 in all, was read by a script for any path outside its project or any engine source, and every flagged call was read by hand. None read engine source. What touched the outside were the agents' own command outputs: Hollow read two long outputs of its own commands that the harness had saved elsewhere, Swarm kept a probe script one folder above its project (it only called the tool), and Outpost wrote its full-suite output to the same folder. Each said so in its report.
 - **Their suites.** I ran each game's whole suite again in its copy: the same lines as above.
-- **Their changes.** They are in `docs/phase5-gate/<game>.diff`, against the games as committed (pictures left out). They are not in the games: whether any of them should be is Kevin's call.
+- **Their changes.** They are in `docs/phase5-gate/<game>.diff`, against the games as committed (pictures left out). Kevin asked for all four in the games, and they are (below).
 
 ## What the agents needed, and what changed
 
@@ -126,7 +126,17 @@ The release builds, each checked by `argus build`:
 | Swarm | 30 files, 89 KB | the same |
 | Outpost | 36 files, 218 KB | the same |
 
+## The features in the games
+
+Kevin read the results and asked for all four in the games. They are merged as the agents left them, with three adjustments:
+
+- **Hollow's run.** Both the feather and the gem fix above changed `systems/run.luau`; a three-way merge from the commit the trial started at kept both, with no conflict. Of the four pictures the trial re-recorded, the two that show the feather (the cave and the step) came in; the other two were rewritten unchanged to the eye by the old `update`, so they stay as they were.
+- **Hollow's pack** now compiles 14 scripts (the feather's component and system), which `argus-player`'s pack test counts.
+- **Swarm's plugin test** compared the Rust chase with the Luau one it replaced, tick by tick; the plugin now also holds the dasher, which has no Luau twin. Both games in that test are now copies with no dashers, so the chase is compared alone, as before; the dasher's own scenarios are in Swarm's suite. The plugins test names the chase's new `after` (`sim.dash` too), and the rigid-body module's "pays nothing" test now measures after ten ticks to settle (a busy run caught its cold first tick).
+
+With the features in, every suite passes in CI (Hollow 26 scenarios, Delve 10 with 223 runs, Swarm 10, Outpost 24), and so does the Outpost tuning sweep. Its report moved a little with woodcutting, as it should: the same two candidates starve (1.5 and 2.0), but 1.5 now starves two seeds of twenty (3 and 15, against 15 alone), and 1.3 runs short of food on 14 seeds (5 before), since woodcutters spend some of the day chopping.
+
 ## Kevin's hand check
 
-- Read the four diffs and say whether any feature should be in its game.
+- Play each game's new feature: the feather on the plank in Hollow's cave, a potion (Q) in Delve, the dashers from Swarm's second wave, the woodcutters in Outpost.
 - Still open from earlier items: open a review link on the phone over the tailnet (item 10), and the Steam overlay and Hollow on Steam (item 9).

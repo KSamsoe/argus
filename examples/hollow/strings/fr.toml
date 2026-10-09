@@ -33,7 +33,7 @@ press_a_key = "appuie sur une touche"
 continue = "Continuer"
 
 [hud]
-running = "Hollow. Trouve la sortie. {falls}.{gem}"
+running = "Hollow. Trouve la sortie. {falls}.{gem}{feather}"
 done = "Sorti en {time} s, {falls}{gem}. {again} pour rejouer."
 no_falls_yet = "Aucune chute"
 no_falls = "aucune chute"
@@ -42,11 +42,13 @@ falls = "{n} chutes"
 gem_found = " Gemme trouvée."
 with_gem = ", avec la gemme"
 gem_missed = ", gemme manquée"
+feather = " La plume : saute encore en l’air."
 
 [sign]
 shaft = "Le haut du puits. Quelque chose brille là-haut."
 pit = "Attention au gouffre."
 exit = "La sortie."
+feather = "Une plume : prends-la pour sauter en l’air."
 
 [hermit]
 name = "L’ermite"

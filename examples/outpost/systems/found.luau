@@ -56,19 +56,115 @@ local function wild(rng, W, H)
   end
 end
 
+local SIDES = { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } }
+
+-- The grid cell a place is in (the grid's cells are a unit, centred on
+-- whole numbers).
+local function cell(p)
+  return math.floor(p.x + 0.5), math.floor(p.y + 0.5)
+end
+
+-- Which trees a woodcutter can get to (Tree.reach): a cell beside one is
+-- open ground joined to the stockpile's. Joined four ways: the grid walks
+-- eight but never cuts a blocked corner, which joins the same cells. The
+-- trees (standing or felled) and the stove are all that block the way and
+-- none of them moves, so this is found once, when the valley is laid out.
+local function reach(q, W, H)
+  local blocked = {}
+  for _, nc, t in q:each("NavCost", "Transform") do
+    if nc.cost == 0 then
+      local x, y = cell(t.pos)
+      blocked[y * W + x] = true
+    end
+  end
+  local sx, sy = cell(q:entity("@colony"):get("Transform").pos)
+  local seen = { [sy * W + sx] = true }
+  local queue = { sy * W + sx }
+  local head = 1
+  while head <= #queue do
+    local c = queue[head]
+    head += 1
+    local x, y = c % W, c // W
+    for _, d in ipairs(SIDES) do
+      local nx, ny = x + d[1], y + d[2]
+      local n = ny * W + nx
+      if nx >= 0 and nx < W and ny >= 0 and ny < H and not seen[n] and not blocked[n] then
+        seen[n] = true
+        table.insert(queue, n)
+      end
+    end
+  end
+  for _, tree, t in q:each("Tree", "Transform") do
+    local x, y = cell(t.pos)
+    tree.reach = false
+    for _, d in ipairs(SIDES) do
+      local nx, ny = x + d[1], y + d[2]
+      if nx >= 0 and nx < W and ny >= 0 and ny < H and seen[ny * W + nx] then
+        tree.reach = true
+        break
+      end
+    end
+  end
+end
+
+-- A JobKind for each row of defs/jobs.toml the colony has none for.
+local function job_kinds(q)
+  local have = {}
+  for _, k in q:each("JobKind") do have[k.name] = true end
+  for _, row in ipairs(q:defs("jobs")) do
+    if not have[row.key] then
+      local k = q:spawn({ "JobKind" })
+      local kind = k:get("JobKind")
+      kind.name = row.key
+      kind.priority = row.priority
+      kind.skill = row.skill
+      kind.work = row.work
+    end
+  end
+end
+
+-- A valley laid out before trees could be felled (a save from then): its
+-- trees are the NavCost entities that are not the stove, and they stand;
+-- the colony learns the chop job, and each founder the skills
+-- defs/founders.toml gives them now that they lack (Bram, Cleo, and Dov
+-- fell trees).
+local function plant(q, rules)
+  local trees = {}
+  for e in q:each("NavCost") do
+    if not e:has("Station") then table.insert(trees, e:id()) end
+  end
+  for _, id in ipairs(trees) do
+    q:entity(id):insert("Tree", { growth = 1 })
+  end
+  reach(q, math.floor(rules.size.x), math.floor(rules.size.y))
+  job_kinds(q)
+  local skills = {}
+  for _, row in ipairs(q:defs("founders")) do skills[row.key] = row.skills end
+  for _, who, w in q:each("Colonist", "Worker") do
+    local base = string.match(who.name, "^(%a+)") or who.name
+    for skill in string.gmatch(skills[base] or "", "%S+") do
+      if w.skills ~= "*" and not string.find(" " .. w.skills .. " ", " " .. skill .. " ", 1, true) then
+        w.skills = if w.skills == "" then skill else w.skills .. " " .. skill
+      end
+    end
+  end
+end
+
 return system "sim.colony.found" {
   stage = "sim",
   on_load = true, -- the colony is there before the first tick
   reads = { "Colony", "Colonist", "Camera", "UiRoot", "JobKind" },
-  writes = { "Colony", "Stockpile", "Colonist", "Needs", "Worker", "NavAgent", "NavGrid", "NavCost", "Transform", "Sprite", "Describe", "Field", "Station", "Bed", "JobKind", "Camera", "UiRoot", "UiNode", "UiPanel", "UiText", "PlayerSlot", "Actions", "Item", "Hud", "Light", "Lamp", "Emissive" },
+  writes = { "Colony", "Stockpile", "Colonist", "Needs", "Worker", "NavAgent", "NavGrid", "NavCost", "Transform", "Sprite", "Describe", "Field", "Station", "Bed", "Tree", "JobKind", "Camera", "UiRoot", "UiNode", "UiPanel", "UiText", "PlayerSlot", "Actions", "Item", "Hud", "Light", "Lamp", "Emissive" },
   rng = "valley",
-  doc = "Lays the valley out once (Colony.laid_out): a navigation grid of Colony.size with trees from the seed, the stockpile at the colony, a stove, ten fields, a bed each, the founders from defs/founders.toml (or Colony.colonists of them, their skills in turn), Colony.stones stones lying about, a JobKind per row of defs/jobs.toml, a camera, the HUD, and a campfire; the stove and the campfire are Lamps. An older save's colonists get a place, a Worker, a NavAgent, and a bed; a valley laid out without Lamps gets them.",
+  doc = "Lays the valley out once (Colony.laid_out): a navigation grid of Colony.size with trees from the seed (Trees, each knowing whether a woodcutter can get to it), the stockpile at the colony, a stove, ten fields, a bed each, the founders from defs/founders.toml (or Colony.colonists of them, their skills in turn), Colony.stones stones lying about, a JobKind per row of defs/jobs.toml, a camera, the HUD, and a campfire; the stove and the campfire are Lamps. An older save's colonists get a place, a Worker, a NavAgent, and a bed; a valley laid out without Lamps gets them, and one laid out before woodcutting has its trees made Trees, a chop JobKind, and its founders' new skills.",
   run = function(q)
     local colony = q:entity("@colony")
     local rules = colony:get("Colony")
     if rules.laid_out then
       -- Laid out before the colony had lamps.
       if q:count("Lamp") == 0 then light_up(q) end
+      -- Laid out before trees could be felled.
+      if q:count("Tree") == 0 then plant(q, rules) end
       return
     end
     rules.laid_out = true
@@ -89,7 +185,7 @@ return system "sim.colony.found" {
     sprite(ground, "rect", W, H, "#2F4A2A", -10)
     for _ = 1, W * H // 20 do
       local x, y = wild(rng, W, H)
-      local t = q:spawn({ "Transform", "NavCost" })
+      local t = q:spawn({ "Transform", "NavCost", "Tree" })
       t:get("Transform").pos = vector.create(x, y, 0)
       sprite(t, "circle", 0.9, 0.9, "#1E3B1E", 1)
     end
@@ -104,12 +200,15 @@ return system "sim.colony.found" {
     if not colony:has("Transform") then colony:insert("Transform", { pos = PILE }) end
     if not colony:has("Sprite") then sprite(colony, "rect", 3, 3, "#6B5B3E", -5) end
     if not colony:has("Describe") then
-      colony:insert("Describe", { name = "stockpile", text = "day {Colony.day}: food {Stockpile.food}, meals {Stockpile.meal}, crops {Stockpile.crop}" })
+      colony:insert("Describe", { name = "stockpile", text = "day {Colony.day}: food {Stockpile.food}, meals {Stockpile.meal}, crops {Stockpile.crop}, wood {Stockpile.wood}" })
     end
 
     local stove = q:spawn({ "Station", "Transform", "NavCost" })
     stove:get("Transform").pos = vector.create(24, 12, 0)
     sprite(stove, "rect", 0.9, 0.9, "#B04A2A", 2)
+    -- The trees a woodcutter can get to, now that all that blocks the way
+    -- is laid.
+    reach(q, W, H)
 
     -- Sown at different times: the first harvests come over the first
     -- days, not all at once.
@@ -121,16 +220,7 @@ return system "sim.colony.found" {
     end
 
     -- The kinds of job, as the colony weighs them (tune fields).
-    if q:count("JobKind") == 0 then
-      for _, row in ipairs(q:defs("jobs")) do
-        local k = q:spawn({ "JobKind" })
-        local kind = k:get("JobKind")
-        kind.name = row.key
-        kind.priority = row.priority
-        kind.skill = row.skill
-        kind.work = row.work
-      end
-    end
+    job_kinds(q)
 
     -- The colonists: the founders, or an older save's, fitted out.
     local skills = {}

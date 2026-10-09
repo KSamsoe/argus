@@ -78,7 +78,9 @@ fn a_plugin_s_systems_errors_and_reload_go_through_the_protocol() {
     let sys = d.call(0, "script.systems", &json!({})).unwrap();
     let chase = row(&sys, "sim.chase");
     assert_eq!(chase["plugin"], "swarm-hot");
-    assert_eq!(chase["after"], json!(["sim.waves"]));
+    // After the dasher's rules too (the phase 5 gate's dasher): a held
+    // dasher is left alone by the chase.
+    assert_eq!(chase["after"], json!(["sim.waves", "sim.dash"]));
     assert_eq!(chase["writes"], json!(["Transform"]));
     assert!(chase["source"]
         .as_str()

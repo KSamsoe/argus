@@ -1,9 +1,10 @@
 -- What a finished job does (the job system says job.done; section 12):
--- a harvest leaves crops on the ground, a haul stores what it carried, a
--- cook's meal goes into the stockpile, and a meal feeds whoever ate it.
+-- a harvest leaves crops on the ground, a felled tree leaves logs, a haul
+-- stores what it carried, a cook's meal goes into the stockpile, and a
+-- meal feeds whoever ate it.
 --
 -- It runs right after the job system and before anything that posts jobs
--- (needs, fields, kitchen, haul), and forgets a job only where it is the
+-- (needs, fields, kitchen, haul, woods), and forgets a job only where it is the
 -- one that finished: posting in between made a second cook job for the
 -- stove, which this then orphaned (found in the first week's run).
 
@@ -11,8 +12,8 @@ return system "sim.colony.work" {
   stage = "sim",
   after = { "jobs.update", "sim.colony.day" },
   reads = { "Colony" },
-  writes = { "Field", "Item", "Stockpile", "Needs", "Station", "Transform", "Sprite" },
-  doc = "On job.done: harvest drops Colony.crop_yield crops at the field and resets it; haul adds the goods to the stockpile it went to and removes them; cook adds its recipe's output to the stockpile with the most food; eat fills the eater from the stockpile, meals first. Emits colony.stored, colony.cooked, and colonist.ate.",
+  writes = { "Field", "Item", "Stockpile", "Needs", "Station", "Tree", "Transform", "Sprite" },
+  doc = "On job.done: harvest drops Colony.crop_yield crops at the field and resets it; chop fells the tree (Tree.growth 0, a stump) and drops Colony.tree_wood wood at the woodcutter's feet (tree.felled); haul adds the goods to the stockpile it went to (wood to Stockpile.wood) and removes them; cook adds its recipe's output to the stockpile with the most food; eat fills the eater from the stockpile, meals first. Emits colony.stored, colony.cooked, and colonist.ate.",
   run = function(q)
     local done = q:events("job.done")
     if #done == 0 then return end
@@ -37,12 +38,35 @@ return system "sim.colony.work" {
           s.meal += it.count
         elseif it.kind == "item:crop" then
           s.crop += it.count
+        elseif it.kind == "item:wood" then
+          s.wood += it.count
         else
           s.goods += it.count
         end
         s.food += it.count * def.food
         q:emit("colony.stored", { kind = it.kind, count = it.count, pile = ev.to })
         ev.carry:despawn()
+      elseif kind == "chop" and ev.site ~= nil and ev.site:alive() and ev.site:has("Tree") then
+        -- Felled: a stump, drawn so at once, that grows back
+        -- (systems/woods.luau draws the sapling and the tree), and its
+        -- logs at the woodcutter's feet, beside it, for a hauler.
+        local tree = ev.site:get("Tree")
+        if tree.job == ev.job then tree.job = nil end
+        tree.growth = 0
+        if ev.site:has("Sprite") then
+          local s = ev.site:get("Sprite")
+          s.color = "#7A5A38"
+          s.size = vector.create(0.45, 0.45, 0)
+        end
+        local at = ev.site:get("Transform").pos
+        if ev.worker ~= nil and ev.worker:alive() then at = ev.worker:get("Transform").pos end
+        local item = q:spawn({ "Item", "Transform" })
+        local it = item:get("Item")
+        it.kind = "item:wood"
+        it.count = rules.tree_wood
+        item:get("Transform").pos = at
+        item:insert("Sprite", { kind = "rect", size = vector.create(0.55, 0.25, 0), color = q:def("item:wood").color, z = 3 })
+        q:emit("tree.felled", { tree = ev.site, worker = ev.worker, wood = rules.tree_wood })
       elseif kind == "cook" and ev.site ~= nil and ev.site:alive() then
         local st = ev.site:get("Station")
         if st.job == ev.job then st.job = nil end

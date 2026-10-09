@@ -5,10 +5,10 @@ return system "sim.floor" {
   -- the open menu froze.
   after = { "sim.menu_buttons" },
   unfrozen = true,
-  reads = { "Floor", "Player", "Monster", "Stairs", "Transform", "Tilemap" },
-  writes = { "Floor", "Player", "Monster", "Stairs", "Transform", "Health", "Sprite", "Describe", "Tilemap" },
+  reads = { "Floor", "Player", "Monster", "Stairs", "Potion", "Transform", "Tilemap" },
+  writes = { "Floor", "Player", "Monster", "Stairs", "Potion", "Transform", "Health", "Sprite", "Describe", "Tilemap" },
   rng = "floor",
-  doc = "Generates a floor when there is none or the hero asked to descend: rooms, L-shaped corridors, the hero in the first room, stairs in the last, monsters never within four steps of the hero. The floor's cells are painted on @floor's runtime map, every cell, so the old floor's go with it.",
+  doc = "Generates a floor when there is none or the hero asked to descend: rooms, L-shaped corridors, the hero in the first room, stairs in the last, monsters never within four steps of the hero; the old floor's monsters, stairs, and potions go. The floor's cells are painted on @floor's runtime map, every cell, so the old floor's go with it.",
   run = function(q)
     local fe = q:entity("@floor")
     local f = fe:get("Floor")
@@ -20,6 +20,8 @@ return system "sim.floor" {
     local doomed = {}
     for e in q:each("Monster") do table.insert(doomed, e:id()) end
     for e in q:each("Stairs") do table.insert(doomed, e:id()) end
+    -- Potions left lying on the old floor go with it.
+    for e in q:each("Potion") do table.insert(doomed, e:id()) end
     for _, id in ipairs(doomed) do q:entity(id):despawn() end
 
     -- The floor is the map's size. Cell (x, y) of grid is the world's

@@ -1,0 +1,49 @@
+# The feather (a double jump), early in the cave: on the plank over the
+# hermit's fire, at its far end, so a jump up through the plank and a step
+# along it takes it, and so does a jump up through it beneath the feather.
+# Taken, the hero can jump once more in mid-air, again each time they land,
+# for the rest of the run (systems/feather.luau, systems/run.luau); a new
+# run puts it back.
+[Transform]
+pos = [11.3, 4.6]
+
+[Sprite]
+atlas = "feather"
+size = [0.7, 0.875]
+z = 1.0
+
+[Collider]
+size = [0.6, 0.8]
+
+[Feather]
+jumps = 1
+
+[Describe]
+name = "feather"
+text = "A feather, light as air."
+
+# Pale in the dark of the cave mouth, so it is seen from the floor.
+[Emissive]
+amount = 0.8
+
+# Its words, over it while the hero is near and it is there to take
+# (systems/signs.luau): a UI tree hung from the feather itself. One line,
+# unwrapped, so the panel is as wide as the words in any language (a
+# panel with a max width does not grow taller for wrapped lines).
+[UiRoot]
+follow = "@feather"
+follow_offset = [0.0, 0.7]
+interactive = false
+
+[UiNode]
+pivot = [0.5, 1.0]
+pad = [8.0, 5.0]
+visible = false
+
+[UiPanel]
+color = "panel"
+border = 1.0
+
+[UiText]
+key = "sign.feather"
+wrap = false

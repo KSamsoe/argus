@@ -19,6 +19,13 @@ doc = "Take the stairs when standing on them"
 keyboard = ["enter"]
 gamepad = ["south"]
 
+[actions.drink]
+type = "button"
+doc = "Drink a healing potion; one drink is one turn"
+[actions.drink.bindings]
+keyboard = ["q"]
+gamepad = ["north"]
+
 [actions.pause]
 type = "button"
 doc = "Open or close the menu; while it is open no turn passes"

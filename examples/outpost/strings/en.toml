@@ -3,7 +3,7 @@
 language.name = "English"
 
 [hud]
-line = "Day {day}, {hour}:00{night}   food {food} ({meals} meals, {crops} crops)   {colonists} colonists, {working} working   {speed}"
+line = "Day {day}, {hour}:00{night}   food {food} ({meals} meals, {crops} crops)   wood {wood}   {colonists} colonists, {working} working   {speed}"
 night = " (night)"
 paused = "paused"
 speed = "{x}x"
@@ -34,6 +34,7 @@ food = "Food {food}: {meals} meals, {crops} crops"
 people = "{alive} colonists: {working} working, {idle} idle"
 lost = "Lost: {lost}"
 fields = "{fields} fields, {ripe} ripe; today's growth {growth}%"
+trees = "{trees} trees standing, {felled} felled and growing back, {chopping} being felled"
 jobs = "Jobs: {open} open, {taken} taken"
 idle = "Most idle: {why} ({n})"
 
@@ -57,7 +58,7 @@ unfollow = "Stop following"
 back = "Back"
 
 [inspect.stores]
-pile = "Stockpile: {meals} meals, {crops} crops, {goods} goods"
+pile = "Stockpile: {meals} meals, {crops} crops, {wood} wood, {goods} goods"
 food = "Food stored: {food} meals' worth"
 lying = "Lying about: {n} ({kinds})"
 stove = "Stove: {state}"

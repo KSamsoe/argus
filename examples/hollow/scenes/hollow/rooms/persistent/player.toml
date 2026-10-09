@@ -28,6 +28,10 @@ slot = 1
 [Animator]
 machine = "anim/hero"
 
+# The feather's gift (components/feather.luau): no jump in mid-air until
+# it is taken.
+[AirJump]
+
 [Describe]
 name = "hero"
 text = "{Animator.state}"

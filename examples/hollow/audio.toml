@@ -40,6 +40,18 @@ spatial = false
 gain = 0.3
 variations = [ { wave = "square", freq = 988, slide = 500, ms = 140, release_ms = 90 } ]
 
+# The feather: taken, a soft rising chime; a jump in mid-air, a flap.
+[sounds."sfx/feather"]
+spatial = false
+gain = 0.3
+variations = [ { wave = "sine", freq = 660, slide = 660, ms = 260, release_ms = 160 } ]
+
+[sounds."sfx/flap"]
+spatial = false
+gain = 0.35
+pitch_jitter = 0.1
+variations = [ { wave = "noise", ms = 70, release_ms = 60 } ]
+
 [sounds."sfx/fell"]
 spatial = false
 gain = 0.4

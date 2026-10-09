@@ -6,17 +6,21 @@
 -- door, the hero is held there out of sight until R. "Put something up here
 -- like a collectible": a gem, taken on touch and counted. Finishing plays
 -- the outro timeline (defs/timeline.toml, phase 3 item 5); R skips it.
+-- The feather in the cave is the run's too: taken on touch, the hero has a
+-- jump in mid-air for the rest of it (AirJump, which sim.air_jump spends),
+-- and a new run takes the jump away and puts the feather back.
 return system "sim.run" {
   stage = "sim",
   -- After the overlaps are known, so a touch is seen on its tick.
   after = { "physics.overlap" },
-  reads = { "Actions", "Run", "Gem", "InputGlyph" },
-  writes = { "Run", "Gem", "UiText", "Transform", "KinematicBody", "Sprite", "Timeline" },
-  doc = "Counts the hero's falls and gems, finishes the run at the exit (run.finished {time, falls, gems}), plays the outro timeline and holds the hero there out of sight, restarts it on the restart action (or the pause menu's, skipping the outro), and writes the HUD line.",
+  reads = { "Actions", "Run", "Gem", "InputGlyph", "Feather", "AirJump" },
+  writes = { "Run", "Gem", "UiText", "Transform", "KinematicBody", "Sprite", "Timeline", "Feather", "AirJump" },
+  doc = "Counts the hero's falls and gems, gives the hero the feather's jumps in mid-air when they touch it (feather.taken {entity, jumps}) for the rest of the run, finishes the run at the exit (run.finished {time, falls, gems}), plays the outro timeline and holds the hero there out of sight, restarts it on the restart action (or the pause menu's, skipping the outro; the feather goes back), and writes the HUD line.",
   run = function(q)
     local hero = q:entity("@player")
     local hud = q:entity("@hud")
     local run = hud:get("Run")
+    local air = hero:has("AirJump") and hero:get("AirJump") or nil
     if hero:get("Actions").restart_pressed or run.restart then
       run.restart = false
       hero:get("Transform").pos = vector.create(3, 1.8, 0)
@@ -30,6 +34,11 @@ return system "sim.run" {
       run.number += 1
       for _, g in q:each("Gem") do
         g.taken = false
+      end
+      -- The feather's gift is this run's: gone, and the feather back.
+      if air ~= nil then
+        air.max = 0
+        air.left = 0
       end
       -- A new run skips what is left of the outro.
       for _, tl in q:each("Timeline") do
@@ -66,8 +75,26 @@ return system "sim.run" {
             q:emit("gem.taken", { entity = other })
             q:play("sfx/gem")
           end
+        elseif other ~= nil and other:has("Feather") and air ~= nil then
+          local f = other:get("Feather")
+          if not f.taken and f.jumps > air.max then
+            air.max = f.jumps
+            -- Usable at once, in mid-air too (the touch may be a jump's).
+            air.left = f.jumps
+            q:emit("feather.taken", { entity = other, jumps = f.jumps })
+            q:play("sfx/feather")
+          end
         end
       end
+    end
+    -- A feather is taken while the hero has its jumps: the hero's AirJump
+    -- is what counts, so one whose room streamed back in is as the run is.
+    local winged = air ~= nil and air.max > 0
+    for e, f in q:each("Feather") do
+      local taken = winged and air.max >= f.jumps
+      if f.taken ~= taken then f.taken = taken end
+      local sprite = e:get("Sprite")
+      if sprite.visible == taken then sprite.visible = not taken end
     end
     -- Through the door: held in the doorway, out of sight, until R.
     if run.done then
@@ -107,7 +134,11 @@ return system "sim.run" {
       d.text = q:text("hud.done", { time = string.format("%.1f", run.time), falls = falls, gem = found, again = again })
     else
       local f = run.falls == 0 and q:text("hud.no_falls_yet") or (falls:sub(1, 1):upper() .. falls:sub(2))
-      d.text = q:text("hud.running", { falls = f, gem = run.gems > 0 and q:text("hud.gem_found") or "" })
+      d.text = q:text("hud.running", {
+        falls = f,
+        gem = run.gems > 0 and q:text("hud.gem_found") or "",
+        feather = winged and q:text("hud.feather") or "",
+      })
     end
   end,
 }

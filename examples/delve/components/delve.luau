@@ -15,6 +15,8 @@ component "Player" {
   kills = field.u32 { default = 0 },
   dead = field.bool { default = false },
   descend = field.bool { default = false, doc = "Asked to take the stairs; sim.floor answers" },
+  potions = field.u32 { default = 0, doc = "Healing potions carried; the drink command drinks one" },
+  potion_heal = field.i32 { default = 4, range = {0, 100}, tune = true, doc = "Hit points a potion gives back, never above Health.max" },
 }
 
 component "Monster" {
@@ -23,6 +25,11 @@ component "Monster" {
   atk = field.i32 { default = 1, range = {0, 100} },
   initiative = field.u8 { default = 5, range = {0, 20} },
   sight = field.u8 { default = 60, range = {0, 255}, doc = "Manhattan distance at which it notices the hero" },
+  drop = field.u8 { default = 35, range = {0, 100}, doc = "Chance in a hundred that it leaves a potion where the hero kills it (the loot stream rolls it)" },
+}
+
+component "Potion" {
+  doc = "A healing potion lying on the floor where a monster fell; the hero picks it up by walking onto it (sim.potions)",
 }
 
 component "Stairs" {

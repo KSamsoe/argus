@@ -425,7 +425,10 @@ fn a_scene_without_rigid_bodies_pays_nothing() {
     let e = g.w.spawn();
     g.w.insert(e, at(0.0, 0.0)).unwrap();
     g.w.insert(e, RigidWorld::default()).unwrap();
-    g.s.step(&mut g.w, 10).unwrap();
+    // Ten ticks to settle, then ten measured: the first tick builds the
+    // empty Rapier world, and averaged in it failed a busy CI run (a mean of
+    // 0.068 ms, its first tick 0.68).
+    g.s.step(&mut g.w, 20).unwrap();
     assert!(g.store.borrow().now().is_empty());
     let p = g.s.prof_systems(10).unwrap();
     let row = p.iter().find(|r| r.name == "physics.rigid").unwrap();

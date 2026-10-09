@@ -13,7 +13,7 @@
 -- one too.
 
 local TABS = { "colony", "people", "stores", "jobs" }
-local LINES = { colony = 7, people = 1, person = 5, stores = 4, jobs = 14 }
+local LINES = { colony = 8, people = 1, person = 5, stores = 4, jobs = 14 }
 local ROWS = 10
 
 local function pct(x)
@@ -163,6 +163,15 @@ local function colony_page(q)
   for _, j in q:each("Job") do
     if j.worker ~= nil then taken += 1 else open += 1 end
   end
+  local trees, felled, chopping = 0, 0, 0
+  for _, tr in q:each("Tree") do
+    if tr.growth < 1 then
+      felled += 1
+    else
+      trees += 1
+      if tr.job ~= nil and tr.job:alive() and tr.job:get("Job").worker ~= nil then chopping += 1 end
+    end
+  end
   local speed = if rules.paused then q:text("hud.paused") else q:text("hud.speed", { x = q:speed() })
   return {
     q:text("inspect.colony.day", {
@@ -177,6 +186,9 @@ local function colony_page(q)
     q:text("inspect.colony.fields", { fields = fields, ripe = ripe, growth = pct(rules.growth) }),
     q:text("inspect.colony.jobs", { open = open, taken = taken }),
     if most ~= nil then q:text("inspect.colony.idle", { why = most, n = most_n }) else "",
+    -- Last, so a panel built before there were trees to fell (a save's,
+    -- with a line fewer) loses only this one.
+    q:text("inspect.colony.trees", { trees = trees, felled = felled, chopping = chopping }),
   }
 end
 
@@ -230,10 +242,11 @@ local function person_page(q, e)
 end
 
 local function stores_page(q)
-  local meal, crop, goods, food = 0, 0, 0, 0
+  local meal, crop, wood, goods, food = 0, 0, 0, 0, 0
   for _, s in q:each("Stockpile") do
     meal += s.meal
     crop += s.crop
+    wood += s.wood
     goods += s.goods
     food += s.food
   end
@@ -251,7 +264,7 @@ local function stores_page(q)
     if s.job ~= nil and s.job:get("Job").worker ~= nil then cook = name_of(s.job:get("Job").worker) end
   end
   return {
-    q:text("inspect.stores.pile", { meals = math.floor(meal), crops = math.floor(crop), goods = math.floor(goods) }),
+    q:text("inspect.stores.pile", { meals = math.floor(meal), crops = math.floor(crop), wood = math.floor(wood), goods = math.floor(goods) }),
     q:text("inspect.stores.food", { food = string.format("%.1f", food) }),
     q:text("inspect.stores.lying", { n = n, kinds = if #names > 0 then table.concat(names, ", ") else q:text("inspect.none") }),
     q:text("inspect.stores.stove", { state = if cook ~= nil then q:text("inspect.stores.cooking", { who = cook }) else q:text("inspect.stores.cold") }),
@@ -299,9 +312,9 @@ return system "sim.colony.inspector" {
   after = { "ui.input" },
   -- It answers while the game is paused.
   unfrozen = true,
-  reads = { "Actions", "Colony", "Stockpile", "Colonist", "Needs", "Worker", "Job", "JobKind", "Field", "Item", "Station", "Grave", "Transform", "InspectPage", "InspectLine", "Vignette", "Menu" },
+  reads = { "Actions", "Colony", "Stockpile", "Colonist", "Needs", "Worker", "Job", "JobKind", "Field", "Tree", "Item", "Station", "Grave", "Transform", "InspectPage", "InspectLine", "Vignette", "Menu" },
   writes = { "Inspector", "InspectRow", "UiRoot", "UiNode", "UiText", "UiButton", "UiPanel", "Camera" },
-  doc = "Runs the inspector: Tab (inspect) opens and closes it, but not while the menu is open; its tabs, a colonist's button, Follow, Back, the page arrows, and cancel move between its pages; while it is open the arrows move its focus, not the view, and Follow has the view follow the person shown. Six times a second of the player's time (every ten ticks at 1x, a hundred at 10x) the page shown is written again from the world: the colony (day, food, people, the lost, fields, jobs, the most common reason for idling), the people ten at a time (fed, rest, what they are doing), one person (skills, needs, their job and how far along, or why they are idle), the stores (the stockpile, what is lying about, the stove), and the jobs (by kind, open and taken, and who has what).",
+  doc = "Runs the inspector: Tab (inspect) opens and closes it, but not while the menu is open; its tabs, a colonist's button, Follow, Back, the page arrows, and cancel move between its pages; while it is open the arrows move its focus, not the view, and Follow has the view follow the person shown. Six times a second of the player's time (every ten ticks at 1x, a hundred at 10x) the page shown is written again from the world: the colony (day, food, people, the lost, fields, trees, jobs, the most common reason for idling), the people ten at a time (fed, rest, what they are doing), one person (skills, needs, their job and how far along, or why they are idle), the stores (the stockpile, what is lying about, the stove), and the jobs (by kind, open and taken, and who has what).",
   run = function(q)
     local ie = nil
     for e in q:each("Inspector") do

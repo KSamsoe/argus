@@ -1,0 +1,20 @@
+{
+  "rows": [
+    [
+      "@player",
+      6,
+      2
+    ]
+  ],
+  "scene": "delve",
+  "select": [
+    "id",
+    "Player.kills",
+    "Player.potions"
+  ],
+  "where": {
+    "has": [
+      "Player"
+    ]
+  }
+}

@@ -13,3 +13,9 @@ color = "#E08A4A"
 ["stone"]
 name = "Stone"
 color = "#8A8F99"
+
+# Logs from a felled tree (systems/woods.luau); a hauler takes them to the
+# stockpile, which counts them as Stockpile.wood.
+["wood"]
+name = "Wood"
+color = "#8B5A2B"

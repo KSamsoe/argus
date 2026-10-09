@@ -192,6 +192,32 @@ GEM = grid(
 )
 
 
+# A feather, 8 x 10: pale and leaning, on the cave's plank; taken, the hero
+# can jump once more in mid-air (components/feather.luau).
+FEATHER = grid(
+    [
+        "......Ww",
+        ".....WFw",
+        "....WFFw",
+        "...WFFw.",
+        "..WFFw..",
+        ".WFFw...",
+        ".Fsw....",
+        "..q.....",
+        ".q......",
+        "q.......",
+    ],
+    {
+        ".": CLEAR,
+        "W": hexc("FFFFFF"),
+        "F": hexc("D8E4F0"),
+        "w": hexc("9FB4CC"),
+        "s": hexc("B8C8DC"),
+        "q": hexc("C8A878"),
+    },
+)
+
+
 def hero():
     frames = [
         frame("idle"),
@@ -220,4 +246,5 @@ if __name__ == "__main__":
     png("sign.png", 8, 18, SIGN)
     png("exit.png", 12, 20, EXIT)
     png("gem.png", 8, 8, GEM)
-    print("wrote tiles/rock.png, tiles/plank.png, tiles/back.png, hero.png, sign.png, exit.png, gem.png")
+    png("feather.png", 8, 10, FEATHER)
+    print("wrote tiles/rock.png, tiles/plank.png, tiles/back.png, hero.png, sign.png, exit.png, gem.png, feather.png")

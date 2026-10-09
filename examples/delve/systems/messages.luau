@@ -4,9 +4,12 @@
 
 return system "sim.messages" {
   stage = "sim",
-  after = { "sim.monsters" },
+  after = { "sim.monsters", "sim.potions" },
+  -- A drink with no potion freezes the rest of the turn (no turn passes);
+  -- the line still says so.
+  unfrozen = true,
   writes = { "UiText" },
-  doc = "Writes the turn's messages under the HUD line: the hero's hits and kills, the monsters' hits, a death, the stairs, and bumps, each from the string tables (message.*, monster.*).",
+  doc = "Writes the turn's messages under the HUD line: the hero's hits and kills, potions dropped, picked up, and drunk (or none to drink), the monsters' hits, a death, the stairs, and bumps, each from the string tables (message.*, monster.*).",
   run = function(q)
     local said = {}
     local function name(kind)
@@ -25,8 +28,30 @@ return system "sim.messages" {
         table.insert(said, q:text("message.hurt", { monster = name(ev.kind), amount = ev.amount }))
       end
     end
+    -- What the hero's own turn did comes first: a kill and what it left,
+    -- or a potion picked up, drunk, or not there to drink.
+    local first = {}
     for kind in pairs(killed) do
-      table.insert(said, 1, q:text("message.kill", { monster = name(kind) }))
+      table.insert(first, q:text("message.kill", { monster = name(kind) }))
+    end
+    for _, ev in ipairs(q:events("potion.dropped")) do
+      table.insert(first, q:text("message.potion_dropped", { monster = name(ev.kind) }))
+    end
+    for _, ev in ipairs(q:events("potion.picked")) do
+      table.insert(first, q:text("message.potion_picked", { count = ev.carried }))
+    end
+    for _, ev in ipairs(q:events("potion.drunk")) do
+      if ev.healed > 0 then
+        table.insert(first, q:text("message.potion_drunk", { amount = ev.healed, hp = ev.hp, max = ev.max }))
+      else
+        table.insert(first, q:text("message.potion_full", { hp = ev.hp, max = ev.max }))
+      end
+    end
+    if #q:events("potion.none") > 0 then
+      table.insert(first, q:text("message.no_potions"))
+    end
+    for i, line in ipairs(first) do
+      table.insert(said, i, line)
     end
     for _, ev in ipairs(q:events("player.died")) do
       table.insert(said, q:text("message.died", { monster = name(ev.kind), floor = ev.floor, kills = ev.kills }))

@@ -21,6 +21,7 @@ return scenario "the controls page shows the keys and rebinds them" {
     t.expect:field("@controls.wait", "UiButton.focused"):eq(true)
     t.expect:field("@controls.wait", "UiText.shown"):eq("Wait: period")
     t.expect:field("@controls.descend", "UiText.shown"):eq("Descend: enter")
+    t.expect:field("@controls.drink", "UiText.shown"):eq("Drink: q")
     t.expect:field("@controls.pause", "UiText.shown"):eq("Menu: escape")
     -- The semantic frame reads the page out, the focused button among them.
     local f = t:call("obs.frame", { format = "semantic" })
@@ -31,7 +32,7 @@ return scenario "the controls page shows the keys and rebinds them" {
         if u.focused then focused = u.text end
       end
     end
-    local want = { "Wait: period", "Descend: enter", "Menu: escape", "Back" }
+    local want = { "Wait: period", "Descend: enter", "Drink: q", "Menu: escape", "Back" }
     if table.concat(buttons, " | ") ~= table.concat(want, " | ") then
       error("the semantic frame's buttons: " .. table.concat(buttons, " | "), 0)
     end

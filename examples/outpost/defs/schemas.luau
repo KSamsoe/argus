@@ -40,5 +40,5 @@ return def "founders" {
   prefix = "founder",
   key = "id",
   id = field.str {},
-  skills = field.str { doc = "What they can do (farm, cook); everyone hauls" },
+  skills = field.str { doc = "What they can do (farm, cook, chop); everyone hauls" },
 }

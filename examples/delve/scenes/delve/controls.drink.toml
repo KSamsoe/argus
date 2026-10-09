@@ -1,0 +1,17 @@
+[InputBinding]
+action = "drink"
+
+[Parent]
+entity = "@controls"
+
+[UiButton]
+
+[UiNode]
+order = 3
+pad = [18.0, 8.0]
+
+[UiPanel]
+color = "button"
+
+[UiText]
+key = "controls.drink"

@@ -11,14 +11,24 @@ return system "sim.player_turn" {
   after = { "sim.floor" },
   reads = { "PlayerSlot", "Actions", "Tilemap", "Monster", "Stairs", "Transform", "Health", "Turn" },
   writes = { "Player", "Transform", "Health", "Turn" },
-  doc = "The hero's turn: step in the move direction (a wall on the floor's map is a bump), attack a monster in the way, wait, or descend on the stairs.",
+  doc = "The hero's turn: step in the move direction (a wall on the floor's map is a bump), attack a monster in the way, wait, descend on the stairs, or drink a potion (heals Player.potion_heal, never above Health.max; with none it says so and no turn passes).",
   run = function(q)
     local pe = q:entity("@player")
     local pl = pe:get("Player")
     local turn = q:entity("@turn"):get("Turn")
+    local a = pe:get("Actions")
+
+    -- Drinking with no potion does nothing but say so: no turn passes, so
+    -- the rest of this one is frozen (the monsters do not act), as the
+    -- menu does; sim.messages runs unfrozen to say it.
+    if not pl.dead and a.drink_pressed and pl.potions == 0 then
+      q:emit("potion.none", { turn = turn.n })
+      q:freeze()
+      return
+    end
+
     turn.n += 1
     if pl.dead then return end
-    local a = pe:get("Actions")
     local pos = pe:get("Transform").pos
 
     if a.descend_pressed then
@@ -30,6 +40,18 @@ return system "sim.player_turn" {
         end
       end
       q:emit("bump", { what = "no stairs here", turn = turn.n })
+      return
+    end
+
+    -- Drink a potion: it heals a set amount, never above the maximum (nor
+    -- below where the hero is), and takes the turn, even at full health.
+    if a.drink_pressed then
+      local hp = pe:get("Health")
+      local before = hp.cur
+      local after = math.max(before, math.min(hp.max, before + pl.potion_heal))
+      hp.cur = after
+      pl.potions -= 1
+      q:emit("potion.drunk", { healed = after - before, hp = after, max = hp.max, left = pl.potions, turn = turn.n })
       return
     end
 
@@ -53,7 +75,9 @@ return system "sim.player_turn" {
         q:play("sfx/hit", { entity = e })
         if left == 0 then
           pl.kills += 1
-          q:emit("death", { entity = e, kind = mo.kind, cause = "hero", turn = turn.n })
+          -- Where it fell and its drop chance, for sim.potions (the
+          -- entity is gone by then).
+          q:emit("death", { entity = e, kind = mo.kind, cause = "hero", turn = turn.n, x = nx, y = ny, drop = mo.drop })
           e:despawn()
         end
         return

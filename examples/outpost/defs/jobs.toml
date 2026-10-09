@@ -21,3 +21,11 @@ work = 2.0
 ["haul"]
 priority = 3
 work = 0.5
+
+# Felling a tree (systems/woods.luau posts them, Colony.chop_open at a
+# time): below the food's jobs, so woodcutters chop only when nothing of
+# the colony's food wants them. The logs are hauled like the crops.
+["chop"]
+priority = 2
+skill = "chop"
+work = 4.0

@@ -1,15 +1,15 @@
-# Six colonists: everyone hauls; some farm, some cook.
+# Six colonists: everyone hauls; some farm, some cook, some fell trees.
 ["Ada"]
 skills = "farm cook"
 
 ["Bram"]
-skills = "farm"
+skills = "farm chop"
 
 ["Cleo"]
-skills = "cook"
+skills = "cook chop"
 
 ["Dov"]
-skills = "farm"
+skills = "farm chop"
 
 ["Esme"]
 skills = "farm cook"

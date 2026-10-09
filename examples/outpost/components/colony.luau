@@ -3,7 +3,8 @@
 -- fields filled by themselves); item 3 is its core: a valley laid out from
 -- the seed, fields that grow by day, jobs (harvest, haul, cook, eat,
 -- sleep) done by colonists who walk to them, stockpiles, needs, and the
--- day and night.
+-- day and night. Woodcutting came after: the valley's trees are felled
+-- for wood (a chop job) and grow back from their stumps.
 --
 -- The first week's save (tests/saves/week1.save) was written by the
 -- skeleton, so every change here says how an older row becomes a newer
@@ -11,7 +12,7 @@
 
 component "Colony" {
   doc = "The colony as a whole: its calendar and the rules of its economy (tune fields: a slider is a hypothesis about balance, section 10)",
-  version = 3,
+  version = 4,
   day = field.u32 { doc = "Days since the colony was founded; the game saves itself when one turns" },
   clock = field.f64 { doc = "The colony's own seconds, which stand still while the game is paused (day and night follow it)" },
   hunger_per_day = field.f32 { default = 1, range = {0, 10}, tune = true, doc = "Food a colonist needs a day (a meal is 1)" },
@@ -24,6 +25,9 @@ component "Colony" {
   meals_wanted = field.f32 { default = 24, range = {0, 1000}, tune = true, doc = "Cooks stop once the stockpiles hold this many meals" },
   dusk = field.f32 { default = 0.65, range = {0.3, 1}, tune = true, doc = "How far into a day night falls; colonists sleep until the day turns" },
   haul_open = field.u32 { default = 12, range = {0, 1000}, doc = "Haul jobs posted at a time for goods lying about" },
+  chop_open = field.u32 { default = 2, range = {0, 1000}, doc = "Chop jobs at a time (open or taken): at most this many woodcutters fell trees at once" },
+  tree_wood = field.f32 { default = 3, range = {0, 100}, tune = true, doc = "Wood a felled tree gives" },
+  tree_days = field.f32 { default = 3, range = {0.1, 30}, tune = true, doc = "Days of daylight a felled tree's stump takes to grow back into a tree" },
   laid_out = field.bool { doc = "The valley is laid out: the ground, fields, stockpile, stove, beds (a save from before it was gets one)" },
   size = field.vec2 { default = {40, 24}, doc = "The valley's size in cells, when it is laid out" },
   colonists = field.u32 { default = 0, doc = "Colonists to found it with; 0: the founders of defs/founders.toml (the stress scene founds 200)" },
@@ -37,20 +41,29 @@ component "Colony" {
     -- set from outside the game (the editor's bar, sim.speed) never
     -- reached it. The clock's speed is q:speed() now.
     [3] = { drop = { "speed" } },
+    -- v3 had no woodcutting: chop_open, tree_wood, and tree_days come in
+    -- at their defaults.
+    [4] = {},
   },
 }
 
 component "Stockpile" {
   doc = "A stockpile: what the colony has stored there. Haulers bring goods in; cooks and the hungry take them out",
-  version = 2,
+  version = 3,
   food = field.f32 { default = 0, doc = "Food stored, in meals' worth: its meals and crops together (section 9 sums it)" },
   meal = field.f32 { default = 0, doc = "Meals stored" },
   crop = field.f32 { default = 0, doc = "Crops stored, to be cooked or eaten raw" },
-  goods = field.f32 { default = 0, doc = "Other goods stored (stone, wood)" },
+  wood = field.f32 { default = 0, doc = "Wood stored, from felled trees" },
+  goods = field.f32 { default = 0, doc = "Other goods stored (stone)" },
   migrate = {
     -- v1 counted meals as food and stored nothing else.
     [2] = function(row)
       row.meal = row.food
+      return row
+    end,
+    -- v2 kept no wood (there were no woodcutters): none stored.
+    [3] = function(row)
+      row.wood = 0
       return row
     end,
   },
@@ -84,6 +97,13 @@ component "Item" {
   kind = field.ref { default = "item:crop", doc = "What it is (defs/items.toml)" },
   count = field.f32 { default = 1, doc = "How many" },
   job = field.entity { doc = "Its haul job, while there is one" },
+}
+
+component "Tree" {
+  doc = "A tree of the valley (systems/woods.luau): a woodcutter fells a standing one for Colony.tree_wood wood, and its stump grows back over Colony.tree_days days of daylight. It blocks the way (its NavCost) standing or felled",
+  growth = field.f32 { default = 1, range = {0, 1}, doc = "1 a standing tree; below, a stump (felled at 0) growing back" },
+  reach = field.bool { doc = "A woodcutter can get to it: a cell beside it is open ground joined to the stockpile's (found when the valley is laid out; only trees and the stove block the way, and they stay)" },
+  job = field.entity { doc = "Its chop job, while there is one" },
 }
 
 component "Station" {

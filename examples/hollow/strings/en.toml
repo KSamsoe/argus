@@ -31,7 +31,7 @@ off = "off"
 back = "Back"
 
 [hud]
-running = "Hollow. Find the way out. {falls}.{gem}"
+running = "Hollow. Find the way out. {falls}.{gem}{feather}"
 done = "Out of the hollow in {time} s, {falls}{gem}. Press {again} to go again."
 no_falls_yet = "No falls yet"
 no_falls = "no falls"
@@ -40,11 +40,13 @@ falls = "{n} falls"
 gem_found = " Gem found."
 with_gem = ", with the gem"
 gem_missed = ", gem missed"
+feather = " The feather: jump again in mid-air."
 
 [sign]
 shaft = "The top of the shaft. Something glints up here."
 pit = "Mind the pit."
 exit = "The way out."
+feather = "A feather: take it to jump in mid-air."
 
 [hermit]
 name = "The hermit"

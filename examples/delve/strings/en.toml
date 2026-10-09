@@ -18,6 +18,7 @@ wait = "Wait: {InputBinding.keys}"
 descend = "Descend: {InputBinding.keys}"
 pause = "Menu: {InputBinding.keys}"
 back = "Back"
+drink = "Drink: {InputBinding.keys}"
 
 # The menu's settings page (phase 5 item 2); systems/menu_buttons.luau
 # fills the holes.
@@ -31,7 +32,7 @@ off = "off"
 back = "Back"
 
 [hud]
-line = "Floor {@player:Player.floor}, turn {Turn.n}. HP {@player:Health.cur}/{@player:Health.max}."
+line = "Floor {@player:Player.floor}, turn {Turn.n}. HP {@player:Health.cur}/{@player:Health.max}. Potions {@player:Player.potions}."
 
 [message]
 hit = "You hit the {monster}."
@@ -41,6 +42,11 @@ died = "The {monster} kills you on floor {floor}, after {kills} kills."
 descend = "You take the stairs down."
 no_stairs = "There are no stairs here."
 wall = "A wall."
+potion_dropped = "The {monster} drops a potion."
+potion_picked = "You pick up a potion; you carry {count}."
+potion_drunk = "You drink a potion and heal {amount}, to {hp}/{max}."
+potion_full = "You drink a potion, but you are already at full health."
+no_potions = "You have no potions to drink."
 
 [monster]
 rat = "rat"

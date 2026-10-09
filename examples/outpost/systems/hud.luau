@@ -1,5 +1,5 @@
 -- The line at the top of the screen (the day, the time, the food, the
--- colonists, and the speed) and the notice under it (the colony's news: a
+-- wood, the colonists, and the speed) and the notice under it (the colony's news: a
 -- day begun, a colonist lost), in the string tables' words (phase 3 item 4).
 
 return system "late.colony.hud" {
@@ -7,7 +7,7 @@ return system "late.colony.hud" {
   unfrozen = true,
   reads = { "Colony", "Stockpile", "Colonist", "Worker", "Hud" },
   writes = { "UiText" },
-  doc = "Writes the HUD line twice a second (day and hour, food stored, colonists and how many are working, the speed) and the notice line when a day turns or a colonist dies, from the string tables (hud.*, notice.*).",
+  doc = "Writes the HUD line twice a second (day and hour, food stored, wood stored, colonists and how many are working, the speed) and the notice line when a day turns or a colonist dies, from the string tables (hud.*, notice.*).",
   run = function(q)
     local notice
     for _, ev in ipairs(q:events("day.turned")) do
@@ -19,11 +19,12 @@ return system "late.colony.hud" {
     local line
     if q.tick % 30 == 0 then
       local rules = q:entity("@colony"):get("Colony")
-      local food, meal, crop = 0, 0, 0
+      local food, meal, crop, wood = 0, 0, 0, 0
       for _, s in q:each("Stockpile") do
         food += s.food
         meal += s.meal
         crop += s.crop
+        wood += s.wood
       end
       local n, busy = 0, 0
       for _, _, w in q:each("Colonist", "Worker") do
@@ -38,6 +39,7 @@ return system "late.colony.hud" {
         food = string.format("%.1f", food),
         meals = math.floor(meal),
         crops = math.floor(crop),
+        wood = math.floor(wood),
         colonists = n,
         working = busy,
         -- The clock's speed, however it was set: the keys, the editor, the agent.
