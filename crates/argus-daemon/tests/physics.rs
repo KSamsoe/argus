@@ -213,6 +213,7 @@ fn a_player_runs_jumps_and_lands_on_carved_tiles() {
             "nav.agents",
             "timeline.update",
             "anim.update",
+            "skeletal.pose",
             "tween.update",
             "late.listen",
             "camera.update",

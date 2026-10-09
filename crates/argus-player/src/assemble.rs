@@ -413,6 +413,9 @@ fn assemble_layers(
     // scripts, so it runs first in the late stage.
     let anims = Rc::new(RefCell::new(argus_anim::AnimStore::default()));
     argus_anim::install(&mut world, &mut sched, anims.clone())?;
+    // Spine skeletons (phase 5 item 8): posed after the animator, from
+    // the same store, their slots drawn as sprites.
+    argus_skeletal::install(&mut world, &mut sched, anims.clone())?;
     argus_tween::install(&mut world, &mut sched)?;
     let particles = Rc::new(RefCell::new(argus_particles::ParticleStore::default()));
     argus_particles::install(&mut world, &mut sched, particles.clone())?;

@@ -1,0 +1,13 @@
+# The same skeleton in its armored skin, mirrored, walking on the spot on
+# its own (no animator).
+[Transform]
+pos = [2.4, 0.0]
+
+[Skeleton]
+skeleton = "puppet/puppet"
+skin = "armored"
+animation = "walk"
+speed = 0.8
+scale = 0.01
+flip_x = true
+z = 1.0

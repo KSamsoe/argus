@@ -1,0 +1,29 @@
+# The hero's animator: it stands, walks, and waves when the show cues it.
+# Each state's clip is one of the skeleton's Spine animations.
+type = "animator"
+initial = "idle"
+
+[states.idle]
+clip = "idle"
+
+[[states.idle.transitions]]
+to = "walk"
+when = "time > 1.5"
+blend = 0.2
+
+[states.walk]
+clip = "walk"
+
+[[states.walk.transitions]]
+to = "wave"
+when = "Cue.wave"
+blend = 0.2
+
+[states.wave]
+clip = "wave"
+loop = false
+
+[[states.wave.transitions]]
+to = "idle"
+when = "end"
+blend = 0.25

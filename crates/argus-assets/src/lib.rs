@@ -28,6 +28,7 @@ pub mod effect;
 pub mod font;
 pub mod pages;
 pub mod sidecar;
+pub mod spine;
 pub mod tiled;
 
 pub use animator::{
@@ -50,6 +51,7 @@ pub use font::{BakedGlyph, FontAsset};
 use serde_json::{json, Value as Json};
 pub use sidecar::{AutoMode, AutoTileSpec};
 use sidecar::{Direction, Shape, SidecarKind};
+pub use spine::SkeletonAsset;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
@@ -197,6 +199,8 @@ pub enum Asset {
     Font(FontAsset),
     /// A Tiled map (`.tmx` or `.tmj`, phase 5 item 4): what it holds.
     Map(tiled::MapAsset),
+    /// A Spine skeleton (its JSON export, phase 5 item 8).
+    Skeleton(spine::SkeletonAsset),
 }
 
 /// A warning about an import: a sentence and where.
@@ -236,6 +240,7 @@ impl Entry {
             Asset::Material(_) => "material",
             Asset::Font(_) => "font",
             Asset::Map(_) => "tilemap",
+            Asset::Skeleton(_) => "skeleton",
         }
     }
 
@@ -254,6 +259,28 @@ impl Entry {
             "warnings": warnings,
         });
         match &self.asset {
+            Asset::Skeleton(s) => {
+                o["source"] = json!(format!("assets/{}", s.source));
+                o["spine"] = json!(s.spine);
+                o["fps"] = json!(s.fps);
+                o["bones"] = json!(s.bones.iter().map(|b| b.name.as_str()).collect::<Vec<_>>());
+                o["slots"] = json!(s.slots.iter().map(|x| x.name.as_str()).collect::<Vec<_>>());
+                o["skins"] = json!(s.skins.keys().collect::<Vec<_>>());
+                o["animations"] = Json::Object(
+                    s.animations
+                        .iter()
+                        .map(|(n, a)| {
+                            (
+                                n.clone(),
+                                json!({ "duration": a.duration, "events": a.events.len() }),
+                            )
+                        })
+                        .collect(),
+                );
+                o["events"] = json!(s.events.keys().collect::<Vec<_>>());
+                o["ik"] = json!(s.ik.iter().map(|c| c.name.as_str()).collect::<Vec<_>>());
+                o["images"] = json!(s.images());
+            }
             Asset::Material(m) => material_json(m, &mut o),
             Asset::Map(m) => {
                 o["file"] = json!(m.file);
@@ -466,6 +493,8 @@ struct Group {
     aseprite: Option<String>,
     /// A Tiled file (`.tsx`, `.tsj`, `.tmx`, `.tmj`; phase 5 item 4).
     tiled: Option<String>,
+    /// `<name>.json`: a Spine skeleton (phase 5 item 8).
+    spine: Option<String>,
     /// One of the map `tiled`'s embedded tilesets, not the map itself.
     embedded: bool,
 }
@@ -507,6 +536,8 @@ fn group_files<'a>(
             (rel[..n.len()].to_string(), 6)
         } else if tiled::is_tileset_file(rel) || tiled::is_map_file(rel) {
             (rel[..rel.len() - 4].to_string(), 7)
+        } else if spine::is_skeleton_file(rel) {
+            (rel[..rel.len() - 5].to_string(), 8)
         } else {
             continue;
         };
@@ -522,6 +553,7 @@ fn group_files<'a>(
             5 => g.normal = Some(rel.clone()),
             6 => g.aseprite = Some(rel.clone()),
             7 => g.tiled = Some(rel.clone()),
+            8 => g.spine = Some(rel.clone()),
             _ => g.sidecar = Some(rel.clone()),
         }
     }
@@ -701,6 +733,14 @@ impl Importer {
     pub fn sprites(&self) -> impl Iterator<Item = (&String, &SpriteAsset)> {
         self.entries.iter().filter_map(|(n, e)| match &e.asset {
             Asset::Sprite(s) => Some((n, s)),
+            _ => None,
+        })
+    }
+
+    /// Spine skeletons (phase 5 item 8).
+    pub fn skeletons(&self) -> impl Iterator<Item = (&String, &SkeletonAsset)> {
+        self.entries.iter().filter_map(|(n, e)| match &e.asset {
+            Asset::Skeleton(s) => Some((n, s)),
             _ => None,
         })
     }
@@ -990,7 +1030,7 @@ impl Importer {
         if let Some(t) = &g.tiled {
             return self.import_tiled(name, g, t, side_text.as_deref(), side_file.as_deref(), hash);
         }
-        let sources: Vec<&String> = [&g.png, &g.wav, &g.wgsl, &g.font, &g.aseprite]
+        let sources: Vec<&String> = [&g.png, &g.wav, &g.wgsl, &g.font, &g.aseprite, &g.spine]
             .into_iter()
             .flatten()
             .collect();
@@ -1017,6 +1057,9 @@ impl Importer {
         }
         if let Some(f) = &g.font {
             return self.import_font(name, g, f, side_text.as_deref(), side_file.as_deref(), hash);
+        }
+        if let Some(j) = &g.spine {
+            return self.import_skeleton(name, g, j, hash);
         }
         if let Some(a) = &g.aseprite {
             return self.import_aseprite(
@@ -1101,6 +1144,31 @@ impl Importer {
     }
 
     /// A font: its atlas baked (phase 3 item 1).
+    /// A Spine skeleton's JSON export (phase 5 item 8).
+    fn import_skeleton(
+        &self,
+        name: &str,
+        g: &Group,
+        file: &str,
+        mut hash: u64,
+    ) -> Result<(Entry, Vec<String>)> {
+        let bytes = self.read_in(g.layer, file)?;
+        fnv(&mut hash, &bytes);
+        let text = String::from_utf8_lossy(&bytes);
+        let (asset, warnings) = spine::parse(file, &self.shown(g.layer, file), &text)?;
+        Ok((
+            Entry {
+                name: name.to_string(),
+                sidecar: Some(file.to_string()),
+                hash,
+                warnings,
+                asset: Asset::Skeleton(asset),
+                ms: 0.0,
+            },
+            Vec::new(),
+        ))
+    }
+
     fn import_font(
         &self,
         name: &str,

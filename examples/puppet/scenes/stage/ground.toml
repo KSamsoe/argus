@@ -1,0 +1,9 @@
+# The stage floor the puppets stand on (their feet at y 0).
+[Transform]
+pos = [0.0, -0.1]
+
+[Sprite]
+kind = "rect"
+size = [8.0, 0.2]
+color = "#3B4A3F"
+z = 0.0

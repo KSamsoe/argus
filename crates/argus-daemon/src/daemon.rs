@@ -1947,6 +1947,14 @@ impl Daemon {
                     m.layers,
                     e.warnings.len()
                 ]),
+                argus_assets::Asset::Skeleton(s) => json!([
+                    e.name,
+                    "skeleton",
+                    format!("assets/{}", s.source),
+                    s.bones.len(),
+                    s.animations.keys().collect::<Vec<_>>(),
+                    e.warnings.len()
+                ]),
                 argus_assets::Asset::Sound(so) => json!([
                     e.name,
                     "sound",

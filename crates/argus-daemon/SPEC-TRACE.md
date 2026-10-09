@@ -395,6 +395,14 @@ Phase 0 item 4, "JSON-RPC daemon with session, world, edit, sim (play, pause, st
 | (§6) A seek replays rigid bodies to the same world. | Done | The ring's keyframes carry the rigid store's state (argus-player's `Sources::rigid`); `sim.seek` back into a toybox run and stepping on reaches the digest the run reached, its replayed events checked against the log. | `rigid::a_seek_replays_the_rigid_bodies_to_the_same_world` |
 | (§3, §5) The module's components and system are the world's like any. | Done | `world.describe RigidBody` (and `Joint`, `RigidWorld`) with their docs and tune fields; `physics.rigid` in `script.systems` between `physics.move` and `physics.overlap`. A game that does not name the module has none of it. | `rigid::the_modules_components_are_described_and_its_system_is_listed`, `rigid::a_game_that_does_not_list_the_module_has_none_of_it` |
 
+## Phase 5, item 8: skeletons through the protocol
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§5) The asset list names skeletons. | Done | `asset.list kind=skeleton`: its JSON, its bone count and animations (the frames and clips columns), its warnings; its images are listed as sprites. | `skeletal::the_asset_list_names_the_skeleton_and_what_it_holds` |
+| (§3, §5) The module's components and system are the world's like any. | Done | `world.describe Skeleton` (and `SkeletonPart`) with their docs and tune fields; `skeletal.pose` in `script.systems` after `anim.update`, and a script orders itself after it. | `skeletal::the_components_are_described_and_the_system_follows_the_animator` |
+| (§6) A seek replays skeletons to the same world. | Done | Their state is in components; the system's caches of interned strings are dropped when the world's frame does not follow the last one, since a restored world brings its own string table (found here: a tint first seen after the keyframe drew as no tint after a seek). | `skeletal::a_seek_replays_the_puppets_to_the_same_world` |
+
 ## Known limitations, stated so they are decisions
 
 - A tuning session's values live in this daemon until its end: a fork made during one, and a mark's or a replay's file, start from the files, without the session's def rows or effects.

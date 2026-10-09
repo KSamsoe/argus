@@ -1,0 +1,8 @@
+# The show, and what it has counted.
+[Show]
+every = 240
+pace = 0.6
+
+[Describe]
+role = "hud"
+text = "Puppet: {Show.waves} waves, {Show.steps} steps."

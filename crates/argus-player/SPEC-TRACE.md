@@ -150,6 +150,12 @@ Every statement in the design document (v0.3) that constrains a game as players 
 | (§12) The optional module runs wherever the game does, only when the game names it. | Done | `assemble` installs argus-rigid when `argus.toml` lists `modules = ["rigid"]` (after the physics crate, before the scripts, which can then read and write its components); a build without the `rigid` feature refuses such a game with the reason. `Assembly::rigid` and `Sources::rigid` hold the store. | argus-daemon `rigid`; the toybox's suite and release build |
 | (§6) A keyframe, a seek, and a replay file carry the bodies' state. | Done | `Keyframe::rigid` (`RigidKeep`): Rapier's state, cloned at a capture and put back at a restore; replay files from version 6 carry it as bytes after the runtime maps' cells (a file of version 5 or older has none). Saves do not: a loaded game builds its bodies again from their components. | `release_rigid::a_replay_file_replays_the_rigid_bodies_to_the_same_world`; argus-daemon `rigid::a_seek_replays_the_rigid_bodies_to_the_same_world` |
 
+## Phase 5, item 8: skeletons in every assembly
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§13) Skeletons pose wherever the game runs. | Done | `assemble` installs argus-skeletal after argus-anim, on the animator's store (refreshed after every import), in every assembly: it is the engine's own code without a dependency and costs nothing without a Skeleton, so it is not a module a game names. A keyframe needs nothing more: the pose is in components. | `release_skeletal::the_puppets_ship_and_play_from_their_packs_as_from_their_folder`; the puppet example's suite |
+
 ## Known limitations, stated so they are decisions
 
 - A desktop report goes over plain HTTP to the server's tailnet address (`[reports] url`): a player off the tailnet keeps theirs, and it goes when they are on it, or they send the file.

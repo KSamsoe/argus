@@ -60,6 +60,7 @@ fn session_open_gives_the_one_screen_summary() {
             "nav.agents",
             "timeline.update",
             "anim.update",
+            "skeletal.pose",
             "tween.update",
             "camera.update",
             "post.update",
@@ -693,7 +694,7 @@ fn scripts_reload_in_place_and_errors_are_data() {
     project(t.path());
     let mut d = open(t.path());
     let sys = ok(&mut d, "script.systems", json!({}));
-    assert_eq!(sys["total"], 21);
+    assert_eq!(sys["total"], 22);
     let dmg = &sys["rows"][8];
     assert_eq!(dmg["name"], "sim.damage");
     assert_eq!(dmg["stage"], "sim");

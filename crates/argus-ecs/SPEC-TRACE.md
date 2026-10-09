@@ -175,6 +175,12 @@ Phase 0 item 1, "ECS core with SoA columns, archetypes, and hierarchy": this cra
 |---|---|---|---|
 | A plugin reads and writes columns as its own types. | Done | `DynColumn::as_ptr`: a borrowed column's first row, which a plugin reads as rows of a struct laid out as the schema (the plugin host checks the layout first); `World::with_row_mut`: one row's bytes under an exclusive borrow, a plugin's typed write. Script components are laid out in declaration order at natural alignment, which is `#[repr(C)]`'s layout, so a plugin's struct matches field for field. | argus-plugins `plugins` |
 
+## Phase 5, item 8: what skeletons needed from the core
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| A system writes the same few strings every tick without making them. | Done | `DynColumn::set_str_id_by`: a string or reference field written as its interned id, the counterpart of `str_id_by`. A cache of ids outside the world is the caller's to drop when the world is restored: a restore brings the snapshot's string table. | argus-skeletal `skeletal::the_same_run_poses_the_same_and_a_seek_replays_it` |
+
 ## Known limitations, stated so they are decisions
 
 - A parallel system may not add a string to the table (it may spawn with one: spawns are applied after its batch). A game whose parallel system writes text it composes writes it from a serial system instead.

@@ -1,0 +1,5 @@
+[Transform]
+pos = [0.0, 1.0]
+
+[Camera]
+height = 3.6

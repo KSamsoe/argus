@@ -170,6 +170,12 @@ fn run(
     for i in 0..st.compiled.used.len() {
         ctx.declare(st.compiled.used[i], false);
     }
+    // A skeleton's animator plays the skeleton's clips (phase 5 item 8),
+    // read by name as the Sprite is.
+    let skel = ctx.world().component_id("Skeleton");
+    if let Some(s) = skel {
+        ctx.declare(s, false);
+    }
     let mut events: Events = Vec::new();
     let world: &World = ctx.world();
     let compiled = &mut st.compiled;
@@ -182,11 +188,16 @@ fn run(
         ),
         None => (None, None, None, None),
     };
+    let skel_f = skel.and_then(|s| world.registry().schema(s).field("skeleton").cloned());
     world.query().has(anim).for_each_view(|view| {
         let arch = view.archetype();
         let mut anims = view.column_mut::<Animator>()?;
         let sprites = match sprite.filter(|s| arch.has(*s)) {
             Some(s) => Some(view.dyn_column_mut(s)?),
+            None => None,
+        };
+        let skels = match skel.filter(|s| arch.has(*s)) {
+            Some(s) => Some(view.dyn_column(s)?),
             None => None,
         };
         let cols = Cols {
@@ -208,6 +219,8 @@ fn run(
         let atlas_of = |a: &Animator, row: usize| {
             if a.sprite != StrId::EMPTY {
                 a.sprite
+            } else if let (Some(sk), Some(f)) = (&skels, &skel_f) {
+                sk.str_id_by(row, f).unwrap_or(StrId::EMPTY)
             } else {
                 match (&sprites, &atlas_f) {
                     (Some(sc), Some(f)) => sc.str_id_by(row, f).unwrap_or(StrId::EMPTY),
@@ -332,6 +345,16 @@ fn run(
                     }
                 }
                 a.blend_left = (a.blend_left - step).max(0.0);
+            }
+            if let Some(&s) = m.by_id.get(&a.state) {
+                let n = bound.states[s].frames.len();
+                a.frame_len = duration(
+                    &m.states[s],
+                    &bound.states[s],
+                    (a.frame as usize).min(n - 1),
+                    &cols,
+                    row,
+                );
             }
 
             // The sprite shows the clip's frame, and a fading crossfade.

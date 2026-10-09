@@ -416,6 +416,34 @@ impl<'a> DynColumn<'a> {
         }
     }
 
+    /// Write a string or reference field's interned id, without resolving
+    /// it (a system writing the same few strings every tick).
+    pub fn set_str_id_by(&self, row: usize, f: &FieldSchema, id: StrId) -> Result<()> {
+        if !self.writable {
+            return Err(ArgusError::new(
+                codes::ACCESS_VIOLATION,
+                format!("{}.{} fetched read-only", self.schema.name, f.name),
+            )
+            .hint("Fetch the column with dyn_column_mut, and declare the write."));
+        }
+        assert!(row < self.col.len(), "row out of range");
+        match f.ty {
+            // SAFETY: a Str or Ref field is a StrId at its offset; exclusive
+            // borrow held.
+            FieldType::Str | FieldType::Ref => unsafe {
+                core::ptr::write_unaligned(
+                    self.col.row_ptr_mut(row).add(f.offset) as *mut StrId,
+                    id,
+                );
+                Ok(())
+            },
+            _ => Err(ArgusError::new(
+                codes::TYPE_MISMATCH,
+                format!("{}.{} is not a string", self.schema.name, f.name),
+            )),
+        }
+    }
+
     /// Write a field with coercion and range check.
     pub fn set(&self, row: usize, field: &str, value: impl Into<Value>) -> Result<()> {
         let f = self.field(field)?;

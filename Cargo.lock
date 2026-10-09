@@ -544,6 +544,7 @@ dependencies = [
  "argus-rigid",
  "argus-scene",
  "argus-sim",
+ "argus-skeletal",
  "argus-tiles",
  "argus-timeline",
  "argus-tween",
@@ -633,6 +634,17 @@ version = "0.0.1"
 dependencies = [
  "argus-ecs",
  "argus-os",
+]
+
+[[package]]
+name = "argus-skeletal"
+version = "0.0.1"
+dependencies = [
+ "argus-anim",
+ "argus-assets",
+ "argus-ecs",
+ "argus-render",
+ "argus-sim",
 ]
 
 [[package]]

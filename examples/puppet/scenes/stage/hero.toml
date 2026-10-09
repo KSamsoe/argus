@@ -1,0 +1,14 @@
+# The hero: a Spine skeleton its animator plays (moves.toml), 100 Spine
+# units to a world unit.
+[Transform]
+pos = [-2.0, 0.0]
+
+[Skeleton]
+skeleton = "puppet/puppet"
+scale = 0.01
+z = 2.0
+
+[Animator]
+machine = "puppet/moves"
+
+[Cue]

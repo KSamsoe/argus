@@ -1,0 +1,4 @@
+name = "puppet"
+clock = "continuous@60"
+default_scene = "stage"
+plugins = []

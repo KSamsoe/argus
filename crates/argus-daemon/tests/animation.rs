@@ -400,7 +400,8 @@ fn the_player_runs_jumps_and_lands_and_its_footsteps_fire_a_sound() {
         .clone();
     assert_eq!(speed["tune"], true);
     let w: Json = ok(&mut d, "world.who_writes", json!({ "component": "Sprite" }));
-    assert_eq!(w["systems"], json!(["anim.update"]));
+    // And the skeletons' pose (phase 5 item 8), whose parts are sprites.
+    assert_eq!(w["systems"], json!(["anim.update", "skeletal.pose"]));
     // What the machine's conditions read, the system declares it reads.
     let kb = ok(
         &mut d,

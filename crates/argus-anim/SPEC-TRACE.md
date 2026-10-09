@@ -39,11 +39,17 @@ Every statement in the design document (v0.3) that constrains sprite animation a
 |---|---|---|---|
 | (§13) A machine edited while the game plays. | Done | The daemon's `edit.asset` writes the sidecar and imports it; `AnimStore::set_assets` takes the new machine, so a running Animator plays it from the next tick (a renamed event fires, an added one too). | `argus-daemon` `animation::an_animator_is_edited_in_a_transaction_and_the_running_game_uses_it`; `argus-editor` `animator` |
 
+## Phase 5, item 8: an animator plays a skeleton
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§13) Skeletal 2D: "the state machine and events are the same either way." | Done | A Spine skeleton is a sprite to the animator: `AnimStore::set_assets` keeps the skeletons (`AnimStore::skeletons`, for argus-skeletal) and adds each to `sprites` with its animations as clips, looping, of `skeleton_frames` frames (its length at the skeleton's frame rate, rounded up, at most `MAX_SKELETON_FRAMES`) at the rate that plays it in its own length. An `Animator` whose `sprite` is empty plays the entity's `Skeleton.skeleton` (read by name, as `Sprite.atlas` is), so a skeleton's machine is written as any other. `Animator.frame_len` (new) is the current frame's length with its wind-up or hold, so the pose finds the exact moment in a stretched frame. A skeleton whose import now fails keeps its last good version, as a machine does. | argus-skeletal `skeletal::an_animator_plays_the_skeleton_and_the_pose_follows_its_frame`; the puppet example |
+
 ## Known limitations, stated so they are decisions
 
 - `anim.update` declares its writes (`Animator`, `Sprite`) when installed and the reads its conditions name once it has compiled them (item 9's `SystemCtx::declare`), so `world.describe KinematicBody` lists it as a reader only after its first tick with a machine that reads it.
 - Conditions cannot read `Animator` or `Sprite` fields (the state's own clock is `time`, `frame`, `loops`, and `end`), and a condition on a component the entity lacks reads 0.
 - One transition per tick, and none on the tick a state is entered; the entering tick shows the state's first frame for its full duration.
-- A crossfade draws the outgoing frame over the new one; both come from the same sprite. There is no blending of positions or of different atlases.
+- A crossfade draws the outgoing frame over the new one; both come from the same sprite. There is no blending of positions or of different atlases. (A skeleton's crossfade blends its poses: argus-skeletal, phase 5 item 8.)
 - In a discrete scene, animators advance with the turn clock. Animations that play between turns need the scheduler to run continuous-bound systems on a discrete scene's frames, which it does not yet do.
 - Changing state often in many animators at once costs event strings: each change is an `anim.entered` event.
