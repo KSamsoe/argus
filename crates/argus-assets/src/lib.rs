@@ -71,7 +71,7 @@ pub mod codes {
 }
 
 /// Bump when the import result changes, so every cache entry is redone.
-pub const IMPORTER_VERSION: &str = "argus-assets 1";
+pub const IMPORTER_VERSION: &str = "argus-assets 2";
 
 /// One frame of a sprite sheet, in pixels of the source image.
 #[derive(Clone, Debug, PartialEq)]
@@ -108,7 +108,7 @@ pub struct SpriteAsset {
     pub width: u32,
     /// Source size in pixels.
     pub height: u32,
-    /// The cached texture (padded to powers of two).
+    /// The cached texture (padded to powers of two, its edges repeated).
     pub texture: PathBuf,
     /// Its size.
     pub texture_size: [u32; 2],
@@ -643,6 +643,43 @@ fn walk(dir: &Path, base: &Path, out: &mut Stamp) {
 
 fn pow2(n: u32) -> u32 {
     n.max(1).next_power_of_two()
+}
+
+/// `rgba`, `w` by `h`, padded to `tw` by `th` (powers of two for the GPU)
+/// by repeating its last column and row. The sampler clamps to the
+/// texture's edge, so a filtered sample just past the left and top edges
+/// reads the edge pixels; with these, one past the right and bottom does
+/// too, as at all four sides of the sprite's cell on a release pack's page
+/// ([`pages`]). Clear padding drew a turned or shrunk sprite's right and
+/// bottom rims fainter than its others, and than its release build did.
+fn pad(rgba: &[u8], w: u32, h: u32, tw: u32, th: u32) -> Vec<u8> {
+    let mut out = vec![0u8; (tw * th * 4) as usize];
+    for y in 0..h {
+        let (s, d) = ((y * w * 4) as usize, (y * tw * 4) as usize);
+        out[d..d + (w * 4) as usize].copy_from_slice(&rgba[s..s + (w * 4) as usize]);
+    }
+    repeat_edges(&mut out, w, h, tw, th);
+    out
+}
+
+/// Fill a `tw` by `th` texture past the `w` by `h` image in its top left
+/// corner with the image's last column and row (see [`pad`]).
+fn repeat_edges(px: &mut [u8], w: u32, h: u32, tw: u32, th: u32) {
+    if w == 0 || h == 0 {
+        return;
+    }
+    for y in 0..h {
+        let row = (y * tw * 4) as usize;
+        let edge = row + ((w - 1) * 4) as usize;
+        for x in w..tw {
+            let to = row + (x * 4) as usize;
+            px.copy_within(edge..edge + 4, to);
+        }
+    }
+    let last = ((h - 1) * tw * 4) as usize;
+    for y in h..th {
+        px.copy_within(last..last + (tw * 4) as usize, (y * tw * 4) as usize);
+    }
 }
 
 impl Importer {
@@ -1528,14 +1565,7 @@ impl Importer {
                 format!("texture {w}x{h} is not power-of-two, padding to {tw}x{th}"),
                 &at_src,
             );
-            let mut padded = vec![0u8; (tw * th * 4) as usize];
-            for y in 0..h {
-                let src = (y * w * 4) as usize;
-                let dst = (y * tw * 4) as usize;
-                padded[dst..dst + (w * 4) as usize]
-                    .copy_from_slice(&rgba[src..src + (w * 4) as usize]);
-            }
-            rgba = padded;
+            rgba = pad(&rgba, w, h, tw, th);
         }
         let texture = self.cache.join(format!("{name}.png"));
         encode_png(&texture, tw, th, &rgba)?;
@@ -1555,15 +1585,8 @@ impl Importer {
                     )
                     .at(Some(shown)));
                 }
-                let mut padded = vec![0u8; (tw * th * 4) as usize];
-                for y in 0..h {
-                    let src = (y * w * 4) as usize;
-                    let dst = (y * tw * 4) as usize;
-                    padded[dst..dst + (w * 4) as usize]
-                        .copy_from_slice(&nrgba[src..src + (w * 4) as usize]);
-                }
                 let path = self.cache.join(format!("{name}.normal.png"));
-                encode_png(&path, tw, th, &padded)?;
+                encode_png(&path, tw, th, &pad(&nrgba, w, h, tw, th))?;
                 Some(path)
             }
         };

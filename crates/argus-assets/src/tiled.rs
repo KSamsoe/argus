@@ -2427,14 +2427,7 @@ impl Importer {
         hash: &mut u64,
     ) -> Result<(std::path::PathBuf, [u32; 2], Option<std::path::PathBuf>)> {
         let (tw, th) = (crate::pow2(w), crate::pow2(h));
-        let pad = |px: &[u8]| {
-            let mut out = vec![0u8; (tw * th * 4) as usize];
-            for y in 0..h {
-                let (s, d) = ((y * w * 4) as usize, (y * tw * 4) as usize);
-                out[d..d + (w * 4) as usize].copy_from_slice(&px[s..s + (w * 4) as usize]);
-            }
-            out
-        };
+        let pad = |px: &[u8]| crate::pad(px, w, h, tw, th);
         let rgba = if (tw, th) != (w, h) {
             warnings.push(Warning {
                 message: format!("texture {w}x{h} is not power-of-two, padding to {tw}x{th}"),

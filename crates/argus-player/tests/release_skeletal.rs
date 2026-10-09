@@ -101,17 +101,15 @@ fn the_puppets_ship_and_play_from_their_packs_as_from_their_folder() {
         .filter(|p| p[0] > 180 && (90..160).contains(&p[1]) && p[2] < 110)
         .count();
     assert!(shirt > 50, "the shirts are drawn: {shirt} pixels");
-    // The packs draw what the folder draws, but for a few pixels on the
-    // rims of the turned, shrunk heads: BC7, which their page is
-    // compressed with, keeps a clear pixel's colour loosely, and a filtered
-    // sample of a shrunk sprite mixes it into the rim. (Axis-aligned
-    // sprites at their size, release_pages, match exactly; the pages'
-    // judgement of BC7 is being fixed apart from this.)
+    // The packs draw what the folder draws, the rims of the turned, shrunk
+    // heads too: a sprite goes on a BC7 page only if every half-way mix of
+    // its neighbouring pixels, which a filtered sample of a shrunk sprite
+    // reads, looks the same compressed (BC7 keeps a clear pixel's colour
+    // loosely, and the mix shows it).
     let c = fb.compare(&fa, 0.1).unwrap();
-    assert!(
-        c.differing * 2000 <= c.pixels,
+    assert_eq!(
+        c.differing, 0,
         "{} of {} pixels differ",
-        c.differing,
-        c.pixels
+        c.differing, c.pixels
     );
 }

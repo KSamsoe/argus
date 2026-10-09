@@ -55,8 +55,8 @@
 
 use crate::sidecar::{self, Direction};
 use crate::{
-    codes, encode_png, fnv, parse_slope, pow2, Asset, Clip, Entry, Frame, Group, Importer,
-    SpriteAsset, Warning,
+    codes, encode_png, fnv, parse_slope, pow2, repeat_edges, Asset, Clip, Entry, Frame, Group,
+    Importer, SpriteAsset, Warning,
 };
 use argus_ecs::{ArgusError, Result};
 use serde_json::{json, Value as Json};
@@ -1523,6 +1523,7 @@ impl Importer {
                     .copy_from_slice(&images[fi][from..from + (fw * 4) as usize]);
             }
         }
+        repeat_edges(&mut sheet, w, h, tw, th);
         // Frames: the file's durations, pivots from a slice, properties.
         let pivot_slice = ase.pivot_slice();
         if let Some(p) = pivot_slice {

@@ -8,10 +8,14 @@
 //! mostly stays lossless, which is the point of asking.
 //!
 //! Each sprite sits in a cell of its own: its pixels, its edge pixels
-//! repeated twice around them (so a page samples at a sprite's edge as the
-//! sprite's own texture did), rounded out to BC7's four-pixel blocks, so a
-//! block never holds two sprites. The catalog's sprites name their page and
-//! their frames' places on it; nothing else in a release build knows.
+//! repeated twice around them, rounded out to BC7's four-pixel blocks, so a
+//! block never holds two sprites. The repeat is what the sprite's own
+//! texture does on all four sides (the sampler clamps to a texture's edge,
+//! and the importer pads a texture to powers of two with its last column
+//! and row), so a filtered sample at a turned or shrunk sprite's rim reads
+//! its edge on a page as it does from the project. The catalog's sprites
+//! name their page and their frames' places on it; nothing else in a
+//! release build knows.
 
 use crate::{bc7, codes, decode_png, png_bytes, PackedSprites};
 use argus_ecs::{ArgusError, Result};
@@ -140,28 +144,21 @@ pub fn page(sprites: &PackedSprites) -> Result<Paged> {
             alone += 1;
             continue;
         }
-        // The cell: the sprite, its edges repeated outward.
         let (cw, ch) = (cell.cw(), cell.ch());
-        let mut px = vec![0u8; (cw * ch * 4) as usize];
-        for y in 0..ch {
-            for x in 0..cw {
-                let sx = x.saturating_sub(GUTTER).min(w - 1);
-                let sy = y.saturating_sub(GUTTER).min(h - 1);
-                let from = ((sy * tw + sx) * 4) as usize;
-                let to = ((y * cw + x) * 4) as usize;
-                px[to..to + 4].copy_from_slice(&rgba[from..from + 4]);
-            }
-        }
+        let px = cell_pixels(&rgba, tw, w, h, cw, ch);
         let back = bc7::decode(cw, ch, &bc7::encode(cw, ch, &px)).unwrap_or_default();
-        let inside = |img: &[u8]| -> Vec<u8> {
-            (GUTTER..GUTTER + h)
+        // The sprite and the ring of gutter around it, all a filtered
+        // sample inside it reads.
+        let read = |img: &[u8]| -> Vec<u8> {
+            (GUTTER - 1..GUTTER + h + 1)
                 .flat_map(|y| {
-                    let a = ((y * cw + GUTTER) * 4) as usize;
-                    img[a..a + (w * 4) as usize].to_vec()
+                    let a = ((y * cw + GUTTER - 1) * 4) as usize;
+                    img[a..a + ((w + 2) * 4) as usize].to_vec()
                 })
                 .collect()
         };
-        cell.bc7 = back.len() == px.len() && bc7::looks_same(&inside(&px), &inside(&back));
+        cell.bc7 =
+            back.len() == px.len() && bc7::looks_same(&read(&px), &read(&back), (w + 2) as usize);
         cell.rgba = px;
         cells.push(cell);
     }
@@ -256,4 +253,63 @@ pub fn page(sprites: &PackedSprites) -> Result<Paged> {
         files,
         report,
     })
+}
+
+/// A cell's pixels, `cw` by `ch`: the `w` by `h` sprite in the corner of its
+/// texture (`tw` wide), its edge pixels repeated outward.
+fn cell_pixels(rgba: &[u8], tw: u32, w: u32, h: u32, cw: u32, ch: u32) -> Vec<u8> {
+    let mut px = vec![0u8; (cw * ch * 4) as usize];
+    for y in 0..ch {
+        for x in 0..cw {
+            let sx = x.saturating_sub(GUTTER).min(w - 1);
+            let sy = y.saturating_sub(GUTTER).min(h - 1);
+            let from = ((sy * tw + sx) * 4) as usize;
+            let to = ((y * cw + x) * 4) as usize;
+            px[to..to + 4].copy_from_slice(&rgba[from..from + 4]);
+        }
+    }
+    px
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A filtered sample inside a sprite reaches one texel past it. There,
+    /// its cell on a page holds what its own texture holds (the sampler
+    /// clamping to the texture's edge), so a turned or shrunk sprite's rim
+    /// draws the same from a release pack as from its project. (Padding
+    /// with clear pixels faded the project's right and bottom rims.)
+    #[test]
+    fn a_cell_holds_what_its_sprites_own_texture_holds_one_past_each_edge() {
+        let at = |img: &[u8], stride: u32, x: u32, y: u32| {
+            let i = ((y * stride + x) * 4) as usize;
+            img[i..i + 4].to_vec()
+        };
+        for (w, h) in [(30, 30), (3, 5), (4, 4), (1, 7), (17, 2)] {
+            let rgba: Vec<u8> = (0..w * h)
+                .flat_map(|i: u32| [i as u8, (i >> 8) as u8, 9, 255])
+                .collect();
+            let (tw, th) = (crate::pow2(w), crate::pow2(h));
+            let own = crate::pad(&rgba, w, h, tw, th);
+            let (cw, ch) = (
+                (w + 2 * GUTTER).next_multiple_of(4),
+                (h + 2 * GUTTER).next_multiple_of(4),
+            );
+            let cell = cell_pixels(&own, tw, w, h, cw, ch);
+            for y in -1..=h as i64 {
+                for x in -1..=w as i64 {
+                    let o = at(
+                        &own,
+                        tw,
+                        x.clamp(0, tw as i64 - 1) as u32,
+                        y.clamp(0, th as i64 - 1) as u32,
+                    );
+                    let g = GUTTER as i64;
+                    let c = at(&cell, cw, (x + g) as u32, (y + g) as u32);
+                    assert_eq!(o, c, "a {w}x{h} sprite at ({x}, {y})");
+                }
+            }
+        }
+    }
 }

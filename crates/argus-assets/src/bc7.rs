@@ -482,30 +482,100 @@ fn yiq(p: [f32; 3]) -> [f32; 3] {
     ]
 }
 
-fn over(p: &[u8; 4], bg: f32) -> [f32; 3] {
-    let a = p[3] as f32 / 255.0;
-    [0, 1, 2].map(|c| p[c] as f32 * a + bg * (1.0 - a))
+/// A pixel as the sampler reads it from an sRGB texture: its colour in
+/// linear light, its alpha 0 to 1.
+fn texel(p: &[u8; 4]) -> [f32; 4] {
+    let linear = |c: u8| {
+        let c = c as f32 / 255.0;
+        if c <= 0.040_45 {
+            c / 12.92
+        } else {
+            ((c + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    [
+        linear(p[0]),
+        linear(p[1]),
+        linear(p[2]),
+        p[3] as f32 / 255.0,
+    ]
 }
 
-/// Whether `b` shows as `a` to a person, pixel for pixel: alpha that is 0
-/// or 255 stays so and any other within 8, and the colour, over black and
-/// over white, within the distance a person does not see.
-pub fn looks_same(a: &[u8], b: &[u8]) -> bool {
+/// A texel blended over black (`bg` 0) or white (1) in linear light, as the
+/// frame blends, in sRGB's 0 to 255.
+fn over(t: [f32; 4], bg: f32) -> [f32; 3] {
+    [0, 1, 2].map(|c| {
+        let l = t[c] * t[3] + bg * (1.0 - t[3]);
+        255.0
+            * if l <= 0.003_130_8 {
+                l * 12.92
+            } else {
+                1.055 * l.powf(1.0 / 2.4) - 0.055
+            }
+    })
+}
+
+/// Whether two texels show alike: over black and over white, within the
+/// distance a person does not see.
+fn shows_alike(p: [f32; 4], q: [f32; 4]) -> bool {
+    [0.0f32, 1.0].iter().all(|&bg| {
+        let (y1, y2) = (yiq(over(p, bg)), yiq(over(q, bg)));
+        let d = [y1[0] - y2[0], y1[1] - y2[1], y1[2] - y2[2]];
+        0.5053 * d[0] * d[0] + 0.299 * d[1] * d[1] + 0.1957 * d[2] * d[2] <= UNSEEN
+    })
+}
+
+/// Whether `b` shows as `a` to a person as a sprite is drawn, both images
+/// `w` pixels wide. Pixel for pixel: alpha that is 0 or 255 stays so and
+/// any other within 8, and the colour, over black and over white, within
+/// the distance a person does not see. And so for every half-way mix of
+/// neighbours (two side by side, two above each other, four in a square),
+/// which is what a filtered sample of a shrunk sprite reads: the sampler
+/// mixes colour and alpha apart, so a clear pixel's colour shows in a mix
+/// with a visible one, and the encoder spends nothing on keeping it
+/// (phase 5 item 8 found a turned, shrunk head's rim drawn lighter from
+/// its BC7 page than from its project).
+pub fn looks_same(a: &[u8], b: &[u8], w: usize) -> bool {
     let (pa, _) = a.as_chunks::<4>();
     let (pb, _) = b.as_chunks::<4>();
-    pa.len() == pb.len()
-        && pa.iter().zip(pb).all(|(p, q)| {
-            let alpha = match p[3] {
-                0 | 255 => p[3] == q[3],
-                x => x.abs_diff(q[3]) <= 8,
-            };
-            alpha
-                && [0.0f32, 255.0].iter().all(|&bg| {
-                    let (y1, y2) = (yiq(over(p, bg)), yiq(over(q, bg)));
-                    let d = [y1[0] - y2[0], y1[1] - y2[1], y1[2] - y2[2]];
-                    0.5053 * d[0] * d[0] + 0.299 * d[1] * d[1] + 0.1957 * d[2] * d[2] <= UNSEEN
-                })
+    if pa.len() != pb.len() || w == 0 || !pa.len().is_multiple_of(w) {
+        return false;
+    }
+    let alpha = pa.iter().zip(pb).all(|(p, q)| match p[3] {
+        0 | 255 => p[3] == q[3],
+        x => x.abs_diff(q[3]) <= 8,
+    });
+    if !alpha {
+        return false;
+    }
+    let ta: Vec<[f32; 4]> = pa.iter().map(texel).collect();
+    let tb: Vec<[f32; 4]> = pb.iter().map(texel).collect();
+    let mix = |t: &[[f32; 4]], at: &[usize]| {
+        let mut m = [0.0f32; 4];
+        for &i in at {
+            for c in 0..4 {
+                m[c] += t[i][c] / at.len() as f32;
+            }
+        }
+        m
+    };
+    let h = pa.len() / w;
+    (0..h).all(|y| {
+        (0..w).all(|x| {
+            let i = y * w + x;
+            let (right, down) = (x + 1 < w, y + 1 < h);
+            let mixes: [(bool, &[usize]); 4] = [
+                (true, &[i]),
+                (right, &[i, i + 1]),
+                (down, &[i, i + w]),
+                (right && down, &[i, i + 1, i + w, i + w + 1]),
+            ];
+            mixes
+                .iter()
+                .filter(|m| m.0)
+                .all(|(_, at)| shows_alike(mix(&ta, at), mix(&tb, at)))
         })
+    })
 }
 
 #[cfg(test)]
@@ -540,7 +610,7 @@ mod tests {
         let bc = encode(32, 32, &src);
         assert_eq!(bc.len(), 32 * 32);
         let back = decode(32, 32, &bc).unwrap();
-        assert!(looks_same(&src, &back));
+        assert!(looks_same(&src, &back, 32));
     }
 
     #[test]
@@ -552,7 +622,7 @@ mod tests {
             _ => [220, 180, 90, 255],
         });
         let back = decode(8, 8, &encode(8, 8, &src)).unwrap();
-        assert!(looks_same(&src, &back));
+        assert!(looks_same(&src, &back, 8));
         for (p, q) in src.chunks(4).zip(back.chunks(4)) {
             assert_eq!(p[3], q[3], "alpha is exact");
         }
@@ -567,6 +637,28 @@ mod tests {
             _ => [0, 0, 255, 255],
         });
         let back = decode(4, 4, &encode(4, 4, &src)).unwrap();
-        assert!(!looks_same(&src, &back));
+        assert!(!looks_same(&src, &back, 4));
+    }
+
+    #[test]
+    fn a_clear_pixels_colour_is_seen_where_a_filtered_sample_mixes_it() {
+        // Orange beside clear black, and beside clear orange: alike pixel
+        // for pixel, but a shrunk sprite's rim mixes the clear pixel's
+        // colour in, darker in one than the other.
+        let src = image(4, 4, |x, _| match x {
+            0 | 1 => [230, 120, 40, 255],
+            _ => [0, 0, 0, 0],
+        });
+        let lit = image(4, 4, |x, _| match x {
+            0 | 1 => [230, 120, 40, 255],
+            _ => [230, 120, 40, 0],
+        });
+        assert!(looks_same(&src, &src, 4));
+        assert!(!looks_same(&src, &lit, 4));
+        // Pixel for pixel, each alone, they do.
+        assert!(src
+            .chunks(4)
+            .zip(lit.chunks(4))
+            .all(|(p, q)| looks_same(p, q, 1)));
     }
 }
