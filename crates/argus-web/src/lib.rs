@@ -18,6 +18,8 @@
 
 pub use argus_player::{pack, unpack, Player};
 
+pub mod mathprobe;
+
 #[cfg(target_arch = "wasm32")]
 mod wasi;
 #[cfg(target_arch = "wasm32")]

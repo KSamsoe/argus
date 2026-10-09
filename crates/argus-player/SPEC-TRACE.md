@@ -163,6 +163,12 @@ Every statement in the design document (v0.3) that constrains a game as players 
 | (§15) The game's requests reach its platform. | Done | `Player::platform`, the null platform unless the host sets another (`set_platform`); `pump` hands each request to it and keeps the answers (`platform_answers`, `platform_status`). `poll_platform`, once a frame, lets it work and turns its overlay into the `overlay` input. `assemble` reads `platform.toml` and installs `input.glyphs`. | `platform::requests_reach_the_platform_and_the_overlay_is_an_input` |
 | (§15) Cloud saves. | Done | `store_save` keeps a save on the disk and in the platform's cloud under one name; `fetch_save` takes the newer of the two (`savegame::newer`, by `saved_at`; the disk's on a tie), so a second machine sharing the cloud loads the first's save. | `platform::a_save_in_the_cloud_loads_on_another_machine` |
 
+## Phase 5, item 11: the run's digest, field by field
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§6) What a run's digest reads, to find where two platforms part. | Done | `Player::digest_rows`: the world's rows (`World::digest_rows`) and a row a runtime map chunk with its cells' hash, as `digest` includes them. Found with it: puppet's first difference across platforms, two skeleton parts' rotations one ulp apart on the first tick. | `argus-ecs` `persist::the_digest_rows_name_the_one_field_that_differs`; the spike's runs |
+
 ## Known limitations, stated so they are decisions
 
 - A desktop report goes over plain HTTP to the server's tailnet address (`[reports] url`): a player off the tailnet keeps theirs, and it goes when they are on it, or they send the file.

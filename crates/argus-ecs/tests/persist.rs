@@ -348,3 +348,30 @@ fn a_migration_that_returns_the_wrong_type_says_where() {
         e.message
     );
 }
+
+/// What the digest reads, a line a field (phase 5 item 11): two worlds one
+/// unit in the last place apart in one float have different digests, and
+/// the rows name that one field, with both values' bits.
+#[test]
+fn the_digest_rows_name_the_one_field_that_differs() {
+    let (a, hero, _) = world();
+    let (b, _, _) = world();
+    assert_eq!(a.digest_rows(), b.digest_rows());
+    let Value::Float(r) = b.get_field(hero, "Transform.rot").unwrap() else {
+        panic!("rot is a float")
+    };
+    let next = f32::from_bits((r as f32).to_bits() + 1);
+    b.set_field(hero, "Transform.rot", Value::Float(next as f64))
+        .unwrap();
+    assert_ne!(a.digest(), b.digest());
+    let (ra, rb) = (a.digest_rows(), b.digest_rows());
+    let differ: Vec<_> = ra.iter().zip(&rb).filter(|(x, y)| x != y).collect();
+    assert_eq!(differ.len(), 1, "{differ:?}");
+    assert!(
+        differ[0].0.starts_with(&format!("{hero} Transform.rot = ")),
+        "{differ:?}"
+    );
+    assert!(differ[0]
+        .1
+        .contains(&format!("{:016x}", (next as f64).to_bits())));
+}

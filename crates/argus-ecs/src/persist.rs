@@ -479,10 +479,41 @@ impl World {
             }
         }
         let mut h = 0xcbf29ce484222325u64;
+        self.walk_digested(|piece| match piece {
+            Piece::Entity(s) | Piece::Component(s) => fnv(&mut h, s.as_bytes()),
+            Piece::Field(_, _, s) => fnv(&mut h, s.as_bytes()),
+        });
+        h
+    }
+
+    /// What the digest reads, a line a field (`e:12 Transform.pos =
+    /// [...]`), floats with their bits: two worlds' lines, compared, say
+    /// which field of which entity differs first (the cross-platform
+    /// determinism spike, phase 5 item 11).
+    pub fn digest_rows(&self) -> Vec<String> {
+        let mut rows = Vec::new();
+        let (mut entity, mut component) = (String::new(), String::new());
+        self.walk_digested(|piece| match piece {
+            Piece::Entity(s) => entity = s.to_string(),
+            Piece::Component(s) => component = s.to_string(),
+            Piece::Field(name, v, bits) => {
+                let shown = match v {
+                    Value::Float(x) => format!("{x:?} ({bits})"),
+                    _ => bits.to_string(),
+                };
+                rows.push(format!("{entity} {component}.{name} = {shown}"));
+            }
+        });
+        rows
+    }
+
+    /// Every live entity in order, its components by name, and each
+    /// field's value as the digest hashes it (floats as their bits).
+    fn walk_digested(&self, mut visit: impl FnMut(Piece<'_>)) {
         let mut live: Vec<_> = self.live().collect();
         live.sort();
         for e in live {
-            fnv(&mut h, e.to_string().as_bytes());
+            visit(Piece::Entity(&e.to_string()));
             let Ok(comps) = self.components_of(e) else {
                 continue;
             };
@@ -495,22 +526,29 @@ impl World {
             });
             for c in comps {
                 let schema = self.registry.schema(c);
-                fnv(&mut h, schema.name.as_bytes());
+                visit(Piece::Component(&schema.name));
                 let _ = self.with_row(e, c, |row| {
                     for f in &schema.fields {
                         if let Some(v) = self.decode_field(f, row) {
-                            let s = match v {
+                            let s = match &v {
                                 Value::Float(x) => format!("{:016x}", x.to_bits()),
                                 other => format!("{other:?}"),
                             };
-                            fnv(&mut h, s.as_bytes());
+                            visit(Piece::Field(&f.name, &v, &s));
                         }
                     }
                 });
             }
         }
-        h
     }
+}
+
+/// What the world's digest reads, in order.
+enum Piece<'a> {
+    Entity(&'a str),
+    Component(&'a str),
+    /// The field's name, its value, and the text the digest hashes.
+    Field(&'a str, &'a Value, &'a str),
 }
 
 /// A saved row as values by the names it was saved with, its strings as

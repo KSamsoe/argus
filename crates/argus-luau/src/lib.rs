@@ -875,6 +875,28 @@ pub fn compile(rel: &str, src: &str) -> std::result::Result<Vec<u8>, ScriptError
     })
 }
 
+/// Luau's own `math.<name>` over `inputs` (one argument, or two for
+/// `atan2` and `pow`, from `second`), in a fresh VM: what a script gets on
+/// this platform, from the C library Luau was built against. The
+/// cross-platform determinism spike's probe (phase 5 item 11).
+pub fn math_outputs(name: &str, inputs: &[f64], second: &[f64]) -> Result<Vec<f64>> {
+    let lua = Lua::new();
+    let f: Function = lua
+        .globals()
+        .get::<mlua::Table>("math")
+        .and_then(|m| m.get(name))
+        .map_err(to_argus)?;
+    inputs
+        .iter()
+        .enumerate()
+        .map(|(i, x)| match second.get(i) {
+            Some(y) => f.call::<f64>((*x, *y)),
+            None => f.call::<f64>(*x),
+        })
+        .collect::<mlua::Result<Vec<f64>>>()
+        .map_err(to_argus)
+}
+
 /// Project-relative `.luau` files in load order.
 /// Every layer's script files, the game's first: each one's name from the
 /// game's root (`systems/x.luau`, `mods/<id>/systems/y.luau`) and its path.

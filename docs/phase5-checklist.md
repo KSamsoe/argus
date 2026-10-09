@@ -293,10 +293,22 @@ Decisions taken while building it:
 
 ## 11. Cross-platform determinism spike
 
-**Status: to do.**
+**Status: done** (2026-10-09) in `tools/determinism/` (the run files and their generator, `native.sh`, `web.mjs`, `scenarios.sh`, `compare.mjs`), `argus-web` (the `determinism` example; `WebPlayer::replay_log`, `digests`, `digest_rows`, `math_probe`; `mathprobe`), `argus-ecs` (`World::digest_rows`), `argus-player` (`Player::digest_rows`), `argus-luau` (`math_outputs`), and `argus-test` (each run's digest in the report). The write-up is `docs/determinism-spike.md`. Traces: `argus-sim`'s, `argus-web`'s, `argus-ecs`'s, `argus-player`'s, `argus-luau`'s, `argus-test`'s.
 
-- §6: "Floating point is f32 with the usual determinism caveats: reproducible on the same platform and build, not guaranteed across compilers or CPUs. Cross-platform bit-determinism (fixed-point math, or a constrained float subset) is a known path and an explicit non-goal for v1."
-- A spike measures it across this laptop, klab's Linux, and the browser, for all four games, and says what a game would need for lockstep (§15 networking, preserved). macOS is recorded as not measured.
+- §6: "Floating point is f32 with the usual determinism caveats: reproducible on the same platform and build, not guaranteed across compilers or CPUs. Cross-platform bit-determinism (fixed-point math, or a constrained float subset) is a known path and an explicit non-goal for v1." Measured: the four games are bit for bit the same on this PC, klab, and Chrome, in 13 long runs (93,000 ticks, toybox's included) and every one of their 290 scenario runs on this PC and klab; puppet is not, from its first tick.
+- A spike measures it across this laptop, klab's Linux, and the browser, for all four games, and says what a game would need for lockstep (§15 networking, preserved). macOS is recorded as not measured. Done: the write-up's "What a game needs for lockstep" and "Not measured".
+
+Decisions taken while building it:
+
+- **klab, not WSL (Kevin, 2026-10-09).** klab was off for a week; Kevin chose to wait for it over this PC's WSL Ubuntu, which would have meant downloading Rust and sharing this PC's CPU. klab has Rust 1.98.1 already, the same as here, and a different CPU (a Haswell Xeon). Its build used every crate vendored from this PC (`cargo vendor --offline`, 518 crates, 121 MB), so nothing came from the network, in `~/argus-det` beside its untouched older checkout.
+- **Three tiers.** Long runs of each game from an input log (the same file everywhere), with both digests every few ticks, compared line by line; every scenario of every suite on this PC and klab, each run's final digest; and a probe of the math libraries themselves, since the games' agreement alone would not say whether it was luck.
+- **The browser's player is the spike's own.** `web.mjs` makes a player from the site's packs in the page, apart from the page's frame loop, saves, and settings, so nothing but the run file drives it. Swarm has no browser build (its plugin); toybox's and puppet's were built for this.
+- **Found: the three platforms' math libraries all differ.** Windows (mingw-w64 and the UCRT), glibc 2.39, and musl (Chrome's, through Rust's port and wasi-libc) disagree on 0.1 to 17% of inputs for every function but `sqrt`, always by one ulp.
+- **Found: Luau's doubles protect the games.** A script's result is rounded to `f32` when a component keeps it, and 0 of 160,000 probe values differed after that on any platform; the games' Rust (Swarm's plugin) calls no math function; Rapier already uses `libm`. What breaks is the engine's own `f32` math: puppet's skeleton runtime, from the first tick.
+- **Found: a host cannot swap Luau's math.** In the sandboxed VM a replaced `math.sin` is not used (the built-in fast path calls C), and `x ^ y` never calls `math.pow`; a common library for Luau would go into its C++.
+- **Found: image goldens hold on one system only.** The software rasteriser is WARP on Windows and lavapipe on Linux; Hollow's four goldens differ at text and sprite edges on klab (0.39 to 0.60% of pixels, 0.1% allowed) with the same worlds. The harness's comment said "the same picture on any machine"; it says one system now.
+- **The recommendation is not built.** Moving the engine's math to `libm` changes Windows' results (and the goldens that depend on them), and §6 keeps cross-platform determinism a non-goal for v1, so the four lockstep changes are the write-up's, for when multiplayer comes.
+- **Left as limitations.** macOS, ARM Linux, and other browsers are not measured; the probes are not in CI (they need two machines); klab's copy is a snapshot, not a checkout.
 
 ## The gate
 

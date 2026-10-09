@@ -171,6 +171,14 @@ Phase 0 item 2, "scheduler with stages, declared write sets, and both clock driv
 |---|---|---|---|
 | A system reads the events of its tick cheaply. | Done | `SystemCtx::events_now` reads the queue's tail, where this frame's events are (the queue is in frame order), not the whole queue: during a long step the queue holds every event since the step began, and each call grew with it. Outpost's inspector's p95 went from 0.58 to 0.07 ms. | Outpost's `tests/inspector.luau`; argus-daemon `perf_outpost` |
 
+## Phase 5, item 11: determinism across machines
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§6) "Floating point is f32 with the usual determinism caveats: reproducible on the same platform and build, not guaranteed across compilers or CPUs." | Done (measured; docs/determinism-spike.md) | Measured on this PC (Windows, i9-12900KF), klab (Ubuntu 24.04, Xeon E5-2699 v3), and Chrome (wasm32): the four games and toybox are bit for bit the same on all three in 13 long runs (93,000 ticks), and the 290 scenario runs of their suites (all but puppet's three) end on the same world's digest on this PC and klab. Puppet is not: the skeleton runtime's `f32` `atan2`, `sin` and `cos` come from each platform's math library, which differ from one another on up to 17% of inputs by one ulp, and two parts' rotations differ from the first tick. | `tools/determinism/` (`native.sh`, `web.mjs`, `scenarios.sh`, `compare.mjs`) |
+| (§6) "Cross-platform bit-determinism (fixed-point math, or a constrained float subset) is a known path." | Done (the path named) | The subset is enough, no fixed point: IEEE's four operations and `sqrt` as they are, and every other function from one software library (`libm`, which Rapier already uses and which is what the browser computes). Luau's doubles rounded into `f32` components agreed on all three platforms for all 160,000 probe values. The write-up lists the four changes lockstep would need. | `determinism --math` (argus-web's example) |
+| (§15) "Determinism plus an action log is most of a lockstep model." | Done (measured) | The action-log half holds (inputs only as per-slot actions; no clock or device in a script). The determinism half needs the engine's `f32` functions on `libm`, the same for Luau's C library for strict lockstep, `-ffp-contract=off` for Luau built by clang on ARM, and a cheaper desync digest; the world digest costs 1.9 ms at Swarm's 900 entities. | same |
+
 ## Known limitations, stated so they are decisions
 
 - One scheduler per world; forks need their own scheduler built from the same system list. The daemon piece owns that pairing.

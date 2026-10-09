@@ -65,6 +65,13 @@ Phase 0 item 10, "scenario test runner with state goldens and seed sweeps": this
 |---|---|---|---|
 | (§10) "Runs the twenty-seed, thirty-day sweep from §9 against each candidate value." | Done | `Options::set`: fields the harness puts in each run's world with `sim.set` just after its scene loads, before the scenario looks at it. The daemon's `test.run {sweep}` runs the scenarios once for each candidate. | argus-daemon `tune_defs::a_sweep_tries_each_candidate_without_writing_it` |
 
+## Phase 5, item 11: a run's digest, and pictures on two systems
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§6) A scenario run ends on a world two machines can compare. | Done | Each seed's row in `test.run`'s report carries `digest`, the world's when the run ended (`sim.status {digest}`). All 293 runs of six suites (the four games, toybox, puppet) gave the same digest in two runs on this PC, and 290 of them the same on klab; the three that differ are puppet's, whose skeletons use the platform's `f32` math. | `tools/determinism/scenarios.sh`, `compare.mjs --scenarios` |
+| (§9) Image goldens "drawn with the software rasteriser" are the same picture everywhere. | Partial (found) | The same picture on machines of one system only. The software rasteriser is wgpu's fallback adapter, WARP on Windows and lavapipe (Mesa 25.2) on Linux: two rasterisers, and Hollow's four golden pictures differ between them at text and sprite edges by 0.39 to 0.60% of pixels (0.1% allowed), with the worlds' digests the same. Goldens are this PC's; CI on a second system would need its own. | Hollow's `the cave and the hall look as they did`, `the lit hollow looks as it did` on klab |
+
 ## Known limitations, stated so they are decisions
 
 - The harness is Luau over one Rust function (`call`). That keeps the runner a client by construction and makes the harness readable by the people who write scenarios; it costs a JSON round trip per call, which at tens of calls per scenario is invisible.

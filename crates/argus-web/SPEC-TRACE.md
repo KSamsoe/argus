@@ -16,7 +16,7 @@ Every statement in the design document (v0.3) that constrains the web spike (pha
 
 | Spec | Status | Where | Test |
 |---|---|---|---|
-| Cross-platform bit-determinism is a non-goal; the spike measures whether it holds. | Done (measured) | `Player::digest` is `World::digest` (moved into `argus-ecs` by item 2, so the daemon's marks compare the same one): every field of every live entity with floats by their bits. The event digest hashes every event's frame, name, and fields. Hollow's run scenario gives the same digests natively, in Chrome, and in wasm under Node, at every checkpoint, from a release and a size-tuned build. | `tests/player.rs::hollow_runs_without_the_daemon_and_twice_the_same` (`--nocapture` prints the digests), `tools/web/check.mjs` |
+| Cross-platform bit-determinism is a non-goal; the spike measures whether it holds. | Done (measured) | `Player::digest` is `World::digest` (moved into `argus-ecs` by item 2, so the daemon's marks compare the same one): every field of every live entity with floats by their bits. The event digest hashes every event's frame, name, and fields. Hollow's run scenario gives the same digests natively, in Chrome, and in wasm under Node, at every checkpoint, from a release and a size-tuned build. | `tests/player.rs::hollow_runs_without_the_daemon_and_twice_the_same` (`--nocapture` prints the digests), `tools/web/check.mjs`; (finished in phase 5 item 11: the four games across this PC, klab, and Chrome, this trace's section for it) |
 
 ## §10 Marks from the browser
 
@@ -61,6 +61,13 @@ Every statement in the design document (v0.3) that constrains the web spike (pha
 | Spec | Status | Where | Test |
 |---|---|---|---|
 | (Carried in.) Web audio in an AudioWorklet. | Done | `WebPlayer::open_worklet(rate)` and `audio_pull(frames)`. `tools/web/main.js` opens an AudioContext on the first key or click, adds the worklet (`argus-out`, from a blob), and keeps its queue about 100 ms deep (`?audio_ms=`) with a block every 10 ms; the worklet plays on the browser's audio thread and counts the 128-frame blocks it could not fill. With no AudioWorklet (not a secure context) or `?cpal`, cpal's Web Audio output as before. Measured at 48 kHz: no block short while running or through three 60 ms stalls of the page's thread; 75 through three 150 ms stalls. | `tools/web/check.mjs` (`audio.worklet`; the check fails if the sound opens another way or runs short while the page runs) |
+
+## Phase 5, item 11: the determinism spike's probes
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§6) A run measured the same way on every platform. | Done | The `determinism` example plays a run file (`{game, project, scene, seed, ticks, every, log}`) natively, from the project or a site's packs, and says both digests every `every` ticks; `--rows <tick>` prints what the world's digest reads, a line a field. In the page, `WebPlayer::replay_log`, `digests(ticks, every)` (one call, not one a checkpoint), and `digest_rows`; `tools/determinism/web.mjs` makes a player of its own from a site's packs, apart from the page's frame loop and saves. | `tools/determinism/native.sh`, `tools/determinism/web.mjs`, `tools/determinism/compare.mjs` |
+| (§6) Which floats differ, and why. | Done | `mathprobe::math_probe`: `sin`, `cos`, `tan`, `atan2`, `exp`, `ln`, `pow`, `sqrt` over 20,000 inputs each, as Rust's `f32` and `f64` and as Luau's `math` (also rounded to `f32`), counted against the `libm` crate, with digests to compare across platforms and the platform's speed beside `libm`'s. `WebPlayer::math_probe` in the page, `determinism --math` natively. | the spike's numbers (docs/determinism-spike.md) |
 
 ## Known limitations, stated so they are decisions
 

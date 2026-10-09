@@ -119,6 +119,46 @@ impl WebPlayer {
         self.p.step(n as u64).map_err(js)
     }
 
+    /// Schedule an input log (`input_log`'s rows, as JSON) from now: how
+    /// the determinism spike plays one run on every platform (phase 5
+    /// item 11). Says how many rows were scheduled.
+    pub fn replay_log(&mut self, log: &str) -> Result<u32, JsValue> {
+        let v: Json = serde_json::from_str(log).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        self.p.replay_log(&v).map(|n| n as u32).map_err(js)
+    }
+
+    /// Run `ticks` more, `every` at a time, and say the world's and the
+    /// events' digests after each (`[[tick, world, events], ...]` as
+    /// JSON): one call, not a call a checkpoint.
+    pub fn digests(&mut self, ticks: u32, every: u32) -> Result<String, JsValue> {
+        let every = every.max(1);
+        let mut out = Vec::new();
+        let mut done = 0;
+        while done < ticks {
+            let n = every.min(ticks - done);
+            self.p.step(n as u64).map_err(js)?;
+            done += n;
+            out.push(serde_json::json!([
+                self.p.tick(),
+                format!("{:016x}", self.p.digest()),
+                format!("{:016x}", self.p.events_digest()),
+            ]));
+        }
+        Ok(Json::Array(out).to_string())
+    }
+
+    /// What the world's digest reads, a line a field (see
+    /// `Player::digest_rows`).
+    pub fn digest_rows(&self) -> String {
+        self.p.digest_rows().join("\n")
+    }
+
+    /// The math probe (`argus_web::mathprobe`), `n` inputs a function, as
+    /// JSON: this browser's results, to compare with a native run's.
+    pub fn math_probe(n: u32) -> String {
+        crate::mathprobe::math_probe(n as usize).to_string()
+    }
+
     /// `input.inject`: `value` is JSON (`[1, 0]`, `true`, `0.5`); `frames`
     /// 0 holds until the next inject of the action.
     pub fn inject(&mut self, action: &str, value: &str, frames: u32) -> Result<(), JsValue> {

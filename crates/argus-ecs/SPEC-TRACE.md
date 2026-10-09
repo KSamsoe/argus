@@ -181,6 +181,12 @@ Phase 0 item 1, "ECS core with SoA columns, archetypes, and hierarchy": this cra
 |---|---|---|---|
 | A system writes the same few strings every tick without making them. | Done | `DynColumn::set_str_id_by`: a string or reference field written as its interned id, the counterpart of `str_id_by`. A cache of ids outside the world is the caller's to drop when the world is restored: a restore brings the snapshot's string table. | argus-skeletal `skeletal::the_same_run_poses_the_same_and_a_seek_replays_it` |
 
+## Phase 5, item 11: what the determinism spike needed from the core
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§6) Where two worlds differ, not only that they do. | Done | `World::digest_rows`: what `digest` reads, a line a field (`e:12 Transform.rot = -0.102 (bfba1db8c0000000)`), floats with their bits, through the same walk as the digest (`walk_digested`), so the digest is unchanged and two worlds' lines, diffed, name the first field that differs. | `persist::the_digest_rows_name_the_one_field_that_differs` |
+
 ## Known limitations, stated so they are decisions
 
 - A parallel system may not add a string to the table (it may spawn with one: spawns are applied after its batch). A game whose parallel system writes text it composes writes it from a serial system instead.

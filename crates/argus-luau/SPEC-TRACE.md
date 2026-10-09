@@ -176,6 +176,12 @@ Phase 0 item 3, "Luau binding with component and def schemas": this crate.
 |---|---|---|---|
 | (§15) "Game code calls one API." | Done | `q:achieve(id)` unlocks an achievement `platform.toml` declares, `q:achieve(id, current, max)` shows progress towards it, `q:presence(key, value)` sets a rich presence key (no value clears it), `q:overlay(page)` opens the overlay at a page. Each is an event, as `q:play` is (`achievement.unlock`, `achievement.progress`, `presence.set`, `overlay.open`), handed to the platform between ticks; nothing comes back into the world. | argus-daemon `platform`; Hollow's `platform` and `platform_deep`; Outpost's `cloud` |
 
+## Phase 5, item 11: a script's math on this platform
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| (§6) What a script's `math` gives on each platform. | Done | `math_outputs(name, inputs, second)`: Luau's own `math.<name>` in a fresh VM, the C library Luau was built against; it gives Rust's `f64` results bit for bit on this PC, klab, and Chrome. Found: in the sandboxed VM a host's replacement of `math.sin` is not used (Luau's built-in fast path calls the C function), and `x ^ y` never goes through `math.pow`, so a common math library for Luau would have to be compiled into its C++. | `math::a_scripts_math_is_the_c_librarys_and_takes_two_arguments_where_it_needs_them` |
+
 ## Known limitations, stated so they are decisions
 
 - One Luau VM per `ScriptHost`; a forked world needs its own host (or the same host with a different scheduler, since the VM holds no world state).

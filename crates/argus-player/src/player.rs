@@ -610,6 +610,22 @@ impl Player {
         crate::keyframe::run_digest(&self.world, &self.tiles.borrow().runtime_cells())
     }
 
+    /// What the digest reads, a line a field, then a line a runtime map
+    /// chunk with its cells' hash: two platforms' lines, compared, name
+    /// the first field that differs (phase 5 item 11).
+    pub fn digest_rows(&self) -> Vec<String> {
+        let mut rows = self.world.digest_rows();
+        for (file, chunks) in self.tiles.borrow().runtime_cells() {
+            for (layer, cx, cy, d) in chunks {
+                rows.push(format!(
+                    "map {file} {layer} {cx},{cy} = {:016x}",
+                    argus_tiles::fnv1a64(&d)
+                ));
+            }
+        }
+        rows
+    }
+
     /// The events so far, as one digest.
     pub fn events_digest(&self) -> u64 {
         self.events_digest

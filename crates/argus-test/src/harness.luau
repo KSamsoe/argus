@@ -506,7 +506,9 @@ local function make_t(ctx, spec, seed)
   -- An image golden (section 9: "an opt-in for rendering work, with a
   -- perceptual threshold, and expected to be rare"). The frame is drawn
   -- with the software rasteriser, so it is the same picture on any machine
-  -- CI or a person runs it on; it is compared with
+  -- of one system: WARP on Windows and lavapipe on Linux are two
+  -- rasterisers, and Hollow's goldens differ between them at text and
+  -- sprite edges by 0.4 to 0.6% of pixels (phase 5 item 11). It is compared with
   -- tests/goldens/<scenario>/<name>.seed<n>.png by obs.frame's golden.
   -- opts: width, height (640 x 360), threshold (how different a pixel must
   -- be, 0.1), max (the share of pixels that may differ, 0.001).
@@ -729,8 +731,11 @@ local function run_seed(spec, seed, opts, series)
     ctx.result.error = tostring(err)
     save_failure(ctx, ctx.result.error)
   end
-  local st = H.call("sim.status", {})
-  if st then ctx.result.tick = st.tick end
+  -- Where the run ended and its world's digest: the same scenario, seed,
+  -- and code on two machines should end on the same one (the
+  -- cross-platform determinism spike, phase 5 item 11).
+  local st = H.call("sim.status", { digest = true })
+  if st then ctx.result.tick = st.tick ctx.result.digest = st.digest end
   ctx.result.ms = H.now_ms() - t0
   return ctx.result, ctx
 end
