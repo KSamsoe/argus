@@ -89,6 +89,8 @@ Left for later, each needing a closer look: the semantic frame lists a described
 
 **Built; installing it in Claude Desktop is the gate's.** `python tools/release/mcpb.py` makes `argus-<version>.mcpb` from a staged install, to the MCPB schema as published on 2026-10-09: `bin/argus.exe` and `templates/` (14 MB; the runtimes stay out, since no MCP tool builds a release), a manifest with the server's own tools (asked of the staged argus's `tools/list`), and an optional `directory` setting for the project. Left empty, it reaches the server as `--project ""`, which now means no project, so the server starts on none and offers them. Run as Claude Desktop runs it (unpacked, its `${__dirname}` and `${user_config.project}` filled in), it started on no project, made a game with `new_project` from its own templates (the scenario passing), and answered `query` on it.
 
+Double-clicking it does nothing on this PC (Kevin, 2026-10-09). Claude Desktop here is the Microsoft Store build (2.31226), whose package declares no file types (only the `claude:` link); `.mcpb` opens with its command alias because "Open with" was once pointed at it, and the running app logs `second-instance: suppressing duplicate argv` and drops the path. The way in is Settings, Extensions, Advanced settings, Extension Developer, Install Extension…; `docs/install.md` says so. No policy blocks extensions here.
+
 ## 5. The release pipeline
 
 - `tools/release/`: builds the Windows archive here and the Linux one on klab, checks them (each runtime builds and runs a game; the editor starts headless), writes the manifest and checksums, and makes a GitHub release on the private repository with `gh`.

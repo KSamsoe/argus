@@ -63,13 +63,19 @@ A new game has three files for AI agents: `AGENTS.md` (how to work on an Argus g
 | Tool | Command | Then |
 |---|---|---|
 | Claude Code | `argus mcp setup claude-code` | start `claude` in the game's folder; it asks once to use the game's tools |
-| Claude Desktop | double-click `argus-<version>.mcpb` from the release, or `argus mcp setup claude-desktop` | quit Claude Desktop fully (from the tray too) and start it again |
+| Claude Desktop | `argus mcp setup claude-desktop`, or install `argus-<version>.mcpb` from the release (below) | quit Claude Desktop fully (from the tray too) and start it again |
 | Cursor | `argus mcp setup cursor` | turn Argus on under Settings, MCP, if it asks |
 | VS Code | `argus mcp setup vscode` | trust the folder, then start Argus from the MCP servers view |
 | Codex CLI | `argus mcp setup codex` | a game's own settings are read only once you trust its folder in Codex |
 | Gemini CLI | `argus mcp setup gemini` | the same: trust the folder (`/permissions`) |
 
 `argus mcp setup` on its own lists the tools and which ones it finds on this computer.
+
+### Claude Desktop without installing Argus
+
+Each release also has `argus-<version>.mcpb`, a bundle Claude Desktop installs by itself, with Argus inside it. In Claude Desktop open **Settings**, then **Extensions**, then **Advanced settings**, and under **Extension Developer** choose **Install Extension…** and pick the file. It asks for a game's folder; leave it empty and the agent lists your games, opens one, or makes a new one.
+
+Double-clicking the file does nothing in the Microsoft Store version of Claude Desktop: that version does not open `.mcpb` files itself, and passes a file it is started with to the running app, which ignores it.
 
 ## Release a game
 
