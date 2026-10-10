@@ -21,3 +21,22 @@ variations = [ { wave = "triangle", freq = 90, ms = 60 } ]
 [sounds."sfx/death"]
 gain = 0.7
 variations = [ { wave = "saw", freq = 220, slide = -400, ms = 400, release_ms = 200 } ]
+
+# Music: one track for the dungeon, of tones like the rest, two bars a
+# loop. systems/music.luau sets its intensity each turn from the danger
+# near the hero (monsters close by, hit points low) and how deep the floor
+# is: a drone always, a high line that comes in as it rises, and a quick
+# pulse when a fight is close.
+[sounds."music/dungeon.drone"]
+tone = { wave = "sine", notes = [55, 55, 55, 55, 52, 52, 49, 49], note_ms = 857, attack_ms = 250, release_ms = 300, gain = 0.55 }
+
+[sounds."music/dungeon.line"]
+tone = { wave = "triangle", notes = [440, 0, 0, 523, 0, 494, 0, 0], note_ms = 857, attack_ms = 20, release_ms = 700, gain = 0.16 }
+
+[sounds."music/dungeon.pulse"]
+tone = { wave = "square", notes = [110, 0, 110, 0, 117, 0, 104, 0, 110, 0, 110, 0, 117, 0, 98, 0], note_ms = 428, attack_ms = 5, release_ms = 120, gain = 0.12 }
+
+[music.dungeon]
+bpm = 70
+fade_ms = 500
+layers = [ { sound = "music/dungeon.drone" }, { sound = "music/dungeon.line", from = 0.15, to = 0.6 }, { sound = "music/dungeon.pulse", from = 0.55, to = 1.0 } ]

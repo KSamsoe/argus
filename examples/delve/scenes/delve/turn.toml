@@ -50,3 +50,10 @@ level = 0.62
 amount = 0.25
 radius = 0.5
 softness = 0.5
+
+# The dungeon's music (audio.toml's [music.dungeon]); systems/music.luau
+# sets its intensity each turn. Here, not on an entity of its own, because
+# a new entity would change the ids sim.floor's monsters get.
+[Music]
+track = "dungeon"
+intensity = 0.0
