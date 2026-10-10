@@ -1,0 +1,12 @@
+# A bullet, as sim.fire spawns it (q:spawn_prefab("bullet") in
+# systems/fire.luau), which gives it where it starts and its velocity.
+# Its look is here: systems/looks.luau makes it glow.
+[Transform]
+
+[Bullet]
+
+[Sprite]
+kind = "rect"
+size = [0.3, 0.3]
+color = "#FFD866"
+z = 3.0

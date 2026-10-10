@@ -1,0 +1,19 @@
+# An enemy, as sim.waves spawns it (q:spawn_prefab("enemy") in
+# systems/waves.luau). The wave gives each one where it starts, its speed,
+# and its health; everything else is here. Change a value or add a
+# component here and every enemy spawned after has it: sim.waves names
+# "enemy" in its spawns, which grants this file's components.
+#
+# The shape and colour are what the game draws without art;
+# systems/looks.luau puts the picture on, tinted with this colour.
+[Transform]
+
+[Enemy]
+
+[Health]
+
+[Sprite]
+kind = "circle"
+size = [0.9, 0.9]
+color = "#E8703F"
+z = 1.0

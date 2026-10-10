@@ -2120,9 +2120,12 @@ impl Daemon {
             .as_mut()
             .ok_or_else(|| ArgusError::new(codes::NO_PROJECT, "no project is open"))?;
         let report = ses.project.move_asset(&from, &to)?;
-        // A moved def row is read again (moves rewrite references in tables).
+        // A moved def row is read again (moves rewrite references in tables),
+        // and a moved prefab spawns by its new name.
         ses.host
             .set_defs(Rc::new(argus_player::ProjectDefs(ses.project.defs.clone())));
+        ses.host
+            .set_prefabs(Rc::new(argus_player::ProjectPrefabs::new(&ses.project)));
         *ses.dialogue.borrow_mut() = argus_dialogue::Graph::from_defs(&ses.project.defs);
         *ses.timelines.borrow_mut() = argus_player::read_timelines(&ses.project.defs, &self.world);
         ses.scene
@@ -3470,6 +3473,9 @@ impl Daemon {
             .scene
             .borrow_mut()
             .reapply_prefab(&ses.project, &mut self.world, &prefab)?;
+        // Scripts spawn the prefab as it is now.
+        ses.host
+            .set_prefabs(Rc::new(argus_player::ProjectPrefabs::new(&ses.project)));
         touched.extend(ids.into_iter().map(|id| format!("@{id}")));
         touched.insert(format!("prefab:{prefab}"));
         Ok(Some(Op::PrefabText { prefab, text: old }))
@@ -4722,6 +4728,9 @@ impl Daemon {
             .set_def_schemas(argus_player::with_engine_defs(schemas));
         ses.host
             .set_defs(Rc::new(argus_player::ProjectDefs(ses.project.defs.clone())));
+        // Prefabs resolve again, against the components as they are now.
+        ses.host
+            .set_prefabs(Rc::new(argus_player::ProjectPrefabs::new(&ses.project)));
         let registry = self.world.registry().clone();
         ses.scene
             .borrow_mut()

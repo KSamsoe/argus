@@ -173,6 +173,36 @@ pub trait Tiles {
 /// The maps a host was given.
 pub(crate) struct TilesData(pub Rc<dyn Tiles>);
 
+/// A prefab made ready to spawn: what `q:spawn_prefab` places, resolved by
+/// the host from `prefabs/` with its whole chain (the base prefabs' fields,
+/// its own on top).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SpawnPlan {
+    /// The prefab's name (`enemy/bat`), or a child's name in its parent.
+    pub name: String,
+    /// Tags: components with no fields.
+    pub tags: Vec<String>,
+    /// Components, each with the fields the prefab sets (a field it leaves
+    /// alone keeps the schema's default). An entity field holds its
+    /// reference as written: `Value::Str("@id")` for an authored entity, or
+    /// empty for none.
+    pub components: Vec<(String, Vec<(String, argus_ecs::Value)>)>,
+    /// Child entities, parented to this one.
+    pub children: Vec<SpawnPlan>,
+    /// Where the prefab is (`prefabs/enemy/bat.toml`), for messages.
+    pub file: String,
+}
+
+/// The game's prefabs, for `q:spawn_prefab` (scripts spawning from a
+/// prefab, GitHub issue 1).
+pub trait Prefabs {
+    /// The prefab named `name`, resolved against the world's components.
+    fn plan(&self, world: &argus_ecs::World, name: &str) -> Result<Rc<SpawnPlan>>;
+}
+
+/// The prefabs a host was given.
+pub(crate) struct PrefabsData(pub Rc<dyn Prefabs>);
+
 /// The tables a host was given, and the frozen Lua tables made from them
 /// (a row is made once, not every time a system asks).
 pub(crate) struct DefsData {
@@ -363,6 +393,12 @@ impl ScriptHost {
     /// Give scripts the game's maps (`q:tiles`; phase 5 item 4).
     pub fn set_tiles(&self, tiles: Rc<dyn Tiles>) {
         self.lua.set_app_data(TilesData(tiles));
+    }
+
+    /// Give scripts the game's prefabs (`q:spawn_prefab`). A host gives
+    /// them again when a prefab changes.
+    pub fn set_prefabs(&self, prefabs: Rc<dyn Prefabs>) {
+        self.lua.set_app_data(PrefabsData(prefabs));
     }
 
     /// Give scripts the game's string tables (`q:text`, `q:languages`;
@@ -777,6 +813,7 @@ impl ScriptHost {
         let lua = self.lua.clone();
         let budget = self.budget.clone();
         let limit = self.config.interrupt_budget as i64;
+        let spawns: Rc<[String]> = s.spawns.clone().into();
         let f: SystemFn = Box::new(move |ctx| {
             // The 'static is a lie the proxies never get to exploit: the
             // link is nulled before this closure returns.
@@ -784,7 +821,10 @@ impl ScriptHost {
             let link: Link = Rc::new(Cell::new(raw.cast::<argus_sim::SystemCtx<'static>>()));
             budget.set(limit);
             let q = lua
-                .create_userdata(QueryHandle { link: link.clone() })
+                .create_userdata(QueryHandle {
+                    link: link.clone(),
+                    spawns: spawns.clone(),
+                })
                 .map_err(to_argus)?;
             let r = run.call::<()>(q);
             link.set(std::ptr::null_mut());

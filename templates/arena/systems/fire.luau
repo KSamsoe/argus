@@ -4,12 +4,14 @@
 -- To fire on a button instead, add a button action to input.toml (fire)
 -- and shoot only while `pe:get("Actions").fire` is true. To aim with the
 -- right stick, add an axis2 action and shoot along it instead of at the
--- nearest enemy. Bullets are plain entities: Transform, Bullet, Sprite.
+-- nearest enemy. A bullet is prefabs/bullet.toml: change its look or its
+-- numbers there.
 return system "sim.fire" {
   stage = "sim",
   after = { "sim.chase" },
   reads = { "Player", "Enemy", "Transform" },
-  writes = { "Player", "Bullet", "Transform", "Sprite" },
+  writes = { "Player" },
+  spawns = { "bullet" },
   doc = "Every Player.fire_every ticks, fires one bullet at the nearest enemy within Player.range.",
   run = function(q)
     local pe = q:entity("@player")
@@ -28,13 +30,9 @@ return system "sim.fire" {
     if len < 0.001 then return end
 
     pl.cooldown = pl.fire_every
-    local b = q:spawn({ "Transform", "Bullet", "Sprite" })
-    b:get("Transform").pos = from
-    b:get("Bullet").vel = d * (pl.bullet_speed / len)
-    local sp = b:get("Sprite")
-    sp.kind = "rect"
-    sp.size = vector.create(0.3, 0.3, 0)
-    sp.color = "#FFD866"
-    sp.z = 3
+    q:spawn_prefab("bullet", {
+      ["Transform.pos"] = from,
+      ["Bullet.vel"] = d * (pl.bullet_speed / len),
+    })
   end,
 }

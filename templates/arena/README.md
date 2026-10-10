@@ -15,6 +15,7 @@ A top-down arena shooter start. You walk the hero (the gunner in the yellow helm
   - `bullets.luau` flies the bullets until they reach the wall.
   - `hits.luau` handles bullets hitting enemies and enemies touching the hero.
   - `looks.luau` runs after all of them and only changes how things are drawn (see The art).
+- `prefabs/`: what the systems spawn. `enemy.toml` is an enemy and `bullet.toml` a bullet: their components and starting values. `waves.luau` and `fire.luau` spawn them with `q:spawn_prefab`, giving only what differs each time (where it starts, its speed or velocity). Change a prefab and every one spawned after it changes.
 - `scenes/main/`: one file per thing in the scene.
   - `arena.toml` is the floor. Its size is the arena's size, and it holds the wave numbers.
   - `player.toml` is the hero.
@@ -40,7 +41,7 @@ All the pictures are drawn by one script, `tools/art.py`, as pixel grids and by 
 - `assets/ui/panel.png` is the frame the HUD and the menus sit in.
 - `assets/fx/` holds the effects (`spark`, `puff`, `flame`) and two materials: `glow` (drawn added, for the bullets and fire) and `body` (the hero and enemies at full colour, however dark the room).
 
-The game's systems spawn enemies and bullets as plain shapes and give them colours. `systems/looks.luau` swaps in the pictures, keeping those colours as the tint, so a different colour in `systems/waves.luau` still changes the enemies. It also picks the frames each tick: the hero turns toward what it shoots at, steps while it walks, and flashes when hit. Each enemy walks, faces the hero, and has a shadow. It starts the sparks where a bullet hits and a puff where an enemy dies. It reads the game and writes only how things look, so the game plays the same without it.
+The enemies and bullets spawn as plain shapes in their prefabs' colours. `systems/looks.luau` swaps in the pictures, keeping those colours as the tint, so a different colour in `prefabs/enemy.toml` still changes the enemies. It also picks the frames each tick: the hero turns toward what it shoots at, steps while it walks, and flashes when hit. Each enemy walks, faces the hero, and has a shadow. It starts the sparks where a bullet hits and a puff where an enemy dies. It reads the game and writes only how things look, so the game plays the same without it.
 
 What to change first:
 

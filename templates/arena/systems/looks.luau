@@ -2,8 +2,9 @@
 -- only: it reads gameplay (where things are, who is hurt) and writes only
 -- how things are drawn, so the game plays the same with or without it.
 --
--- Gameplay spawns the enemies and bullets as plain shapes and colours them
--- (sim.waves orange, sim.hits paler once hit, sim.fire yellow). Each tick
+-- Gameplay spawns the enemies and bullets as plain shapes in colours
+-- (prefabs/enemy.toml orange, sim.hits paler once hit, prefabs/bullet.toml
+-- yellow). Each tick
 -- this system:
 -- - gives each new enemy its picture (keeping gameplay's colour as the
 --   tint: the picture is grey), drawn at its own colour in the dark

@@ -415,6 +415,33 @@ impl<'a> SystemCtx<'a> {
         self.world.spawn_with(comps)
     }
 
+    /// Spawn straight into the archetype of `comps` for a prefab the system
+    /// declares it spawns (a Luau system's `spawns`): the declaration grants
+    /// the prefab's components as a whole, so a component the prefab gains
+    /// later needs no new declaration. The host checks the grant first.
+    pub fn spawn_granted(&mut self, comps: &[ComponentId]) -> Result<Entity> {
+        self.world.spawn_with(comps)
+    }
+
+    /// Set a field of an entity just made with [`SystemCtx::spawn_granted`],
+    /// to the value its prefab gives it.
+    pub fn set_field_granted(&mut self, e: Entity, path: &str, value: Value) -> Result<()> {
+        self.world.set_field(e, path, value)
+    }
+
+    /// A tag (a component with no fields) by name, registered the first time
+    /// a spawned prefab names it, as a scene registers the tags its files use.
+    pub fn tag(&mut self, name: &str, source: &str) -> Result<ComponentId> {
+        if let Some(id) = self.world.component_id(name) {
+            return Ok(id);
+        }
+        let schema = argus_ecs::SchemaBuilder::new(name)
+            .doc("Tag declared by use in a prefab.")
+            .source(source.to_string())
+            .build()?;
+        self.world.register_schema(schema)
+    }
+
     /// Live entities within `r` of a point, nearest first, from the
     /// broadphase rebuilt at the start of this tick (§12), or since then by
     /// [`SystemCtx::rebuild_broadphase`].
