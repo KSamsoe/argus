@@ -63,6 +63,8 @@ loop = false
 
 Other keys: `[[frames]] rect = [x, y, w, h]` for frames of different sizes, `pivot = [x, y]` (fractions of the frame, y up from the bottom: `[0.5, 0]` is the feet), `duration_ms` per frame, and a clip's `direction` (`forward`, `reverse`, `pingpong`). A tileset's frames carry `properties` such as `solid` and `one_way` (see [scenes](scenes.md)).
 
+An image whose sides are not powers of two (16, 32, 64, ...) is padded to the next ones for the GPU, and `asset list` says so ("texture 90x18 is not power-of-two, padding to 128x32"). It is a note, not a fault: the picture is the same, and the padding costs only texture memory. Drawing to power-of-two sizes, or packing several images into one sheet, avoids it.
+
 The entity file names the asset and sets its world size. Hollow's hero:
 
 ```toml
