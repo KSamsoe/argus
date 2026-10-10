@@ -11,10 +11,11 @@ diagonal = true
 [Transform]
 pos = [15.5, 8.5]
 
+# The grass (sprites/ground, drawn by tools/art.py): the 32 x 18 meadow and
+# four units of long grass round it, so the view has no bare edge.
 [Sprite]
-kind = "rect"
-size = [32.0, 18.0]
-color = "#3B5A32"
+atlas = "sprites/ground"
+size = [40.0, 24.0]
 z = -10.0
 
 [Describe]

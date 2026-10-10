@@ -1,17 +1,21 @@
 # The line at the top of the screen. systems/hud.luau writes its words; the
-# UI components place it (UiNode), give it a backing (UiPanel), and draw
-# the text (UiText). interactive = false: it takes no focus or clicks.
+# UI components place it (UiNode), give it a backing (UiPanel: the wooden
+# panel ui/panel.png, nine-sliced at 4 pixels and drawn at twice its
+# pixels), and draw the text (UiText, in ui.toml's colours).
+# interactive = false: it takes no focus or clicks.
 [UiRoot]
 interactive = false
 layer = 1
 
 [UiNode]
 absolute = true
-offset = [12.0, 8.0]
-pad = [8.0, 4.0]
+offset = [10.0, 8.0]
+pad = [14.0, 9.0]
 
 [UiPanel]
-color = "#05070A99"
+image = "ui/panel"
+slice = 4.0
+scale = 2.0
 
 [UiText]
 text = ""

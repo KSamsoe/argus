@@ -6,17 +6,22 @@ job_kind = "chop"
 gives = "wood"
 yield = 2.0
 regrow_days = 2.0
-ripe_color = "#1E4A24"
-bare_color = "#7A5A38"
-drop_color = "#8B5A2B"
+# The colours its Sprite is tinted standing and felled, and its logs'.
+# White draws the art as tools/art.py painted it.
+ripe_color = "#FFFFFF"
+bare_color = "#FFFFFF"
+drop_color = "#FFFFFF"
 
 [NavCost]
 cost = 0
 
+# An oak or a fir of sprites/meadow (systems/looks.luau picks which by where
+# it stands, and how grown by Source.growth), its trunk's foot on its cell,
+# its crown over the cells above.
 [Sprite]
-kind = "circle"
-size = [0.9, 0.9]
-color = "#1E4A24"
+atlas = "sprites/meadow"
+frame = 4
+size = [2.1111, 3.0]
 z = 1.0
 
 [Describe]

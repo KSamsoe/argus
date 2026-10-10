@@ -19,13 +19,61 @@ slot = 1
 [Transform]
 pos = [16.0, 9.0]
 
+# The stockpile's yard, trodden earth where goods are set down, a path worn
+# up to the store (a frame of sprites/meadow, drawn by tools/art.py), flat
+# on the ground.
 [Sprite]
-kind = "rect"
-size = [3.0, 3.0]
-color = "#6B5B3E"
+atlas = "sprites/meadow"
+frame = 32
+size = [4.4444, 5.3333]
 z = -5.0
 
 # What the semantic frame (argus observe) and a screen reader say about it.
 [Describe]
 name = "stockpile"
 text = "food {Stockpile.food}, wood {Stockpile.wood}"
+
+# Its looks, hung from it (presentation only; systems/looks.luau picks
+# their frames): the store behind the yard, with a lantern by its door
+# whose light comes on at night; the woodpile and the baskets before it,
+# which grow with the wood and food in store.
+[children.store.Transform]
+pos = [0.0, 3.4]
+
+[children.store.Sprite]
+atlas = "sprites/meadow"
+frame = 20
+size = [4.0, 3.7778]
+
+[children.store.Light]
+color = "#FFB060"
+intensity = 0.0
+radius = 8.0
+falloff = 1.3
+offset = [-0.6, 1.33]
+shadows = false
+
+[children.store.Describe]
+hidden = true
+
+[children.wood.Transform]
+pos = [-1.55, 2.6]
+
+[children.wood.Sprite]
+atlas = "sprites/meadow"
+frame = 22
+size = [1.7778, 1.5556]
+
+[children.wood.Describe]
+hidden = true
+
+[children.food.Transform]
+pos = [1.55, 2.6]
+
+[children.food.Sprite]
+atlas = "sprites/meadow"
+frame = 26
+size = [1.7778, 1.5556]
+
+[children.food.Describe]
+hidden = true

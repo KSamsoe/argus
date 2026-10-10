@@ -1,0 +1,51 @@
+# The pause screen: the meadow dimmed, and the HUD's wooden panel in the
+# middle saying so, with the key that goes on. Hidden until the colony is
+# paused (systems/looks.luau shows it while Colony.paused); it takes no
+# input, the pause key does that (systems/controls.luau).
+#
+# To change first: the words (UiText.text) and how dim (the UiPanel colour's
+# last two digits, its alpha).
+[UiRoot]
+interactive = false
+layer = 5
+
+[UiNode]
+justify = "center"
+align = "center"
+visible = false
+
+[UiPanel]
+color = "#0A0C1466"
+
+[children.panel.UiNode]
+pad = [30.0, 16.0]
+gap = 8.0
+align = "center"
+
+[children.panel.UiPanel]
+image = "ui/panel"
+slice = 4.0
+scale = 2.0
+
+[children.panel.children.title.UiNode]
+
+[children.panel.children.title.UiText]
+text = "Paused"
+size = 32.0
+color = "accent"
+align = "center"
+wrap = false
+
+[children.panel.children.hint.UiNode]
+order = 1
+
+# {InputGlyph.label} is what the player presses for pause on the device
+# they last used: Space on a keyboard, the pad's name for Start on a pad.
+[children.panel.children.hint.UiText]
+text = "{InputGlyph.label} to go on"
+color = "muted"
+align = "center"
+wrap = false
+
+[children.panel.children.hint.InputGlyph]
+action = "pause"

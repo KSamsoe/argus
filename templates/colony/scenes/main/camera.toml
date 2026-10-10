@@ -10,3 +10,11 @@ zoom_action = "zoom"
 zoom_min = 6.0
 zoom_max = 40.0
 bounded = false
+
+# Light, for the lantern at the store: white everywhere, so by day the
+# meadow is drawn as it is; at night the lantern's Light (scenes/main/
+# colony.toml) warms the dark round the stockpile (systems/looks.luau).
+[Lighting]
+ambient = "#FFFFFF"
+level = 1.0
+shadows = false

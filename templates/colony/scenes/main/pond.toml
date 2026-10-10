@@ -7,10 +7,12 @@ size = [5.0, 4.0]
 [Transform]
 pos = [22.0, 12.5]
 
+# The water and its bank (sprites/meadow): the bank half a unit round the
+# 5 x 4 that blocks the way. systems/looks.luau moves its ripples.
 [Sprite]
-kind = "rect"
-size = [5.0, 4.0]
-color = "#3A6EA5"
+atlas = "sprites/meadow"
+frame = 30
+size = [6.0, 5.0]
 z = -4.0
 
 [Describe]

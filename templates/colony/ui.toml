@@ -1,0 +1,17 @@
+# The colony's UI theme: cream words on the dark wood of ui/panel.png
+# (drawn by tools/art.py), in the built-in pixel font, on the default
+# 960 x 540 canvas. The HUD (scenes/main/hud.toml) and the pause screen
+# (scenes/main/paused.toml) use it.
+#
+# To change first: text (the words' colour) and accent (the pause title's).
+[colors]
+text = "#F2E6C8"
+muted = "#C8B48A"
+accent = "#F2C45A"
+panel = "#2A1C14EC"
+border = "#7A5432"
+
+[high_contrast_colors]
+text = "#FFFFFF"
+muted = "#FFFFFF"
+accent = "#FFFF00"
