@@ -1,6 +1,10 @@
 // Serve a built site, and take the reports its players send:
 //
-//   node tools/web/serve.mjs [site] [port] [host] [marks-dir]
+//   node tools/web/serve.mjs [site] [port] [host] [marks-dir] [--read-only]
+//
+// --read-only serves the files and takes no reports: the public games site
+// (docs/playtest.md, "The games in a browser"), where anyone on the
+// internet could otherwise send 8 MB at a time.
 //
 // Defaults: target-web/site, 8765, 127.0.0.1, <site>/../marks. The host may
 // be several addresses, comma-separated: on klab, 127.0.0.1 for Tailscale's
@@ -20,21 +24,31 @@
 import { createServer } from "node:http";
 import { brotliCompressSync, constants as zlib } from "node:zlib";
 import { readFile, writeFile, readdir, stat, mkdir } from "node:fs/promises";
-import { extname, join, normalize, resolve, dirname } from "node:path";
+import { extname, join, normalize, resolve, dirname, sep } from "node:path";
 import { randomBytes } from "node:crypto";
 
-const root = process.argv[2] ?? "target-web/site";
-const port = Number(process.argv[3] ?? 8765);
-const hosts = (process.argv[4] ?? "127.0.0.1").split(",").filter(Boolean);
-const marks = resolve(process.argv[5] ?? join(dirname(resolve(root)), "marks"));
+const readOnly = process.argv.includes("--read-only");
+const args = process.argv.slice(2).filter((a) => a !== "--read-only");
+const root = resolve(args[0] ?? "target-web/site");
+const port = Number(args[1] ?? 8765);
+const hosts = (args[2] ?? "127.0.0.1").split(",").filter(Boolean);
+const marks = resolve(args[3] ?? join(dirname(root), "marks"));
 const MAX = 8 << 20;
 const types = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
   ".wasm": "application/wasm",
   ".pack": "application/octet-stream",
   ".json": "application/json",
+  ".txt": "text/plain; charset=utf-8",
+  ".png": "image/png",
+  ".webp": "image/webp",
+  ".svg": "image/svg+xml",
+  ".ico": "image/x-icon",
 };
+// What is already small or compressed is sent as it is.
+const packed = new Set([".png", ".webp", ".ico"]);
 
 const send = (res, code, body, type = "application/json") => {
   const b = typeof body === "string" || body instanceof Uint8Array ? body : JSON.stringify(body);
@@ -89,17 +103,31 @@ async function brotli(file) {
 const handle = async (req, res) => {
   const path = decodeURIComponent(new URL(req.url, "http://x").pathname);
   try {
-    if (path === "/marks" && req.method === "POST") return await takeReport(req, res);
-    if (path === "/marks" && req.method === "GET") return await listReports(res);
-    const m = path.match(/^\/marks\/([0-9a-z-]+)$/);
-    if (m && req.method === "GET") {
-      return send(res, 200, await readFile(join(marks, `${m[1]}.argr`)), "application/octet-stream");
+    if (readOnly) {
+      // A page's report goes to "marks" beside it, wherever it is.
+      if (req.method === "POST" && path.endsWith("/marks")) {
+        return send(res, 403, { error: "this site takes no reports" });
+      }
+      if (req.method !== "GET") return send(res, 405, { error: "GET only" });
+    } else {
+      if (path === "/marks" && req.method === "POST") return await takeReport(req, res);
+      if (path === "/marks" && req.method === "GET") return await listReports(res);
+      const m = path.match(/^\/marks\/([0-9a-z-]+)$/);
+      if (m && req.method === "GET") {
+        return send(res, 200, await readFile(join(marks, `${m[1]}.argr`)), "application/octet-stream");
+      }
+      if (req.method !== "GET") return send(res, 405, { error: "GET, or POST /marks" });
     }
-    if (req.method !== "GET") return send(res, 405, { error: "GET, or POST /marks" });
     const file = normalize(join(root, path.endsWith("/") ? path + "index.html" : path));
-    if (!file.startsWith(normalize(root))) return send(res, 403, { error: "outside the site" });
+    if (file !== root && !file.startsWith(root + sep)) return send(res, 403, { error: "outside the site" });
+    // A folder asked for without its slash: its page, with the slash, so
+    // the page's own links (data/packs.json) are found beside it.
+    if (!path.endsWith("/") && (await stat(file).catch(() => null))?.isDirectory()) {
+      res.writeHead(301, { location: path + "/" });
+      return res.end();
+    }
     const type = types[extname(file)] ?? "application/octet-stream";
-    if (/\bbr\b/.test(req.headers["accept-encoding"] ?? "")) {
+    if (!packed.has(extname(file)) && /\bbr\b/.test(req.headers["accept-encoding"] ?? "")) {
       const body = await brotli(file);
       res.writeHead(200, { "content-type": type, "content-encoding": "br", "content-length": body.length, "cache-control": "no-store", vary: "accept-encoding" });
       return res.end(body);
@@ -112,6 +140,6 @@ const handle = async (req, res) => {
 
 for (const host of hosts) {
   createServer(handle).listen(port, host, () =>
-    console.log(`serving ${root} on http://${host}:${port}/, reports into ${marks}`),
+    console.log(`serving ${root} on http://${host}:${port}/, ${readOnly ? "taking no reports" : `reports into ${marks}`}`),
   );
 }

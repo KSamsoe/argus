@@ -76,6 +76,30 @@ The page is swapped in with one rename; the server needs no restart, and reports
 
 The server sends the page brotli-compressed to a browser that takes it: about 2.7 MB instead of 14 MB, so the page loads in under 5 s on a 20 Mbit link (section 17; `tools/web/check.mjs` measures it).
 
+## The games in a browser
+
+The example games, Hollow, Delve, and Outpost, are also on a public site anyone can open, with no Tailscale: `https://klab.tailde2255.ts.net/`, a page of the games (`tools/web/games/index.html`) with each game in its own folder (`/hollow/`, `/delve/`, `/outpost/`). Swarm is not there: its chase is a Rust plugin, which a page cannot load, so it plays from a release's example games.
+
+It is a second server beside the playtest one, apart from it:
+
+- `~/argus-games/site/`: the page of the games, each game's page as `argus build --target web --release` wrote it (without its `build.json`, which names this machine's folders), and the README's clips.
+- `argus-games.service`: a user service (`tools/web/argus-games.service`) running `serve.mjs --read-only` on `127.0.0.1:8766` only. Read-only, it serves the files and refuses every report (`POST .../marks` is 403) and every other method: the internet can read the site and write nothing to klab. A player's F8 there says the report did not go.
+- Tailscale Funnel puts `127.0.0.1:8766` on the internet at port 443, set once on klab (it needs root, so Kevin runs it):
+
+```bash
+sudo tailscale funnel --bg --https=443 http://127.0.0.1:8766
+```
+
+The first time, Tailscale may ask for Funnel to be allowed for the tailnet, with a link to the admin console. `tailscale funnel status` shows it; `sudo tailscale funnel --https=443 off` takes it down. The playtest server on 8443 stays on the tailnet only.
+
+To put up the games again (after a release, say), with an installed argus:
+
+```bash
+tools/web/publish-games.sh ~/AppData/Local/Argus/app/bin/argus.exe
+```
+
+It builds the three pages from copies of `examples/`, each checked by its build, swaps the site in with one rename, and installs or restarts the service when its file or `serve.mjs` changed. `node tools/web/games-check.mjs https://klab.tailde2255.ts.net/ <out-dir>` opens each game in headless Chrome and says whether it runs, with a screenshot of each.
+
 ## Linux builds
 
 klab builds the Linux release: the engine's source is in `~/argus` (updated from a git bundle, since klab has no access to GitHub), Rust is installed for `kevin`, and the build needs `libasound2-dev` and `libudev-dev`. In `~/argus`:

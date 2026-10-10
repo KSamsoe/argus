@@ -1,0 +1,15 @@
+[Unit]
+Description=Argus example games: the public web site, read-only
+After=network-online.target tailscaled.service
+
+[Service]
+WorkingDirectory=%h/argus-games
+# 127.0.0.1 only, for Tailscale Funnel (tailscale funnel --https=443), which
+# puts it on the internet; it takes no reports (--read-only), so the
+# internet can only read the site. docs/playtest.md has the rest.
+ExecStart=/usr/bin/node %h/argus-games/serve.mjs %h/argus-games/site 8766 127.0.0.1 --read-only
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
