@@ -11,6 +11,11 @@ zoom_min = 6.0
 zoom_max = 40.0
 bounded = false
 
+# What shows past the meadow when zoomed out: the long grass round it
+# (the colour of the border tools/art.py draws), so it goes on.
+[Background]
+color = "#2C4724"
+
 # Light, for the lantern at the store: white everywhere, so by day the
 # meadow is drawn as it is; at night the lantern's Light (scenes/main/
 # colony.toml) warms the dark round the stockpile (systems/looks.luau).
