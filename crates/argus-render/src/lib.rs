@@ -325,6 +325,63 @@ impl Image {
         })
     }
 
+    /// As [`compare`](Self::compare), but a pixel differs only when no
+    /// pixel within one of it in the other picture is within `threshold`
+    /// either, both ways round: a colour that changed counts, an edge that
+    /// moved by a pixel does not. What a release's check asks of its
+    /// packed sprites (distribution item 5): pixel art scaled by a fraction
+    /// lands some screen pixels exactly on a texel boundary, and which
+    /// texel wins depends on the texture coordinate's last bit, which
+    /// differs between a sprite's own image and its atlas page, and between
+    /// GPUs. Image goldens keep the strict comparison.
+    pub fn compare_near(&self, other: &Image, threshold: f64) -> argus_ecs::Result<Comparison> {
+        let strict = self.compare(other, threshold)?;
+        if strict.differing == 0 {
+            return Ok(strict);
+        }
+        let max_delta = 35215.0 * threshold * threshold;
+        let (w, h) = (self.width as i64, self.height as i64);
+        // Whether `img` has, within a pixel of (x, y), one close to `p`.
+        let near = |img: &Image, x: i64, y: i64, p: [u8; 4]| {
+            (-1..=1).any(|dy| {
+                (-1..=1).any(|dx| {
+                    let (nx, ny) = (x + dx, y + dy);
+                    nx >= 0
+                        && ny >= 0
+                        && nx < w
+                        && ny < h
+                        && yiq_delta(&p, &img.pixel(nx as u32, ny as u32)) <= max_delta
+                })
+            })
+        };
+        let mut diff = strict.diff;
+        let mut differing = 0u64;
+        for y in 0..h {
+            for x in 0..w {
+                let i = ((y * w + x) * 4) as usize;
+                if diff.rgba[i..i + 4] != [255, 0, 0, 255] {
+                    continue;
+                }
+                let (a, b) = (
+                    self.pixel(x as u32, y as u32),
+                    other.pixel(x as u32, y as u32),
+                );
+                if near(other, x, y, a) && near(self, x, y, b) {
+                    // Moved, not changed: shown as the faded golden.
+                    let v = (255.0 + (yiq(&b).0 - 255.0) * 0.1).clamp(0.0, 255.0) as u8;
+                    diff.rgba[i..i + 4].copy_from_slice(&[v, v, v, 255]);
+                } else {
+                    differing += 1;
+                }
+            }
+        }
+        Ok(Comparison {
+            differing,
+            diff,
+            ..strict
+        })
+    }
+
     /// Write as PNG.
     pub fn save_png(&self, path: &Path) -> argus_ecs::Result<()> {
         let e = |e: &dyn std::fmt::Display| {

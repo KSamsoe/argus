@@ -63,3 +63,36 @@ fn a_picture_is_compared_as_the_eye_sees_it() {
         "{e}"
     );
 }
+
+#[test]
+fn a_release_check_forgives_an_edge_moved_by_a_pixel_but_not_a_colour() {
+    // A tan row of three pixels on a dark ground, one row lower in the
+    // other picture: a texel boundary that fell the other way (Hollow's
+    // feather on klab's GPU, distribution item 5).
+    let (dark, tan) = ([24, 27, 42, 255], [184, 155, 112, 255]);
+    let (w, h) = (12u32, 8u32);
+    let mut a = flat(w, h, dark);
+    let mut b = flat(w, h, dark);
+    for x in 4..7 {
+        set(&mut a, (3 * w + x) as usize, tan);
+        set(&mut b, (4 * w + x) as usize, tan);
+    }
+    assert_eq!(
+        a.compare(&b, 0.1).unwrap().differing,
+        6,
+        "strictly, six pixels"
+    );
+    let near = a.compare_near(&b, 0.1).unwrap();
+    assert_eq!(near.differing, 0, "moved by a pixel, not changed");
+    assert_eq!(near.pixels, (w * h) as u64);
+    // A colour that is not anywhere near: it still counts.
+    let mut c = flat(w, h, dark);
+    set(&mut c, (3 * w + 5) as usize, [255, 0, 255, 255]);
+    assert_eq!(flat(w, h, dark).compare_near(&c, 0.1).unwrap().differing, 1);
+    // Moved by two pixels is a change.
+    let mut d = flat(w, h, dark);
+    for x in 4..7 {
+        set(&mut d, (5 * w + x) as usize, tan);
+    }
+    assert_eq!(a.compare_near(&d, 0.1).unwrap().differing, 6);
+}

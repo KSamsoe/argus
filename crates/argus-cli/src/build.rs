@@ -350,7 +350,7 @@ fn build(inv: &Invocation, err: &mut dyn Write) -> Result<Json, String> {
         "packs": from_packs,
     });
     if let (Some(a), Some(b)) = (&project_look, &packs_look) {
-        let c = b.compare(a, 0.1).map_err(|e| e.message)?;
+        let c = b.compare_near(a, 0.1).map_err(|e| e.message)?;
         check["looks"] = json!({ "pixels": c.pixels, "differing": c.differing });
         if c.differing > 0 {
             // The two pictures and where they differ, beside build.json.
