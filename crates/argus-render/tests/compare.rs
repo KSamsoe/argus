@@ -96,3 +96,29 @@ fn a_release_check_forgives_an_edge_moved_by_a_pixel_but_not_a_colour() {
     }
     assert_eq!(a.compare_near(&d, 0.1).unwrap().differing, 6);
 }
+
+/// The differing pixels' groups (touching, diagonals included), largest
+/// first: what a release's check tells a speck from a change by.
+#[test]
+fn differing_pixels_are_counted_in_groups() {
+    let (w, h) = (16u32, 16u32);
+    let dark = [20, 20, 20, 255];
+    let golden = flat(w, h, dark);
+    let mut b = golden.clone();
+    let mark = |b: &mut Image, x: u32, y: u32| set(b, (y * w + x) as usize, [250, 250, 250, 255]);
+    // A speck of two, side by side; one alone; and a blob of six.
+    mark(&mut b, 1, 1);
+    mark(&mut b, 2, 1);
+    mark(&mut b, 8, 2);
+    for (x, y) in [(10, 10), (11, 10), (12, 10), (10, 11), (11, 11), (12, 12)] {
+        mark(&mut b, x, y);
+    }
+    let c = b.compare_near(&golden, 0.1).unwrap();
+    assert_eq!(c.differing, 9);
+    assert_eq!(c.groups(), vec![6, 2, 1]);
+    assert!(golden
+        .compare_near(&golden, 0.1)
+        .unwrap()
+        .groups()
+        .is_empty());
+}

@@ -221,6 +221,54 @@ pub struct Comparison {
 }
 
 impl Comparison {
+    /// The groups the differing pixels make (touching, diagonals
+    /// included), as their sizes, largest first: what tells a speck from a
+    /// change. A sprite gone or a colour changed is a group of many; a texel
+    /// a page's compression lost is one or two pixels on its own.
+    pub fn groups(&self) -> Vec<usize> {
+        let (w, h) = (self.diff.width as i64, self.diff.height as i64);
+        let red = |x: i64, y: i64| {
+            x >= 0
+                && y >= 0
+                && x < w
+                && y < h
+                && self.diff.pixel(x as u32, y as u32) == [255, 0, 0, 255]
+        };
+        let mut seen = vec![false; (w * h) as usize];
+        let mut out = Vec::new();
+        for y in 0..h {
+            for x in 0..w {
+                if seen[(y * w + x) as usize] || !red(x, y) {
+                    continue;
+                }
+                let (mut n, mut todo) = (0, vec![(x, y)]);
+                seen[(y * w + x) as usize] = true;
+                while let Some((px, py)) = todo.pop() {
+                    n += 1;
+                    for (dx, dy) in [
+                        (-1, -1),
+                        (0, -1),
+                        (1, -1),
+                        (-1, 0),
+                        (1, 0),
+                        (-1, 1),
+                        (0, 1),
+                        (1, 1),
+                    ] {
+                        let (nx, ny) = (px + dx, py + dy);
+                        if red(nx, ny) && !seen[(ny * w + nx) as usize] {
+                            seen[(ny * w + nx) as usize] = true;
+                            todo.push((nx, ny));
+                        }
+                    }
+                }
+                out.push(n);
+            }
+        }
+        out.sort_unstable_by(|a, b| b.cmp(a));
+        out
+    }
+
     /// The share of pixels that differ.
     pub fn fraction(&self) -> f64 {
         self.differing as f64 / self.pixels.max(1) as f64

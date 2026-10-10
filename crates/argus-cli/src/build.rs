@@ -33,6 +33,10 @@ use std::process::Command;
 /// Ticks the self-check runs.
 const CHECK_TICKS: u64 = 300;
 
+/// The most pixels a group of differing ones may have and still be a speck
+/// (a texel of pixel art drawn at up to two pixels square).
+const SPECK: usize = 4;
+
 /// The targets.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Target {
@@ -351,7 +355,14 @@ fn build(inv: &Invocation, err: &mut dyn Write) -> Result<Json, String> {
     });
     if let (Some(a), Some(b)) = (&project_look, &packs_look) {
         let c = b.compare_near(a, 0.1).map_err(|e| e.message)?;
-        check["looks"] = json!({ "pixels": c.pixels, "differing": c.differing });
+        // Specks are forgiven: a texel or two a page's BC7 lost, alone, at
+        // most one pixel in 10,000 (0.0.3's release: Outpost's ground on
+        // klab lost two highlights, 5 pixels in 230,400). A sprite gone or a
+        // colour changed is a group bigger than that.
+        let specks = c.differing > 0
+            && c.differing * 10_000 <= c.pixels
+            && c.groups().iter().all(|&n| n <= SPECK);
+        check["looks"] = json!({ "pixels": c.pixels, "differing": c.differing, "specks": specks });
         if c.differing > 0 {
             // The two pictures and where they differ, beside build.json.
             let _ = a.save_png(&out_dir.join("look-project.png"));
@@ -439,13 +450,23 @@ fn build(inv: &Invocation, err: &mut dyn Write) -> Result<Json, String> {
     }
     let plays = check["packs"] == check["project"]
         && (check["executable"].is_null() || check["executable"] == check["project"]);
-    let looks = check["looks"]["differing"].as_u64().unwrap_or(0) == 0;
+    let specks = check["looks"]["specks"] == json!(true);
+    let looks = check["looks"]["differing"].as_u64().unwrap_or(0) == 0 || specks;
     let same = plays && looks;
     check["same"] = json!(same);
     check["said"] = json!(match (plays, looks) {
         (true, true) => format!(
             "the build plays and looks as the project does (the same world after {CHECK_TICKS} ticks{})",
-            if check["looks"].is_null() { "" } else { ", drawn the same" }
+            if check["looks"].is_null() {
+                String::new()
+            } else if specks {
+                format!(
+                    ", drawn the same but for {} pixels in specks, which look-diff.png beside build.json shows",
+                    check["looks"]["differing"]
+                )
+            } else {
+                ", drawn the same".to_string()
+            }
         ),
         (false, _) => format!("the build does NOT play as the project does after {CHECK_TICKS} ticks"),
         (true, false) => format!(
