@@ -230,8 +230,9 @@ fn a_person_tunes_the_food_economy_at_10x_and_keeps_it() {
     h.get_by_label("Keep").click();
     until(&mut h, "the session kept", |ed| ed.tuning.session.is_null());
     let colony = std::fs::read_to_string(t.path().join("scenes/valley/colony.toml")).unwrap();
+    // An f32 is written as its shortest text (2.6, not 2.5999999046325684).
     assert!(
-        colony.contains(&format!("hunger_per_day = {}", settled)),
+        colony.contains(&format!("hunger_per_day = {}", settled as f32)),
         "{colony}"
     );
     let items = std::fs::read_to_string(t.path().join("defs/items.toml")).unwrap();

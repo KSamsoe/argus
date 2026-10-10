@@ -27,6 +27,22 @@ fn cells(p: &Player) -> RuntimeCells {
     p.sources.tiles.as_ref().unwrap().borrow().runtime_cells()
 }
 
+/// The cells the game plays on: the floor and walls layers. Delve's art
+/// paints three more (stone, shade, decor), and decor changes with what
+/// happens (a monster's remains, the hero's blood).
+fn play_cells(all: &RuntimeCells) -> RuntimeCells {
+    all.clone()
+        .into_iter()
+        .map(|(file, cs)| {
+            let kept = cs
+                .into_iter()
+                .filter(|(layer, ..)| layer == "floor" || layer == "walls")
+                .collect();
+            (file, kept)
+        })
+        .collect()
+}
+
 /// The floor's walls layer, top row first: `#` a wall, `.` open.
 fn walls(p: &Player) -> Vec<String> {
     let st = p.sources.tiles.as_ref().unwrap();
@@ -183,14 +199,21 @@ fn a_report_after_the_stairs_replays_to_the_same_floor() {
     while p.recorder.as_ref().unwrap().from() <= made {
         assert_eq!(press(&mut p, "Period"), 1);
     }
-    assert_eq!(cells(&p), floor2, "waiting leaves the floor as it is");
+    // Waiting changes no cell the game plays on; the art's decor may have
+    // gained the hero's blood.
+    let now = cells(&p);
+    assert_eq!(
+        play_cells(&now),
+        play_cells(&floor2),
+        "waiting leaves the floor as it is"
+    );
     let bytes = p.report("floor 2, later", "report", "test").unwrap();
     let mut fresh = delve(&folder());
     let out = fresh.play_report(&bytes).unwrap();
     println!("the later one from {} to {}", out["from"], out["to"]);
     assert!(out["from"].as_u64().unwrap() > made, "{out}");
     assert_eq!(out["same"], true, "{out}");
-    assert_eq!(cells(&fresh), floor2, "the keyframe's floor");
+    assert_eq!(cells(&fresh), now, "the keyframe's floor, the art's layers too");
     assert_eq!(walls(&fresh), walls(&p));
 }
 
