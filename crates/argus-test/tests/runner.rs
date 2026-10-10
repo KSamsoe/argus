@@ -616,5 +616,8 @@ fn run_until_refuses_a_key_it_does_not_take() {
         seed.to_string().contains("run_until has no key max_frame"),
         "{seed}"
     );
-    assert_eq!(seed["tick"], 2, "the first call ran, the second did not: {seed}");
+    assert_eq!(
+        seed["tick"], 2,
+        "the first call ran, the second did not: {seed}"
+    );
 }

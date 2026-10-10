@@ -476,18 +476,31 @@ fn the_store_reads_slopes_and_notices_a_map_saved_elsewhere() {
 fn a_map_for_a_tick_is_the_one_in_memory() {
     let dir = project("loaded");
     let rel = "maps/m.tilemap.toml";
-    let mut m = MapFile::create(&dir, rel, 40, 20, 1.0, 16, 1, vec![layer("g", None, false)]).unwrap();
+    let mut m =
+        MapFile::create(&dir, rel, 40, 20, 1.0, 16, 1, vec![layer("g", None, false)]).unwrap();
     m.set(0, Rect::new(0, 0, 1, 1), &[3]).unwrap();
     m.save().unwrap();
     let mut st = argus_tiles::MapStore::new(&dir);
-    assert_eq!(st.loaded(rel).unwrap().cell(0, 0, 0).unwrap(), 3, "opened on first use");
+    assert_eq!(
+        st.loaded(rel).unwrap().cell(0, 0, 0).unwrap(),
+        3,
+        "opened on first use"
+    );
 
     std::thread::sleep(std::time::Duration::from_millis(30));
     let mut other = MapFile::open(&dir, rel).unwrap();
     other.set(0, Rect::new(0, 0, 1, 1), &[5]).unwrap();
     other.save().unwrap();
-    assert_eq!(st.loaded(rel).unwrap().cell(0, 0, 0).unwrap(), 3, "not re-read in a tick");
-    assert_eq!(st.open(rel).unwrap().cell(0, 0, 0).unwrap(), 5, "re-read by open");
+    assert_eq!(
+        st.loaded(rel).unwrap().cell(0, 0, 0).unwrap(),
+        3,
+        "not re-read in a tick"
+    );
+    assert_eq!(
+        st.open(rel).unwrap().cell(0, 0, 0).unwrap(),
+        5,
+        "re-read by open"
+    );
 
     // What it saves: 800 cells, as a script reads them.
     let t0 = Instant::now();
