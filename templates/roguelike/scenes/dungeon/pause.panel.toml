@@ -1,0 +1,15 @@
+# The pause screen's plate, a child of @pause: the HUD's iron-framed panel
+# (assets/ui/panel.png, nine-sliced at twice its pixels), its words in a
+# column (pause.title.toml over pause.text.toml).
+[Parent]
+entity = "@pause"
+
+[UiNode]
+pad = [40.0, 22.0]
+gap = 12.0
+align = "center"
+
+[UiPanel]
+image = "ui/panel"
+slice = 4.0
+scale = 2.0

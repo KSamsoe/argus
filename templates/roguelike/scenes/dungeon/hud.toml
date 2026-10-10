@@ -6,11 +6,17 @@ interactive = false
 
 [UiNode]
 absolute = true
-offset = [10.0, 8.0]
-pad = [8.0, 4.0]
+offset = [10.0, 10.0]
+pad = [14.0, 7.0]
 
+# On an iron-framed plate (assets/ui/panel.png, drawn by tools/art.py):
+# its outer 4 pixels keep their size and its middle stretches (a
+# nine-slice), at two screen pixels an image pixel.
 [UiPanel]
-color = "#05070AB0"
+image = "ui/panel"
+slice = 4.0
+scale = 2.0
 
 [UiText]
 text = "Turn {@turn:Turn.n}    HP {@player:Health.cur}/{@player:Health.max}    Kills {@player:Player.kills}"
+color = "accent"

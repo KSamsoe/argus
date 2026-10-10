@@ -1,17 +1,23 @@
-# The message line under the HUD: what the last turn did ("You hit the
-# rat."), written by sim.messages (systems/messages.luau). The text here is
-# what it says before the first turn.
+# The message line along the bottom of the screen: what the last turn did
+# ("You hit the rat."), written by sim.messages (systems/messages.luau).
+# The text here is what it says before the first turn.
 [UiRoot]
 interactive = false
 layer = 1
 
+# Placed by its bottom-left corner (pivot) at the screen's (anchor).
 [UiNode]
 absolute = true
-offset = [10.0, 36.0]
-pad = [8.0, 4.0]
+anchor = [0.0, 1.0]
+pivot = [0.0, 1.0]
+offset = [10.0, -10.0]
+pad = [12.0, 6.0]
 
+# On a quieter plate than the HUD's (assets/ui/plate.png, tools/art.py).
 [UiPanel]
-color = "#05070A80"
+image = "ui/plate"
+slice = 3.0
+scale = 2.0
 
 [UiText]
 text = "You enter the dungeon. Arrows or WASD to move, walk into a monster to attack."

@@ -1,0 +1,8 @@
+# The UI's colours: the theme every UiText and UiPanel draws from when it
+# names a colour (accent) or none (text). The words are in the built-in
+# pixel font, which suits the pixel art; the plates they sit on are
+# assets/ui (tools/art.py). Change a colour here and every line follows.
+[colors]
+text = "#E6DCC4"
+muted = "#9C93AC"
+accent = "#F0CC84"

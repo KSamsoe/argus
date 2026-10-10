@@ -12,18 +12,34 @@ tile_size = 1.0
 chunk = 16
 cell = 1
 
-# What is drawn: the floor tile on every open cell.
+# The game's two layers, which sim.dungeon paints and the rules read.
+#
+# floor: tile 1 on every open cell, a plain flagstone of tiles/dungeon. It
+# is drawn, but the stone layer below covers it with the look's own.
 [[layers]]
 name = "floor"
-tileset = "tiles/floor"
+tileset = "tiles/dungeon"
 z = 0.0
 
-# What blocks: the rock tile on every wall cell, drawn near-black and
-# solid (assets/tiles/rock.toml says so). The hero's moves, the monsters'
-# way to the hero (the navigation grid), and the semantic frame all read
-# this layer.
+# walls: tile 1 on every wall cell. No tileset, so it is never drawn (the
+# stone layer draws the walls) and every tile in it is solid. The hero's
+# moves, the monsters' way to the hero (the navigation grid), and the
+# semantic frame all read this layer.
 [[layers]]
 name = "walls"
-tileset = "tiles/rock"
 z = 0.0
 collision = true
+
+# The look's two layers, which only draw (nothing collides with them),
+# painted by systems/look.luau from the walls each time a run begins.
+# stone: every cell's flagstone, brick face, or rock; shade: the shadow a
+# wall casts on the floor beside it.
+[[layers]]
+name = "stone"
+tileset = "tiles/dungeon"
+z = 0.1
+
+[[layers]]
+name = "shade"
+tileset = "tiles/dungeon"
+z = 0.2

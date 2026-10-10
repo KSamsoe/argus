@@ -1,0 +1,16 @@
+# The dungeon's tiles: 32 frames of 16 x 16, eight to a row, drawn by
+# tools/art.py. The floor layer of maps/dungeon.tilemap.toml draws frame 0
+# under everything; systems/look.luau paints the rest on the look layers (tile
+# n is frame n - 1). Nothing here collides: the walls layer does that.
+#
+#   0-7    the floor: 0 one slab, 1-4 two to four stones, 5 cracked, 6 mossy, 7 bones
+#   8-15   a wall from above beside a room, 8 + mask (1 floor above, 2 right, 4 left)
+#   16-19  a wall's face (floor below it), 16 + sides (1 open left, 2 open right)
+#   20     a wall's face with moss
+#   21     a torch's light on the floor below it
+#   22     rock far from any room
+#   23     a wall's face with a torch
+#   24-27  a wall's shadow on the floor: from above, from the left, both, the corner
+#   28-31  what a fight leaves: a rat's, a goblin's, a bat's, blood
+# Written by tools/art.py with the picture: to change either, change art.py and run it again.
+grid = [8, 4]

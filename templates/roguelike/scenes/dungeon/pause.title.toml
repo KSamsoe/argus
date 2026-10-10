@@ -1,0 +1,13 @@
+# The pause screen's title, on its plate: the pixel font at twice its
+# size (32 to the theme's 16, ui.toml), in the HUD's gold (accent). Keep
+# sizes to multiples of 16 and the pixel font stays sharp.
+[Parent]
+entity = "@pause.panel"
+
+[UiNode]
+
+[UiText]
+text = "Paused"
+size = 32.0
+align = "center"
+color = "accent"
