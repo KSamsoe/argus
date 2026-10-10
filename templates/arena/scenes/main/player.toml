@@ -21,8 +21,32 @@ range = 12.0
 cur = 5
 max = 5
 
+# Its picture: a frame of sprites/actors (tools/art.py draws them), which
+# systems/looks.luau picks each tick, drawn at its own colour whatever the
+# light (fx/body). The size is also the hero's body: sim.move keeps it
+# inside the walls by it, so change it only with that in mind.
 [Sprite]
-kind = "circle"
+atlas = "sprites/actors"
+frame = 3
 size = [1.0, 1.0]
-color = "#F2C14E"
+material = "fx/body"
 z = 2.0
+
+# The light it carries: the floor round it is lit wherever it goes. Only a
+# look (the camera's Lighting turns lights on).
+[Light]
+color = "#FFE2B0"
+intensity = 1.1
+radius = 9.0
+falloff = 1.4
+shadows = false
+
+# Its shadow, under its feet (frame 20). Only a look.
+[children.shadow.Transform]
+pos = [0.0, -0.4167]
+
+[children.shadow.Sprite]
+atlas = "sprites/actors"
+frame = 20
+size = [0.8333, 0.3333]
+z = 0.5

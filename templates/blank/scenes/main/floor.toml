@@ -1,9 +1,10 @@
-# Something to walk over, so the walking shows.
+# Something to walk over, so the walking shows. Its picture is
+# assets/floor.png (drawn by tools/art.py), stretched over the 30 x 30
+# units of size; put your own floor.png there and nothing else changes.
 [Transform]
 pos = [0.0, 0.0]
 
 [Sprite]
-kind = "rect"
+atlas = "floor"
 size = [30.0, 30.0]
-color = "#2B3A42"
 z = 0.0

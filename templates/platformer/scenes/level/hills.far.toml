@@ -1,0 +1,26 @@
+# Far hills, pale with distance: a backdrop layer, as clouds.toml is
+# (frame 2 of assets/backdrop, a copy as its child 24 units right).
+# follow 0.75: they slide by at a quarter of the level's speed.
+[Transform]
+pos = [0.0, 3.6]
+
+[Sprite]
+atlas = "backdrop"
+frame = 2
+size = [24.0, 5.0]
+z = -9.0
+
+[Parallax]
+follow = 0.75
+width = 24.0
+
+[children.copy.Transform]
+pos = [24.0, 0.0]
+
+[children.copy.GlobalTransform]
+
+[children.copy.Sprite]
+atlas = "backdrop"
+frame = 2
+size = [24.0, 5.0]
+z = -9.0

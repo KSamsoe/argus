@@ -1,0 +1,23 @@
+# Which of the player's clips plays (the clips are cut in assets/player.toml):
+# walk while the move action is held, as sim.move walks the player, and idle
+# when it is let go. A new state here plays another clip.
+type = "animator"
+initial = "idle"
+
+[states.idle]
+clip = "idle"
+
+[[states.idle.transitions]]
+to = "walk"
+when = "Actions.move.x != 0"
+
+[[states.idle.transitions]]
+to = "walk"
+when = "Actions.move.y != 0"
+
+[states.walk]
+clip = "walk"
+
+[[states.walk.transitions]]
+to = "idle"
+when = "Actions.move.x == 0 and Actions.move.y == 0"

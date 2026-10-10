@@ -1,12 +1,18 @@
-# A coin: a gold circle the hero takes by touching it (systems/pickups.luau).
+# A coin the hero takes by touching it (systems/pickups.luau).
 # Its Collider has no KinematicBody, so it is not solid: it only reports
 # the touch. Each coin in the level is a file with prefab = "coin" and a
 # Transform saying where it is.
+#
+# It is drawn turning: frames of assets/sprites (tools/art.py draws them),
+# played round and round by the animator assets/anim/coin.toml.
 [Sprite]
-kind = "circle"
+atlas = "sprites"
+frame = 9
 size = [0.6, 0.6]
-color = "#FFD84A"
 z = 2.0
+
+[Animator]
+machine = "anim/coin"
 
 [Collider]
 radius = 0.3

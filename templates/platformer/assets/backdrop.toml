@@ -1,0 +1,18 @@
+# Behind the level: written by tools/art.py with backdrop.png, so
+# change that and run it rather than editing this. 15 pixels a unit.
+# Frame 0 the sky's colours, top to bottom (scenes/level/sky.toml);
+# 1 clouds, 2 far hills, 3 near hills: strips 24 units wide whose ends
+# meet, so scenes/level/clouds.toml and hills.*.toml repeat them.
+pixels_per_unit = 15
+
+[[frames]]
+rect = [0, 0, 1, 240]
+
+[[frames]]
+rect = [2, 0, 360, 60]
+
+[[frames]]
+rect = [0, 241, 360, 75]
+
+[[frames]]
+rect = [0, 317, 360, 120]

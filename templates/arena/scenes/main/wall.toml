@@ -1,10 +1,27 @@
-# The wall: a lighter rect just bigger than the arena, drawn behind it, so
-# the edge shows. Only a look; the arena's size is in arena.toml.
+# The walls round the arena, and the dark beyond them. Only a look; the
+# arena's size is in arena.toml.
+#
+# The picture is frame 1 of sprites/room (tools/art.py draws it): stone
+# tops all round, and the top wall's face, as we look down on the room a
+# little from the south. It is clear in the middle, where the floor shows,
+# and drawn in front of the enemies, so they come in from under the walls.
+# It is taller at the top than at the bottom, so it sits a little above
+# the arena's middle.
 [Transform]
-pos = [0.0, 0.0]
+pos = [0.0, 0.375]
 
 [Sprite]
+atlas = "sprites/room"
+frame = 1
+size = [33.5, 20.25]
+z = 4.0
+
+# The dark round the room, behind everything.
+[children.dark.Transform]
+pos = [0.0, 0.0]
+
+[children.dark.Sprite]
 kind = "rect"
-size = [32.6, 18.6]
-color = "#5B7280"
-z = -1.0
+size = [80.0, 45.0]
+color = "#080B0D"
+z = -10.0

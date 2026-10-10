@@ -1,0 +1,17 @@
+# Arena's UI theme: the colours the HUD, the pause screen, and the game
+# over screen name (text, muted, accent, danger), on the default 960 x 540
+# canvas in the built-in pixel font. The frame they sit in is
+# ui/panel.png (tools/art.py draws it). Change a colour here and every
+# screen that names it follows; high contrast (a player's setting) uses
+# the second set.
+[colors]
+text = "#E6EEF2"
+muted = "#8DA2AE"
+accent = "#F2C14E"
+danger = "#FF5A4E"
+
+[high_contrast_colors]
+text = "#FFFFFF"
+muted = "#FFFFFF"
+accent = "#FFFF00"
+danger = "#FF3030"

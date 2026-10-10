@@ -1,18 +1,24 @@
-# The HUD: one line of text at the top left of the screen. The {...} holes
-# are filled from the world every frame ({@arena:Waves.wave} is @arena's
-# Waves.wave), so no script writes it. Add a number to the HUD by adding a
-# hole here. UI sizes are pixels on a 960 x 540 canvas.
+# The HUD: one line of text at the top left of the screen, in the frame
+# the pause and game over screens use too (ui/panel.png, nine-sliced: its
+# corners keep their size, drawn two canvas pixels a pixel, as the art
+# is). The {...} holes are filled from the world every frame
+# ({@arena:Waves.wave} is @arena's Waves.wave), so no script writes it.
+# Add a number to the HUD by adding a hole here. UI sizes are pixels on a
+# 960 x 540 canvas; the colours are ui.toml's.
 [UiRoot]
 interactive = false
 layer = 1
 
 [UiNode]
 absolute = true
-offset = [10.0, 8.0]
-pad = [8.0, 4.0]
+offset = [14.0, 6.0]
+pad = [14.0, 7.0]
 
 [UiPanel]
-color = "#05070AB0"
+image = "ui/panel"
+slice = 5.0
+scale = 2.0
 
 [UiText]
 text = "Wave {@arena:Waves.wave}   Enemies {@arena:Waves.alive}   Score {@player:Player.score}   HP {@player:Health.cur}/{@player:Health.max}"
+wrap = false

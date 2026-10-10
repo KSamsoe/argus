@@ -1,0 +1,92 @@
+# The actors' sheet (sprites/actors.png): written by tools/art.py with
+# the picture, so change that and run it rather than editing this.
+# 12 pixels a unit. systems/looks.luau picks the frames by number:
+#    0 hero side, standing
+#    1 hero side, step
+#    2 hero side, other step
+#    3 hero front, standing
+#    4 hero front, step
+#    5 hero front, other step
+#    6 hero back, standing
+#    7 hero back, step
+#    8 hero back, other step
+#    9 hero side, hit
+#   10 hero front, hit
+#   11 hero back, hit
+#   12 hero fallen
+#   13 enemy, step
+#   14 enemy, other step
+#   15 enemy hit, step
+#   16 enemy hit, other step
+#   17 bullet
+#   18 spark
+#   19 puff
+#   20 shadow
+#   21 brazier
+pixels_per_unit = 12
+
+[[frames]]
+rect = [0, 0, 12, 12]
+
+[[frames]]
+rect = [13, 0, 12, 12]
+
+[[frames]]
+rect = [26, 0, 12, 12]
+
+[[frames]]
+rect = [39, 0, 12, 12]
+
+[[frames]]
+rect = [52, 0, 12, 12]
+
+[[frames]]
+rect = [65, 0, 12, 12]
+
+[[frames]]
+rect = [78, 0, 12, 12]
+
+[[frames]]
+rect = [91, 0, 12, 12]
+
+[[frames]]
+rect = [104, 0, 12, 12]
+
+[[frames]]
+rect = [0, 13, 12, 12]
+
+[[frames]]
+rect = [13, 13, 12, 12]
+
+[[frames]]
+rect = [26, 13, 12, 12]
+
+[[frames]]
+rect = [39, 13, 12, 12]
+
+[[frames]]
+rect = [52, 13, 12, 12]
+
+[[frames]]
+rect = [65, 13, 12, 12]
+
+[[frames]]
+rect = [78, 13, 12, 12]
+
+[[frames]]
+rect = [91, 13, 12, 12]
+
+[[frames]]
+rect = [104, 13, 7, 7]
+
+[[frames]]
+rect = [112, 13, 3, 3]
+
+[[frames]]
+rect = [116, 13, 7, 7]
+
+[[frames]]
+rect = [0, 26, 10, 4]
+
+[[frames]]
+rect = [11, 26, 12, 12]

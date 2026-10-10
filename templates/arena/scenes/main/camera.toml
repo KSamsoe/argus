@@ -1,9 +1,34 @@
 # The camera: it stays still over the arena, high enough to show all of
-# it, and a little above its middle so the HUD has room at the top. To
-# follow the hero through a bigger arena instead, set target = "@player"
-# (and see Camera's dead_zone and smoothing in ARGUS.md).
+# it and its walls, and a little above its middle so the HUD has room at
+# the top. 22.5 units high is 24 screen pixels a unit at 960 x 540, so
+# each pixel of the art (12 a unit) is drawn as two. To follow the hero
+# through a bigger arena instead, set target = "@player" (and see Camera's
+# dead_zone and smoothing in ARGUS.md).
 [Transform]
-pos = [0.0, 0.6]
+pos = [0.0, 0.875]
 
 [Camera]
-height = 21.0
+height = 22.5
+
+# The room's light: a dim cool light everywhere, times level, and the
+# braziers' warm pools (braziers.toml) on top. The HUD is drawn after it,
+# so it stays as bright.
+[Lighting]
+ambient = "#7F94AE"
+level = 0.68
+shadows = false
+
+# When an enemy touches the hero: the screen flashes red and shakes a
+# little. Both are passes over the finished picture; nothing in the game
+# waits for them.
+[PostFlash]
+on = "player.hurt"
+color = "#FF2E2E"
+peak = 0.035
+decay = 0.35
+
+[PostShake]
+on = "player.hurt"
+trauma = 0.45
+decay = 2.5
+max_offset = [0.012, 0.012]

@@ -1,0 +1,30 @@
+# Clouds, far off and drifting: a backdrop layer. Its picture is a strip
+# 24 units wide whose ends meet (frame 1 of assets/backdrop, tools/art.py),
+# and its child is a copy of it 24 units to the right. systems/looks.luau
+# slides the pair with the camera, keeping `follow` of its movement (0.9:
+# they barely move past), and lets them drift. pos y is their height; x is
+# set every tick.
+[Transform]
+pos = [0.0, 7.4]
+
+[Sprite]
+atlas = "backdrop"
+frame = 1
+size = [24.0, 4.0]
+z = -9.5
+
+[Parallax]
+follow = 0.9
+width = 24.0
+drift = 0.25
+
+[children.copy.Transform]
+pos = [24.0, 0.0]
+
+[children.copy.GlobalTransform]
+
+[children.copy.Sprite]
+atlas = "backdrop"
+frame = 1
+size = [24.0, 4.0]
+z = -9.5

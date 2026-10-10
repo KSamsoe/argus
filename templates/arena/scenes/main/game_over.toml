@@ -1,5 +1,7 @@
 # "Game over", in the middle of the screen: hidden until the hero dies
-# (systems/hits.luau shows it, systems/restart.luau hides it again).
+# (systems/hits.luau shows it, systems/restart.luau hides it again). The
+# canvas dimmed, a panel in the HUD's frame (ui/panel.png), and three
+# lines; the colours are ui.toml's.
 [UiRoot]
 interactive = false
 layer = 10
@@ -10,15 +12,42 @@ align = "center"
 visible = false
 
 [UiPanel]
-color = "#05070A99"
+color = "#05080A99"
 
-[children.label.UiNode]
-pad = [24.0, 12.0]
-
-[children.label.UiPanel]
-color = "#1E2A30"
-border = 2.0
-
-[children.label.UiText]
-text = "Game over: score {@player:Player.score}, wave {@arena:Waves.wave}. Enter or R to play again."
+[children.panel.UiNode]
+pad = [44.0, 20.0]
+# Above the middle, so the hero (and what is on it) still shows.
+offset = [0.0, -105.0]
+gap = 10.0
 align = "center"
+
+[children.panel.UiPanel]
+image = "ui/panel"
+slice = 5.0
+scale = 2.0
+
+[children.panel.children.title.UiNode]
+
+[children.panel.children.title.UiText]
+text = "GAME OVER"
+size = 32.0
+color = "danger"
+align = "center"
+wrap = false
+
+[children.panel.children.score.UiNode]
+order = 1
+
+[children.panel.children.score.UiText]
+text = "Score {@player:Player.score}, wave {@arena:Waves.wave}"
+align = "center"
+wrap = false
+
+[children.panel.children.hint.UiNode]
+order = 2
+
+[children.panel.children.hint.UiText]
+text = "Enter or R to play again"
+color = "muted"
+align = "center"
+wrap = false

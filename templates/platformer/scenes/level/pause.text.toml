@@ -1,14 +1,17 @@
 # The pause panel's words, a child of @pause, so it shows and hides with it.
+# On the HUD's panel (assets/ui/panel.png, nine-sliced as hud.toml says).
 [Parent]
 entity = "@pause"
 
 [UiNode]
-pad = [24.0, 14.0]
+pad = [36.0, 22.0]
 
 [UiPanel]
-color = "#1E2A3A"
-border = 2.0
+image = "ui/panel"
+slice = 4.0
+scale = 3.0
 
 [UiText]
 text = "Paused. Press Esc to go on."
 align = "center"
+color = "#F6E7C1"

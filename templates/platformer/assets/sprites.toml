@@ -1,0 +1,152 @@
+# Everything in the level, one atlas: written by tools/art.py with
+# sprites.png, so change that and run it rather than editing this.
+# 15 pixels a world unit. The frames, from 0:
+#   0-8 the hero: idle (2), run (4), jump, fall, land
+#   9-16 the coin turning
+#   17-20 the flag's cloth waving
+#   21 the flag's pole, 22 the spikes
+#   23-25 grass tiles, 26-30 earth tiles, 31 a side, 32 a grass corner,
+#   33 an underside, 34 a plank (systems/looks.luau lays these)
+#   35 a sparkle (assets/fx/sparkle.toml)
+# The spikes' pivot is the middle of their foot, so prefabs/spikes.toml
+# stands them on the ground where its Transform is.
+pixels_per_unit = 15
+
+[[frames]]
+rect = [0, 0, 16, 18]
+
+[[frames]]
+rect = [17, 0, 16, 18]
+
+[[frames]]
+rect = [34, 0, 16, 18]
+
+[[frames]]
+rect = [51, 0, 16, 18]
+
+[[frames]]
+rect = [68, 0, 16, 18]
+
+[[frames]]
+rect = [85, 0, 16, 18]
+
+[[frames]]
+rect = [102, 0, 16, 18]
+
+[[frames]]
+rect = [0, 19, 16, 18]
+
+[[frames]]
+rect = [17, 19, 16, 18]
+
+[[frames]]
+rect = [34, 19, 9, 9]
+
+[[frames]]
+rect = [44, 19, 9, 9]
+
+[[frames]]
+rect = [54, 19, 9, 9]
+
+[[frames]]
+rect = [64, 19, 9, 9]
+
+[[frames]]
+rect = [74, 19, 9, 9]
+
+[[frames]]
+rect = [84, 19, 9, 9]
+
+[[frames]]
+rect = [94, 19, 9, 9]
+
+[[frames]]
+rect = [104, 19, 9, 9]
+
+[[frames]]
+rect = [0, 38, 17, 11]
+
+[[frames]]
+rect = [18, 38, 17, 11]
+
+[[frames]]
+rect = [36, 38, 17, 11]
+
+[[frames]]
+rect = [54, 38, 17, 11]
+
+[[frames]]
+rect = [72, 38, 6, 45]
+
+[[frames]]
+rect = [79, 38, 28, 10]
+pivot = [0.5, 0]
+
+[[frames]]
+rect = [108, 38, 15, 18]
+
+[[frames]]
+rect = [0, 84, 15, 18]
+
+[[frames]]
+rect = [16, 84, 15, 18]
+
+[[frames]]
+rect = [32, 84, 15, 15]
+
+[[frames]]
+rect = [48, 84, 15, 15]
+
+[[frames]]
+rect = [64, 84, 15, 15]
+
+[[frames]]
+rect = [80, 84, 15, 15]
+
+[[frames]]
+rect = [96, 84, 15, 15]
+
+[[frames]]
+rect = [112, 84, 3, 15]
+
+[[frames]]
+rect = [116, 84, 5, 12]
+
+[[frames]]
+rect = [0, 103, 15, 3]
+
+[[frames]]
+rect = [16, 103, 15, 6]
+
+[[frames]]
+rect = [32, 103, 5, 5]
+
+[clips.idle]
+frames = [0, 1]
+fps = 2
+
+[clips.run]
+from = 2
+to = 5
+fps = 12
+
+[clips.jump]
+frames = [6]
+
+[clips.fall]
+frames = [7]
+
+[clips.land]
+frames = [8, 0]
+fps = 12
+loop = false
+
+[clips.coin]
+from = 9
+to = 16
+fps = 12
+
+[clips.flag]
+from = 17
+to = 20
+fps = 8
