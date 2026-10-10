@@ -1,0 +1,17 @@
+# Chips from a chopped tree and chaff from a harvest: systems/art.luau
+# bursts it where the work is (particles.burst with a pos).
+type = "emitter"
+particle = "rect"
+shape = "circle"
+radius = 0.2
+rate = 0
+max = 400
+lifetime = [0.35, 0.7]
+speed = [1.6, 3.2]
+direction = 90
+spread = 150
+gravity = [0, -9]
+drag = 1.2
+size = [[0, 0.16], [1, 0.1]]
+color = [[0, "#E2BE7CFF"], [0.7, "#C89A5AE0"], [1, "#A0784800"]]
+z = 6

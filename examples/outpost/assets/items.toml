@@ -1,0 +1,26 @@
+# Goods, drawn by tools/art.py: 0 crops, 1 logs, 2 stone, lying on the
+# ground (8 x 8 px); 3, 4, 5 the same carried overhead (8 x 20 px, the load
+# at the top, so it rides above its carrier's hands).
+[[frames]]
+rect = [0, 0, 8, 8]
+pivot = [0.5, 0.3]
+
+[[frames]]
+rect = [8, 0, 8, 8]
+pivot = [0.5, 0.3]
+
+[[frames]]
+rect = [16, 0, 8, 8]
+pivot = [0.5, 0.3]
+
+[[frames]]
+rect = [24, 0, 8, 20]
+pivot = [0.5, 0.0]
+
+[[frames]]
+rect = [32, 0, 8, 20]
+pivot = [0.5, 0.0]
+
+[[frames]]
+rect = [40, 0, 8, 20]
+pivot = [0.5, 0.0]

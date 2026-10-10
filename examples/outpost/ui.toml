@@ -4,9 +4,18 @@
 font = "fonts/LiberationSans-Regular"
 text_size = 15
 
+# The colony's colours: cream words on dark wood, buttons of lighter wood
+# (systems/art.luau puts the panels on ui/panel and ui/button, which these
+# tint), gold for the focus.
 [colors]
-button = "#262C34"
-chosen = "#3D4A5A"
+text = "#F3E8CF"
+muted = "#BCA98A"
+panel = "#241B14F0"
+border = "#8C6A44"
+focus = "#FFD27A"
+accent = "#E0A050"
+button = "#5E4632"
+chosen = "#A27840"
 
 [high_contrast_colors]
 button = "#000000"

@@ -1,0 +1,18 @@
+# Smoke from the campfire and the stove (systems/art.luau plays it while
+# they burn): it starts clear, so it is seen first above the fire, then
+# drifts up and to the east and thins away.
+type = "emitter"
+particle = "circle"
+shape = "circle"
+radius = 0.15
+rate = 5
+max = 200
+lifetime = [2.2, 3.2]
+speed = [1.1, 1.5]
+direction = 90
+spread = 25
+gravity = [0.25, 0.1]
+drag = 0.9
+size = [[0, 0.2], [0.4, 0.5], [1, 0.9]]
+color = [[0, "#FFB04800"], [0.08, "#FFA04070"], [0.22, "#8E8A8460"], [1, "#B8B4AE00"]]
+z = 6

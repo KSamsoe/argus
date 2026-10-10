@@ -20,6 +20,13 @@ local function pct(x)
   return math.floor(x * 100 + 0.5)
 end
 
+-- The colony's hour at t, a share of its day, as the HUD shows it
+-- (systems/hud.luau): dawn 05:00, night falling at 19:00.
+local function hour(t, dusk)
+  local h = if t < dusk then 5 + 14 * t / dusk else 19 + 10 * (t - dusk) / (1 - dusk)
+  return math.floor(h) % 24
+end
+
 local function spawn(q, parent, names)
   local all = { "UiNode", "Parent" }
   for _, n in ipairs(names or {}) do table.insert(all, n) end
@@ -176,7 +183,7 @@ local function colony_page(q)
   return {
     q:text("inspect.colony.day", {
       day = rules.day,
-      hour = string.format("%02d", math.floor(t * 24)),
+      hour = string.format("%02d", hour(t, rules.dusk)),
       when = q:text(if t >= rules.dusk then "inspect.night" else "inspect.day"),
       speed = speed,
     }),
