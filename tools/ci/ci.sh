@@ -21,8 +21,12 @@ cd "$(dirname "$0")/../.."
 
 export PATH="${CARGO_HOME:-$USERPROFILE/.cargo}/bin:$PATH" CARGO_TERM_COLOR=never
 LOGS=target/ci
-# Where cargo builds: a worktree may share another checkout's cache.
+# Where cargo builds (a worktree must not share another checkout's: same-named
+# crates collide and a build links the other tree's code).
 TARGET=${CARGO_TARGET_DIR:-target}
+# The projects a run opens are not the person's to come back to: Argus's own
+# data (the recent projects, argus projects) goes beside the logs.
+export ARGUS_HOME="${ARGUS_HOME:-$PWD/$LOGS/argus-home}"
 EXE=""
 [ "${OS:-}" = "Windows_NT" ] && EXE=.exe
 

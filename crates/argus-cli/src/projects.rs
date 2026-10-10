@@ -46,10 +46,7 @@ fn key(p: &Path) -> String {
 pub fn remember(root: &Path) {
     let Some(f) = file() else { return };
     let root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
-    // A project in the temp folder (a test's, a trial's) is not one to
-    // come back to.
-    let temp = std::env::temp_dir();
-    if root.starts_with(temp.canonicalize().unwrap_or(temp)) {
+    if scratch(&root) {
         return;
     }
     let path = key(&root);
@@ -91,11 +88,32 @@ pub fn recent() -> Vec<Json> {
         .iter()
         .filter_map(|p| {
             let path = PathBuf::from(p["path"].as_str()?);
-            path.join("argus.toml")
-                .is_file()
+            (!scratch(&path) && path.join("argus.toml").is_file())
                 .then(|| describe(&path, p.get("opened")))
         })
         .collect()
+}
+
+/// A project not to come back to: in the temp folder (a test's, a
+/// trial's), or in a cargo build's `target/tmp` (a test's scratch, which
+/// filled Kevin's list on the first day).
+pub fn scratch(root: &Path) -> bool {
+    // Compared as plain text, without Windows' verbatim prefix and case
+    // blind, since a stored path has neither and a canonical one both.
+    let flat = |p: &Path| key(p).replace('\\', "/").to_lowercase();
+    let at = flat(root);
+    let temp = std::env::temp_dir();
+    let temps = [flat(&temp), flat(&temp.canonicalize().unwrap_or_default())];
+    if temps.iter().any(|t| {
+        !t.is_empty() && (at == *t || at.starts_with(&format!("{}/", t.trim_end_matches('/'))))
+    }) {
+        return true;
+    }
+    let parts: Vec<String> = root
+        .components()
+        .map(|c| c.as_os_str().to_string_lossy().to_lowercase())
+        .collect();
+    parts.windows(2).any(|w| w[0] == "target" && w[1] == "tmp")
 }
 
 /// Every project in a folder, a few levels down.

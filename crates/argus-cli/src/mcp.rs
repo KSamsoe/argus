@@ -99,6 +99,46 @@ pub fn projects_report(open: Option<&Path>, under: Option<&str>) -> Json {
     r
 }
 
+/// The projects in a few lines, for the instructions: the most recent
+/// ones and the templates (`projects` has the rest).
+fn projects_brief() -> String {
+    const SHOWN: usize = 8;
+    let r = projects_report(None, None);
+    let recent = r["recent"].as_array().cloned().unwrap_or_default();
+    let mut s = if recent.is_empty() {
+        "No projects opened yet.".to_string()
+    } else {
+        let mut s = String::from("Recent projects (open_project with the path):");
+        for p in recent.iter().take(SHOWN) {
+            s.push_str(&format!(
+                "\n- {}: {}",
+                p["name"].as_str().unwrap_or("?"),
+                p["path"].as_str().unwrap_or("?")
+            ));
+        }
+        if recent.len() > SHOWN {
+            s.push_str(&format!(
+                "\n- and {} more (projects lists them)",
+                recent.len() - SHOWN
+            ));
+        }
+        s
+    };
+    let templates: Vec<&str> = r["templates"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|t| t["name"].as_str())
+        .collect();
+    if !templates.is_empty() {
+        s.push_str(&format!(
+            "\nTemplates for new_project: {}.",
+            templates.join(", ")
+        ));
+    }
+    s
+}
+
 /// What the agent is told when no project is open.
 fn no_project() -> String {
     "No project is open: list them with projects, open one with open_project, or make one with new_project.".to_string()
@@ -224,11 +264,7 @@ impl Server<'_> {
             .filter(|v| VERSIONS.contains(v))
             .unwrap_or(VERSIONS[0]);
         let summary = if self.root.is_none() && self.inv.socket.is_none() {
-            Err(format!(
-                "{} The projects: {}",
-                no_project(),
-                projects_report(None, None)
-            ))
+            Err(format!("{}\n\n{}", no_project(), projects_brief()))
         } else {
             self.client()
                 .and_then(|c| tools::run(c, "summary", &json!({})).map_err(|e| e.to_string()))

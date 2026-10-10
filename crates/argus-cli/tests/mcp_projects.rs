@@ -160,3 +160,16 @@ fn with_no_project_the_server_offers_them_makes_one_and_opens_it() {
         .args(["daemon", "stop"])
         .output();
 }
+
+#[test]
+fn a_tests_scratch_project_is_not_one_to_come_back_to() {
+    use argus_cli::projects::scratch;
+    // Cargo's target/tmp, where tests make projects (CARGO_TARGET_TMPDIR).
+    let t = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/tmp/cli-web-lan");
+    assert!(scratch(&t));
+    assert!(scratch(&std::env::temp_dir().join("x")));
+    let real = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/hollow");
+    assert!(!scratch(&real.canonicalize().unwrap()));
+    // A folder merely named target is still a game's.
+    assert!(!scratch(std::path::Path::new("C:/games/target/lantern")));
+}
