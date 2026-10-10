@@ -355,10 +355,12 @@ fn build(inv: &Invocation, err: &mut dyn Write) -> Result<Json, String> {
     });
     if let (Some(a), Some(b)) = (&project_look, &packs_look) {
         let c = b.compare_near(a, 0.1).map_err(|e| e.message)?;
-        // Specks are forgiven: a texel or two a page's BC7 lost, alone, at
-        // most one pixel in 10,000 (0.0.3's release: Outpost's ground on
-        // klab lost two highlights, 5 pixels in 230,400). A sprite gone or a
-        // colour changed is a group bigger than that.
+        // Specks are forgiven: a texel or two that came out as its
+        // neighbour, alone, at most one pixel in 10,000 (0.0.3's release:
+        // two highlight texels of Outpost's ground on klab, on a lossless
+        // page, 5 pixels in 230,400: where a screen pixel lands between
+        // texels differs between a sprite's own image and its place on a
+        // page). A sprite gone or a colour changed is a bigger group.
         let specks = c.differing > 0
             && c.differing * 10_000 <= c.pixels
             && c.groups().iter().all(|&n| n <= SPECK);

@@ -223,8 +223,8 @@ pub struct Comparison {
 impl Comparison {
     /// The groups the differing pixels make (touching, diagonals
     /// included), as their sizes, largest first: what tells a speck from a
-    /// change. A sprite gone or a colour changed is a group of many; a texel
-    /// a page's compression lost is one or two pixels on its own.
+    /// change. A sprite gone or a colour changed is a group of many; a
+    /// texel that came out as its neighbour is one or two pixels on its own.
     pub fn groups(&self) -> Vec<usize> {
         let (w, h) = (self.diff.width as i64, self.diff.height as i64);
         let red = |x: i64, y: i64| {
