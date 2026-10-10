@@ -2,16 +2,46 @@
 
 # The line along the top of the screen: a UI text the player reads and the
 # semantic frame lists (phase 3 item 1; before, only the agent read it).
+# On a bronze-edged plate (assets/ui/panel.png, nine-sliced at twice its
+# pixels).
 [UiRoot]
 interactive = false
 
 [UiNode]
 absolute = true
-offset = [10.0, 8.0]
-pad = [8.0, 4.0]
+offset = [10.0, 5.0]
+pad = [12.0, 4.0]
 
 [UiPanel]
-color = "#05070AB0"
+image = "ui/panel"
+slice = 4.0
+scale = 2.0
 
 [UiText]
 key = "hud.line"
+color = "accent"
+
+# The view (the art pass): a camera standing over the middle of the floor,
+# so the whole of it shows and the HUD sits over the rock above it. 22.5
+# units high is 24 screen pixels a cell at 960 x 540: each pixel of the
+# 12-pixel art is two. It is here, not an entity of its own, because a new
+# entity would change the ids sim.floor's monsters get, and they break
+# initiative ties by id.
+[Transform]
+pos = [19.0, 10.0]
+
+[Camera]
+height = 22.5
+
+# The dungeon is dark: a cold ambient light everywhere, enough to read
+# the floor by, the hero's torch, and the stairs' light. systems/look.luau
+# lowers the level floor by floor (and lifts it with high contrast).
+[Lighting]
+ambient = "#7A84B0"
+level = 0.62
+
+# The edges close in as the hero's hit points fall (sim.look).
+[PostVignette]
+amount = 0.25
+radius = 0.5
+softness = 0.5

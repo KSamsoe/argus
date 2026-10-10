@@ -17,10 +17,50 @@ fire_every = 6
 cur = 10
 max = 10
 
+# The hero's looks (presentation only, nothing below is read by gameplay):
+# his 11 pixels of sprites/swarm at 9 a unit, at his own colours under his
+# light (fx/body), his frames run by anim/hero (idle, hurt, dead).
 [Sprite]
-atlas = "sprites/player"
-size = [1.2, 1.2]
+atlas = "sprites/swarm"
+size = [1.2222, 1.2222]
+material = "fx/body"
 z = 5.0
+
+[Animator]
+machine = "anim/hero"
 
 [Camera]
 height = 60.0
+
+# The drawing camera's look: only the deck is lit (everything else draws at
+# its own colour), dim but for the light the hero carries; dark edges; a
+# red flash and a shake on every hit (damage).
+[Lighting]
+ambient = "#7A8AB0"
+level = 0.7
+shadows = false
+
+[Light]
+color = "#B4F0FF"
+intensity = 1.0
+radius = 26.0
+falloff = 1.4
+height = 5.0
+shadows = false
+
+[PostVignette]
+amount = 0.42
+radius = 0.5
+softness = 0.6
+
+[PostFlash]
+on = "damage"
+color = "#FF2848"
+peak = 0.015
+decay = 0.12
+
+[PostShake]
+on = "damage"
+trauma = 0.15
+decay = 3.0
+max_offset = [0.02, 0.02]

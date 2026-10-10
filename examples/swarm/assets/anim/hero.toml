@@ -1,0 +1,30 @@
+# The hero's looks (sprites/swarm's clips): the sparks run round his ring
+# while he stands or walks; he flickers white and red through his iframes
+# after a hit; dark when he has fallen, until a restart.
+type = "animator"
+initial = "idle"
+
+[states.idle]
+clip = "idle"
+
+[[states.idle.transitions]]
+to = "hurt"
+when = "Player.iframes > 0"
+
+[states.hurt]
+clip = "hurt"
+
+[[states.hurt.transitions]]
+to = "idle"
+when = "Player.iframes == 0"
+
+[states.dead]
+clip = "dead"
+
+[[states.dead.transitions]]
+to = "idle"
+when = "not Player.dead"
+
+[[any]]
+to = "dead"
+when = "Player.dead"

@@ -4,6 +4,20 @@
 # from the world, {name} from systems/pause_menu.luau.
 language.name = "English"
 
+[hud]
+wave = "WAVE {@director:Director.wave}"
+left = "{@director:Director.alive} left"
+hp = "HP"
+hp_count = "{@player:Health.cur}/{@player:Health.max}"
+kills = "KILLS"
+kills_count = "{@player:Player.kills}"
+banner = "WAVE {@director:Director.wave}"
+banner_swarm = "{count} coming"
+banner_dashers = "{count} coming, {dashers} of them dashers"
+over = "OVERRUN"
+over_line = "Wave {@director:Director.wave}, {@player:Player.kills} kills"
+over_hint = "{InputGlyph.label}: pause, then Restart from wave 1"
+
 [pause]
 title = "Paused"
 resume = "Resume"

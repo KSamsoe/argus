@@ -1,0 +1,85 @@
+# Every actor, bullet, and spark of Swarm, one atlas: written by
+# tools/art.py with the sheet, so run that rather than editing this.
+# Frames: 0-9 the hero idle, 10-11 hurt, 12 dead; 13-15 mites;
+# 16-18 the dasher walking, winding up, spent; 19 bullet; 20 spark;
+# 21 the hero's halo. 9 pixels a unit, as the camera shows them.
+pixels_per_unit = 9
+
+[[frames]]
+rect = [0, 0, 11, 11]
+
+[[frames]]
+rect = [12, 0, 11, 11]
+
+[[frames]]
+rect = [24, 0, 11, 11]
+
+[[frames]]
+rect = [36, 0, 11, 11]
+
+[[frames]]
+rect = [48, 0, 11, 11]
+
+[[frames]]
+rect = [60, 0, 11, 11]
+
+[[frames]]
+rect = [72, 0, 11, 11]
+
+[[frames]]
+rect = [84, 0, 11, 11]
+
+[[frames]]
+rect = [96, 0, 11, 11]
+
+[[frames]]
+rect = [108, 0, 11, 11]
+
+[[frames]]
+rect = [120, 0, 11, 11]
+
+[[frames]]
+rect = [132, 0, 11, 11]
+
+[[frames]]
+rect = [144, 0, 11, 11]
+
+[[frames]]
+rect = [156, 0, 8, 8]
+
+[[frames]]
+rect = [165, 0, 8, 8]
+
+[[frames]]
+rect = [174, 0, 8, 8]
+
+[[frames]]
+rect = [183, 0, 9, 9]
+
+[[frames]]
+rect = [193, 0, 9, 9]
+
+[[frames]]
+rect = [203, 0, 9, 9]
+
+[[frames]]
+rect = [213, 0, 5, 5]
+
+[[frames]]
+rect = [219, 0, 3, 3]
+
+[[frames]]
+rect = [0, 12, 36, 36]
+
+[clips.idle]
+from = 0
+to = 9
+fps = 12
+
+[clips.hurt]
+frames = [10, 11]
+fps = 20
+
+[clips.dead]
+frames = [12]
+loop = false

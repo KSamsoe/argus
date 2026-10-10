@@ -1,0 +1,14 @@
+# The hero hurt: red sparks off him (prefabs/hero_fx.toml), burst by
+# systems/looks.luau on each damage event.
+type = "emitter"
+sprite = "sprites/swarm"
+frame = 20
+max = 400
+lifetime = [0.2, 0.45]
+speed = [6, 13]
+spread = 360
+drag = 5
+size = [[0, 0.55], [1, 0]]
+color = [[0, "#FFFFFFFF"], [0.3, "#FF6A80E0"], [1, "#B0103000"]]
+z = 6
+material = "fx/glow"

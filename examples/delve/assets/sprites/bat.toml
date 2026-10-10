@@ -1,0 +1,13 @@
+# A bat (wings up, wings down): two idle frames facing right, and struck (a
+# white flash, the turn the hero's blow lands). systems/look.luau swaps the
+# idle frames each turn and mirrors them to face the hero.
+# Written by tools/art.py with the picture; run it again rather than editing this.
+
+[[frames]]
+rect = [0, 0, 12, 12]
+
+[[frames]]
+rect = [12, 0, 12, 12]
+
+[[frames]]
+rect = [24, 0, 12, 12]

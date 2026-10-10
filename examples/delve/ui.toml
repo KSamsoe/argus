@@ -1,11 +1,29 @@
 # Delve's UI (phase 3 item 1): its menu and HUD line in Liberation Sans
 # (assets/fonts, under the SIL Open Font License beside it), shaped and
 # drawn from a distance field. The canvas is the default 960 x 540.
+#
+# The art pass: parchment words on dark stone under bronze (the plates are
+# assets/ui, drawn by tools/art.py), the focus a torch's orange, and the
+# focused button lit (systems/look.luau sets button_focus on it).
 font = "fonts/LiberationSans-Regular"
 text_size = 18
 
 [colors]
-button = "#262C34"
+text = "#EADCB8"
+muted = "#A89C84"
+panel = "#16131BF0"
+border = "#A07C48"
+focus = "#FFB04A"
+accent = "#F0C878"
+button = "#3A3442"
+button_focus = "#6A5A52"
 
 [high_contrast_colors]
+text = "#FFFFFF"
+muted = "#FFFFFF"
+panel = "#000000"
+border = "#FFFFFF"
+focus = "#FFD166"
+accent = "#FFFFFF"
 button = "#000000"
+button_focus = "#303030"

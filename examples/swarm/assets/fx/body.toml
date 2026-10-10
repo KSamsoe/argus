@@ -1,0 +1,4 @@
+# The swarm and the hero: drawn as they are, at their own colour, over the
+# deck the hero's light falls on (only the floor is lit).
+shader = "unlit"
+emissive = true

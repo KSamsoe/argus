@@ -1,0 +1,5 @@
+# The message line's plate: the panel's dark, a thin cold edge.
+# Written by tools/art.py with the picture; run it again rather than editing this.
+
+[[frames]]
+rect = [0, 0, 12, 12]

@@ -1,0 +1,4 @@
+# What must be seen in the dark (the stairs, a potion): the sprite as it
+# is, at its own colour whatever the light.
+shader = "unlit"
+emissive = true

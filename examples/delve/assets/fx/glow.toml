@@ -1,0 +1,5 @@
+# Sparks glow: the plain sprite, added to what is under it, at its own
+# colour in the dark.
+shader = "unlit"
+blend = "add"
+emissive = true
