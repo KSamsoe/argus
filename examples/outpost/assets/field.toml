@@ -1,0 +1,6 @@
+# A field, drawn by tools/art.py: frames of 8 x 12 px, the soil the bottom
+# 8 x 8 (one cell). 0 tilled, 1 seedlings, 2 sprouts, 3 green, 4 ripening,
+# 5 ripe, 6 half cut (being harvested). systems/art.luau picks it by
+# Field.growth.
+grid = [7, 1]
+pivot = [0.5, 0.3333]

@@ -1,0 +1,6 @@
+# The valley's trees, drawn by tools/art.py: frames of 16 x 24 px, a row
+# a kind (oak, pine, birch) of 7: 0 standing, 1-2 swaying under the axe,
+# 3 young, 4 a sapling, 5 a shoot from a stump, 6 a stump. The trunk's
+# foot is on the pivot. systems/art.luau picks the frame by Tree.growth.
+grid = [7, 3]
+pivot = [0.5, 0.125]

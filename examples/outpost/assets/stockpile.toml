@@ -1,0 +1,6 @@
+# The stockpile, drawn by tools/art.py: a plank deck of 3 x 3 cells with
+# what it holds on it, 24 x 28 px. Frame wood * 16 + crops * 4 + meals,
+# each 0 (none) to 3 (plenty); systems/art.luau reads Stockpile.wood, crop,
+# and meal.
+grid = [8, 8]
+pivot = [0.5, 0.4286]

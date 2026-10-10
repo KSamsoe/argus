@@ -1,0 +1,19 @@
+type = "material"
+doc = "ground/grass repeated across the ground, one tile every cells world units."
+
+[params.tile]
+type = "texture"
+default = "ground/grass"
+doc = "The tile"
+
+[params.size]
+type = "vec2"
+default = [40, 24]
+from = "Sprite.size"
+doc = "The ground's size in world units"
+
+[params.cells]
+type = "f32"
+default = 8
+range = [1, 64]
+doc = "World units a tile covers"

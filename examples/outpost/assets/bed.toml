@@ -1,0 +1,4 @@
+# A cot, drawn by tools/art.py: 8 x 12 px frames, the quilt in its
+# owner's colour. 0-5 empty, its quilt folded (Ada, Bram, Cleo, Dov, Esme,
+# Finn); 6-11 its owner asleep in it; 12 empty, nobody's.
+grid = [13, 1]

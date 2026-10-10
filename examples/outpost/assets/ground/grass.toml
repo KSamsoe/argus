@@ -1,0 +1,2 @@
+# A tile of grass that wraps (64 x 64 px, 8 cells), for a valley that is
+# not the 40 x 24 one: materials/ground repeats it across the ground.

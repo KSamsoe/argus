@@ -1,0 +1,4 @@
+# The stove, drawn by tools/art.py: a stone oven with a chimney, 12 x 20
+# px. 0 cold, 1-2 lit, 3-4 cooking (a pot on top). Its foot is on the pivot.
+grid = [5, 1]
+pivot = [0.5, 0.15]

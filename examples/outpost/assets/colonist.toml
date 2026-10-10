@@ -1,0 +1,8 @@
+# Outpost's colonists, drawn by tools/art.py: 21 poses of 14 x 18 px in a
+# row, a row each for Ada, Bram, Cleo, Dov, Esme, and Finn. The feet stand
+# on the pivot. systems/art.luau picks the frame (row * 21 + pose):
+# 0 stand, 1-2 walk down, 3-4 walk up, 5-8 walk right (flipped for left),
+# 9-10 carry overhead, 11-12 chop, 13-14 harvest, 15-16 cook, 17-18 eat,
+# 19 pick up, 20 stand facing away.
+grid = [21, 6]
+pivot = [0.5, 0.1667]
