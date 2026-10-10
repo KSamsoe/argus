@@ -4,6 +4,12 @@ Argus is a 2D game engine you build games in together with an AI agent. The game
 
 This page covers installing Argus, making a first game, connecting the AI tools you use, and releasing a game.
 
+**Just want to play the example games?** Each release also has `example-games-<version>` for Windows (a zip) and Linux (a tar.gz): Hollow, Delve, Swarm, and Outpost, built by Argus, with nothing to install. Unpack it and run the program in a game's folder; its `README.txt` has the controls. Windows may stop the first run with "Windows protected your PC", because the programs are not signed: choose More info, then Run anyway.
+
+```sh
+gh release download --repo KSamsoe/argus --pattern "example-games-*-windows-x86_64.zip"
+```
+
 ## What you need
 
 - Windows 10 or 11 (64-bit), or Linux on x86-64 with glibc 2.39 or newer: Ubuntu 24.04, Debian 13, Fedora 40, or newer. (The Linux build is made on Ubuntu 24.04, and a game released for Linux needs the same of its players.)
