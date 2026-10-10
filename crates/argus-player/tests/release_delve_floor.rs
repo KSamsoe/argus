@@ -213,7 +213,11 @@ fn a_report_after_the_stairs_replays_to_the_same_floor() {
     println!("the later one from {} to {}", out["from"], out["to"]);
     assert!(out["from"].as_u64().unwrap() > made, "{out}");
     assert_eq!(out["same"], true, "{out}");
-    assert_eq!(cells(&fresh), now, "the keyframe's floor, the art's layers too");
+    assert_eq!(
+        cells(&fresh),
+        now,
+        "the keyframe's floor, the art's layers too"
+    );
     assert_eq!(walls(&fresh), walls(&p));
 }
 
