@@ -4,9 +4,9 @@
 
 | | |
 |---|---|
-| ![Hollow, a lit cave platformer](docs/img/game-hollow.png) | ![Delve, a turn-based dungeon](docs/img/game-delve.png) |
+| ![Hollow, a lit cave platformer](docs/img/clip-hollow.webp) | ![Delve, a turn-based dungeon](docs/img/clip-delve.webp) |
 | **Hollow**: a platformer with 2D lighting, dialogue, music, and rooms that stream in | **Delve**: a turn-based dungeon on a tilemap, with menus and potions |
-| ![Swarm, an arena shooter with hundreds of enemies](docs/img/game-swarm.png) | ![Outpost, a colony sim](docs/img/game-outpost.png) |
+| ![Swarm, an arena shooter with hundreds of enemies](docs/img/clip-swarm.webp) | ![Outpost, a colony sim](docs/img/clip-outpost.webp) |
 | **Swarm**: an arena shooter with hundreds of enemies, the chase in a Rust plugin | **Outpost**: a colony where colonists find work, farm, cut wood, and eat |
 
 Most game engines are made for one person sitting at an editor. Argus is made so an AI agent can work on a game as well as a person can, and alongside them. The game runs live in a background program that holds its whole world. You in the editor, an agent in Claude, Cursor, or Codex, the test runner, and the command line all work on that same live game through one protocol. So the agent is not guessing from source files: it can look at the game, play it, rewind it, test it, change it, and say what happened and why.
@@ -80,6 +80,10 @@ cd my-game
 argus test                                  # the template's scenarios pass
 argus editor                                # the game in the editor
 ```
+
+Each template is a small game that already plays, with its art drawn by a script in it that you or an agent can change, and scenarios that pin how it plays:
+
+![The templates: platformer, arena, and roguelike above; colony and blank below](docs/img/templates.png)
 
 ## Connect your AI
 
