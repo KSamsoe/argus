@@ -7,11 +7,11 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-argus-ecs = { path = "../argus-ecs", version = "0.0.2" }
-argus-sim = { path = "../argus-sim", version = "0.0.2" }
-argus-assets = { path = "../argus-assets", version = "0.0.2" }
-argus-anim = { path = "../argus-anim", version = "0.0.2" }
+argus-ecs = { path = "../argus-ecs", version = "0.0.3" }
+argus-sim = { path = "../argus-sim", version = "0.0.3" }
+argus-assets = { path = "../argus-assets", version = "0.0.3" }
+argus-anim = { path = "../argus-anim", version = "0.0.3" }
 
 [dev-dependencies]
 # The renderer's own Sprite, which the parts are, in the tests.
-argus-render = { path = "../argus-render", version = "0.0.2" }
+argus-render = { path = "../argus-render", version = "0.0.3" }

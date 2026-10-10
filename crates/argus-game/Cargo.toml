@@ -19,13 +19,13 @@ rigid = ["argus-player/rigid"]
 steam = ["dep:argus-steam"]
 
 [dependencies]
-argus-player = { path = "../argus-player", version = "0.0.2", features = ["desktop"] }
-argus-plugins = { path = "../argus-plugins", version = "0.0.2" }
-argus-render = { path = "../argus-render", version = "0.0.2" }
-argus-ui = { path = "../argus-ui", version = "0.0.2" }
-argus-input = { path = "../argus-input", version = "0.0.2" }
-argus-scene = { path = "../argus-scene", version = "0.0.2" }
-argus-sim = { path = "../argus-sim", version = "0.0.2" }
-argus-platform = { path = "../argus-platform", version = "0.0.2" }
-argus-steam = { path = "../argus-steam", version = "0.0.2", optional = true }
+argus-player = { path = "../argus-player", version = "0.0.3", features = ["desktop"] }
+argus-plugins = { path = "../argus-plugins", version = "0.0.3" }
+argus-render = { path = "../argus-render", version = "0.0.3" }
+argus-ui = { path = "../argus-ui", version = "0.0.3" }
+argus-input = { path = "../argus-input", version = "0.0.3" }
+argus-scene = { path = "../argus-scene", version = "0.0.3" }
+argus-sim = { path = "../argus-sim", version = "0.0.3" }
+argus-platform = { path = "../argus-platform", version = "0.0.3" }
+argus-steam = { path = "../argus-steam", version = "0.0.3", optional = true }
 serde_json = "1"

@@ -22,36 +22,36 @@ render = ["dep:argus-render", "argus-player/desktop"]
 audio = ["dep:argus-audio", "argus-player/audio"]
 
 [dependencies]
-argus-client = { path = "../argus-client", version = "0.0.2" }
-argus-ui = { path = "../argus-ui", version = "0.0.2" }
-argus-ecs = { path = "../argus-ecs", version = "0.0.2" }
-argus-sim = { path = "../argus-sim", version = "0.0.2" }
-argus-luau = { path = "../argus-luau", version = "0.0.2" }
-argus-scene = { path = "../argus-scene", version = "0.0.2" }
-argus-index = { path = "../argus-index", version = "0.0.2" }
-argus-input = { path = "../argus-input", version = "0.0.2" }
-argus-assets = { path = "../argus-assets", version = "0.0.2" }
-argus-nav = { path = "../argus-nav", version = "0.0.2" }
-argus-jobs = { path = "../argus-jobs", version = "0.0.2" }
-argus-dialogue = { path = "../argus-dialogue", version = "0.0.2" }
-argus-timeline = { path = "../argus-timeline", version = "0.0.2" }
-argus-tiles = { path = "../argus-tiles", version = "0.0.2" }
-argus-physics = { path = "../argus-physics", version = "0.0.2" }
-argus-camera = { path = "../argus-camera", version = "0.0.2" }
-argus-post = { path = "../argus-post", version = "0.0.2" }
-argus-light = { path = "../argus-light", version = "0.0.2" }
-argus-anim = { path = "../argus-anim", version = "0.0.2" }
-argus-tween = { path = "../argus-tween", version = "0.0.2" }
-argus-particles = { path = "../argus-particles", version = "0.0.2" }
-argus-material = { path = "../argus-material", version = "0.0.2" }
-argus-test = { path = "../argus-test", version = "0.0.2" }
+argus-client = { path = "../argus-client", version = "0.0.3" }
+argus-ui = { path = "../argus-ui", version = "0.0.3" }
+argus-ecs = { path = "../argus-ecs", version = "0.0.3" }
+argus-sim = { path = "../argus-sim", version = "0.0.3" }
+argus-luau = { path = "../argus-luau", version = "0.0.3" }
+argus-scene = { path = "../argus-scene", version = "0.0.3" }
+argus-index = { path = "../argus-index", version = "0.0.3" }
+argus-input = { path = "../argus-input", version = "0.0.3" }
+argus-assets = { path = "../argus-assets", version = "0.0.3" }
+argus-nav = { path = "../argus-nav", version = "0.0.3" }
+argus-jobs = { path = "../argus-jobs", version = "0.0.3" }
+argus-dialogue = { path = "../argus-dialogue", version = "0.0.3" }
+argus-timeline = { path = "../argus-timeline", version = "0.0.3" }
+argus-tiles = { path = "../argus-tiles", version = "0.0.3" }
+argus-physics = { path = "../argus-physics", version = "0.0.3" }
+argus-camera = { path = "../argus-camera", version = "0.0.3" }
+argus-post = { path = "../argus-post", version = "0.0.3" }
+argus-light = { path = "../argus-light", version = "0.0.3" }
+argus-anim = { path = "../argus-anim", version = "0.0.3" }
+argus-tween = { path = "../argus-tween", version = "0.0.3" }
+argus-particles = { path = "../argus-particles", version = "0.0.3" }
+argus-material = { path = "../argus-material", version = "0.0.3" }
+argus-test = { path = "../argus-test", version = "0.0.3" }
 # The one scene assembly, keyframes, and replay files, shared with every
 # player (phase 2 item 7).
-argus-plugins = { path = "../argus-plugins", version = "0.0.2" }
-argus-player = { path = "../argus-player", version = "0.0.2", default-features = false, features = ["rigid"] }
-argus-platform = { path = "../argus-platform", version = "0.0.2" }
-argus-render = { path = "../argus-render", version = "0.0.2", optional = true }
-argus-audio = { path = "../argus-audio", version = "0.0.2", optional = true }
+argus-plugins = { path = "../argus-plugins", version = "0.0.3" }
+argus-player = { path = "../argus-player", version = "0.0.3", default-features = false, features = ["rigid"] }
+argus-platform = { path = "../argus-platform", version = "0.0.3" }
+argus-render = { path = "../argus-render", version = "0.0.3", optional = true }
+argus-audio = { path = "../argus-audio", version = "0.0.3", optional = true }
 serde_json = "1"
 toml_edit = "0.22"
 interprocess = "2"

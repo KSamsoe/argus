@@ -106,6 +106,8 @@ v0.0.1 is a draft at 82889e0 with all six files. Its checks found three things f
 | Hollow's Linux build drew 6 of 230,400 pixels differently: a row of the feather's quill on a texel boundary, which klab's GPU rounds the other way | the release check forgives an edge moved by a pixel, not a changed colour (`Image::compare_near`, 82889e0); image goldens stay strict |
 | The Linux archive, put together on Windows, had lost its execute bits, and `install.sh` refused it | `tarball.py` (e24a75d); the draft's archive replaced, then installed on klab into a scratch folder: new, test, build from the installed runtime, uninstall |
 
+v0.0.2 (5003d91) was drafted with no fault found, its six files checked against `SHA256SUMS` and the Linux archive's programs executable. From 0.0.3 a release also carries the four example games for people to play with nothing installed (2026-10-10, for the people Kevin means to invite): `check.sh --keep` keeps the releases it already builds, and `release.sh` packs them as `example-games-<version>` for Windows and Linux with a `README.txt` of the controls (`tools/release/games-readme.txt`). The name does not start with `argus-`, which both installers look for (0.0.2's too, which `self-update` runs).
+
 ## 6. Installing and updating
 
 - `install.ps1` and `install.sh`: fetch the latest release from the private repository with a GitHub token (`gh auth token`, or `GITHUB_TOKEN`), check the checksums, install for the user alone (`%LOCALAPPDATA%\Argus`, `~/.local/share/argus` with `~/.local/bin`), and put `argus` on the PATH.
