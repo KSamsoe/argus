@@ -18,7 +18,7 @@
 
 use crate::client::Client;
 use crate::{project, tools, Invocation};
-use argus_daemon::docs::{self, opt, req, ToolDoc, STRING};
+use argus_daemon::docs::{self, opt, req, ToolDoc, BOOLEAN, STRING};
 use serde_json::{json, Value as Json};
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
@@ -28,11 +28,20 @@ pub const VERSIONS: &[&str] = &["2025-06-18", "2025-03-26", "2024-11-05"];
 
 /// Tools that only read; an agent host may run them without asking.
 const READ_ONLY: &[&str] = &[
-    "summary", "query", "describe", "observe", "events", "projects",
+    "summary",
+    "query",
+    "describe",
+    "observe",
+    "events",
+    "projects",
+    "docs",
+    "read_file",
 ];
 
-/// The tools that choose the project the others work on (distribution
-/// item 3). They run in this server, not the daemon.
+/// The tools this server answers itself, beside the engine's: choosing the
+/// project the others work on (distribution item 3), the docs, and the
+/// project's files for an agent with no file system of its own (Claude
+/// Desktop). The engine's own tools stay about a dozen.
 pub const PROJECT_TOOLS: &[ToolDoc] = &[
     ToolDoc {
         name: "projects",
@@ -55,6 +64,34 @@ pub const PROJECT_TOOLS: &[ToolDoc] = &[
             opt("name", STRING, "the game's name; default the directory's"),
         ],
         calls: &["test.run", "world.summary"],
+    },
+    ToolDoc {
+        name: "docs",
+        doc: "Read Argus's docs: the manual (how Argus works and how to do things: concepts, first-game, scripting, scenes, gameplay, presentation, content, testing, playtesting, tuning-and-performance, agents, releasing, reference), the reference (tools, methods, scripting-api, scenario-api, files, components), and project, the open game's own ARGUS.md (its components, systems, prefabs, and scenes) made now. With no topic, the list. A long topic answers with its sections: ask again with section. find searches every section. Read the chapter for a task before starting it. From a shell: argus docs <topic> [section=<heading>] [find=<word>].",
+        params: &[
+            opt("topic", STRING, "a chapter or part from the list, or project"),
+            opt("section", STRING, "a heading in the topic (exact, else the first that contains it)"),
+            opt("find", STRING, "a word: every section in the manual and the reference that mentions it"),
+        ],
+        calls: &[],
+    },
+    ToolDoc {
+        name: "read_file",
+        doc: "Read a file in the open project (a script, a scene or entity file, a test, a sidecar), or list a folder: no path lists the project's own folder. For an agent with no file system of its own; inside the project only. From a shell: argus project read path=<file>.",
+        params: &[opt("path", STRING, "project-relative: systems/move.luau, scenes/main, or none for the project's folder")],
+        calls: &["project.read"],
+    },
+    ToolDoc {
+        name: "write_file",
+        doc: "Write a file in the open project, its whole text (a script, a scene or entity file, a test, a sidecar), or remove it with remove=true, as one edit: it is in the change feed with its author and note, and edit undo=true takes it back. Inside the project only, text only. Then: reload after a script or an asset (an error comes back with its file and line); scene load after an entity file (or change entities with edit). From a shell: argus edit ops='[{op: file, file: <path>, text: <text>}]'.",
+        params: &[
+            req("path", STRING, "project-relative: systems/move.luau, tests/move.luau"),
+            opt("text", STRING, "the file's whole text"),
+            opt("remove", BOOLEAN, "true removes the file"),
+            opt("note", STRING, "why, for the change feed"),
+            opt("author", STRING, "default \"agent:claude\" (or $ARGUS_AUTHOR)"),
+        ],
+        calls: &["edit.begin", "edit.file", "edit.commit"],
     },
 ];
 
@@ -153,7 +190,7 @@ Change the game's authored state with edit (one transaction with a note, undoabl
 Advance time with run, go back to any frame with seek, run the project's scenarios with test, and take script and asset changes from disk with reload. \
 marks is the queue of moments the human flagged while playing, each with a note; open one to reproduce it. \
 Every tool is also a shell command, argus <tool> key=value, and the full protocol is argus <namespace> <method>. \
-The project's ARGUS.md (argus docs --for-agent) lists its components, systems, prefabs, and scenes.\n\n",
+The docs tool is the manual and the reference: read docs topic=agents first (how to work on a game here), then the chapter for the task (docs alone lists them); docs topic=project is the open game's own ARGUS.md (its components, systems, prefabs, and scenes). With no file system of your own, read_file and write_file reach the project's files, as edits you can undo.\n\n",
     );
     match summary {
         Ok(v) => {
@@ -241,6 +278,61 @@ impl Server<'_> {
         let s = |k: &str| args.get(k).and_then(Json::as_str);
         match name {
             "projects" => Ok(projects_report(self.root.as_deref(), s("under"))),
+            "read_file" => {
+                let c = self.client().map_err(|e| json!({ "message": e }))?;
+                tools::Caller::call(
+                    c,
+                    "project.read",
+                    json!({ "path": s("path").unwrap_or("") }),
+                )
+            }
+            "write_file" => {
+                let path =
+                    s("path").ok_or_else(|| json!({ "message": "write_file needs path" }))?;
+                let remove = args.get("remove").and_then(Json::as_bool).unwrap_or(false);
+                let text = match (s("text"), remove) {
+                    (_, true) => Json::Null,
+                    (Some(t), false) => json!(t),
+                    (None, false) => {
+                        return Err(
+                            json!({ "message": "write_file needs text (the file's whole text), or remove=true" }),
+                        )
+                    }
+                };
+                let author = s("author")
+                    .map(str::to_string)
+                    .unwrap_or_else(tools::default_author);
+                let note = s("note").unwrap_or("").to_string();
+                let c = self.client().map_err(|e| json!({ "message": e }))?;
+                let begun = tools::Caller::call(
+                    c,
+                    "edit.begin",
+                    json!({ "author": author, "note": note }),
+                )?;
+                let tx = begun["tx"].clone();
+                let queued = tools::Caller::call(
+                    c,
+                    "edit.file",
+                    json!({ "tx": tx, "file": path, "text": text }),
+                );
+                if let Err(e) = queued {
+                    let _ = tools::Caller::call(c, "edit.abort", json!({ "tx": tx }));
+                    return Err(e);
+                }
+                tools::Caller::call(c, "edit.commit", json!({ "tx": tx })).inspect_err(|_| {
+                    let _ = tools::Caller::call(c, "edit.abort", json!({ "tx": tx }));
+                })
+            }
+            "docs" => {
+                let project = (s("topic") == Some("project")).then(|| {
+                    self.client().and_then(|c| {
+                        crate::agentdoc::for_agent(c)
+                            .map_err(|e| e["message"].as_str().unwrap_or("").to_string())
+                    })
+                });
+                crate::manual::answer(s("topic"), s("section"), s("find"), project)
+                    .map_err(|e| json!({ "message": e }))
+            }
             "open_project" => {
                 let path =
                     s("path").ok_or_else(|| json!({ "message": "open_project needs path" }))?;

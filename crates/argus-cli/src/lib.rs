@@ -28,6 +28,7 @@ pub mod client;
 pub mod help;
 pub mod install;
 pub mod jsonedit;
+pub mod manual;
 pub mod mcp;
 pub mod params;
 pub mod project;

@@ -381,13 +381,15 @@ impl ScriptHost {
         });
     }
 
-    /// Create the VM: declaration globals installed, memory limit and
+    /// Create the VM: declaration globals installed, the ones that would
+    /// make a run differ from its replay taken out, memory limit and
     /// interrupt budget set, then sandboxed so globals are read-only (§7).
     pub fn new(config: ScriptConfig) -> Result<ScriptHost> {
         let lua = Lua::new();
         lua.set_app_data(Pending::default());
         lua.set_app_data(DayLength(config.day_seconds));
         decl::install_globals(&lua).map_err(to_argus)?;
+        deterministic_globals(&lua).map_err(to_argus)?;
         lua.set_memory_limit(config.memory_limit)
             .map_err(to_argus)?;
         let budget = Rc::new(Cell::new(i64::MAX));
@@ -985,4 +987,25 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
             out.push(p);
         }
     }
+}
+
+/// Take out what would make a run differ from its replay (§7: scripts run
+/// with no clock and no device; randomness is the seeded `q:rng()`). Lua's
+/// standard library came with `os` (the time, the date, a clock) and an
+/// unseeded `math.random`: a script could read them, and a seek or a
+/// replay then gave another result. Found writing the manual; no example
+/// used them. `math.random` and `math.randomseed` now say what to use.
+fn deterministic_globals(lua: &Lua) -> mlua::Result<()> {
+    lua.load(
+        r#"
+        os = nil
+        local function no_random()
+          error("math.random would make a run differ from its replay: give the system a stream (rng = \"name\") and use q:rng():next(), q:rng():range(lo, hi), or q:rng():chance(p)", 2)
+        end
+        math.random = no_random
+        math.randomseed = no_random
+        "#,
+    )
+    .set_name("=argus")
+    .exec()
 }

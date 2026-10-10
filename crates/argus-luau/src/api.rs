@@ -79,6 +79,8 @@ pub const SECTIONS: &[ApiSection] = &[
             d("q:emit(name, fields)", "An event of this tick: `q:emit(\"potion.drunk\", { healed = 4, hp = e })`. Fields are numbers, strings, booleans, entities, and vectors. The event log, `obs.events`, a scenario's `t.expect:events`, and later systems' `q:events` see it; the name is the game's to choose. An entity field is read by its id (`\"@colonist.ada\"`) while the entity lives and by its handle (`\"e:6\"`) once it has despawned, so an event about an authored entity that may go (a death) carries its name too, as a string: `{ who = e, name = e:name() }` (`colonist.ada`)."),
             d("q:events(name)", "The events emitted so far this tick with that name (every one for no name), oldest first, each a table of its fields plus `name`. This tick only: a system sees what systems before it emitted this tick (order them with `after`), and an event from an earlier tick is gone (keep what must last in a component). `argus events name=job.done limit=1` shows any event's fields, the engine's included."),
             d("q:freeze()", "The rest of this tick stands still but for `unfrozen` systems (a pause, a hit-stop), plugin systems included: on a discrete clock the rest of that turn's systems do not run."),
+            d("q:save(name)", "Ask whatever runs the game to save it, between ticks: `q:save()` is the save \"auto\". The save holds the world as this tick ends; the daemon keeps saves in `.argus/saves/`, a release build where the platform says, the web page in the browser's storage, and each answers with a `game.saved` event. (A `save.requested` event.)"),
+            d("q:load(name)", "Ask for a save to be loaded after this step (`q:load()` loads \"auto\"); its components migrate as they declare. Answered with `game.loaded`. (A `load.requested` event.)"),
             d("q:speed(x)", "`q:speed(3)` asks for 3 ticks a frame from the next frame (a `speed.requested` event, in the run, so replays agree); `q:speed()` is the clock's speed as this tick began, however it was set. Never 0: pause with `q:freeze()`."),
             d("q:rng()", "This system's random stream (its `rng` key; an error without one): `rng:next()`, `rng:below(n)`, `rng:range(lo, hi)`, `rng:chance(p)` (below)."),
             d("q:tiles(map)", "A Tilemap's cells (`map` its entity or `@id`): `map:get`, `map:set`, `map:fill`, `map:paint`, ... (below). A system that reads cells declares reads of Tilemap; one that writes them, writes."),
@@ -191,6 +193,19 @@ mod tests {
     #[test]
     fn every_method_and_field_a_script_can_call_is_in_the_reference() {
         let src = include_str!("bind.rs");
+        // Methods made in a loop (`for (method, event) in [("save", ..)]`)
+        // are not add_method("..") literals: q:save and q:load went
+        // undocumented that way until the manual's writers found them.
+        for n in ["save", "load"] {
+            assert!(
+                src.contains(&format!("(\"{n}\", \"{n}.requested\")")),
+                "{n} is still made in the loop this test knows"
+            );
+            assert!(
+                documented("q:").contains(&format!("q:{n}(")),
+                "q:{n} is in the reference"
+            );
+        }
         for (ty, method, field) in [
             ("QueryHandle", "q:", "q."),
             ("EntityRef", "e:", "e."),

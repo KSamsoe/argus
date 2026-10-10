@@ -320,7 +320,9 @@ through the Argus tools (the MCP server `argus mcp`) or the `argus` command line
 - Read ARGUS.md first. It is generated from the live game: the components, systems, prefabs, and scenes, \
 with the scripting (Luau) and scenario APIs. Regenerate it with `argus docs --for-agent` after changing \
 components, systems, prefabs, or scenes.\n\
-- `argus docs` is the engine's whole reference: every tool and protocol method.\n\
+- The manual says how to do things, the reference lists everything: `argus docs list` lists both (`argus docs agents` \
+first, then the chapter for the task: scripting, scenes, gameplay, presentation, testing, ...), or the `docs` tool \
+over MCP (`docs topic=agents`). `argus docs find=<word>` searches them.\n\
 - `components/` declares the game's components and `systems/` its systems, in Luau; `scenes/<scene>/` holds \
 one TOML file per entity; `input.toml` the actions and their bindings.\n\
 - `argus test` runs the scenarios in `tests/`. A change is done when they pass; add a scenario for each \

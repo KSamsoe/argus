@@ -21,7 +21,9 @@
 //! crate-type = ["cdylib"]
 //!
 //! [dependencies]
-//! argus-plugin = { path = "<the engine>/crates/argus-plugin" }
+//! # The SDK the engine writes into the project, so no engine checkout is
+//! # needed (`plugins/<name>/` is two folders below the project).
+//! argus-plugin = { path = "../../.argus/plugins/sdk" }
 //!
 //! [workspace]
 //! ```

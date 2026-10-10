@@ -47,6 +47,10 @@ mod tuning;
 /// Identifies a client connection for subscriptions.
 pub type ConnId = u64;
 
+/// The most a file edit writes or `project.read` gives: a script or a
+/// scene file, not an asset.
+const FILE_MAX: usize = 2 * 1024 * 1024;
+
 /// The engine's version: the workspace's, one for the CLI, the daemon, the
 /// editor, and the game runtimes (distribution item 0).
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -631,9 +635,10 @@ impl Daemon {
             "scene.tiles.collision" => self.tiles_collision(params),
             "scene.tiles.list" => self.tiles_list(),
             "edit.set" | "edit.add" | "edit.remove" | "edit.spawn" | "edit.despawn"
-            | "edit.def" | "edit.asset" | "edit.def_row" | "edit.prefab" => {
+            | "edit.def" | "edit.asset" | "edit.def_row" | "edit.prefab" | "edit.file" => {
                 self.edit_queue(method, params)
             }
+            "project.read" => self.project_read(params),
             "edit.commit" => {
                 self.mutations += 1;
                 self.edit_commit(params)
@@ -2987,6 +2992,88 @@ impl Daemon {
 
     // ----- edit -------------------------------------------------------------
 
+    /// A project file named by an agent: its project-relative path and
+    /// where it is. Inside the project, and not the engine's own folders
+    /// (`.argus/`, `.git/`) or a build (`dist/`).
+    fn project_file(&self, rel: &str) -> Result<(String, PathBuf)> {
+        let s = self.require_session()?;
+        let bad = |why: &str| {
+            ArgusError::new(codes::BAD_PARAMS, format!("{rel:?}: {why}"))
+                .hint("A path in the project, relative to its folder: systems/move.luau, scenes/main/player.toml, tests/move.luau.")
+        };
+        let clean = rel.replace('\\', "/");
+        let clean = clean.trim_start_matches("./");
+        if clean.is_empty() || clean.starts_with('/') || clean.contains(':') {
+            return Err(bad("not a path relative to the project"));
+        }
+        let parts: Vec<&str> = clean.split('/').filter(|p| !p.is_empty()).collect();
+        if parts.iter().any(|p| *p == ".." || *p == ".") {
+            return Err(bad("a path in the project does not leave it"));
+        }
+        if matches!(
+            parts.first(),
+            Some(&".argus") | Some(&".git") | Some(&"dist")
+        ) {
+            return Err(bad(
+                "the engine's own folders and builds are not the project's files",
+            ));
+        }
+        let rel = parts.join("/");
+        Ok((rel.clone(), s.root.join(&rel)))
+    }
+
+    /// `project.read`: a project file's text, or a folder's listing.
+    fn project_read(&self, params: &Json) -> Result<Json> {
+        let path = json::opt_str(params, "path")?.unwrap_or("");
+        let s = self.require_session()?;
+        let (rel, full) = if path.is_empty() || path == "." {
+            (String::new(), s.root.clone())
+        } else {
+            self.project_file(path)?
+        };
+        if full.is_dir() {
+            let mut entries: Vec<Json> = std::fs::read_dir(&full)
+                .map_err(|e| ArgusError::new(codes::BAD_PARAMS, format!("{rel}: {e}")))?
+                .flatten()
+                .filter(|e| {
+                    let n = e.file_name();
+                    let n = n.to_string_lossy();
+                    !(rel.is_empty() && matches!(n.as_ref(), ".argus" | ".git" | "dist"))
+                })
+                .map(|e| {
+                    let name = e.file_name().to_string_lossy().into_owned();
+                    let meta = e.metadata().ok();
+                    if meta.as_ref().is_some_and(|m| m.is_dir()) {
+                        json!({ "name": format!("{name}/") })
+                    } else {
+                        json!({ "name": name, "bytes": meta.map_or(0, |m| m.len()) })
+                    }
+                })
+                .collect();
+            entries.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
+            return Ok(
+                json!({ "path": if rel.is_empty() { "." } else { rel.as_str() }, "entries": entries }),
+            );
+        }
+        let bytes = std::fs::read(&full).map_err(|e| {
+            ArgusError::new(codes::BAD_PARAMS, format!("{rel}: {e}"))
+                .hint("project.read with a folder (or none) lists what is there.")
+        })?;
+        if bytes.len() > FILE_MAX {
+            return Err(ArgusError::new(
+                codes::BAD_PARAMS,
+                format!(
+                    "{rel} is {} bytes, more than a read gives ({FILE_MAX})",
+                    bytes.len()
+                ),
+            ));
+        }
+        match String::from_utf8(bytes) {
+            Ok(text) => Ok(json!({ "path": rel, "text": text })),
+            Err(e) => Ok(json!({ "path": rel, "bytes": e.as_bytes().len(), "binary": true })),
+        }
+    }
+
     fn edit_begin(&mut self, params: &Json) -> Result<Json> {
         self.require_session()?;
         let author = json::str_param(params, "author")?;
@@ -2997,6 +3084,32 @@ impl Daemon {
     fn edit_queue(&mut self, method: &str, params: &Json) -> Result<Json> {
         let tx = json::u64_param(params, "tx", 0)? as u32;
         let op = match method {
+            "edit.file" => {
+                let file = json::str_param(params, "file")?;
+                let (rel, _) = self.project_file(file)?;
+                let text = match params.get("text") {
+                    None | Some(Json::Null) => None,
+                    Some(Json::String(t)) => Some(t.clone()),
+                    Some(other) => {
+                        return Err(ArgusError::new(
+                            codes::BAD_PARAMS,
+                            format!(
+                            "edit.file text is a string (or null to remove the file), not {other}"
+                        ),
+                        ))
+                    }
+                };
+                if text.as_ref().is_some_and(|t| t.len() > FILE_MAX) {
+                    return Err(ArgusError::new(
+                        codes::BAD_PARAMS,
+                        format!(
+                            "{rel}: {} bytes is more than a file edit takes ({FILE_MAX})",
+                            text.as_ref().map_or(0, |t| t.len())
+                        ),
+                    ));
+                }
+                Op::File { file: rel, text }
+            }
             "edit.set" => Op::Set {
                 entity: json::str_param(params, "entity")?.to_string(),
                 path: json::str_param(params, "path")?.to_string(),
@@ -3372,6 +3485,41 @@ impl Daemon {
     ) -> Result<Option<Op>> {
         match op {
             Op::Tiles { .. } | Op::Terrain { .. } => self.apply_tiles(op, touched, files),
+            Op::File { file, text } => {
+                let (rel, path) = self.project_file(file)?;
+                let old = match std::fs::read(&path) {
+                    Ok(bytes) => Some(String::from_utf8(bytes).map_err(|_| {
+                        ArgusError::new(
+                            codes::BAD_PARAMS,
+                            format!("{rel} is not text, so a file edit does not replace it"),
+                        )
+                        .hint("Files written this way are text: scripts, scene and entity files, tests, sidecars.")
+                    })?),
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+                    Err(e) => return Err(ArgusError::new(codes::BAD_PARAMS, format!("{rel}: {e}"))),
+                };
+                match text {
+                    Some(t) => {
+                        if let Some(d) = path.parent() {
+                            std::fs::create_dir_all(d).map_err(|e| {
+                                ArgusError::new(codes::BAD_PARAMS, format!("{rel}: {e}"))
+                            })?;
+                        }
+                        std::fs::write(&path, t).map_err(|e| {
+                            ArgusError::new(codes::BAD_PARAMS, format!("{rel}: {e}"))
+                        })?;
+                    }
+                    None if old.is_some() => std::fs::remove_file(&path)
+                        .map_err(|e| ArgusError::new(codes::BAD_PARAMS, format!("{rel}: {e}")))?,
+                    None => {}
+                }
+                touched.insert(format!("file:{rel}"));
+                files.insert(rel.clone());
+                Ok(Some(Op::File {
+                    file: rel,
+                    text: old,
+                }))
+            }
             Op::Text { .. } => self.apply_text(op, touched, files),
             Op::Def { .. } => self.apply_def(author, op, touched, files),
             Op::Asset { .. } | Op::AssetText { .. } => self.apply_asset(author, op, touched, files),

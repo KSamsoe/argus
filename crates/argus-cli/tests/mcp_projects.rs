@@ -173,3 +173,97 @@ fn a_tests_scratch_project_is_not_one_to_come_back_to() {
     // A folder merely named target is still a game's.
     assert!(!scratch(std::path::Path::new("C:/games/target/lantern")));
 }
+
+#[test]
+fn an_agent_with_no_file_system_writes_a_script_reloads_it_and_can_undo_it() {
+    let base = temp("files");
+    let home = base.join("home");
+    let mut m = Mcp::start(&base, &home);
+    m.request(
+        "initialize",
+        json!({ "protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": { "name": "test", "version": "0" } }),
+    );
+    let dir = base.join("ember");
+    let (made, is_error) = m.tool("new_project", json!({ "dir": dir.to_string_lossy() }));
+    assert!(!is_error, "{made}");
+
+    // The project's folder, then a file in it.
+    let (ls, _) = m.tool("read_file", json!({}));
+    let names: Vec<&str> = ls["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["name"].as_str().unwrap())
+        .collect();
+    assert!(
+        names.contains(&"systems/") && names.contains(&"argus.toml"),
+        "{ls}"
+    );
+    assert!(
+        !names.contains(&".argus/"),
+        "the engine's own folder is not listed: {ls}"
+    );
+    let (mv, _) = m.tool("read_file", json!({ "path": "systems/move.luau" }));
+    assert!(mv["text"].as_str().unwrap().contains("sim.move"), "{mv}");
+
+    // A new system, written as an edit and taken in by reload.
+    let spin = "return system \"sim.spin\" {\n  stage = \"sim\",\n  reads = { \"Player\" },\n  writes = { \"Player\" },\n  run = function(q)\n    for _, p in q:each(\"Player\") do p.speed = 9 end\n  end,\n}\n";
+    let (w, is_error) = m.tool(
+        "write_file",
+        json!({ "path": "systems/spin.luau", "text": spin, "note": "a faster player" }),
+    );
+    assert!(!is_error, "{w}");
+    assert_eq!(
+        std::fs::read_to_string(dir.join("systems/spin.luau")).unwrap(),
+        spin
+    );
+    let (r, is_error) = m.tool("reload", json!({}));
+    assert!(!is_error, "{r}");
+    let (_, _) = m.tool("run", json!({ "step": 2 }));
+    let (q, _) = m.tool("query", json!({ "entity": "@player" }));
+    assert_eq!(q["components"]["Player"]["speed"], 9.0, "{q}");
+
+    // Undone: the file is gone again.
+    let (u, is_error) = m.tool("edit", json!({ "undo": true }));
+    assert!(!is_error, "{u}");
+    assert!(
+        !dir.join("systems/spin.luau").exists(),
+        "undo removes the file it made"
+    );
+
+    // Outside the project, and the engine's folders, are refused.
+    for bad in [
+        "../outside.luau",
+        "C:/Windows/x.luau",
+        ".argus/daemon.json",
+        "dist/x",
+    ] {
+        let (e, is_error) = m.tool("write_file", json!({ "path": bad, "text": "x" }));
+        assert!(is_error, "{bad}: {e}");
+        let (e, is_error) = m.tool("read_file", json!({ "path": bad }));
+        assert!(is_error, "{bad}: {e}");
+    }
+    assert!(!base.join("outside.luau").exists());
+
+    // The docs, through the same server.
+    let (d, is_error) = m.tool("docs", json!({ "topic": "scripting" }));
+    assert!(
+        !is_error && d["text"].as_str().unwrap().starts_with("# "),
+        "{d}"
+    );
+    let (p, is_error) = m.tool(
+        "docs",
+        json!({ "topic": "project", "section": "Systems, in run order" }),
+    );
+    assert!(
+        !is_error && p["text"].as_str().unwrap().contains("sim.move"),
+        "{p}"
+    );
+
+    drop(m);
+    let _ = Command::new(env!("CARGO_BIN_EXE_argus"))
+        .arg("--project")
+        .arg(&dir)
+        .args(["daemon", "stop"])
+        .output();
+}

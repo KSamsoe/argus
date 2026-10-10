@@ -337,8 +337,18 @@ fn nothing_kept(mut e: Json) -> Json {
 fn author(args: &Json) -> String {
     args.get("author")
         .and_then(Json::as_str)
-        .unwrap_or("agent:claude")
-        .to_string()
+        .map(str::to_string)
+        .unwrap_or_else(default_author)
+}
+
+/// Who an edit is by when it does not say: `$ARGUS_AUTHOR` (a person's
+/// name from a shell, another agent's in its host), else `agent:claude`.
+/// It ignored `$ARGUS_AUTHOR` until the manual's writers noticed.
+pub fn default_author() -> String {
+    std::env::var("ARGUS_AUTHOR")
+        .ok()
+        .filter(|a| !a.is_empty())
+        .unwrap_or_else(|| "agent:claude".to_string())
 }
 
 /// Open a transaction and apply `ops` in it; on any failure it is aborted
@@ -361,13 +371,13 @@ fn transaction(c: &mut dyn Caller, args: &Json, tool: &str) -> Result<Json, Json
         // animator's edit (item 8) are lines of this tool in the feed.
         if ![
             "set", "add", "remove", "spawn", "despawn", "tiles", "text", "def", "def_row", "asset",
-            "prefab",
+            "prefab", "file",
         ]
         .contains(&kind)
         {
             let _ = c.call("edit.abort", json!({ "tx": tx }));
             return Err(bad(format!(
-                "op {i} has op {kind:?}: set, add, remove, spawn, despawn, tiles, text, def, def_row, asset, or prefab"
+                "op {i} has op {kind:?}: set, add, remove, spawn, despawn, tiles, text, def, def_row, asset, prefab, or file"
             )));
         }
         let mut p = op.as_object().cloned().unwrap_or_default();

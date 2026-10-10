@@ -166,9 +166,9 @@ pub const TOOLS: &[ToolDoc] = &[
     },
     ToolDoc {
         name: "edit",
-        doc: "Change the game's authored state (its files) in one transaction by an author with a note, so the change feed says who and why and undo takes it back. ops run in order and all are kept or none: each is {op: set|add|remove|spawn|despawn|tiles|text|def|def_row|asset|prefab, ...} with that edit method's parameters, e.g. {op: \"set\", entity: \"@player\", path: \"CharacterController.jump_height\", value: 3.4}, or {op: \"asset\", asset: \"anim/hero\", path: \"states.run.fps\", value: 10} for an animator's clip rate. undo: take back the author's last transaction instead.",
+        doc: "Change the game's authored state (its files) in one transaction by an author with a note, so the change feed says who and why and undo takes it back. ops run in order and all are kept or none: each is {op: set|add|remove|spawn|despawn|tiles|text|def|def_row|asset|prefab|file, ...} with that edit method's parameters, e.g. {op: \"set\", entity: \"@player\", path: \"CharacterController.jump_height\", value: 3.4}, or {op: \"asset\", asset: \"anim/hero\", path: \"states.run.fps\", value: 10} for an animator's clip rate. undo: take back the author's last transaction instead.",
         params: &[
-            opt("ops", ARRAY, "one of ops, undo; [{op, ...}]: set {entity, path, value}, add {entity, component}, remove {entity, component}, spawn {id, room, prefab, tags, components}, despawn {entity}, tiles {file, layer, rect, cells | tile | terrain | erase}, text {lang, key, text} (a string in strings/<lang>.toml; text null removes it), def {def, path, value} (a def table row's field), def_row {def, fields | remove} (a whole row: a timeline's cue), asset {asset, path, value | remove} (a value in an asset's sidecar), prefab {prefab, path, value | remove, child} (a prefab's field: every entity made from it changes, and the feed lists them)"),
+            opt("ops", ARRAY, "one of ops, undo; [{op, ...}]: set {entity, path, value}, add {entity, component}, remove {entity, component}, spawn {id, room, prefab, tags, components}, despawn {entity}, tiles {file, layer, rect, cells | tile | terrain | erase}, text {lang, key, text} (a string in strings/<lang>.toml; text null removes it), file {file, text} (a project file's whole text: a script, an entity file, a test; text null removes it), def {def, path, value} (a def table row's field), def_row {def, fields | remove} (a whole row: a timeline's cue), asset {asset, path, value | remove} (a value in an asset's sidecar), prefab {prefab, path, value | remove, child} (a prefab's field: every entity made from it changes, and the feed lists them)"),
             opt("undo", BOOLEAN, "one of ops, undo; undo the author's last transaction"),
             opt("note", STRING, "why, for the change feed"),
             opt("author", STRING, "default \"agent:claude\""),
@@ -776,6 +776,22 @@ pub const METHODS: &[MethodDoc] = &[
             opt("erase", BOOLEAN, "one of cells, tile, terrain, erase; true clears rect"),
         ],
         returns: "{queued}",
+    },
+    MethodDoc {
+        name: "edit.file",
+        doc: "Queue a whole project file in a transaction: a script, an entity or scene file, a test, any text file, its text replaced (or the file made), or with text null removed. Inside the project only (not .argus/, .git/, or dist/), text only, 2 MB at most. Applied at commit, undoable per author, in the change feed. A changed script or asset takes effect at reload; an entity file at scene load.",
+        params: &[
+            req("tx", INTEGER, "the transaction, from edit.begin"),
+            req("file", STRING, "project-relative: systems/move.luau, scenes/main/player.toml"),
+            opt("text", STRING, "the file's whole text; null removes the file"),
+        ],
+        returns: "{queued}",
+    },
+    MethodDoc {
+        name: "project.read",
+        doc: "A project file's text, or a folder's listing (no path: the project's own folder, without .argus/, .git/, and dist/). Read only; inside the project only; 2 MB at most; a binary file says so and its size.",
+        params: &[opt("path", STRING, "project-relative; none or \".\" for the project's folder")],
+        returns: "{path, text} | {path, entries: [{name, bytes} | {name: \"dir/\"}]} | {path, bytes, binary: true}",
     },
     MethodDoc {
         name: "edit.text",

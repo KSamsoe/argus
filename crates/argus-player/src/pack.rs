@@ -417,12 +417,29 @@ pub struct Built {
 /// whose name starts with a dot is left out too (`.argus/`, `.git/`).
 pub const LEFT_OUT: &[&str] = &["tests", "tools", "dist", "mods", "plugins"];
 
+/// Files at the top of a project a build leaves out: what the project
+/// says to the people and agents working on it (its README, the agents'
+/// AGENTS.md, CLAUDE.md, and GEMINI.md, and ARGUS.md, a 100 KB reference),
+/// and a template's own note. They shipped in every pack until the
+/// manual's writers saw them there.
+pub const LEFT_OUT_FILES: &[&str] = &[
+    "README.md",
+    "ARGUS.md",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "GEMINI.md",
+    "template.toml",
+];
+
 fn walk_files(dir: &Path, root: &Path, out: &mut Vec<String>) -> Result<()> {
     let entries = argus_os::fs::read_dir(dir)
         .map_err(|e| ArgusError::new(1, format!("{}: {e}", dir.display())))?;
     for e in entries {
         let name = e.path.file_name().and_then(|n| n.to_str()).unwrap_or("");
         if name.starts_with('.') || (dir == root && LEFT_OUT.contains(&name)) {
+            continue;
+        }
+        if dir == root && !e.is_dir && LEFT_OUT_FILES.contains(&name) {
             continue;
         }
         if e.is_dir {

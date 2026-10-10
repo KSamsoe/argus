@@ -210,6 +210,30 @@ fn lua_point(v: LuaValue) -> LuaResult<(f32, f32)> {
     }
 }
 
+/// A point for a spatial query: a vector or a table, or an entity, at its
+/// place (its GlobalTransform when it has one, else its Transform). The
+/// reference said an entity worked; it did not until the manual's writers
+/// tried it.
+fn lua_point_at(link: &Link, v: LuaValue) -> LuaResult<(f32, f32)> {
+    if let LuaValue::UserData(ud) = &v {
+        if let Ok(er) = ud.borrow::<EntityRef>() {
+            let c = ctx(link)?;
+            let w = c.world();
+            if let Ok(g) = w.get::<argus_ecs::GlobalTransform>(er.entity) {
+                return Ok((g.pos.x, g.pos.y));
+            }
+            let t = w.get::<argus_ecs::Transform>(er.entity).map_err(|_| {
+                mlua::Error::runtime(format!(
+                    "{} has no Transform, so it has no place to search from",
+                    er.entity
+                ))
+            })?;
+            return Ok((t.pos.x, t.pos.y));
+        }
+    }
+    lua_point(v)
+}
+
 /// The host's path queries, or an error saying there are none.
 fn paths_of(lua: &Lua) -> LuaResult<Rc<dyn crate::Paths>> {
     lua.app_data_ref::<crate::PathsData>()
@@ -828,7 +852,7 @@ impl UserData for QueryHandle {
             "within",
             |lua, this, (pos, r, names): (LuaValue, f32, Variadic<String>)| {
                 let link = this.link.clone();
-                let (x, y) = lua_point(pos)?;
+                let (x, y) = lua_point_at(&link, pos)?;
                 let c = ctx(&link)?;
                 let mut ids = Vec::with_capacity(names.len());
                 for n in names.iter() {
@@ -901,7 +925,7 @@ impl UserData for QueryHandle {
         m.add_method(
             "nearest",
             |lua, this, (pos, r, names): (LuaValue, f32, Variadic<String>)| {
-                let (x, y) = lua_point(pos)?;
+                let (x, y) = lua_point_at(&this.link, pos)?;
                 let c = ctx(&this.link)?;
                 let mut ids = Vec::with_capacity(names.len());
                 for n in names.iter() {

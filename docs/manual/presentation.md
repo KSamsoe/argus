@@ -1,0 +1,489 @@
+# Presentation
+
+This chapter covers how a game looks and sounds: sprites, animation, particles, materials, post effects, 2D lighting, the camera, the UI, and audio. Like everything in Argus, each of these is components on entities and text files under `assets/`, so an agent can read and change them and a person can tune them while the game runs.
+
+Assets live under `assets/`. An asset's **name** is its path there without the extension: `assets/sprites/hero.png` is `sprites/hero`, and that is how a scene names it. A `.toml` beside a file with the same name is its **sidecar**: how to cut, play, or mix it. `argus asset list` shows every asset and its warnings, and `argus asset get <name>` shows one as imported.
+
+## Sprites
+
+The `Sprite` component draws an entity. Its main fields:
+
+| Field | What it is |
+|---|---|
+| `atlas` | The sprite asset to draw (empty for a plain shape) |
+| `frame` | Which frame of the atlas, 0 first |
+| `kind` | With no atlas: `rect` or `circle` |
+| `color` | `#RRGGBB` or `#RRGGBBAA`: a shape's colour, or a tint over an image |
+| `size` | Size in world units (whatever the image's pixels) |
+| `z` | Draw order: higher is in front |
+| `flip_x`, `visible` | Mirror it, or hide it |
+| `material` | Draw it with a material (below) |
+
+### Shapes before art
+
+A game runs before its art exists. A sprite with no atlas is a described shape. From `templates/platformer/prefabs/coin.toml`:
+
+```toml
+[Sprite]
+kind = "circle"
+size = [0.6, 0.6]
+color = "#FFD84A"
+z = 2.0
+```
+
+A sidecar on its own (no image) is a **placeholder** asset: `kind`, `size` in pixels, and `color`. Scenes name it like real art, and when the PNG of the same name arrives it replaces the shape with nothing else changed. From `examples/hollow/assets/hermit.toml`:
+
+```toml
+# A placeholder: replace it with hermit.png (same name) and nothing else changes.
+kind = "rect"
+size = [14, 24]
+color = "#8C7A5B"
+```
+
+### Images, frames, and clips
+
+A `.png` with no sidecar is one frame with its pivot in the middle. A sidecar cuts it into frames and names clips. From `examples/hollow/assets/hero.toml`, eight frames in a row:
+
+```toml
+grid = [8, 1]
+
+[clips.idle]
+frames = [0]
+
+[clips.run]
+from = 1
+to = 4
+fps = 12
+
+[clips.land]
+frames = [7, 0]
+fps = 12
+loop = false
+```
+
+Other keys: `[[frames]] rect = [x, y, w, h]` for frames of different sizes, `pivot = [x, y]` (fractions of the frame, y up from the bottom: `[0.5, 0]` is the feet), `duration_ms` per frame, and a clip's `direction` (`forward`, `reverse`, `pingpong`). A tileset's frames carry `properties` such as `solid` and `one_way` (see [scenes](scenes.md)).
+
+The entity file names the asset and sets its world size. Hollow's hero:
+
+```toml
+[Sprite]
+atlas = "hero"
+size = [1.0, 1.625]
+z = 5.0
+```
+
+## Animation
+
+### The animator
+
+An `Animator` runs a state machine on its entity's sprite: each state plays a clip, and leaves by the first transition whose condition holds. The machine is an asset with `type = "animator"`. From `examples/hollow/assets/anim/hero.toml`:
+
+```toml
+type = "animator"
+initial = "idle"
+
+[states.idle]
+clip = "idle"
+
+[[states.idle.transitions]]
+to = "run"
+when = "KinematicBody.grounded and abs(KinematicBody.velocity.x) > 0.5"
+
+[states.run]
+clip = "run"
+events = [{ frame = 0, name = "footstep", sound = "sfx/step" }, { frame = 2, name = "footstep", sound = "sfx/step" }]
+
+[[states.run.transitions]]
+to = "idle"
+when = "KinematicBody.grounded and abs(KinematicBody.velocity.x) <= 0.5"
+blend = 0.08
+
+[[any]]
+to = "jump"
+when = "not KinematicBody.grounded and KinematicBody.velocity.y > 0"
+```
+
+The entity says which machine: `[Animator] machine = "anim/hero"`.
+
+- A **condition** is terms joined by `and` (there is no `or`): a field of the entity (`KinematicBody.grounded`), `abs(...)`, or `end` (a one-shot clip finished), `time` (seconds in the state), `frame`, `loops`, compared with `<`, `<=`, `>`, `>=`, `==`, `!=`.
+- `[[any]]` transitions are checked first, from every state.
+- `blend` cross-fades into the next clip; `window = [first, last]` limits a transition to some frames.
+- **Events by frame** fire an event with the entity, frame, and state, and can play a sound. The run's feet above play `sfx/step`. These events come from `anim.update` in the late stage, so only a late system ordered after it sees them with `q:events`.
+- A script enters a state by setting `Animator.play = "attack"`. `Animator.state` says where it is.
+- For feel, a state's `fps`, `anticipation`, and `hold` can name a field of the entity instead of a number (`fps = "Hero.run_fps"`, a tune field of your own), and `windup` and `hold_frame` shape a wind-up and a held pose.
+
+### Aseprite files
+
+An `.aseprite` or `.ase` file under `assets/` is a sprite with no export step: its frames and their durations, its tags as clips, and its slices as the pivot and frame properties. A sidecar beside it can pick `layers` and change a tag's clip (`[clips.<tag>] fps = 12`) without opening Aseprite; `argus asset get <name>` lists the file's layers, tags, and slices. Limits: `grid` and frame rects are ignored (the frames are the file's), and scripts cannot read a frame's properties yet (a slice used as a hitbox is in `asset.get`, not in Luau).
+
+### Spine skeletons
+
+A `.json` exported from Spine 4 is a skeleton, its images in the export's `images` folder. A `Skeleton` component poses it, each slot drawn by a part entity under it. With an `Animator`, the machine's clips are the skeleton's animations; without one, `animation` plays at `speed`. From `examples/puppet/scenes/stage/`:
+
+```toml
+# hero.toml: an animator plays it (assets/puppet/moves.toml)
+[Skeleton]
+skeleton = "puppet/puppet"
+scale = 0.01
+z = 2.0
+
+[Animator]
+machine = "puppet/moves"
+
+# knight.toml: another skin, mirrored, walking on its own
+[Skeleton]
+skeleton = "puppet/puppet"
+skin = "armored"
+animation = "walk"
+speed = 0.8
+scale = 0.01
+flip_x = true
+```
+
+`scale` is world units per Spine unit. Spine's own events fire as engine events with the same names (Puppet counts its `step` and `waved` events). Bones, slots, region attachments, skins, events, and IK work. Not supported, each a warning in `asset.list`: meshes, paths, clipping, transform and path constraints, physics, and deforms. A part's shear is dropped, and an event's audio path is not played.
+
+## Particles
+
+A particle effect is an asset with `type = "emitter"`; an `Emitter` component plays it at its entity. Particles live in a pool, not as entities, so tens of thousands are cheap. From `examples/swarm/assets/fx/pop.toml`:
+
+```toml
+type = "emitter"
+particle = "circle"
+max = 20000
+lifetime = [0.2, 0.45]
+speed = [3, 7]
+spread = 360
+drag = 3
+size = [[0, 0.35], [1, 0]]
+color = [[0, "#FFF2A0FF"], [0.5, "#FF9040C0"], [1, "#FF402000"]]
+z = 4
+material = "fx/glow"
+```
+
+A range is a number or `[min, max]`; a curve is a number or `[[t, value], ...]` over a particle's life. `rate` emits continuously, `burst` all at once when it starts. `shape` is `point`, `circle`, or `box`.
+
+Swarm keeps one idle emitter (`examples/swarm/scenes/arena/sparks.toml`: `[Emitter] effect = "fx/pop"`, `playing = false`) and bursts it wherever an enemy dies:
+
+```lua
+q:emit("particles.burst", { emitter = q:entity("@sparks"), count = 12, pos = target:get("Transform").pos })
+```
+
+You can also set `Emitter.burst = 12` for a burst on the next tick, or `Emitter.started = false` to play it again from the start. `auto_despawn = true` removes a one-shot emitter's entity when its last particle is gone. The effect's numbers are tune fields (`argus tune fields asset=fx/pop`).
+
+## Materials and shaders
+
+A sprite, an emitter, or a skeleton can draw with a **material**: `[Sprite] material = "fx/glow"`. The engine has a small library: `unlit`, `lit`, `palette`, `dissolve`, `outline`, and `sdf_text`. A sidecar alone over a built-in changes its blend or its defaults. From `examples/swarm/assets/fx/glow.toml`:
+
+```toml
+shader = "unlit"
+blend = "add"
+```
+
+Three built-ins read a component on the sprite's entity: `dissolve` reads `Dissolve.amount` (0 whole, 1 gone), `outline` reads `Outline.color`, and `palette` reads `Palette.row`. Tweening `Dissolve.amount` to 1 dissolves an enemy away.
+
+A material of your own is a `.wgsl` file with a sidecar of typed parameters. The shader defines one function; the engine supplies the rest:
+
+```wgsl
+// assets/materials/glow.wgsl
+fn material(in: MaterialInput, p: Params) -> vec4<f32> {
+    let c = sample_atlas(in, in.uv);
+    return vec4<f32>(p.tint.rgb * p.power, c.a);
+}
+```
+
+```toml
+# assets/materials/glow.toml
+type = "material"
+blend = "add"
+
+[params.tint]
+type = "color"
+default = "#FF8000"
+
+[params.power]
+type = "f32"
+default = 1
+range = [0, 4]
+```
+
+`MaterialInput` has `uv` (where in the atlas), `local` (where on the sprite, 0 to 1, y up), `world`, `color` (the sprite's tint), `frame`, `texel`, and `time` (sim seconds). `sample_atlas(in, uv)` reads the sprite's image. A parameter with `from = "Component.field"` is fed from each sprite's own entity (or `from = "@id:Component.field"` from a named one), so a tween or a script animates it. A shader that does not compile is a `script.errors` row with its line, and the last good version keeps drawing.
+
+## Post effects
+
+Post effects are passes over the whole picture. Each is a component on the **drawing camera**, and its strengths and times are tune fields:
+
+| Component | What it does |
+|---|---|
+| `PostShake` | The picture shakes on an event |
+| `PostFlash` | The screen flashes a colour on an event |
+| `PostHitStop` | The game freezes for a few ticks on an event, while effects play on |
+| `PostFade` | The screen fades toward a colour by `amount` |
+| `PostVignette`, `PostAberration`, `PostPalette`, `PostCrt` | Dark edges, colour fringes, a limited palette, an old screen |
+
+The first three listen for an event named in `on` (`hit` when empty), and an `amount` field on the event scales flash and shake. From `examples/hollow/scenes/hollow/rooms/persistent/camera.toml`, the pit's impact:
+
+```toml
+[PostFlash]
+on = "player.fell"
+color = "#FF3030"
+peak = 0.45
+decay = 2.0
+
+[PostShake]
+on = "player.fell"
+trauma = 0.7
+
+[PostHitStop]
+on = "player.fell"
+frames = 6
+
+[PostFade]
+```
+
+At each room change Hollow tweens `PostFade.amount` a little toward black and back (a timeline; see [content](content.md#timelines-and-cutscenes)). On a discrete clock, effects step with turns, so a flash fades only as turns pass.
+
+## Lighting
+
+2D lighting is off until the drawing camera has a `Lighting` component. Then everything is lit by the ambient light times `level`, plus every `Light` in reach. Hollow's camera:
+
+```toml
+[Lighting]
+ambient = "#8A94B8"
+level = 0.6
+```
+
+A `Light` goes on any entity: a point light, or a cone when `angle` (half its width in degrees) is under 180, with `direction`. It fades to nothing at `radius`. From `examples/hollow/scenes/hollow/rooms/persistent/lantern.toml`, the hero's lantern:
+
+```toml
+[Sprite]
+kind = "rect"
+size = [0.22, 0.3]
+color = "#FFD27A"
+z = 5.5
+
+[Emissive]
+amount = 1.0
+
+[Light]
+color = "#FFB870"
+intensity = 1.3
+radius = 7.5
+falloff = 1.6
+flicker = 0.12
+```
+
+- **Shadows.** Solid and sloped tiles of every collision layer cast shadows by themselves (`Lighting.tiles`). An `Occluder` makes an entity cast one, a box the size of its sprite unless `size` says otherwise. A light's `shadows = false` turns its own off.
+- **Glows.** `Emissive` draws a sprite at its own colour in the dark: a gem, a lit window, the lantern itself. A material can say `emissive = true` for everything drawn with it.
+- **Normal maps.** A `<name>.normal.png` beside `<name>.png`, the same size, is the sprite's normal map; nothing to declare. A light's `height` decides how it rakes across the bumps.
+- **Changing the light.** `Lighting.level` and `ambient` are fields like any other. Hollow glides the level from room to room (`examples/hollow/systems/light.luau`) and Outpost follows its day from dawn to midnight (`examples/outpost/systems/light.luau`). The UI is drawn after the light, so a HUD stays readable in the dark.
+
+Limits: shadows are hard, a slope occludes as a whole tile, a sprite's occluder is a box, and a light inside a solid tile is shadowed on every side (keep a carried light inside its carrier's collider, as Hollow's lantern is).
+
+## The camera
+
+A `Camera` frames the scene from its entity's position; `height` is how many world units show top to bottom. The active camera with the highest `priority` draws.
+
+**Following.** With a `target`, it follows: the target moves inside the `dead_zone` without moving the camera, `lookahead` looks ahead the way it moves, and `smoothing` is how long the camera takes to catch up. From Hollow's camera:
+
+```toml
+[Camera]
+height = 12.0
+target = "@player"
+offset = [0.0, 1.5]
+dead_zone = [1.5, 1.0]
+blend = 0.8
+```
+
+**Bounds.** With `bounded = true` (the default) the view stays inside the current room's bounds, or the scene's `bounds = [x0, y0, x1, y1]` in `scene.toml`. `aspect` (16:9 by default) is the view's shape for these bounds.
+
+**Free pan and zoom.** With no target, `pan_action` and `zoom_action` name actions a player moves it with; `zoom_min` and `zoom_max` limit the zoom. Outpost's camera, which `examples/outpost/systems/found.luau` builds in Luau, as an entity file would write it:
+
+```toml
+[Camera]
+height = 26.0
+pan_action = "pan"
+pan_speed = 0.8
+zoom_action = "zoom"
+zoom_min = 8.0
+zoom_max = 40.0
+blend = 0.8
+```
+
+With neither a target nor actions, a camera stays where its entity is.
+
+**Cuts and blends.** A second camera with `active = false` and a higher priority takes over when it becomes active, and its `blend` glides the view over that many seconds. Hollow's outro cuts to `@wide` from a timeline (see [content](content.md#timelines-and-cutscenes)).
+
+**Shake.** A `CameraShake` beside the camera moves the view in the world. Raise its trauma with an event from any system:
+
+```lua
+q:emit("camera.shake", { amount = 0.8 })
+```
+
+`decay`, `curve`, `max_offset`, `max_angle`, and `frequency` shape it. `PostShake` (above) instead moves the finished picture of the world. Neither moves the UI, which is drawn after the post passes.
+
+## UI
+
+The UI is entities too, laid out on a canvas of UI pixels (960 x 540 by default, y down) that is scaled to fit the window. `ui.toml` at the project's root sets the canvas, the font, the text size, and the colour tokens. From `examples/delve/ui.toml`:
+
+```toml
+font = "fonts/LiberationSans-Regular"
+text_size = 18
+
+[colors]
+button = "#262C34"
+
+[high_contrast_colors]
+button = "#000000"
+```
+
+The engine's tokens are `text`, `muted`, `panel`, `border`, `focus`, `accent`, and `disabled`; a game adds its own (`button` above). A `color` field may name a token or give a `#RRGGBB(AA)`.
+
+### The parts
+
+| Component | What it does |
+|---|---|
+| `UiRoot` | The top of a tree: its `layer`, which player slot drives it, whether it is `interactive`, and `follow` to hang it from a world entity |
+| `UiNode` | Layout, flexbox style: `direction`, `justify`, `align`, `gap`, `pad`, `size`, `fill`, `absolute` with `anchor` and `pivot`, `order`, `visible` |
+| `UiText` | Words: `text`, or a string table's `key`; `size`, `color`, `font`, `align`, `wrap` |
+| `UiPanel` | What a node draws behind it: a `color`, an `image` (nine-sliced with `slice`), a `border` |
+| `UiButton` | Takes focus and is pressed; emits `ui.pressed` and its own `event` |
+| `UiRect` | Where the node landed (written by the layout) |
+
+Nodes are children of other nodes through `Parent` (or `[children.<name>]` tables), as anything is.
+
+### A HUD
+
+A HUD is a tree that takes no input. From `examples/delve/scenes/delve/turn.toml`:
+
+```toml
+[UiRoot]
+interactive = false
+
+[UiNode]
+absolute = true
+offset = [10.0, 8.0]
+pad = [8.0, 4.0]
+
+[UiPanel]
+color = "#05070AB0"
+
+[UiText]
+key = "hud.line"
+```
+
+The string `hud.line` holds holes the layout fills each frame from the world: it begins `"Floor {@player:Player.floor}, turn {Turn.n}."` (see [content](content.md#strings-and-languages)). A script can also write `UiText.text` itself, as Hollow's `sim.run` does.
+
+A tree with `follow` hangs from a world entity: a sign's words, a prompt over a character. Hollow's hermit has `[UiRoot] follow = "@hermit"`, `follow_offset = [0.0, 1.1]`, `interactive = false`, and a `UiNode` with `pivot = [0.5, 1.0]` and `visible = false`, which `systems/hermit.luau` shows while the hero is near.
+
+### Menus and buttons
+
+A menu is a tree of buttons. Hollow's pause menu is a few entity files in `scenes/hollow/rooms/persistent/`: the root, a panel under it, and buttons under the panel:
+
+```toml
+# pause.toml: the root, hidden until Escape
+[UiRoot]
+layer = 10
+
+[UiNode]
+justify = "center"
+align = "center"
+visible = false
+
+# pause.resume.toml: one button
+[Parent]
+entity = "@pause.panel"
+
+[UiNode]
+pad = [18.0, 8.0]
+order = 1
+
+[UiPanel]
+color = "button"
+
+[UiButton]
+event = "pause.resume"
+
+[UiText]
+key = "pause.resume"
+align = "center"
+```
+
+Focus moves between buttons with `ui_move`, to the nearest in that direction (or where a button's `up`, `down`, `left`, `right` say). `ui_confirm` presses the focused button, and `ui_click` the one under the pointer. A menu that appears with nothing focused gets its first button. A press emits `ui.pressed {entity, event, by}` and the button's own event (`pause.resume` above), which a system reacts to with `q:events`. `ui_cancel` emits `ui.cancel {root}`. The UI systems run `unfrozen`, so a menu works while the game is frozen. Pages are subtrees whose `visible` a system switches (`examples/hollow/systems/pause_menu.luau`).
+
+Button prompts come from `InputGlyph`: `action = "restart"` fills `InputGlyph.label` with what the player presses on the device they last used ("R" on a keyboard, the pad's name for the button on a pad), for a `{InputGlyph.label}` hole or a script.
+
+### Fonts
+
+Without a font the UI draws in the built-in pixel font (ASCII and a set of accented letters). A `.ttf` or `.otf` under `assets/` is baked into a distance field, sharp at any size, and named in `ui.toml`'s `font` or a `UiText`'s `font`. It bakes printable ASCII and Latin-1; a sidecar's `chars` adds a language's other letters. Delve and Outpost use Liberation Sans, licence beside it.
+
+### Not drawn: Describe
+
+The `Describe` component is not drawn. It is what the semantic frame, and so an agent and a screen reader, says about an entity. Swarm's wave line is a `Describe` with `role = "hud"`, so an agent reads it but a player sees nothing. Text a player must see is UI. See [content](content.md#accessibility).
+
+## Audio
+
+`audio.toml` at the project's root defines the mixer's buses, ducking rules, sounds, and music. Without it there are buses `master`, `music`, `sfx`, `ui`, and `ambience`, and any `assets/<name>.wav` or `.ogg` plays as a sound named by its path. From `examples/hollow/audio.toml`:
+
+```toml
+[buses]
+master   = { gain_db = 0 }
+sfx      = { parent = "master", gain_db = -4 }
+music    = { parent = "master", gain_db = -8 }
+dialogue = { parent = "master", gain_db = -2 }
+
+# A line said ducks the music.
+[[duck]]
+when = "dialogue"
+duck = "music"
+db = -6
+attack_ms = 200
+release_ms = 400
+
+[sounds."sfx/step"]
+gain = 0.3
+pitch_jitter = 0.12
+variations = [ { wave = "noise", ms = 35, release_ms = 25 }, { wave = "noise", ms = 30, release_ms = 30 } ]
+```
+
+### Sounds
+
+A sound plays one of its `variations` each time, picked from the run's seed: a file path (WAV or Ogg Vorbis, under `assets/`) or a synthesised `tone` (`sine`, `square`, `saw`, `triangle`, or `noise`, with `freq`, `ms`, `slide`, or `notes`). Tones let a game have sound before any audio files exist; Hollow, Delve, Swarm, and Outpost use nothing else. `gain_jitter` and `pitch_jitter` vary each play, `max_voices` caps how many play at once, and `loop` loops. A sound can also be a sidecar under `assets/` with `type = "sound"` and the same keys.
+
+A script plays a sound by name:
+
+```lua
+q:play("sfx/hit", { entity = e })
+```
+
+The options are `entity` (where it plays from), `gain`, `pitch`, `bus`, `pan`, and `loop`. A sound is **spatial** by default: it is quieter and panned by its distance from the entity with an `AudioListener`, or from the drawing camera when there is none (`[spatial] min_distance` and `max_distance` in `audio.toml`). Give it `spatial = false` for UI and music-like sounds. Animator events, dialogue lines, and timeline cues play sounds by name too.
+
+`q:play` returns nothing, so a script cannot name the voice it started. To stop sounds from a script, emit `sound.stop {entity, fade_ms}`: it stops the spatial sounds playing from that entity. A looping sound that is not spatial cannot be stopped from a script (only `argus audio stop voice=<n>` from outside), so make a loop spatial, or use a music track for it.
+
+### Music
+
+A track is a set of looping layers. The `Music` component plays a `track`, and its `intensity` (0 to 1) fades layers in: a layer is silent below its `from` and full at its `to`. From Hollow:
+
+```toml
+[music.cave]
+bpm = 80
+fade_ms = 400
+layers = [ { sound = "music/cave.low" }, { sound = "music/cave.high", from = 0.3, to = 0.8 } ]
+```
+
+With a `bpm`, a change of track waits for the next bar of the track playing and cross-fades over `fade_ms`; `change_on = "beat"` or `"now"` changes when. Adaptive music is a system writing the two fields. Hollow picks the track by the hero's room and the intensity by height (`examples/hollow/systems/music.luau`); Swarm's intensity is how many enemies are near:
+
+```lua
+local m = q:entity("@director"):get("Music")
+m.intensity = math.min(1, n / 30)
+```
+
+### Checking sound without ears
+
+Every play is an event (`sound.play` asked, `sound.played` with the variation chosen, or `sound.missing`), and music changes are `music.started`, `music.layer`, and `music.queued`. `argus audio status` shows the buses with their levels and ducking, the voices, and the music. `argus audio clip` writes the last seconds of the mix as a WAV for a person to hear. Headless, the mixer runs on sim time, so the clip is the same every run.
+
+## Where to go next
+
+- [Gameplay](gameplay.md): input, physics, navigation, events, and timers.
+- [Content](content.md): dialogue, timelines, strings, and accessibility.
+- [Tuning and performance](tuning-and-performance.md): changing these numbers while the game runs.
+- [Testing](testing.md): picture goldens and checks on what is on screen.

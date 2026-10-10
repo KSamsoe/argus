@@ -95,6 +95,7 @@ pub const CHANGES: &[&str] = &[
 /// The pieces of a transaction: `edit.commit`'s row carries them.
 pub const TX_PARTS: &[&str] = &[
     "edit.begin",
+    "edit.file",
     "edit.set",
     "edit.add",
     "edit.remove",
@@ -111,6 +112,7 @@ pub const TX_PARTS: &[&str] = &[
 
 /// Lookups and observations: no row.
 pub const READS: &[&str] = &[
+    "project.read",
     "session.status",
     "session.capabilities",
     "session.docs",

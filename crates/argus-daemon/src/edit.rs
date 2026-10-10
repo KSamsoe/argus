@@ -163,6 +163,16 @@ pub enum Op {
         /// The file's text.
         text: String,
     },
+    /// A project file's whole text (a script, an entity file, a test, any
+    /// text file in the project), or `None` to remove it: what an agent with
+    /// no file system writes (distribution, `write_file`). Its own inverse,
+    /// with the text the file had.
+    File {
+        /// Project-relative, `/`-separated.
+        file: String,
+        /// The file's text, or `None` for no file.
+        text: Option<String>,
+    },
     /// Paint a terrain over a rect (or erase it) and re-pick the tiles
     /// around it by the tileset's auto-tiling rules.
     Terrain {
@@ -256,6 +266,7 @@ impl Op {
                 }
                 ("edit.prefab", p)
             }
+            Op::File { file, text } => ("edit.file", json!({ "file": file, "text": text })),
             _ => return None,
         })
     }
@@ -309,6 +320,13 @@ impl Op {
                 json!(["prefab", at, path, value])
             }
             Op::PrefabText { prefab, .. } => json!(["prefab", prefab, "(as it was)"]),
+            Op::File { file, text } => {
+                json!([
+                    "file",
+                    file,
+                    text.as_ref().map(|t| format!("{} bytes", t.len()))
+                ])
+            }
             Op::Terrain {
                 file,
                 layer,

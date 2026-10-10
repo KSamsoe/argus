@@ -6,7 +6,7 @@ This page covers installing Argus, making a first game, connecting the AI tools 
 
 ## What you need
 
-- Windows 10 or 11 (64-bit), or Linux on x86-64 (Ubuntu 22.04 or newer, or similar).
+- Windows 10 or 11 (64-bit), or Linux on x86-64 with glibc 2.39 or newer: Ubuntu 24.04, Debian 13, Fedora 40, or newer. (The Linux build is made on Ubuntu 24.04, and a game released for Linux needs the same of its players.)
 - A graphics card with DirectX 12 or Vulkan drivers. Without one, Argus draws in software: Windows has this built in, and on Linux it needs Mesa's software Vulkan (`mesa-vulkan-drivers`).
 - On Linux, for sound and windows: ALSA (`libasound2`) and X11 or Wayland, which a desktop already has.
 - Access to the Argus repository on GitHub, and a way to prove it: the GitHub CLI signed in (`gh auth login`), or a token in `GITHUB_TOKEN` that can read the repository.
