@@ -49,7 +49,21 @@ After phase 5, Argus runs only where it was built: a clone of the private reposi
 | arena | Swarm | walk and auto-fire, waves from the edges that chase (in Luau: Swarm's own chase is a plugin), touch damage with grace, game over and restart | 4 (8 runs) |
 | colony | Outpost | four colonists take jobs over the navigation grid (berries, wood, hauling, eating), a day a minute, a pause and three speeds | 4 (8 runs) |
 
-Four AI agents (Opus 5.5) wrote the game templates in parallel from the games, each in its own folder with the game read-only, and each broke its own rules in a copy to see its scenarios fail. `argus-cli`'s `new` test makes a project from every template and runs its scenarios, so a template that stops working fails CI. The gaps the agents met in the docs are listed for the next round of fixes: the file formats (scene, entity, prefab, input, tilemap) are not in `argus docs`, nor the engine's component fields outside a project's ARGUS.md; a `Parent` does nothing without a `GlobalTransform`; a `NavAgent` with no goal walks to (0,0); `q.time` runs on while `q:freeze()` pauses; `observe` and `obs.frame` disagree about the default format; and a few smaller ones.
+Four AI agents (Opus 5.5) wrote the game templates in parallel from the games, each in its own folder with the game read-only, and each broke its own rules in a copy to see its scenarios fail. `argus-cli`'s `new` test makes a project from every template and runs its scenarios, so a template that stops working fails CI. **The gaps the agents met, fixed (2026-10-09).** All four named the same missing piece: nothing in `argus docs` described the files a project is made of. A fifth agent wrote that reference (`crates/argus-daemon/src/formats.rs`): every file a project can have (argus.toml, scenes, rooms, entity files and their children, prefabs, input.toml, defs, dialogue, timelines, strings, ui.toml, audio.toml, platform.toml, every asset sidecar, tilemaps and Tiled files, navgrids, mods, plugins, settings.toml, template.toml), each key with its type, default, and meaning, and the engine's components with their fields and which systems write and read them, generated from an empty game assembled with every module. It is in `argus docs` and in every ARGUS.md, and 14 tests fail when a parser takes a key the reference does not name. The rest:
+
+| Gap | Now |
+|---|---|
+| A scene's child with a Transform drew in world space without a GlobalTransform | the scene loader gives it one (`tests/parent_global.rs`); the Parent doc says when a script must |
+| Closing Delve's menu with its own key spent a turn | the press that opens or closes the menu is frozen too (`menu_key.luau`, which fails on the old code) |
+| `observe` took no `path`, and its default disagreed with `obs.frame`'s | `path` passed on; both docs say both defaults, and where the picture goes |
+| `run`'s `max_ticks`, `events:first()`, `run_until` that misses | the docs say where `max_ticks` goes, that `first()` is the event row (data under `.fields`), and that a miss returns `hit = false` without failing |
+| `q:within`/`q:nearest` saw last tick's positions; `q.time` ran while frozen; `q:each`'s handles are reused; how turns pass; vec2 defaults; events name a despawned entity `e:N` | each in the scripting API, with what to do |
+| A NavAgent with no goal walks to (0, 0) | its doc says so and what to set |
+| A sweep's failing candidate had an empty reason | it names the failed expectations |
+| ARGUS.md said "rooms ." for a scene without rooms | no rooms, no line |
+| Found writing the reference: release packs carried the plugins' Rust source; `chunk = 32.0` became 64 and `tile_size = 0` was taken; a non-string input `type` became a button; `pointer` missing from the input errors; "axis1" in input.bind's doc; UiRoot's doc named argus.toml for ui.toml | plugins/ left out of packs; whole numbers or an error, `tile_size` more than 0 (`tests/numbers.rs`); the type refused; the messages and docs corrected |
+
+Left for later, each needing a closer look: the semantic frame lists a described entity whose sprite is hidden; events name a despawned authored entity by its handle (a fix that remembers ids must be bounded, since a scene reload despawns every authored entity); scripts cannot spawn from a prefab; the clear colour is fixed; `pixels_per_unit` has no effect; a sound sidecar beside its own `.wav` says there is nothing to play; the dialogue box wants a `button` colour ui.toml does not define by default; and argus-player built without the rigid module trips three clippy lints (the workspace build has it).
 
 ## 3. MCP for the local clients
 
@@ -80,7 +94,15 @@ Four AI agents (Opus 5.5) wrote the game templates in parallel from the games, e
 - `tools/release/`: builds the Windows archive here and the Linux one on klab, checks them (each runtime builds and runs a game; the editor starts headless), writes the manifest and checksums, and makes a GitHub release on the private repository with `gh`.
 - klab as a second self-hosted runner, so a release is one workflow. Installing the runner is a download, so it is Kevin's to allow.
 
-**Written, not yet run.** `tools/release/release.sh` makes a release from this machine with klab over ssh, so klab needs no GitHub access and no runner: it stages and checks the Windows install here, sends the commit to klab as a git bundle (`~/argus-release`), stages and checks the Linux install there, gives each install the other's runtimes and the web one (rewriting the manifests, `tools/release/manifest.sh`), and writes the Windows zip, the Linux tar.gz, the Claude Desktop bundle, the two installers, and `SHA256SUMS` to `target/release/v<version>/`; with `--publish`, a draft GitHub release on the private repository. Waiting on Kevin for the first run: the build on klab is a long one, and the release is the repository's first.
+**Built, and the first release made (a draft, 2026-10-09).** `tools/release/release.sh` makes a release from this machine with klab over ssh, so klab needs no GitHub access and no runner (Kevin chose that over installing one): it stages and checks the Windows install here, sends the commit to klab as a git bundle (`~/argus-release`), stages and checks the Linux install there, gives each install the other's runtimes and the web one (rewriting the manifests, `tools/release/manifest.sh`), and writes the Windows zip, the Linux tar.gz (`tools/release/tarball.py`, the modes set by path), the Claude Desktop bundle, the two installers, and `SHA256SUMS` to `target/release/v<version>/`; with `--publish`, a draft GitHub release on the private repository, which a person publishes.
+
+v0.0.1 is a draft at 82889e0 with all six files. Its checks found three things first, each fixed before anything was published:
+
+| Found | Fix |
+|---|---|
+| Hollow's and Outpost's Linux builds did not start from their folders: Linux does not look beside a program for `libsteam_api.so` | `argus-game` links with `-rpath $ORIGIN` on Linux (271cb4d) |
+| Hollow's Linux build drew 6 of 230,400 pixels differently: a row of the feather's quill on a texel boundary, which klab's GPU rounds the other way | the release check forgives an edge moved by a pixel, not a changed colour (`Image::compare_near`, 82889e0); image goldens stay strict |
+| The Linux archive, put together on Windows, had lost its execute bits, and `install.sh` refused it | `tarball.py` (e24a75d); the draft's archive replaced, then installed on klab into a scratch folder: new, test, build from the installed runtime, uninstall |
 
 ## 6. Installing and updating
 

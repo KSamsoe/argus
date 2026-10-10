@@ -1460,6 +1460,22 @@ impl Scene {
                 report.components.insert("Parent".to_string());
             }
         }
+        // A parented entity with a Transform is placed relative to its
+        // parent only when it has a GlobalTransform for the hierarchy to
+        // fill; without one it drew at its local position in world space,
+        // and nothing said so (the platformer template's flag, distribution
+        // item 2). It gets one.
+        let has = |id: Option<argus_ecs::ComponentId>| id.is_some_and(|id| comps.contains(&id));
+        let global_id = world.component_id_of::<argus_ecs::GlobalTransform>();
+        if has(parent_id) && has(world.component_id_of::<argus_ecs::Transform>()) && !has(global_id)
+        {
+            if let Some(g) = global_id {
+                comps.push(g);
+                if !report.components.contains("GlobalTransform") {
+                    report.components.insert("GlobalTransform".to_string());
+                }
+            }
+        }
         let e = world.spawn_authored_with(&re.id, &comps)?;
         if let Some(p) = parent {
             world.update::<argus_ecs::Parent, _>(e, |x| x.entity = p)?;

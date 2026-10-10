@@ -180,7 +180,7 @@ pub const TOOLS: &[ToolDoc] = &[
         doc: "Advance the simulation: step ticks, run until something happens, take turns, play, pause, or stop; load a save first, save the game last. step: that many ticks; until: run until an event, a time, or a tick count; turns: take turns on a discrete clock; play, pause, speed, and stop (back to where play started); timeline: play a timeline now, as a script does (then step to watch it); load and save: a save game by name, in .argus/saves/, through the migrations its components declare. With none, where the sim is. Always answers with sim.status after.",
         params: &[
             opt("step", INTEGER, "ticks to run"),
-            opt("until", OBJECT, "{event: name} | {time: seconds} | {ticks: n}; max_ticks: n (default 100000)"),
+            opt("until", OBJECT, "{event: name} | {time: seconds} | {ticks: n}, with max_ticks: n inside it (default 100000): {event: \"wave.end\", max_ticks: 600}"),
             opt("turns", INTEGER, "turns to take on a discrete clock"),
             opt("play", BOOLEAN, "start playing in real time (a window, if open, shows it)"),
             opt("pause", BOOLEAN, "pause"),
@@ -208,12 +208,13 @@ pub const TOOLS: &[ToolDoc] = &[
     },
     ToolDoc {
         name: "observe",
-        doc: "Look at the game: the semantic frame by default, or the picture. The semantic frame is the camera's rect, each notable entity with its screen bounds and description, HUD text, and the effects on screen, in about 3 KB. format \"png\": the frame drawn (annotate adds entity ids and boxes); the MCP server returns the picture.",
+        doc: "Look at the game: the semantic frame by default (obs.frame's own default is png), or the picture. The semantic frame is the camera's rect, each notable entity with its screen bounds and description, HUD text, and the effects on screen, in about 3 KB. format \"png\": the frame drawn (annotate adds entity ids and boxes), written to path (default .argus/frames/frame-<tick>.png in the project); the MCP server returns the picture too.",
         params: &[
             opt("format", STRING, "\"semantic\" (default) or \"png\""),
             opt("annotate", BOOLEAN, "png: draw entity ids and bounds over it"),
             opt("width", INTEGER, "default 640"),
             opt("height", INTEGER, "default 360"),
+            opt("path", STRING, "png: where to write it; default .argus/frames/frame-<tick>.png"),
         ],
         calls: &["obs.frame"],
     },
@@ -1034,7 +1035,7 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "input.bind",
-        doc: "Rebind an action on a device from now on (section 12: rebinding at runtime is a UI over the same table). The log records actions, not keys, so a replay survives it. save also writes it into input.toml. A game's controls menu does the same with InputBinding buttons. Emits input.rebound. Keyboard names are the window's key codes in lowercase, without Key, Digit, or Arrow: a to z, 0 to 9, up, down, left, right, space, enter, escape, tab, backspace, shiftleft, shiftright, controlleft, altleft, f1 to f12, period, comma, slash, semicolon, quote, minus, equal, numpad0 to numpad9; an axis2 also takes wasd, arrows, ijkl, or four names up,left,down,right; an axis1 takes neg/pos (minus/equal). Keyboard names are open-ended: one the keyboard never sends is accepted and never fires, so check a rebind with input.devices or input.device. Mouse (left, right, middle, back, forward) and gamepad names (input.glyphs lists them) are checked.",
+        doc: "Rebind an action on a device from now on (section 12: rebinding at runtime is a UI over the same table). The log records actions, not keys, so a replay survives it. save also writes it into input.toml. A game's controls menu does the same with InputBinding buttons. Emits input.rebound. Keyboard names are the window's key codes in lowercase, without Key, Digit, or Arrow: a to z, 0 to 9, up, down, left, right, space, enter, escape, tab, backspace, shiftleft, shiftright, controlleft, altleft, f1 to f12, period, comma, slash, semicolon, quote, minus, equal, numpad0 to numpad9; an axis2 also takes wasd, arrows, ijkl, or four names up,left,down,right; an axis takes neg/pos (minus/equal). Keyboard names are open-ended: one the keyboard never sends is accepted and never fires, so check a rebind with input.devices or input.device. Mouse (left, right, middle, back, forward) and gamepad names (input.glyphs lists them) are checked.",
         params: &[
             req("action", STRING, ""),
             opt("device", STRING, "keyboard (default), mouse, or gamepad"),
@@ -1515,7 +1516,7 @@ pub const METHODS: &[MethodDoc] = &[
         name: "obs.frame",
         doc: "What the player sees. format \"semantic\" (section 8 L4) is data, about 3 KB, and needs no GPU: the camera and the world rect it shows; hud, the lines of entities on the screen rather than in the world; ui, the UI tree's text and buttons in reading order (id, text, bounds, and button, focused, disabled where they hold): a HUD built of UI nodes is here, not in hud; entities, the described and named ones in view with their Describe text filled in, bounds in pixels (x0, y0, x1, y1, y down) of a width x height frame, z, and how they are drawn, in reading order; groups, everything else by kind (their game components, else their name or look) with a count, bounds, and the first ids; effects on screen (camera shake, post passes, particles, materials); lighting, when the drawing camera has Lighting (phase 5 item 3): the ambient light and its level, and each Light reaching the view with where it is on the screen, how far it reaches in pixels, its colour and strength, a cone's direction and angle; tiles, what the tilemaps in view collide with, a character a cell; and bytes. The same frame is a screen-reader feed. format \"png\" (section 8 L5) renders the world as it is now and writes a PNG; with annotate: true the ids and bounds of the semantic frame are drawn over it (yellow for entities, cyan for groups) and returned as marks. Sprites come from the world and the view from the drawing camera (the active Camera with the highest priority, its shake included); described shapes need no asset.",
         params: &[
-            opt("format", STRING, "\"png\" (default) | \"semantic\""),
+            opt("format", STRING, "\"png\" (default; the observe tool's default is \"semantic\") | \"semantic\""),
             opt("width", INTEGER, "default 640"),
             opt("height", INTEGER, "default 360"),
             opt("limit", INTEGER, "entities listed one by one; default 24"),

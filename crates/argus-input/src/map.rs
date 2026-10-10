@@ -138,7 +138,7 @@ impl ActionMap {
         let t = im.as_table();
         let bad = |msg: String, at: String| {
             ArgusError::new(codes::BAD_MAP, msg)
-                .hint("input.toml has [actions.<name>] tables with type = \"button\" | \"axis\" | \"axis2\", optional doc, toggle, and [actions.<name>.bindings] per device; [slots.<n>] tables list devices.")
+                .hint("input.toml has [actions.<name>] tables with type = \"button\" | \"axis\" | \"axis2\" | \"pointer\", optional doc, toggle, and [actions.<name>.bindings] per device; [slots.<n>] tables list devices.")
                 .at(Some(at))
         };
         let mut actions = Vec::new();
@@ -157,13 +157,16 @@ impl ActionMap {
                     ));
                 }
                 let it = tomlv::table_like(item, &format!("actions.{name}"), &aat)?;
-                let kind = match it.get("type").and_then(|i| i.as_str()) {
-                    Some(k) => ActionKind::parse(k).ok_or_else(|| {
-                        bad(
-                            format!("actions.{name}.type {k:?} is not button, axis, or axis2"),
-                            aat.clone(),
-                        )
-                    })?,
+                let kind = match it.get("type") {
+                    Some(i) => {
+                        let k = i.as_str().unwrap_or_default();
+                        ActionKind::parse(k).ok_or_else(|| {
+                            bad(
+                                format!("actions.{name}.type {k:?} is not button, axis, axis2, or pointer"),
+                                aat.clone(),
+                            )
+                        })?
+                    }
                     None => ActionKind::Button,
                 };
                 let doc = it

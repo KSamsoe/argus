@@ -325,7 +325,22 @@ impl MapFile {
             })?;
         let bad =
             |m: String| e(crate::codes::BAD_MAP, format!("{rel}: {m}")).at(Some(rel.to_string()));
-        let int = |k: &str, d: i64| doc.get(k).and_then(|v| v.as_integer()).unwrap_or(d);
+        // A whole number (32, or 32.0 as an editor may write it); anything
+        // else is an error, not the default (chunk = 32.0 was silently 64).
+        let int = |k: &str, d: i64| -> Result<i64> {
+            match doc.get(k) {
+                None => Ok(d),
+                Some(v) => v
+                    .as_integer()
+                    .or_else(|| v.as_float().filter(|f| f.fract() == 0.0).map(|f| f as i64))
+                    .ok_or_else(|| {
+                        bad(format!(
+                            "{k} = {} is not a whole number",
+                            v.to_string().trim()
+                        ))
+                    }),
+            }
+        };
         if doc.get("kind").and_then(|k| k.as_str()) != Some("tilemap") {
             return Err(bad("kind must be \"tilemap\"".into()));
         }
@@ -356,7 +371,7 @@ impl MapFile {
             return Err(bad("no [[layers]]".into()));
         }
         let dim = |k: &str, d: i64| {
-            let v = int(k, d);
+            let v = int(k, d)?;
             u32::try_from(v)
                 .ok()
                 .filter(|&n| n >= 1)
@@ -365,12 +380,20 @@ impl MapFile {
         let index = MapIndex {
             width: dim("width", 0)?,
             height: dim("height", 0)?,
-            tile_size: doc
-                .get("tile_size")
-                .and_then(|v| v.as_float().or(v.as_integer().map(|i| i as f64)))
-                .unwrap_or(1.0) as f32,
+            tile_size: match doc.get("tile_size") {
+                None => 1.0,
+                Some(v) => match v.as_float().or(v.as_integer().map(|i| i as f64)) {
+                    Some(t) if t > 0.0 => t as f32,
+                    _ => {
+                        return Err(bad(format!(
+                            "tile_size = {}; it is a cell's size in world units, more than 0",
+                            v.to_string().trim()
+                        )))
+                    }
+                },
+            },
             chunk: dim("chunk", 64)?,
-            cell: match int("cell", 2) {
+            cell: match int("cell", 2)? {
                 c @ (1 | 2 | 4) => c as u8,
                 c => return Err(bad(format!("cell = {c}; cells are 1, 2, or 4 bytes"))),
             },

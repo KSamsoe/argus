@@ -134,8 +134,8 @@ systems as Luau does (`System::new(name, stage).after(..).reads(&[..]).writes(&[
 field for field as the game declares them. `reload` builds and swaps it in; a compile error is an `errors` row \
 with its file and line, and the last good build keeps running. The SDK is the plugin's API and documents itself: \
 `cargo doc --open --manifest-path .argus/plugins/sdk/Cargo.toml` (it has no dependencies, so this works offline).\n\n\
-The scripting API (what `components/`, `systems/`, and `defs/` declare and call) and the scenario API (what `tests/` \
-writes) are at the end of this file.\n\n",
+The scripting API (what `components/`, `systems/`, and `defs/` declare and call), the scenario API (what `tests/` \
+writes), and every file a project is made of are at the end of this file.\n\n",
     );
 
     o.push_str("## Scenes\n\n");
@@ -164,9 +164,20 @@ writes) are at the end of this file.\n\n",
                     cell(&s["seed"]),
                     cell(&s["entities"]),
                     cell(&s["authored"]),
-                    match s["rooms"].as_array() {
-                        Some(r) if !r.is_empty() => format!(", rooms {}", cell(&s["rooms"])),
-                        _ => String::new(),
+                    {
+                        // A scene without rooms lists one, unnamed: say none.
+                        let rooms: Vec<&str> = s["rooms"]
+                            .as_array()
+                            .into_iter()
+                            .flatten()
+                            .filter_map(Json::as_str)
+                            .filter(|r| !r.is_empty())
+                            .collect();
+                        if rooms.is_empty() {
+                            String::new()
+                        } else {
+                            format!(", rooms {}", rooms.join(", "))
+                        }
                     }
                 );
                 let named = s["named"].as_array().cloned().unwrap_or_default();
@@ -287,6 +298,8 @@ writes) are at the end of this file.\n\n",
     o.push_str(&docs::scripting(3));
     o.push_str("## Scenarios: the test API\n\n");
     o.push_str(&docs::scenarios(3));
+    o.push_str("## Files: what a project is made of\n\n");
+    o.push_str(&argus_daemon::formats::files(3));
     Ok(o)
 }
 
@@ -318,6 +331,10 @@ The tools are what `argus mcp` serves and `argus <tool>` runs; every method is a
     o.push_str(&docs::scripting(3));
     o.push_str("## Scenarios: the test API\n\n");
     o.push_str(&docs::scenarios(3));
+    o.push_str("## Files: what a project is made of\n\n");
+    o.push_str(&argus_daemon::formats::files(3));
+    o.push_str("## The engine's components\n\n");
+    o.push_str(&argus_daemon::formats::components(3));
     o.push_str("## Methods\n\n");
     for m in docs::METHODS {
         let _ = writeln!(o, "### {}\n\n{}\n", m.name, m.doc);

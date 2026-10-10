@@ -410,10 +410,12 @@ pub struct Built {
 }
 
 /// Top-level directories a build leaves out: the tests, the dev tools, the
-/// builds themselves, and the mods made in the project (each its own pack,
-/// `argus build --mod`). Anything whose name starts with a dot is left out
-/// too (`.argus/`, `.git/`).
-pub const LEFT_OUT: &[&str] = &["tests", "tools", "dist", "mods"];
+/// builds themselves, the mods made in the project (each its own pack,
+/// `argus build --mod`), and the Rust plugins' source (a release carries
+/// the built libraries beside the executable instead; the source shipped
+/// in every pack until the file-format reference turned it up). Anything
+/// whose name starts with a dot is left out too (`.argus/`, `.git/`).
+pub const LEFT_OUT: &[&str] = &["tests", "tools", "dist", "mods", "plugins"];
 
 fn walk_files(dir: &Path, root: &Path, out: &mut Vec<String>) -> Result<()> {
     let entries = argus_os::fs::read_dir(dir)

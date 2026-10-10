@@ -106,7 +106,7 @@ impl GlobalTransform {
 #[derive(Component, Clone, Copy, Debug, Default, PartialEq)]
 #[repr(C)]
 #[argus(
-    doc = "Parent entity. Transform becomes local to it. Nulled automatically if the parent despawns."
+    doc = "Parent entity. Transform becomes local to it when the entity also has a GlobalTransform, which the hierarchy fills each tick (a scene gives a parented entity with a Transform one; a script that spawns a child adds it). Nulled automatically if the parent despawns."
 )]
 pub struct Parent {
     /// The parent entity.

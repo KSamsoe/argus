@@ -14,7 +14,7 @@ use argus_ecs::{Component, Entity, StrId, Vec2};
 #[derive(Component, Clone, Copy, Debug, PartialEq)]
 #[repr(C)]
 #[argus(
-    doc = "The top of a UI tree: laid out on the UI canvas (argus.toml [ui] width and height), or hung from a world entity (follow). Draw order among trees is layer; the tree takes focus moves and presses from one player slot's actions"
+    doc = "The top of a UI tree: laid out on the UI canvas (ui.toml's width and height), or hung from a world entity (follow). Draw order among trees is layer; the tree takes focus moves and presses from one player slot's actions"
 )]
 pub struct UiRoot {
     /// Draw order among trees.

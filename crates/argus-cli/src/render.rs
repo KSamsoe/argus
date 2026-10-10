@@ -143,11 +143,17 @@ pub fn test_report(r: &Json) -> String {
             let why = if first.is_null() {
                 String::new()
             } else {
+                // A run that errored says why in error; one whose
+                // expectations failed says which in failed.
+                let said = match first["error"].as_str().filter(|e| !e.is_empty()) {
+                    Some(e) => e.to_string(),
+                    None => cell(&first["failed"]),
+                };
                 format!(
                     "  first: {} seed {}: {}",
                     first["scenario"].as_str().unwrap_or("?"),
                     cell(&first["seed"]),
-                    first["error"].as_str().unwrap_or("")
+                    said
                 )
             };
             let _ = writeln!(

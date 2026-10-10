@@ -3878,7 +3878,7 @@ impl Daemon {
                 argus_input::codes::NO_INPUT_MAP,
                 "this project has no input.toml, so there are no actions to inject",
             )
-            .hint("Add input.toml with [actions.<name>] tables (type = button | axis | axis2) and reopen; input.bindings shows the map.")
+            .hint("Add input.toml with [actions.<name>] tables (type = button | axis | axis2 | pointer) and reopen; input.bindings shows the map.")
         })
     }
 

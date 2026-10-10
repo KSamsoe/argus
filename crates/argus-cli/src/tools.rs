@@ -234,7 +234,7 @@ pub fn run(c: &mut dyn Caller, name: &str, args: &Json) -> Result<Json, Json> {
             }
         }
         "observe" => {
-            let mut p = pick(args, &["annotate", "width", "height"]);
+            let mut p = pick(args, &["annotate", "width", "height", "path"]);
             p["format"] = args.get("format").cloned().unwrap_or(json!("semantic"));
             c.call("obs.frame", p)
         }

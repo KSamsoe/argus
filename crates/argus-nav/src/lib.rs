@@ -170,7 +170,9 @@ pub struct NavAgent {
     #[argus(doc = "The grid; none: the grid under the entity")]
     pub grid: Entity,
     /// Where to go.
-    #[argus(doc = "Where to go, in world units (when target and field are none)")]
+    #[argus(
+        doc = "Where to go, in world units (when target and field are none). It walks there from the first tick, and the default is (0, 0): an agent meant to stand still until it has somewhere to be gets its own position as its goal"
+    )]
     pub goal: Vec2,
     /// An entity to go to.
     #[argus(doc = "An entity to go to; the path is found again when it moves to another cell")]
