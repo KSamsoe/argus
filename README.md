@@ -92,4 +92,4 @@ That adds Argus to the tool's own settings. Set up once with `--scope user`, and
 - **`argus docs`**: the full reference, generated from the engine itself: every tool, protocol method, script function, test function, project file, and engine component. Every project's `ARGUS.md` carries the parts for that game.
 - **[The design](docs/argus-engine-design-v0.3.html)**, **[how it was built](docs/history.md)**, and **[working on the engine](docs/developing.md)**, for changing Argus itself.
 
-Argus is early: version 0.0.1, in a private repository, on Windows and Linux (no macOS yet).
+Argus is early: version 0.0.2, in a private repository, on Windows and Linux (no macOS yet).

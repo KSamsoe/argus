@@ -59,7 +59,7 @@ There is one daemon per project, and it holds exactly one world. You rarely star
 argus test
 # argus: starting a daemon for ...\my-game (pid 6612, log in .argus/daemon.log)
 argus daemon status
-# running: pid 6612 on argusd-2a1004d8cef11dec.sock (version 0.0.1)
+# running: pid 6612 on argusd-2a1004d8cef11dec.sock (version 0.0.2)
 argus daemon stop
 ```
 

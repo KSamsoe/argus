@@ -14,17 +14,17 @@ name = "argus"
 path = "src/main.rs"
 
 [dependencies]
-argus-client = { path = "../argus-client", version = "0.0.1" }
-argus-daemon = { path = "../argus-daemon", version = "0.0.1" }
-argus-player = { path = "../argus-player", version = "0.0.1", features = ["rigid"] }
-argus-plugins = { path = "../argus-plugins", version = "0.0.1" }
-argus-render = { path = "../argus-render", version = "0.0.1" }
-argus-scene = { path = "../argus-scene", version = "0.0.1" }
-argus-os = { path = "../argus-os", version = "0.0.1" }
-argus-sim = { path = "../argus-sim", version = "0.0.1" }
+argus-client = { path = "../argus-client", version = "0.0.2" }
+argus-daemon = { path = "../argus-daemon", version = "0.0.2" }
+argus-player = { path = "../argus-player", version = "0.0.2", features = ["rigid"] }
+argus-plugins = { path = "../argus-plugins", version = "0.0.2" }
+argus-render = { path = "../argus-render", version = "0.0.2" }
+argus-scene = { path = "../argus-scene", version = "0.0.2" }
+argus-os = { path = "../argus-os", version = "0.0.2" }
+argus-sim = { path = "../argus-sim", version = "0.0.2" }
 serde_json = "1"
 interprocess = "2"
 
 [dev-dependencies]
-argus-ecs = { path = "../argus-ecs", version = "0.0.1" }
-argus-assets = { path = "../argus-assets", version = "0.0.1" }
+argus-ecs = { path = "../argus-ecs", version = "0.0.2" }
+argus-assets = { path = "../argus-assets", version = "0.0.2" }

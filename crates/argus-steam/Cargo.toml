@@ -7,10 +7,10 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-argus-ecs = { path = "../argus-ecs", version = "0.0.1" }
-argus-assets = { path = "../argus-assets", version = "0.0.1" }
-argus-platform = { path = "../argus-platform", version = "0.0.1" }
-argus-input = { path = "../argus-input", version = "0.0.1" }
+argus-ecs = { path = "../argus-ecs", version = "0.0.2" }
+argus-assets = { path = "../argus-assets", version = "0.0.2" }
+argus-platform = { path = "../argus-platform", version = "0.0.2" }
+argus-input = { path = "../argus-input", version = "0.0.2" }
 serde_json = "1"
 # Valve's Steamworks SDK, through steamworks-rs (downloaded with Kevin's
 # approval, 2026-10-08): the bindings and the SDK's steam_api libraries.
