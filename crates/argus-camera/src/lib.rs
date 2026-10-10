@@ -375,10 +375,34 @@ pub fn blended(c: &Camera, center: [f32; 2], height: f32) -> ([f32; 2], f32) {
     )
 }
 
-/// Register `Camera` and `CameraShake`.
+/// The colour behind everything, on the drawing camera's entity. Without
+/// it a frame is cleared to the engine's dark grey, which showed as a band
+/// around Delve's map and every template's floor.
+#[derive(Component, Clone, Copy, Debug, PartialEq, Default)]
+#[repr(C)]
+#[argus(
+    doc = "The colour behind everything, on the drawing camera's entity: what shows where nothing is drawn. Without it, the engine's dark grey"
+)]
+pub struct Background {
+    /// The colour, #RRGGBB.
+    #[argus(doc = "#RRGGBB; empty for the engine's dark grey", tune)]
+    pub color: StrId,
+}
+
+/// The drawing camera's background colour, as written (#RRGGBB), if it has
+/// one.
+pub fn background(world: &World) -> Option<String> {
+    world.component_id_of::<Background>()?;
+    let b = world.get::<Background>(current(world)?).ok()?;
+    let s = world.strings().resolve(b.color);
+    (!s.is_empty()).then_some(s)
+}
+
+/// Register `Camera`, `CameraShake`, and `Background`.
 pub fn register(world: &mut World) -> Result<()> {
     world.register::<Camera>()?;
     world.register::<CameraShake>()?;
+    world.register::<Background>()?;
     Ok(())
 }
 

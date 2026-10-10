@@ -131,3 +131,32 @@ fn and_through_five_post_passes() {
     let f = differ(&w);
     assert!(f < 0.01, "{:.2}% of the pixels differ", f * 100.0);
 }
+
+/// A Background on the drawing camera is what shows where nothing is drawn;
+/// without one, the engine's dark grey (a band around Delve's map and the
+/// templates' floors, before there was a Background).
+#[test]
+fn the_background_is_the_cameras() {
+    let mut r = match Renderer::offscreen(64, 36, true) {
+        Ok(r) => r,
+        Err(e) if e.code == argus_render::codes::NO_ADAPTER => {
+            eprintln!("skipping: {e}");
+            return;
+        }
+        Err(e) => panic!("the software renderer did not start: {e}"),
+    };
+    let mut w = world_with_camera(10.0);
+    r.render(&w, 0, 1.0).unwrap();
+    let grey = r.capture().unwrap().pixel(1, 1);
+    let cam = w.entity("@camera").unwrap();
+    let color = w.strings().intern("#336699");
+    w.insert(cam, argus_render::Background { color }).unwrap();
+    r.render(&w, 1, 1.0).unwrap();
+    let p = r.capture().unwrap().pixel(1, 1);
+    let near = |a: u8, b: u8| (a as i32 - b as i32).abs() <= 2;
+    assert!(
+        near(p[0], 0x33) && near(p[1], 0x66) && near(p[2], 0x99),
+        "{p:?}, the grey was {grey:?}"
+    );
+    assert_ne!(p, grey);
+}

@@ -73,6 +73,12 @@ fn to_value(v: &Json, was: Option<&TV>) -> Result<TV> {
             match (n.as_i64(), n.as_f64()) {
                 (Some(i), _) if !float_before => TV::from(i),
                 (_, Some(f)) if int_before && f.fract() == 0.0 => TV::from(f as i64),
+                // A sidecar's numbers are read as f32s: one that is exactly
+                // an f32 (a tuned value, read from the world) is written as
+                // its shortest text, 0.36 and not 0.36000001430511475.
+                (_, Some(f)) if (f as f32) as f64 == f => {
+                    TV::from(argus_ecs::schema::shortest_f64(f as f32))
+                }
                 (_, Some(f)) => TV::from(f),
                 _ => return Err(bad_params(format!("{n} is not a number TOML holds"))),
             }
@@ -465,6 +471,12 @@ events = [{ frame = 0, name = "footstep" }]
         // A whole number where there was a float stays a float, and back.
         let t = edit_text(&t, "states.run.fps", Some(&json!(8.5))).unwrap();
         assert!(t.contains("fps = 8.5"), "{t}");
+        // An f32 read from the world is written as its shortest text; a
+        // number that is no f32 is written as it came.
+        let t = edit_text(&t, "states.run.fps", Some(&json!(0.36f32 as f64))).unwrap();
+        assert!(t.contains("fps = 0.36\n"), "{t}");
+        let t = edit_text(&t, "states.run.fps", Some(&json!(0.1))).unwrap();
+        assert!(t.contains("fps = 0.1\n"), "{t}");
         // Into an inline table in an array; appended; removed.
         let t = edit_text(HERO, "states.run.events[0].frame", Some(&json!(2))).unwrap();
         assert!(t.contains("frame = 2"), "{t}");

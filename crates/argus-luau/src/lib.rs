@@ -813,6 +813,11 @@ impl ScriptHost {
             }
         }
         if !a.hint.is_empty() {
+            // The hint is a sentence of its own: "... a different schema.
+            // A running world's rows ...", not run on after the message.
+            if !message.trim_end().ends_with(['.', '!', '?', ':']) {
+                message.push('.');
+            }
             message.push(' ');
             message.push_str(&a.hint);
         }

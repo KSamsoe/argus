@@ -84,7 +84,7 @@ local r = t:run_until { event = "wave.end", max_frames = 600 }
 assert(r.hit, "no wave.end")
 ```
 
-`t:run_until` always runs as fast as the machine allows. (You may see `speed = "max"` in `examples/outpost/tests/outpost_food.luau`. The harness does not read that key; it changes nothing.)
+`t:run_until` always runs as fast as the machine allows. (You may see `speed = "max"` in `examples/outpost/tests/outpost_food.luau`: it is accepted and changes nothing.) A key it does not take is an error that names it, so a misspelt `max_frames` is caught rather than quietly running the default 100,000 ticks.
 
 `seconds(n)`, `minutes(n)`, `hours(n)`, and `days(n)` turn game time into sim seconds. A day is the project's (`[time] day` in `argus.toml`), so Outpost's `days(30)` is 30 minutes of sim time.
 

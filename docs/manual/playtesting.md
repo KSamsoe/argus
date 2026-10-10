@@ -272,7 +272,6 @@ A call's own `author` parameter wins over the connection's. Some calls have an a
 - The phone page cannot play the game, and has no TLS beyond the tailnet.
 - The playtest server is not shipped with an install.
 - A mark or report replays faithfully only with the code that made it.
-- Undoing a change to an `f32` field writes the old value as the world holds it, so a file that said `0.36` can come back as `0.36000001430511475`. The value is the same; the text is longer.
 
 ## Where to go next
 

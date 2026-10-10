@@ -228,6 +228,17 @@ fn overrides_are_written_back_without_disturbing_the_file() {
         &Value::Float(2.5),
     )
     .unwrap();
+    // An f32 is written as its shortest text too: the world's 0.36 reads as
+    // 0.36000001430511475, which an undo or a tuning session's end wrote back.
+    s.set_override(
+        &p.ctx(w.registry()),
+        "player",
+        "Light.intensity",
+        &Value::Float(0.36f32 as f64),
+    )
+    .unwrap();
+    let text = read(t.path(), "scenes/arena/player.toml");
+    assert!(text.contains("intensity = 0.36\n"), "{text}");
     s.clear_override(&p.ctx(w.registry()), "player", "Light.intensity")
         .unwrap();
     let text = read(t.path(), "scenes/arena/player.toml");

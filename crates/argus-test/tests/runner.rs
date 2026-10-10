@@ -590,3 +590,31 @@ return scenario "the lamp looks as it did" {
     .unwrap();
     assert!(image(&r)["recorded"] == true, "{}", image(&r));
 }
+
+/// A key `t:run_until` does not take is an error that names it: a misspelt
+/// `max_frames` would run the default 100,000 ticks. `speed = "max"` (the
+/// phase 0 design's, in Outpost's food scenario) is taken.
+#[test]
+fn run_until_refuses_a_key_it_does_not_take() {
+    let (t, mut d) = fixture("runner-until-keys");
+    common::write(
+        t.path(),
+        "tests/keys.luau",
+        r#"return scenario "keys" {
+  scene = "arena", seed = 7,
+  run = function(t)
+    t:run_until { frames = 2, speed = "max" }
+    t:run_until { event = "never", max_frame = 5 }
+  end,
+}
+"#,
+    );
+    let r = run(&mut d, &Options::default()).unwrap();
+    assert_eq!(r["ok"], false, "{r}");
+    let seed = &r["scenarios"][0]["seeds"][0];
+    assert!(
+        seed.to_string().contains("run_until has no key max_frame"),
+        "{seed}"
+    );
+    assert_eq!(seed["tick"], 2, "the first call ran, the second did not: {seed}");
+}

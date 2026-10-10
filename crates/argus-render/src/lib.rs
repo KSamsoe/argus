@@ -121,7 +121,7 @@ impl Default for Sprite {
 
 /// The view comes from a camera entity (item 7, `argus-camera`): the active
 /// camera with the highest priority, its position plus its shake.
-pub use argus_camera::{Camera, CameraShake};
+pub use argus_camera::{Background, Camera, CameraShake};
 use argus_particles::{lut_index, ParticleStore, LUT};
 
 /// Register the renderer's components (and the camera's, which it reads).
@@ -1675,9 +1675,13 @@ impl Renderer {
             f
         }));
         let ui = self.ui_draw(world, &mut flat);
+        // Behind everything: the drawing camera's Background, else ours.
+        let clear = argus_camera::background(world)
+            .and_then(|c| parse_color(&c))
+            .unwrap_or(self.clear);
         let stats = self
             .gpu
-            .draw(center, half, angle, self.clear, &flat, &runs, ui.as_ref())?;
+            .draw(center, half, angle, clear, &flat, &runs, ui.as_ref())?;
         self.last = FrameReport {
             stats,
             missing_atlases: missing,

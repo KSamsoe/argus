@@ -44,7 +44,7 @@ pub const SECTIONS: &[ApiSection] = &[
         intro: "The argument `run` receives. `t.scene` and `t.seed` are this run's.",
         entries: &[
             d("t:step(n)", "Run n ticks (one by default)."),
-            d("t:run_until { event = name, max_frames = n }", "Run until the event happens (its first occurrence from now), at most n ticks (100,000 by default); returns `{hit, ticks, ...}`. An event that never comes does not fail the run: check `hit` (`assert(r.hit, \"no wave.end\")`). Also `{ sim_time = days(7) }`: until the sim clock reaches that time; `{ frames = n }`: n ticks."),
+            d("t:run_until { event = name, max_frames = n }", "Run until the event happens (its first occurrence from now), at most n ticks (100,000 by default); returns `{hit, ticks, ...}`. An event that never comes does not fail the run: check `hit` (`assert(r.hit, \"no wave.end\")`). Also `{ sim_time = days(7) }`: until the sim clock reaches that time; `{ frames = n }`: n ticks. A key it does not take is an error; `speed = \"max\"` is taken and changes nothing (a scenario always runs as fast as it can)."),
             d("t:advance { by = \"turn\", n = 1 }", "On a discrete clock: pass n turns."),
             d("t:status()", "The sim's status: tick, time, clock, hz, seed, ..."),
             d("t:call(method, params)", "Any protocol method (`argus docs` lists them), its result; an error fails the run with the method's message. `t:call(\"world.get\", { entity = \"@player\" }).components.Health.cur`, `t:call(\"sim.set\", {...})`, `t:call(\"edit.begin\", ...)`. Note that `obs.events` here is the daemon's whole log: pass `since` (or use `t.expect:events`, which counts only this run's)."),

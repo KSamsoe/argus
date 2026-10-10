@@ -181,7 +181,7 @@ impl PrefabLibrary {
                 Some(match (fs.ty, v) {
                     // An entity is written to a file as its "@id".
                     (argus_ecs::FieldType::Entity, argus_ecs::Value::Str(_)) => v.clone(),
-                    _ => registry.schema(cid).check(fs, v.clone())?,
+                    _ => tomlv::short_f32(fs.ty, registry.schema(cid).check(fs, v.clone())?),
                 })
             }
         };

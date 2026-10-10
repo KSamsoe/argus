@@ -1907,7 +1907,7 @@ impl Scene {
                     ))
                 }
             },
-            _ => ctx.registry.schema(cid).check(fs, value.clone())?,
+            _ => tomlv::short_f32(fs.ty, ctx.registry.schema(cid).check(fs, value.clone())?),
         };
         let f = &self.entities[&fid];
         let (p, rel) = (f.path.clone(), f.rel.clone());

@@ -136,6 +136,18 @@ pub fn kind_name(v: &TValue) -> &'static str {
     }
 }
 
+/// A checked value for an `ty` field, ready for a file: an f32 as its
+/// shortest text, so an undo or a tuning session's end writes back 0.36,
+/// not the world's 0.36000001430511475. The f32 it reads as is the same.
+pub fn short_f32(ty: FieldType, v: Value) -> Value {
+    match (ty, v) {
+        (FieldType::F32, Value::Float(f)) => {
+            Value::Float(argus_ecs::schema::shortest_f64(f as f32))
+        }
+        (_, v) => v,
+    }
+}
+
 /// Convert a [`Value`] to a TOML value for writing. Entity values must be
 /// given as `@id` strings by the caller (only authored ids belong in files).
 pub fn from_value(v: &Value) -> Result<TValue> {

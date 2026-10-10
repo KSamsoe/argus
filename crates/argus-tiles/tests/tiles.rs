@@ -467,3 +467,39 @@ fn the_store_reads_slopes_and_notices_a_map_saved_elsewhere() {
     assert_eq!(st.collide(&g, 3, 0), Collide::Solid);
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// A map for a tick (`MapStore::loaded`, what scripts' `q:tiles` reads
+/// through) is the one in memory, with no look at the disk: a script reading
+/// cell by cell paid a look at the file's time on every call. A change saved
+/// from outside comes in at the next `open`, between ticks.
+#[test]
+fn a_map_for_a_tick_is_the_one_in_memory() {
+    let dir = project("loaded");
+    let rel = "maps/m.tilemap.toml";
+    let mut m = MapFile::create(&dir, rel, 40, 20, 1.0, 16, 1, vec![layer("g", None, false)]).unwrap();
+    m.set(0, Rect::new(0, 0, 1, 1), &[3]).unwrap();
+    m.save().unwrap();
+    let mut st = argus_tiles::MapStore::new(&dir);
+    assert_eq!(st.loaded(rel).unwrap().cell(0, 0, 0).unwrap(), 3, "opened on first use");
+
+    std::thread::sleep(std::time::Duration::from_millis(30));
+    let mut other = MapFile::open(&dir, rel).unwrap();
+    other.set(0, Rect::new(0, 0, 1, 1), &[5]).unwrap();
+    other.save().unwrap();
+    assert_eq!(st.loaded(rel).unwrap().cell(0, 0, 0).unwrap(), 3, "not re-read in a tick");
+    assert_eq!(st.open(rel).unwrap().cell(0, 0, 0).unwrap(), 5, "re-read by open");
+
+    // What it saves: 800 cells, as a script reads them.
+    let t0 = Instant::now();
+    for i in 0..800u32 {
+        st.open(rel).unwrap().cell(0, i % 40, i / 40).unwrap();
+    }
+    let opened = t0.elapsed();
+    let t0 = Instant::now();
+    for i in 0..800u32 {
+        st.loaded(rel).unwrap().cell(0, i % 40, i / 40).unwrap();
+    }
+    let loaded = t0.elapsed();
+    println!("800 cells: {opened:?} through open, {loaded:?} through loaded");
+    std::fs::remove_dir_all(&dir).ok();
+}

@@ -259,8 +259,25 @@ local function tick_interval(ctx)
   return math.max(1, math.floor(smallest * hz + 0.5))
 end
 
+-- What run_until reads. A key it does not know is refused, not dropped: a
+-- misspelt max_frames would run the default 100,000. speed = "max" is the only speed
+-- there is (the phase 0 design named it), so it is accepted and changes nothing.
+local RUN_UNTIL_KEYS = {
+  event = true, max_frames = true, max_ticks = true, sim_time = true,
+  frames = true, ticks = true, speed = true,
+}
+
 local function run_until(ctx, opts)
   opts = opts or {}
+  for k in pairs(opts) do
+    if not RUN_UNTIL_KEYS[k] then
+      error("run_until has no key " .. tostring(k)
+        .. ": it takes event (with max_frames), sim_time, or frames", 0)
+    end
+  end
+  if opts.speed ~= nil and opts.speed ~= "max" then
+    error("run_until's speed is \"max\", the only one: a scenario always runs as fast as it can", 0)
+  end
   ctx.ran_any = true
   local interval = tick_interval(ctx)
   if opts.event ~= nil then

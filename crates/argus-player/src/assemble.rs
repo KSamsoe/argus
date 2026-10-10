@@ -613,7 +613,7 @@ impl argus_luau::Tiles for ScriptTiles {
     fn size(&self, world: &World, map: argus_ecs::Entity) -> Result<(u32, u32, Vec<String>)> {
         let file = Self::file(world, map)?;
         let mut st = self.0.borrow_mut();
-        let m = st.open(&file)?;
+        let m = st.loaded(&file)?;
         Ok((
             m.index.width,
             m.index.height,
@@ -633,7 +633,7 @@ impl argus_luau::Tiles for ScriptTiles {
             })
             .unwrap_or([0.0, 0.0]);
         let mut st = self.0.borrow_mut();
-        Ok((origin, st.open(&file)?.index.tile_size))
+        Ok((origin, st.loaded(&file)?.index.tile_size))
     }
 
     fn get(
@@ -646,7 +646,7 @@ impl argus_luau::Tiles for ScriptTiles {
     ) -> Result<u32> {
         let file = Self::file(world, map)?;
         let mut st = self.0.borrow_mut();
-        let m = st.open(&file)?;
+        let m = st.loaded(&file)?;
         let li = m.layer(layer)?;
         if x >= m.index.width || y >= m.index.height {
             return Ok(0);
@@ -664,7 +664,7 @@ impl argus_luau::Tiles for ScriptTiles {
     ) -> Result<()> {
         let file = Self::file(world, map)?;
         let mut st = self.0.borrow_mut();
-        let m = st.open(&file)?;
+        let m = st.loaded(&file)?;
         if !m.index.runtime {
             return Err(ArgusError::new(
                 argus_tiles::codes::BAD_MAP,

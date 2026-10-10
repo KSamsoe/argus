@@ -311,6 +311,13 @@ blend = 0.8
 
 With neither a target nor actions, a camera stays where its entity is.
 
+**The background.** Where nothing is drawn, the frame shows the engine's dark grey. A `Background` on the drawing camera's entity gives it a colour instead (`#RRGGBB`), so the space past a map's edge or around a floor matches the game:
+
+```toml
+[Background]
+color = "#14111c"
+```
+
 **Cuts and blends.** A second camera with `active = false` and a higher priority takes over when it becomes active, and its `blend` glides the view over that many seconds. Hollow's outro cuts to `@wide` from a timeline (see [content](content.md#timelines-and-cutscenes)).
 
 **Shake.** A `CameraShake` beside the camera moves the view in the world. Raise its trauma with an event from any system:

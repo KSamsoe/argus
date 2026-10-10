@@ -155,6 +155,20 @@ impl MapStore {
         Ok(self.entries[i].map.as_mut().expect("opened"))
     }
 
+    /// A map for use during a tick, as [`MapStore::grid`] has it: opened
+    /// on first use, else the one in memory, with no look at the disk. A
+    /// script reading a cell at a time went through [`MapStore::open`],
+    /// whose look at the file's time took 19 us a call, 15 ms for 800
+    /// cells against Delve's 2 ms turn.
+    pub fn loaded(&mut self, file: &str) -> Result<&mut MapFile> {
+        match self.by_file.get(file) {
+            Some(&i) if self.entries[i].map.is_some() => {
+                Ok(self.entries[i].map.as_mut().expect("loaded"))
+            }
+            _ => self.open(file),
+        }
+    }
+
     /// Put a map made in this process into the store.
     pub fn insert(&mut self, file: &str, map: MapFile) {
         let i = self.slot(file);
