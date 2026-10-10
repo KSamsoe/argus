@@ -1,4 +1,16 @@
-# A placeholder: replace it with hero.png (same name) and nothing else changes.
-kind = "circle"
-size = [16, 16]
-color = "#F2E6C8"
+# The hero: two idle frames (the flame and the cloak shift), fallen, and
+# hurt (a red flash, the turn a monster strikes). systems/look.luau picks
+# the frame and mirrors it the way the hero last stepped.
+# Written by tools/art.py with the picture; run it again rather than editing this.
+
+[[frames]]
+rect = [0, 0, 12, 12]
+
+[[frames]]
+rect = [12, 0, 12, 12]
+
+[[frames]]
+rect = [24, 0, 12, 12]
+
+[[frames]]
+rect = [36, 0, 12, 12]

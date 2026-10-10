@@ -3,7 +3,8 @@
 # still (systems/pause.luau); its buttons are pressed with the UI's actions
 # (systems/pause_menu.luau). Three pages: the buttons (panel), the
 # controls, and the settings, whose UiSettings is the game's only one.
-# Closed, it is hidden and its systems look at one flag a tick.
+# Closed, it is hidden and its systems look at one flag a tick. Its look
+# is the HUD's: the panels are ui/menu (nine-sliced), the colours ui.toml's.
 [UiRoot]
 layer = 10
 
@@ -13,7 +14,7 @@ align = "center"
 visible = false
 
 [UiPanel]
-color = "#05070ACC"
+color = "#03060CCC"
 
 # The first page: Resume, Restart, Controls, Settings.
 [children.panel.UiNode]
@@ -21,8 +22,9 @@ pad = [28.0, 22.0]
 gap = 10.0
 
 [children.panel.UiPanel]
-color = "panel"
-border = 2.0
+image = "ui/menu"
+slice = 5.0
+scale = 2.0
 
 [children.panel.children.title.UiNode]
 margin = [0.0, 6.0]
@@ -30,6 +32,8 @@ margin = [0.0, 6.0]
 [children.panel.children.title.UiText]
 key = "pause.title"
 align = "center"
+size = 32.0
+color = "title"
 
 [children.panel.children.resume.UiNode]
 pad = [18.0, 8.0]
@@ -37,6 +41,7 @@ order = 1
 
 [children.panel.children.resume.UiPanel]
 color = "button"
+border = 1.0
 
 [children.panel.children.resume.UiButton]
 event = "pause.resume"
@@ -51,6 +56,7 @@ order = 2
 
 [children.panel.children.restart.UiPanel]
 color = "button"
+border = 1.0
 
 [children.panel.children.restart.UiButton]
 event = "pause.restart"
@@ -65,6 +71,7 @@ order = 3
 
 [children.panel.children.controls.UiPanel]
 color = "button"
+border = 1.0
 
 [children.panel.children.controls.UiButton]
 event = "pause.controls"
@@ -79,6 +86,7 @@ order = 4
 
 [children.panel.children.settings.UiPanel]
 color = "button"
+border = 1.0
 
 [children.panel.children.settings.UiButton]
 event = "pause.settings"
@@ -97,8 +105,9 @@ min = [300.0, 0.0]
 visible = false
 
 [children.controls.UiPanel]
-color = "panel"
-border = 2.0
+image = "ui/menu"
+slice = 5.0
+scale = 2.0
 
 [children.controls.children.title.UiNode]
 margin = [0.0, 6.0]
@@ -106,6 +115,8 @@ margin = [0.0, 6.0]
 [children.controls.children.title.UiText]
 key = "controls.title"
 align = "center"
+size = 24.0
+color = "title"
 
 [children.controls.children.pause.UiNode]
 pad = [18.0, 8.0]
@@ -113,6 +124,7 @@ order = 1
 
 [children.controls.children.pause.UiPanel]
 color = "button"
+border = 1.0
 
 [children.controls.children.pause.UiButton]
 
@@ -135,6 +147,7 @@ order = 9
 
 [children.controls.children.back.UiPanel]
 color = "button"
+border = 1.0
 
 [children.controls.children.back.UiButton]
 event = "controls.back"
@@ -152,8 +165,9 @@ min = [300.0, 0.0]
 visible = false
 
 [children.settings.UiPanel]
-color = "panel"
-border = 2.0
+image = "ui/menu"
+slice = 5.0
+scale = 2.0
 
 [children.settings.UiSettings]
 
@@ -163,6 +177,8 @@ margin = [0.0, 6.0]
 [children.settings.children.title.UiText]
 key = "settings.title"
 align = "center"
+size = 24.0
+color = "title"
 
 [children.settings.children.text.UiNode]
 pad = [18.0, 8.0]
@@ -170,6 +186,7 @@ order = 1
 
 [children.settings.children.text.UiPanel]
 color = "button"
+border = 1.0
 
 [children.settings.children.text.UiButton]
 event = "settings.text"
@@ -183,6 +200,7 @@ order = 2
 
 [children.settings.children.contrast.UiPanel]
 color = "button"
+border = 1.0
 
 [children.settings.children.contrast.UiButton]
 event = "settings.contrast"
@@ -196,6 +214,7 @@ order = 3
 
 [children.settings.children.fullscreen.UiPanel]
 color = "button"
+border = 1.0
 
 [children.settings.children.fullscreen.UiButton]
 event = "settings.fullscreen"
@@ -209,6 +228,7 @@ order = 9
 
 [children.settings.children.back.UiPanel]
 color = "button"
+border = 1.0
 
 [children.settings.children.back.UiButton]
 event = "settings.back"

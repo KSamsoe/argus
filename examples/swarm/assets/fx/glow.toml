@@ -1,3 +1,5 @@
-# Sparks glow: the plain sprite, added to what is under it.
+# What glows (the bullets, every spark, the hero's halo): the sprite added to
+# what is under it, at its own colour whatever the light.
 shader = "unlit"
 blend = "add"
+emissive = true

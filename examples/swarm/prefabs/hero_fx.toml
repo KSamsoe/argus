@@ -1,0 +1,44 @@
+# The hero's effects, hung from him (each scene's herofx.toml is this
+# prefab): a soft cyan halo under him, and two idle emitters that
+# systems/looks.luau bursts, red sparks when he is hurt and a big burst of
+# his own colour when he dies. Presentation only. Each says GlobalTransform
+# itself: without it this engine leaves a prefab's hung entities at their
+# own position (the origin), not their parent's.
+[Parent]
+entity = "@player"
+
+[Transform]
+pos = [0.0, 0.0]
+
+[GlobalTransform]
+
+[children.halo.Transform]
+pos = [0.0, 0.0]
+
+[children.halo.GlobalTransform]
+
+[children.halo.Sprite]
+atlas = "sprites/swarm"
+frame = 21
+size = [4.0, 4.0]
+color = "#5CE1FF"
+material = "fx/glow"
+z = 0.5
+
+[children.hurt.Transform]
+pos = [0.0, 0.0]
+
+[children.hurt.GlobalTransform]
+
+[children.hurt.Emitter]
+effect = "fx/hurt"
+playing = false
+
+[children.death.Transform]
+pos = [0.0, 0.0]
+
+[children.death.GlobalTransform]
+
+[children.death.Emitter]
+effect = "fx/death"
+playing = false

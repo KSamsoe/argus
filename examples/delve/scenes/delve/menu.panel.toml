@@ -5,6 +5,9 @@ entity = "@menu"
 pad = [28.0, 22.0]
 gap = 10.0
 
+# The menu's pages sit on the HUD's bronze-edged plate (assets/ui/panel.png,
+# nine-sliced at twice its pixels), their buttons on assets/ui/button.png.
 [UiPanel]
-color = "panel"
-border = 2.0
+image = "ui/panel"
+slice = 4.0
+scale = 2.0

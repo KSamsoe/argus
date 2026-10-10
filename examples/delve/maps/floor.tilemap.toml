@@ -14,17 +14,38 @@ tile_size = 1.0
 chunk = 20
 cell = 1
 
-# What is drawn: tile 1 on every open cell.
+# What is drawn: tile 1 on every open cell, a flagstone of tiles/dungeon
+# (the stone layer below covers it with the floor's own).
 [[layers]]
 name = "floor"
-tileset = "tiles/floor"
+tileset = "tiles/dungeon"
 z = 0.0
 
 # What blocks: tile 1 on every wall cell. No tileset, so every tile is
-# solid and none is drawn (the walls are the background around the rooms). The
-# hero's moves, the monsters' paths (the navigation grid), and the semantic
-# frame's tiles read this layer.
+# solid and none is drawn (the stone layer draws the walls). The hero's
+# moves, the monsters' paths (the navigation grid), the semantic frame's
+# tiles, and the shadows the hero's torch casts read this layer.
 [[layers]]
 name = "walls"
 z = 0.0
 collision = true
+
+# The art pass: three layers that only draw (no collision), painted by
+# systems/floor_art.luau from the walls each time a floor is made. Stone:
+# every cell's flagstone, brick face, or rock; shade: the shadow a wall
+# casts on the floor beside it; decor: what lies on the floor, and what
+# each fight leaves.
+[[layers]]
+name = "stone"
+tileset = "tiles/dungeon"
+z = 0.1
+
+[[layers]]
+name = "shade"
+tileset = "tiles/dungeon"
+z = 0.15
+
+[[layers]]
+name = "decor"
+tileset = "tiles/dungeon"
+z = 0.2

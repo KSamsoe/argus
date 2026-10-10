@@ -1,8 +1,30 @@
-# Swarm's UI (phase 5 item 2): only the pause menu, on the default canvas
-# (960 x 540) in the built-in pixel font; a colour for buttons, which the
-# settings' high contrast turns black on white.
+# Swarm's UI: the HUD (prefabs/hud.toml) and the pause menu, on the default
+# canvas (960 x 540) in the built-in pixel font. The panels are
+# ui/frame.png and ui/menu.png (dark glass, cyan corners: tools/art.py),
+# drawn as they are, so high contrast leaves them; these are the
+# colours of the words, buttons, and pips, the hero's cyan for focus and
+# the swarm's amber for the wave. High contrast turns the buttons black,
+# the words white, and the pips plain.
 [colors]
-button = "#262C34"
+text = "#E6F1FF"
+muted = "#8BA0BE"
+panel = "#0A1220E6"
+border = "#2B4A6E"
+focus = "#5CE1FF"
+accent = "#FFC452"
+button = "#16243A"
+title = "#5CE1FF"
+wave = "#FFC452"
+hp = "#FF4D6D"
+hp_off = "#3A1B2A"
+danger = "#FF4D6D"
 
 [high_contrast_colors]
+text = "#FFFFFF"
+muted = "#FFFFFF"
 button = "#000000"
+title = "#FFFFFF"
+wave = "#FFFF00"
+hp = "#FF3030"
+hp_off = "#000000"
+danger = "#FF3030"

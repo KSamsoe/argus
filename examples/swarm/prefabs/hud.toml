@@ -1,0 +1,251 @@
+# The HUD, one tree for every scene (each scene's hud.toml is this prefab):
+# the wave and the enemies left at the top left, the hero's HP in the
+# middle, the kills at the top right; a banner as each wave spawns, and a
+# panel when the hero falls. It takes no input. The words are strings with
+# holes (strings/en.toml, hud.*) filled from the world each layout;
+# systems/hud.luau lights the pips and shows the banner and the panel.
+# Drawn under the pause menu (layer 10). The Describe line on @director
+# still says the same for an agent.
+[UiRoot]
+interactive = false
+
+[UiNode]
+
+[Hud]
+
+# Top left: the wave, and how many of it are left.
+[children.wave.UiNode]
+absolute = true
+offset = [16.0, 14.0]
+pad = [14.0, 9.0]
+gap = 3.0
+min = [150.0, 0.0]
+
+[children.wave.UiPanel]
+image = "ui/frame"
+slice = 5.0
+scale = 2.0
+
+[children.wave.children.title.UiNode]
+
+[children.wave.children.title.UiText]
+key = "hud.wave"
+size = 24.0
+color = "wave"
+wrap = false
+
+[children.wave.children.left.UiNode]
+order = 1
+
+[children.wave.children.left.UiText]
+key = "hud.left"
+color = "muted"
+wrap = false
+
+# Top middle: HP, ten pips (systems/hud.luau lights them) and the count.
+[children.hp.UiNode]
+absolute = true
+anchor = [0.5, 0.0]
+pivot = [0.5, 0.0]
+offset = [0.0, 14.0]
+pad = [14.0, 12.0]
+direction = "row"
+align = "center"
+gap = 10.0
+
+[children.hp.UiPanel]
+image = "ui/frame"
+slice = 5.0
+scale = 2.0
+
+[children.hp.children.label.UiNode]
+
+[children.hp.children.label.UiText]
+key = "hud.hp"
+color = "hp"
+wrap = false
+
+[children.hp.children.pips.UiNode]
+direction = "row"
+gap = 3.0
+order = 1
+
+[children.hp.children.count.UiNode]
+order = 2
+min = [48.0, 0.0]
+
+[children.hp.children.count.UiText]
+key = "hud.hp_count"
+wrap = false
+
+[children.hp.children.pips.children.p1.UiNode]
+size = [12.0, 12.0]
+order = 1
+
+[children.hp.children.pips.children.p1.UiPanel]
+color = "hp"
+
+[children.hp.children.pips.children.p2.UiNode]
+size = [12.0, 12.0]
+order = 2
+
+[children.hp.children.pips.children.p2.UiPanel]
+color = "hp"
+
+[children.hp.children.pips.children.p3.UiNode]
+size = [12.0, 12.0]
+order = 3
+
+[children.hp.children.pips.children.p3.UiPanel]
+color = "hp"
+
+[children.hp.children.pips.children.p4.UiNode]
+size = [12.0, 12.0]
+order = 4
+
+[children.hp.children.pips.children.p4.UiPanel]
+color = "hp"
+
+[children.hp.children.pips.children.p5.UiNode]
+size = [12.0, 12.0]
+order = 5
+
+[children.hp.children.pips.children.p5.UiPanel]
+color = "hp"
+
+[children.hp.children.pips.children.p6.UiNode]
+size = [12.0, 12.0]
+order = 6
+
+[children.hp.children.pips.children.p6.UiPanel]
+color = "hp"
+
+[children.hp.children.pips.children.p7.UiNode]
+size = [12.0, 12.0]
+order = 7
+
+[children.hp.children.pips.children.p7.UiPanel]
+color = "hp"
+
+[children.hp.children.pips.children.p8.UiNode]
+size = [12.0, 12.0]
+order = 8
+
+[children.hp.children.pips.children.p8.UiPanel]
+color = "hp"
+
+[children.hp.children.pips.children.p9.UiNode]
+size = [12.0, 12.0]
+order = 9
+
+[children.hp.children.pips.children.p9.UiPanel]
+color = "hp"
+
+[children.hp.children.pips.children.p10.UiNode]
+size = [12.0, 12.0]
+order = 10
+
+[children.hp.children.pips.children.p10.UiPanel]
+color = "hp"
+
+# Top right: the kills.
+[children.kills.UiNode]
+absolute = true
+anchor = [1.0, 0.0]
+pivot = [1.0, 0.0]
+offset = [-16.0, 14.0]
+pad = [14.0, 9.0]
+gap = 3.0
+align = "end"
+min = [120.0, 0.0]
+
+[children.kills.UiPanel]
+image = "ui/frame"
+slice = 5.0
+scale = 2.0
+
+[children.kills.children.label.UiNode]
+
+[children.kills.children.label.UiText]
+key = "hud.kills"
+color = "muted"
+align = "right"
+wrap = false
+
+[children.kills.children.count.UiNode]
+order = 1
+
+[children.kills.children.count.UiText]
+key = "hud.kills_count"
+size = 24.0
+align = "right"
+wrap = false
+
+# The wave's banner, for a moment as it spawns.
+[children.banner.UiNode]
+absolute = true
+anchor = [0.5, 0.3]
+pivot = [0.5, 0.5]
+align = "center"
+gap = 8.0
+visible = false
+
+[children.banner.children.title.UiNode]
+
+[children.banner.children.title.UiText]
+key = "hud.banner"
+size = 48.0
+color = "wave"
+align = "center"
+wrap = false
+
+[children.banner.children.line.UiNode]
+order = 1
+
+[children.banner.children.line.UiText]
+align = "center"
+wrap = false
+
+# The run is over: the hero fell. Above him, so he and the swarm on him show.
+[children.over.UiNode]
+absolute = true
+anchor = [0.5, 0.26]
+pivot = [0.5, 0.5]
+pad = [36.0, 16.0]
+gap = 8.0
+align = "center"
+visible = false
+
+[children.over.UiPanel]
+image = "ui/frame"
+slice = 5.0
+scale = 2.0
+
+[children.over.children.title.UiNode]
+
+[children.over.children.title.UiText]
+key = "hud.over"
+size = 40.0
+color = "danger"
+align = "center"
+wrap = false
+
+[children.over.children.line.UiNode]
+order = 1
+
+[children.over.children.line.UiText]
+key = "hud.over_line"
+align = "center"
+wrap = false
+
+[children.over.children.hint.UiNode]
+order = 2
+
+[children.over.children.hint.UiText]
+key = "hud.over_hint"
+color = "muted"
+align = "center"
+wrap = false
+
+[children.over.children.hint.InputGlyph]
+action = "pause"

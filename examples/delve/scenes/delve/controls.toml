@@ -12,5 +12,6 @@ min = [300.0, 0.0]
 visible = false
 
 [UiPanel]
-color = "panel"
-border = 2.0
+image = "ui/panel"
+slice = 4.0
+scale = 2.0

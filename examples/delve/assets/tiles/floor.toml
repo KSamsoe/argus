@@ -1,6 +1,0 @@
-# An open cell of the floor (maps/floor.tilemap.toml's floor layer): one
-# frame, 32 x 32, #2E2A3A with a clear texel all round, so a thin line of
-# background shows between neighbours, as Delve's floor of 0.95-wide rect
-# sprites looked (drawn at 640 x 360 it is the same picture, pixel for
-# pixel). Nothing collides with it.
-grid = [1, 1]

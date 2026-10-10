@@ -1,0 +1,30 @@
+# The deck under the swarm: eight tiles of 12 x 12 units (108 pixels, 9 a
+# unit), each cut into plates, with floor.normal.png beside it so the
+# hero's light catches the plates' edges. Written by tools/art.py with the
+# sheet. systems/looks.luau lays 14 x 7 of them under the camera, each
+# world cell its own tile.
+pixels_per_unit = 9
+
+[[frames]]
+rect = [0, 0, 108, 108]
+
+[[frames]]
+rect = [108, 0, 108, 108]
+
+[[frames]]
+rect = [216, 0, 108, 108]
+
+[[frames]]
+rect = [324, 0, 108, 108]
+
+[[frames]]
+rect = [0, 108, 108, 108]
+
+[[frames]]
+rect = [108, 108, 108, 108]
+
+[[frames]]
+rect = [216, 108, 108, 108]
+
+[[frames]]
+rect = [324, 108, 108, 108]

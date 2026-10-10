@@ -1,0 +1,2 @@
+# The HUD: the same tree in every scene (prefabs/hud.toml).
+prefab = "hud"
