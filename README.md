@@ -43,14 +43,14 @@ Argus is built on its own entity-component system rather than a general-purpose 
 
 | Measured | Target | Result |
 |---|---|---|
-| Swarm with the swarm on the hero, sim tick | under 6 ms | 1.6 ms |
-| Outpost at 10x speed, 200 colonists and 20,000 items, sim tick | under 1.6 ms | 0.82 ms |
-| Outpost fast-forward, headless | over 2,000 ticks a second | about 5,000 (a month of colony life in about 20 s) |
+| Swarm with the swarm on the hero, sim tick | under 6 ms | 1.7 ms |
+| Outpost at 10x speed, 200 colonists and 20,000 items, sim tick | under 1.6 ms | 1.2 ms |
+| Outpost fast-forward, headless | over 2,000 ticks a second | about 3,500 (a month of colony life in about 30 s) |
 | Collision pass with 100,000 entities moving | | 0.43 ms (incremental; a rebuild was 2.2 ms) |
-| Save and load at eight hours of play | under 200 ms and 500 ms | 64 ms and 247 ms |
+| Save and load at eight hours of play | under 200 ms and 500 ms | 66 ms and 280 ms |
 | A web build's first load on a 20 Mbit link | under 5 s | 2.6 s |
 
-Numbers from the phase 5 gate and item 5 (2026-10-08 and 09), on Kevin's laptop; [how it was built](docs/history.md) has the history, and [tuning and performance](docs/manual/tuning-and-performance.md) how to measure a game.
+Numbers from the phase 5 gate and item 5 (2026-10-08 and 09), the games' rows measured again with their new art (2026-10-10), on Kevin's laptop; [how it was built](docs/history.md) has the history, and [tuning and performance](docs/manual/tuning-and-performance.md) how to measure a game.
 
 ## Play the games
 
