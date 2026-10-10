@@ -1,0 +1,18 @@
+# Wood chips flying from a tree under the axe, falling back to the grass.
+# systems/looks.luau bursts it where the tree stands (@chips).
+#
+# To change first: color (the chips as they fly and fade) and speed.
+type = "emitter"
+particle = "rect"
+shape = "circle"
+radius = 0.25
+max = 300
+lifetime = [0.3, 0.6]
+speed = [1.5, 3.0]
+direction = 90
+spread = 140
+gravity = [0, -10]
+drag = 1.0
+size = [[0, 0.22], [1, 0.11]]
+color = [[0, "#E6CC98FF"], [0.7, "#CFAE78E0"], [1, "#A8845400"]]
+z = 40

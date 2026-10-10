@@ -1,0 +1,12 @@
+# Where wood chips fly from: an emitter that plays nothing by itself.
+# systems/looks.luau bursts it at a tree with each blow of the axe, and
+# more when the tree falls (the effect is assets/fx/chips.toml).
+[Transform]
+pos = [0.0, 0.0]
+
+[Emitter]
+effect = "fx/chips"
+playing = false
+
+[Describe]
+hidden = true
