@@ -32,14 +32,6 @@ machine = "anim/player"
 [Camera]
 height = 15.0
 
-# What shows past the floor's edge: a dark rect that hangs from the player
-# (a child, so it moves with them) behind everything, big enough to fill
-# the view wherever they walk.
-[children.backdrop.Transform]
-pos = [0.0, 0.0]
-
-[children.backdrop.Sprite]
-kind = "rect"
-size = [60.0, 34.0]
+# What shows past the floor's edge, wherever nothing is drawn.
+[Background]
 color = "#0E1316"
-z = -1.0

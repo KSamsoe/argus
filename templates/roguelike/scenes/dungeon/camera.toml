@@ -6,9 +6,14 @@
 #
 # For a dungeon bigger than the screen, make it follow the hero: delete
 # this file and put a [Camera] with a smaller height in player.toml (a
-# camera rides on its own entity), and move backdrop.toml's dark with it.
+# camera rides on its own entity), and the Background with it.
 [Transform]
 pos = [14.5, 5.0]
 
 [Camera]
 height = 16.875
+
+# What shows past the map's edge: the colour of the rock far from any room
+# (tools/art.py's VOID), so the edge does not show. Change both together.
+[Background]
+color = "#0C0B10"

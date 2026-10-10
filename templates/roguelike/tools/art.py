@@ -37,7 +37,7 @@ SEED = 7  # the noise's seed: another number, other specks and stones
 # ----- the palette -----------------------------------------------------------
 
 INK = "0E0C12"  # the line round every creature
-VOID = "0C0B10"  # the rock far from any room (the same as the backdrop)
+VOID = "0C0B10"  # the rock far from any room (the same as the camera's Background)
 VOID_SPECK = "141219"
 
 # The floor: flagstones in a cool grey, a little violet, in dark mortar.

@@ -31,9 +31,9 @@ starts a new one.
   nothing about the game.
 - `components/roguelike.luau`: Health, Player, Monster, Dungeon, Turn.
 - `scenes/dungeon/`: the one scene, one entity per file. The hero is in
-  `player.toml` and the map in `dungeon.toml`. The camera, the dark behind
-  the map (`backdrop.toml`), the HUD line, and the message line each have
-  their own file; the pause screen is `pause.toml` and its plate and words
+  `player.toml` and the map in `dungeon.toml`. The camera (with the dark
+  behind the map, its `Background`), the HUD line, and the message line each
+  have their own file; the pause screen is `pause.toml` and its plate and words
   (`pause.panel`, `pause.title`, `pause.text`).
 - `maps/dungeon.tilemap.toml`: the grid. Its floor and walls layers are the
   game's: what is open and what blocks. Its stone and shade layers are the

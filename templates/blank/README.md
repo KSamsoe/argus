@@ -4,7 +4,7 @@ The smallest start for Argus: a player who walks over a floor, and one scenario 
 
 ## The files
 
-- `scenes/main/` is the one scene. `player.toml` is the player: its sprite, its animator, the camera it carries, and a dark backdrop that hangs from it. `floor.toml` is the floor.
+- `scenes/main/` is the one scene. `player.toml` is the player: its sprite, its animator, and the camera it carries, with the dark that shows past the floor (its `Background`). `floor.toml` is the floor.
 - `components/game.luau` declares `Player`, with its walking speed. `systems/move.luau` walks the player by the move action.
 - `systems/look.luau` turns the player to face the way they walk. It only changes how the player is drawn.
 - `tests/move.luau` is the scenario: hold right for a second, and the player must have walked six units. Run it with `argus test`.

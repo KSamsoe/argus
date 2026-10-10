@@ -33,6 +33,11 @@ pos = [19.0, 10.0]
 [Camera]
 height = 22.5
 
+# What shows past the map's edge: the rock's dark (tools/art.py's
+# ROCK_DARK), so the dungeon has no band round it.
+[Background]
+color = "#19171F"
+
 # The dungeon is dark: a cold ambient light everywhere, enough to read
 # the floor by, the hero's torch, and the stairs' light. systems/look.luau
 # lowers the level floor by floor (and lifts it with high contrast).

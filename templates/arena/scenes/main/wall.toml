@@ -1,5 +1,5 @@
-# The walls round the arena, and the dark beyond them. Only a look; the
-# arena's size is in arena.toml.
+# The walls round the arena. Only a look; the arena's size is in
+# arena.toml, and the dark beyond the walls is the camera's Background.
 #
 # The picture is frame 1 of sprites/room (tools/art.py draws it): stone
 # tops all round, and the top wall's face, as we look down on the room a
@@ -15,13 +15,3 @@ atlas = "sprites/room"
 frame = 1
 size = [33.5, 20.25]
 z = 4.0
-
-# The dark round the room, behind everything.
-[children.dark.Transform]
-pos = [0.0, 0.0]
-
-[children.dark.Sprite]
-kind = "rect"
-size = [80.0, 45.0]
-color = "#080B0D"
-z = -10.0

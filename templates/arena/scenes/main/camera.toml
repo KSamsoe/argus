@@ -10,6 +10,10 @@ pos = [0.0, 0.875]
 [Camera]
 height = 22.5
 
+# The dark beyond the walls: what shows wherever nothing is drawn.
+[Background]
+color = "#080B0D"
+
 # The room's light: a dim cool light everywhere, times level, and the
 # braziers' warm pools (braziers.toml) on top. The HUD is drawn after it,
 # so it stays as bright.
