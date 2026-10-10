@@ -36,6 +36,8 @@ read -r -a SSH_OPTS <<< "${ARGUS_SSH_OPTS:-}"
 ssh_() { ssh -o BatchMode=yes "${SSH_OPTS[@]}" "$HOST" "$@"; }
 scp_() { scp -q -o BatchMode=yes "${SSH_OPTS[@]}" "$@"; }
 
+# Files checked out a moment ago can look changed until git looks again.
+git update-index -q --refresh > /dev/null 2>&1 || true
 if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
   echo "release.sh: the tree has uncommitted changes; a release is a commit" >&2
   exit 1
@@ -91,8 +93,8 @@ with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
             full = os.path.join(d, f)
             z.write(full, os.path.join(top, os.path.relpath(full, src)).replace(os.sep, "/"))
 PY
-# tar keeps the Linux programs' execute bits, which a zip from here loses.
-tar --force-local -C target/stage -czf "$OUT/argus-$VERSION-linux-x86_64.tar.gz" "argus-$VERSION-linux"
+# The modes by path (tarball.py): this disk keeps no execute bits.
+python tools/release/tarball.py "$LIN" "$OUT/argus-$VERSION-linux-x86_64.tar.gz"
 python tools/release/mcpb.py "$WIN" "$OUT/argus-$VERSION.mcpb"
 cp tools/release/install.ps1 tools/release/install.sh "$OUT/"
 ( cd "$OUT" && sha256sum argus-* install.* | sed 's/ \*/  /' > SHA256SUMS )
