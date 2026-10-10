@@ -306,6 +306,7 @@ dependencies = [
  "argus-client",
  "argus-daemon",
  "argus-ecs",
+ "argus-input",
  "argus-os",
  "argus-player",
  "argus-plugins",
