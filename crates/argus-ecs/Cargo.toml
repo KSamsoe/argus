@@ -6,4 +6,4 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-argus-ecs-derive = { path = "../argus-ecs-derive", version = "0.0.3" }
+argus-ecs-derive = { path = "../argus-ecs-derive", version = "0.0.4" }

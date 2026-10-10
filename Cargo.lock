@@ -251,7 +251,7 @@ dependencies = [
 
 [[package]]
 name = "argus-anim"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "argus-assets",
  "argus-ecs",
@@ -261,7 +261,7 @@ dependencies = [
 
 [[package]]
 name = "argus-assets"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "argus-audio",
  "argus-ecs",
@@ -278,7 +278,7 @@ dependencies = [
 
 [[package]]
 name = "argus-audio"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "argus-camera",
  "argus-ecs",
@@ -292,7 +292,7 @@ dependencies = [
 
 [[package]]
 name = "argus-camera"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "argus-ecs",
  "argus-sim",
@@ -300,7 +300,7 @@ dependencies = [
 
 [[package]]
 name = "argus-cli"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "argus-assets",
  "argus-client",
@@ -319,7 +319,7 @@ dependencies = [
 
 [[package]]
 name = "argus-client"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "interprocess",
  "memmap2",
@@ -328,7 +328,7 @@ dependencies = [
 
 [[package]]
 name = "argus-daemon"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "argus-anim",
  "argus-assets",
@@ -366,7 +366,7 @@ dependencies = [
 
 [[package]]
 name = "argus-dialogue"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "argus-camera",
  "argus-ecs",
@@ -379,14 +379,14 @@ dependencies = [
 
 [[package]]
 name = "argus-ecs"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "argus-ecs-derive",
 ]
 
 [[package]]
 name = "argus-ecs-derive"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -395,7 +395,7 @@ dependencies = [
 
 [[package]]
 name = "argus-editor"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "argus-cli",
  "argus-client",
@@ -410,7 +410,7 @@ dependencies = [
 
 [[package]]
 name = "argus-game"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "argus-input",
  "argus-platform",
@@ -426,7 +426,7 @@ dependencies = [
 
 [[package]]
 name = "argus-index"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "argus-ecs",
  "argus-luau",
@@ -439,7 +439,7 @@ dependencies = [
 
 [[package]]
 name = "argus-input"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "argus-ecs",
  "argus-os",
@@ -451,7 +451,7 @@ dependencies = [
 
 [[package]]
 name = "argus-jobs"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "argus-ecs",
  "argus-nav",
@@ -460,7 +460,7 @@ dependencies = [
 
 [[package]]
 name = "argus-light"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "argus-camera",
  "argus-ecs",
@@ -469,7 +469,7 @@ dependencies = [
 
 [[package]]
 name = "argus-luau"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "argus-ecs",
  "argus-os",
@@ -479,7 +479,7 @@ dependencies = [
 
 [[package]]
 name = "argus-material"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "argus-ecs",
  "naga",
@@ -488,7 +488,7 @@ dependencies = [
 
 [[package]]
 name = "argus-nav"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "argus-assets",
  "argus-ecs",
@@ -500,14 +500,14 @@ dependencies = [
 
 [[package]]
 name = "argus-os"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "web-time",
 ]
 
 [[package]]
 name = "argus-particles"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "argus-assets",
  "argus-ecs",
@@ -516,7 +516,7 @@ dependencies = [
 
 [[package]]
 name = "argus-physics"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "argus-assets",
  "argus-ecs",
@@ -526,7 +526,7 @@ dependencies = [
 
 [[package]]
 name = "argus-platform"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "argus-ecs",
  "argus-input",
@@ -538,7 +538,7 @@ dependencies = [
 
 [[package]]
 name = "argus-player"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "accesskit",
  "argus-anim",
@@ -575,11 +575,11 @@ dependencies = [
 
 [[package]]
 name = "argus-plugin"
-version = "0.0.3"
+version = "0.0.4"
 
 [[package]]
 name = "argus-plugins"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "argus-ecs",
  "argus-plugin",
@@ -590,7 +590,7 @@ dependencies = [
 
 [[package]]
 name = "argus-post"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "argus-ecs",
  "argus-sim",
@@ -598,7 +598,7 @@ dependencies = [
 
 [[package]]
 name = "argus-render"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "accesskit",
  "accesskit_winit",
@@ -624,7 +624,7 @@ dependencies = [
 
 [[package]]
 name = "argus-rigid"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "argus-ecs",
  "argus-physics",
@@ -637,7 +637,7 @@ dependencies = [
 
 [[package]]
 name = "argus-scene"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "argus-ecs",
  "argus-luau",
@@ -648,7 +648,7 @@ dependencies = [
 
 [[package]]
 name = "argus-sim"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "argus-ecs",
  "argus-os",
@@ -656,7 +656,7 @@ dependencies = [
 
 [[package]]
 name = "argus-skeletal"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "argus-anim",
  "argus-assets",
@@ -667,7 +667,7 @@ dependencies = [
 
 [[package]]
 name = "argus-steam"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "argus-assets",
  "argus-ecs",
@@ -680,7 +680,7 @@ dependencies = [
 
 [[package]]
 name = "argus-test"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "argus-daemon",
  "argus-ecs",
@@ -690,7 +690,7 @@ dependencies = [
 
 [[package]]
 name = "argus-tiles"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "argus-assets",
  "argus-ecs",
@@ -701,7 +701,7 @@ dependencies = [
 
 [[package]]
 name = "argus-timeline"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "argus-anim",
  "argus-camera",
@@ -715,7 +715,7 @@ dependencies = [
 
 [[package]]
 name = "argus-tween"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "argus-ecs",
  "argus-sim",
@@ -723,7 +723,7 @@ dependencies = [
 
 [[package]]
 name = "argus-ui"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "argus-assets",
  "argus-camera",
@@ -741,7 +741,7 @@ dependencies = [
 
 [[package]]
 name = "argus-web"
-version = "0.0.3"
+version = "0.0.4"
 dependencies = [
  "argus-audio",
  "argus-ecs",

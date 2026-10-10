@@ -100,7 +100,7 @@ argus build --target linux    # from Windows: the Linux release, from the Linux 
 
 ```sh
 argus self-update             # the latest release, in place
-argus self-update 0.0.3       # that version
+argus self-update 0.0.4       # that version
 argus uninstall               # removes Argus; your games and settings stay
 ```
 
