@@ -7,12 +7,14 @@
 -- system's own stream (rng = "waves"), seeded by the run's seed, so the same
 -- seed always sends the same waves: that is what lets the tests replay.
 --
--- To change what an enemy is (its look, health, speed), change `spawn_one`.
+-- An enemy is prefabs/enemy.toml: change its look or its components there.
+-- Its speed and health come from @arena's Waves, set as each one spawns.
 return system "sim.waves" {
   stage = "sim",
   after = { "sim.move" },
   reads = { "Waves", "Enemy", "Player", "Transform", "Sprite" },
-  writes = { "Waves", "Enemy", "Health", "Transform", "Sprite" },
+  writes = { "Waves" },
+  spawns = { "enemy" },
   rng = "waves",
   doc = "Counts the living enemies; when none are left, waits Waves.gap ticks and spawns the next wave (first, then more each wave) at random points on the arena's edge.",
   run = function(q)
@@ -60,22 +62,18 @@ return system "sim.waves" {
       return p
     end
 
-    local function spawn_one(e)
-      e:get("Transform").pos = edge_point()
-      e:get("Enemy").speed = w.slowest + rng:next() * (w.fastest - w.slowest)
-      local hp = e:get("Health")
-      hp.cur = w.enemy_health
-      hp.max = w.enemy_health
-      local sp = e:get("Sprite")
-      sp.kind = "circle"
-      sp.size = vector.create(0.9, 0.9, 0)
-      sp.color = "#E8703F"
-      sp.z = 1
+    -- Each enemy from prefabs/enemy.toml, with where it starts, how fast
+    -- it walks, and its health.
+    for _ = 1, count do
+      local pos = edge_point()
+      local speed = w.slowest + rng:next() * (w.fastest - w.slowest)
+      q:spawn_prefab("enemy", {
+        ["Transform.pos"] = pos,
+        ["Enemy.speed"] = speed,
+        ["Health.cur"] = w.enemy_health,
+        ["Health.max"] = w.enemy_health,
+      })
     end
-
-    -- One call for the whole wave. The callback gets one reused handle:
-    -- keep e:id() if you need an enemy later, never e itself.
-    q:spawn_many(count, { "Transform", "Enemy", "Health", "Sprite" }, spawn_one)
     w.wave = n
     w.alive = count
     q:emit("wave.spawned", { wave = n, count = count })

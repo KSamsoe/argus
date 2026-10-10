@@ -178,6 +178,79 @@ fn event_fields(fields: Option<mlua::Table>) -> LuaResult<Vec<(String, Value)>> 
 }
 
 /// A list of component names to ids.
+/// Place one entity of a prefab (and, under it, its children) for
+/// `q:spawn_prefab`: every component at once, one archetype placement, then
+/// the fields the prefab sets. A child gets a `Parent`, and a
+/// `GlobalTransform` beside its `Transform` so it is placed relative to its
+/// parent, as a scene's children are.
+fn place_prefab(link: &Link, plan: &crate::SpawnPlan, parent: Option<Entity>) -> LuaResult<Entity> {
+    let c = ctx(link)?;
+    let mut ids = Vec::with_capacity(plan.tags.len() + plan.components.len() + 2);
+    for t in &plan.tags {
+        ids.push(c.tag(t, &plan.file).map_err(argus_err)?);
+    }
+    let (parent_id, transform_id, global_id) = {
+        let reg = c.world().registry();
+        for (name, _) in &plan.components {
+            ids.push(reg.require(name).map_err(argus_err)?);
+        }
+        (
+            reg.id("Parent"),
+            reg.id("Transform"),
+            reg.id("GlobalTransform"),
+        )
+    };
+    if parent.is_some() {
+        if let Some(p) = parent_id.filter(|p| !ids.contains(p)) {
+            ids.push(p);
+        }
+        if let (Some(t), Some(g)) = (transform_id, global_id) {
+            if ids.contains(&t) && !ids.contains(&g) {
+                ids.push(g);
+            }
+        }
+    }
+    let e = c.spawn_granted(&ids).map_err(argus_err)?;
+    if let Some(p) = parent {
+        c.set_field_granted(e, "Parent.entity", Value::Entity(p))
+            .map_err(argus_err)?;
+    }
+    for (comp, fields) in &plan.components {
+        for (f, v) in fields {
+            let path = format!("{comp}.{f}");
+            let ty = c
+                .world()
+                .registry()
+                .resolve_path(&path)
+                .map_err(argus_err)?
+                .1
+                .ty;
+            let v = match (ty, v) {
+                // A reference as the prefab writes it: an authored entity,
+                // or none.
+                (FieldType::Entity, Value::Str(s)) if s.is_empty() => Value::Entity(Entity::NULL),
+                (FieldType::Entity, Value::Str(s)) => {
+                    Value::Entity(c.entity(s).map_err(|err| {
+                        argus_err(
+                            ArgusError::new(
+                                err.code,
+                                format!("{}: {path} names {s}, which is not here", plan.file),
+                            )
+                            .hint("A prefab's entity field names an authored entity (\"@id\") that must be in the world when it spawns, or is left empty."),
+                        )
+                    })?)
+                }
+                (_, v) => v.clone(),
+            };
+            c.set_field_granted(e, &path, v).map_err(argus_err)?;
+        }
+    }
+    for child in &plan.children {
+        place_prefab(link, child, Some(e))?;
+    }
+    Ok(e)
+}
+
 fn component_ids(link: &Link, names: &LuaTable) -> LuaResult<Vec<ComponentId>> {
     let mut ids = Vec::new();
     for v in names.sequence_values::<String>() {
@@ -691,6 +764,8 @@ impl UserData for RngRef {
 /// The `q` argument of a system's `run`.
 pub struct QueryHandle {
     pub(crate) link: Link,
+    /// The prefabs the system declares it spawns.
+    pub(crate) spawns: Rc<[String]>,
 }
 
 impl UserData for QueryHandle {
@@ -843,6 +918,76 @@ impl UserData for QueryHandle {
                     }
                 }
                 Ok(n)
+            },
+        );
+        // spawn_prefab("enemy/bat", { ["Transform.pos"] = p }): the prefab's
+        // entity, with its children, its fields as prefabs/ gives them and
+        // then the table's. The system declares the prefabs it spawns
+        // (`spawns = { "enemy/bat" }`), which grants their components.
+        m.add_method(
+            "spawn_prefab",
+            |lua, this, (name, fields): (String, Option<LuaTable>)| {
+                let name = name
+                    .trim_start_matches("prefabs/")
+                    .trim_end_matches(".toml")
+                    .to_string();
+                if !this.spawns.contains(&name) {
+                    let c = ctx(&this.link)?;
+                    return Err(argus_err(
+                        ArgusError::new(
+                            codes::ACCESS_VIOLATION,
+                            format!(
+                                "system {} spawns the prefab {name:?} without declaring it",
+                                c.name
+                            ),
+                        )
+                        .hint(format!(
+                            "Add {name:?} to the system's spawns list: spawns = {{ {name:?} }}."
+                        )),
+                    ));
+                }
+                let prefabs = lua
+                    .app_data_ref::<crate::PrefabsData>()
+                    .map(|p| p.0.clone())
+                    .ok_or_else(|| {
+                        mlua::Error::runtime("no prefabs here: the host gave scripts none")
+                    })?;
+                let plan = prefabs
+                    .plan(ctx(&this.link)?.world(), &name)
+                    .map_err(argus_err)?;
+                let root = place_prefab(&this.link, &plan, None)?;
+                if let Some(t) = fields {
+                    for pair in t.pairs::<String, LuaValue>() {
+                        let (path, v) = pair?;
+                        let (cid, ty) = {
+                            let c = ctx(&this.link)?;
+                            let (cid, fs) = c
+                                .world()
+                                .registry()
+                                .resolve_path(&path)
+                                .map_err(argus_err)?;
+                            (cid, fs.ty)
+                        };
+                        if !ctx(&this.link)?.has(root, cid) {
+                            let comp = path.split('.').next().unwrap_or(&path);
+                            return Err(argus_err(
+                                ArgusError::new(
+                                    codes::MISSING_COMPONENT,
+                                    format!("the prefab {name:?} has no {comp} for {path}"),
+                                )
+                                .hint("Set fields of the prefab's own components; add the component to the prefab to set it here."),
+                            ));
+                        }
+                        let v = lua_to_value(v, ty, &this.link)?;
+                        ctx(&this.link)?
+                            .set_field_granted(root, &path, v)
+                            .map_err(argus_err)?;
+                    }
+                }
+                lua.create_userdata(EntityRef {
+                    entity: root,
+                    link: this.link.clone(),
+                })
             },
         );
         // within(pos, r, "A", "B"): like each, over the entities within r of

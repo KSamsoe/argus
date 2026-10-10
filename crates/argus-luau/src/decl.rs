@@ -178,6 +178,9 @@ pub struct SystemDecl {
     pub reads: Vec<String>,
     /// Component names written.
     pub writes: Vec<String>,
+    /// Prefabs it spawns (`q:spawn_prefab`): each grants the prefab's
+    /// components, so the system need not list them in `writes`.
+    pub spawns: Vec<String>,
     /// Clock binding as written (`driving`, `continuous`, `discrete`).
     pub clock: Option<String>,
     /// RNG stream.
@@ -227,8 +230,9 @@ fn bad(msg: impl Into<String>, hint: &str, source: Option<String>) -> mlua::Erro
 }
 
 /// The keys a `system "name" { ... }` declaration takes.
-pub(crate) const SYSTEM_KEYS: [&str; 10] = [
-    "stage", "run", "after", "reads", "writes", "clock", "rng", "doc", "on_load", "unfrozen",
+pub(crate) const SYSTEM_KEYS: [&str; 11] = [
+    "stage", "run", "after", "reads", "writes", "spawns", "clock", "rng", "doc", "on_load",
+    "unfrozen",
 ];
 
 fn here(lua: &Lua) -> String {
@@ -582,6 +586,7 @@ pub(crate) fn install_globals(lua: &Lua) -> LuaResult<()> {
                     after: string_list(&owner, "after", spec.get("after")?, &source)?,
                     reads: string_list(&owner, "reads", spec.get("reads")?, &source)?,
                     writes: string_list(&owner, "writes", spec.get("writes")?, &source)?,
+                    spawns: string_list(&owner, "spawns", spec.get("spawns")?, &source)?,
                     clock: spec.get("clock")?,
                     rng: spec.get("rng")?,
                     doc: spec.get::<Option<String>>("doc")?.unwrap_or_default(),

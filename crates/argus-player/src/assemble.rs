@@ -472,6 +472,7 @@ fn assemble_layers(
         .collect();
     let project = Project::open_with(root, with_engine_defs(defs), &layers.ids())?;
     host.set_defs(Rc::new(ProjectDefs(project.defs.clone())));
+    host.set_prefabs(Rc::new(ProjectPrefabs::new(&project)));
     *dialogue.borrow_mut() = argus_dialogue::Graph::from_defs(&project.defs);
     *timelines.borrow_mut() = read_timelines(&project.defs, &world);
     let mut scene = Scene::open(&project, scene_name, world.registry())?;
@@ -678,6 +679,86 @@ impl argus_luau::Tiles for ScriptTiles {
             argus_tiles::Rect::new(rect[0], rect[1], rect[2], rect[3]),
             cells,
         )
+    }
+}
+
+/// Scripts' prefabs (`q:spawn_prefab`, GitHub issue 1): the project's as
+/// they were when the host gave them, each resolved on its first spawn and
+/// kept. A host gives them again when a prefab changes.
+pub struct ProjectPrefabs {
+    root: std::path::PathBuf,
+    prefabs: argus_scene::PrefabLibrary,
+    defs: argus_scene::Defs,
+    plans: RefCell<std::collections::HashMap<String, Rc<argus_luau::SpawnPlan>>>,
+}
+
+impl ProjectPrefabs {
+    /// The project's prefabs now.
+    pub fn new(project: &Project) -> ProjectPrefabs {
+        ProjectPrefabs {
+            root: project.root.clone(),
+            prefabs: project.prefabs.clone(),
+            defs: project.defs.clone(),
+            plans: RefCell::default(),
+        }
+    }
+
+    fn plan_of(re: &argus_scene::ResolvedEntity, name: &str) -> argus_luau::SpawnPlan {
+        use argus_scene::Provenance;
+        argus_luau::SpawnPlan {
+            name: name.to_string(),
+            tags: re.tags.iter().map(|(t, _)| t.clone()).collect(),
+            // What the prefab chain sets: the rest is the schema's default,
+            // which a fresh entity has already.
+            components: re
+                .components
+                .iter()
+                .map(|c| {
+                    let set = c
+                        .fields
+                        .iter()
+                        .filter(|f| f.from != Provenance::Default)
+                        .map(|f| (f.name.clone(), f.value.clone()))
+                        .collect();
+                    (c.name.clone(), set)
+                })
+                .collect(),
+            children: re
+                .children
+                .iter()
+                .map(|ch| Self::plan_of(ch, ch.id.rsplit('/').next().unwrap_or(&ch.id)))
+                .collect(),
+            file: re.file.clone(),
+        }
+    }
+}
+
+impl argus_luau::Prefabs for ProjectPrefabs {
+    fn plan(&self, world: &World, name: &str) -> Result<Rc<argus_luau::SpawnPlan>> {
+        if let Some(p) = self.plans.borrow().get(name) {
+            return Ok(p.clone());
+        }
+        let ctx = argus_scene::resolve::ResolveCtx {
+            root: &self.root,
+            prefabs: &self.prefabs,
+            defs: &self.defs,
+            moves: &[],
+            registry: world.registry(),
+        };
+        // An entity whose file names the prefab and nothing more.
+        let doc = argus_scene::EntityDoc {
+            prefab: Some(name.to_string()),
+            at: "q:spawn_prefab".to_string(),
+            ..Default::default()
+        };
+        let mut issues = Vec::new();
+        let file = format!("prefabs/{name}.toml");
+        let re = argus_scene::resolve::resolve(&ctx, name, &doc, &file, &mut issues)?;
+        let plan = Rc::new(Self::plan_of(&re, name));
+        self.plans
+            .borrow_mut()
+            .insert(name.to_string(), plan.clone());
+        Ok(plan)
     }
 }
 

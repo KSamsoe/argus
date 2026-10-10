@@ -72,6 +72,7 @@ From `examples/swarm/systems/bullets.luau`. The keys:
 | `stage` | yes | `input`, `sim`, `late`, `hierarchy` (the engine's transform step), or `present` (drawing, read-only). Game rules go in `sim`; a camera or HUD text in `late`; a pause menu in `input`. |
 | `run` | yes | `function(q) ... end`, called once a tick (once a turn on a discrete clock). |
 | `reads`, `writes` | | The components it touches. A component in `writes` may be read too. Anything else is an error when it happens. |
+| `spawns` | | The prefabs it spawns with `q:spawn_prefab` (`spawns = {"bullet"}`). Naming one grants all its components, so they need not be in `writes`. |
 | `after` | | Systems in the same stage this one runs after. There is no `before`: name this system in the other one's `after`. |
 | `doc` | | What it does. Shown in `ARGUS.md`, `argus script systems`, and the editor. |
 | `rng` | | The name of its random stream, for `q:rng()`. |
@@ -81,7 +82,7 @@ From `examples/swarm/systems/bullets.luau`. The keys:
 
 Two rules about declarations catch people out:
 
-- **Spawning counts as writing.** `q:spawn({"Spark", "Transform", "Sprite"})` needs all three in `writes`.
+- **Spawning counts as writing.** `q:spawn({"Spark", "Transform", "Sprite"})` needs all three in `writes`. Spawning from a prefab needs the prefab in `spawns` instead.
 - **Systems with no `after` between them have no promised order.** If one system must see what another did this tick, say so with `after`. `argus script systems` shows the order now, the engine's systems included, so you can find the right one to follow (`physics.overlap` for touches, `input.actions` for input).
 
 ## The q handle
@@ -93,7 +94,7 @@ Two rules about declarations catch people out:
 | time, and who is asking | `q.tick`, `q.time` (sim seconds), `q.dt` (seconds this tick covers), `q.day`, `q.day_time`, `q.day_length`, `q.name` (this system's id) |
 | finding entities | `q:each("A", "B")`, `q:count("A")`, `q:entity("@id")`, `q:get(e, "A")` |
 | near a point | `q:within(pos, r, "A")`, `q:nearest(pos, r, "A")` |
-| making and removing | `q:spawn(...)`, `q:spawn_many(n, {...}, fn)`, `q:despawn(e)` |
+| making and removing | `q:spawn(...)`, `q:spawn_many(n, {...}, fn)`, `q:spawn_prefab(name, fields)`, `q:despawn(e)` |
 | events | `q:emit(name, fields)`, `q:events(name)` |
 | randomness | `q:rng()`, then `rng:next()`, `rng:below(n)`, `rng:range(lo, hi)`, `rng:chance(p)` |
 | time control | `q:freeze()`, `q:speed()`, `q:speed(x)` |
@@ -242,6 +243,31 @@ return system "sim.sparks" {
 ```
 
 For many at once, `q:spawn_many(n, {"Transform", "Enemy"}, function(e, i) ... end)` makes all of them in one call, handing each to the function through one reused handle; `examples/swarm/systems/waves.luau` spawns whole waves with it. Spawned entities are runtime entities: they have no string id and are never written to a scene file.
+
+### Spawning from a prefab
+
+When what a system makes has a look, a body, and numbers worth tuning, keep it in a prefab (a file under `prefabs/`, see [scenes](scenes.md#prefabs)) and spawn that. The system names the prefab in `spawns`, and gives only what differs for this one:
+
+```lua
+return system "sim.fire" {
+  stage = "sim",
+  reads = { "Transform", "Gun" },
+  writes = { "Gun" },
+  spawns = { "bullet" },
+  doc = "Each gun fires a bullet when it is ready.",
+  run = function(q)
+    for e, tr, gun in q:each("Transform", "Gun") do
+      gun.left -= q.dt
+      if gun.left <= 0 then
+        gun.left = gun.every
+        q:spawn_prefab("bullet", { ["Transform.pos"] = tr.pos, ["Bullet.dir"] = gun.aim })
+      end
+    end
+  end,
+}
+```
+
+The bullet comes out with every component and field `prefabs/bullet.toml` gives it (its chain of base prefabs included), then the fields in the table. Its children come too, each a runtime entity under it, with a `Parent` and a `GlobalTransform`. Naming `"bullet"` in `spawns` grants all its components, so the system lists none of them in `writes`, and a component added to the prefab later needs no change to the system. The prefab is read as it is now: an edit to it (`argus edit` with a `prefab` op, or the editor) applies to the next bullet, though not to the ones already flying. A field in the table must belong to one of the prefab's own components, and a prefab's entity field may name an authored entity (`"@player"`) that is in the world when it spawns.
 
 ### Reacting to an event
 

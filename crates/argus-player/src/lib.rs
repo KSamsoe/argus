@@ -31,7 +31,8 @@ pub mod settings;
 pub mod sha256;
 
 pub use assemble::{
-    assemble, read_timelines, set_fonts, with_engine_defs, Assembly, Options, ProjectDefs, UiTexts,
+    assemble, read_timelines, set_fonts, with_engine_defs, Assembly, Options, ProjectDefs,
+    ProjectPrefabs, UiTexts,
 };
 pub use pack::{pack, unpack};
 #[cfg(all(feature = "render", feature = "audio"))]

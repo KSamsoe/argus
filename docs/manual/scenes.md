@@ -158,7 +158,7 @@ Move the pole and the cloth goes with it.
 
 ## Prefabs
 
-A prefab is an entity file kept under `prefabs/`, named by its path: `prefabs/platform.toml` is `"platform"`, `prefabs/door/locked.toml` is `"door/locked"`. A prefab spawns nothing by itself. An entity starts from one with `prefab = "..."` and then holds only what it changes. From the platformer template, `prefabs/platform.toml`:
+A prefab is an entity file kept under `prefabs/`, named by its path: `prefabs/platform.toml` is `"platform"`, `prefabs/door/locked.toml` is `"door/locked"`. A prefab spawns nothing by itself. An entity starts from one with `prefab = "..."` and then holds only what it changes, and a system makes one while the game runs with `q:spawn_prefab` (see [scripting](scripting.md#spawning-from-a-prefab)). From the platformer template, `prefabs/platform.toml`:
 
 ```toml
 [Sprite]
