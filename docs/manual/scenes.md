@@ -71,7 +71,7 @@ max = 10
 
 [Sprite]
 atlas = "sprites/hero"
-size = [0.9, 0.9]
+size = [1.0, 1.0]
 z = 5.0
 ```
 

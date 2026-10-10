@@ -339,13 +339,20 @@ font = "fonts/LiberationSans-Regular"
 text_size = 18
 
 [colors]
-button = "#262C34"
+text = "#EADCB8"
+panel = "#16131BF0"
+border = "#A07C48"
+focus = "#FFB04A"
+button = "#3A3442"
+button_focus = "#6A5A52"
 
 [high_contrast_colors]
+text = "#FFFFFF"
+panel = "#000000"
 button = "#000000"
 ```
 
-The engine's tokens are `text`, `muted`, `panel`, `border`, `focus`, `accent`, and `disabled`; a game adds its own (`button` above). A `color` field may name a token or give a `#RRGGBB(AA)`.
+The engine's tokens are `text`, `muted`, `panel`, `border`, `focus`, `accent`, and `disabled`; a game adds its own (`button` and `button_focus` above, which Delve's `systems/look.luau` swaps on the focused button). A `color` field may name a token or give a `#RRGGBB(AA)`.
 
 ### The parts
 
@@ -370,15 +377,20 @@ interactive = false
 
 [UiNode]
 absolute = true
-offset = [10.0, 8.0]
-pad = [8.0, 4.0]
+offset = [10.0, 5.0]
+pad = [12.0, 4.0]
 
 [UiPanel]
-color = "#05070AB0"
+image = "ui/panel"
+slice = 4.0
+scale = 2.0
 
 [UiText]
 key = "hud.line"
+color = "accent"
 ```
+
+The panel is an image, `assets/ui/panel.png`, nine-sliced: its corners stay as drawn (`slice` pixels in from each edge, shown at `scale` times their size) and its middle stretches to fit the words.
 
 The string `hud.line` holds holes the layout fills each frame from the world: it begins `"Floor {@player:Player.floor}, turn {Turn.n}."` (see [content](content.md#strings-and-languages)). A script can also write `UiText.text` itself, as Hollow's `sim.run` does.
 
@@ -427,7 +439,7 @@ Without a font the UI draws in the built-in pixel font (ASCII and a set of accen
 
 ### Not drawn: Describe
 
-The `Describe` component is not drawn. It is what the semantic frame, and so an agent and a screen reader, says about an entity. Swarm's wave line is a `Describe` with `role = "hud"`, so an agent reads it but a player sees nothing. Text a player must see is UI. See [content](content.md#accessibility).
+The `Describe` component is not drawn. It is what the semantic frame, and so an agent and a screen reader, says about an entity. Swarm's wave line was only a `Describe` with `role = "hud"` (on `@director`), so an agent read it but a player saw nothing; its HUD is now a UI tree as well (`prefabs/hud.toml`). Text a player must see is UI. See [content](content.md#accessibility).
 
 ## Audio
 

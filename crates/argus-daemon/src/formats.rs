@@ -126,7 +126,7 @@ pub const FILES: &[FileDoc] = &[
             k("[Parent] entity", "string (\"@id\")", "", "Hang this entity under another entity of the scene (a UI node under its menu, as Delve's controls): its Transform becomes local to that entity (the scene gives a parented entity with a Transform a GlobalTransform, which the hierarchy fills each tick); when the parent is despawned the link is cleared. A child in `[children]` has its Parent already."),
         ],
         example_from: "examples/delve/scenes/delve/player.toml",
-        example: "tags = [\"player\"]\n\n[PlayerSlot]\nslot = 1\n\n[Actions]\n\n[Transform]\npos = [0.0, 0.0]\n\n[Health]\ncur = 10\nmax = 10\n\n[Sprite]\natlas = \"sprites/hero\"\nsize = [0.9, 0.9]\nz = 5.0",
+        example: "tags = [\"player\"]\n\n[PlayerSlot]\nslot = 1\n\n[Actions]\n\n[Transform]\npos = [0.0, 0.0]\n\n[Health]\ncur = 10\nmax = 10\n\n[Sprite]\natlas = \"sprites/hero\"\nsize = [1.0, 1.0]\nz = 5.0",
         errors: "Each is a scene issue at its file and line, and the scene does not spawn: a component no script or the engine declares, \"no component named\" (4001, with a hint to `world.describe`); a field it does not have, \"has no field\" (4002, listing its fields); a value of the wrong type, \"expected a <type> value\" (4003); a value outside a field's range (4102); a field whose value is a table (4605, \"Fields are flat\"); a top-level key that is not a table (4605, \"components are tables\"); `-Component` not true (4605); an `@id` that names no entity (4603, \"Entity refs are @id, or @room/id across rooms\"); a `prefab` or a `ref` that names nothing (4603: when the moves log knows where it went, the hint says so).",
     },
     FileDoc {
@@ -210,7 +210,7 @@ pub const FILES: &[FileDoc] = &[
             k("[high_contrast_colors] <token>", "string", "the same token's [colors] value, for a new token", "The token's colour in high contrast."),
         ],
         example_from: "examples/outpost/ui.toml",
-        example: "font = \"fonts/LiberationSans-Regular\"\ntext_size = 15\n\n[colors]\nbutton = \"#262C34\"\nchosen = \"#3D4A5A\"\n\n[high_contrast_colors]\nbutton = \"#000000\"\nchosen = \"#FFFFFF\"",
+        example: "font = \"fonts/LiberationSans-Regular\"\ntext_size = 15\n\n[colors]\nbutton = \"#5E4632\"\nchosen = \"#A27840\"\n\n[high_contrast_colors]\nbutton = \"#000000\"\nchosen = \"#FFFFFF\"",
         errors: "4005 at `ui.toml:1` (not the line), and the scene does not assemble: the file does not parse, a size that is not a positive number, a font that is not a string, `high_contrast` not true or false, or a colour that is not `#RGB`, `#RRGGBB`, or `#RRGGBBAA`.",
     },
     FileDoc {
@@ -252,7 +252,7 @@ pub const FILES: &[FileDoc] = &[
             k("[music.<name>] fade_ms", "number", "1000", "How long tracks cross-fade."),
         ],
         example_from: "examples/hollow/audio.toml",
-        example: "[buses]\nmaster   = { gain_db = 0 }\nsfx      = { parent = \"master\", gain_db = -4 }\nmusic    = { parent = \"master\", gain_db = -8 }\ndialogue = { parent = \"master\", gain_db = -2 }\n\n[[duck]]\nwhen = \"dialogue\"\nduck = \"music\"\ndb = -6\n\n[sounds.\"music/cave.low\"]\ntone = { wave = \"triangle\", notes = [110, 110, 131, 110], note_ms = 750, gain = 0.5 }\n\n[music.cave]\nbpm = 80\nfade_ms = 400\nlayers = [ { sound = \"music/cave.low\" }, { sound = \"music/cave.high\", from = 0.3, to = 0.8 } ]",
+        example: "[buses]\nmaster   = { gain_db = 0 }\nsfx      = { parent = \"master\", gain_db = -4 }\nmusic    = { parent = \"master\", gain_db = -8 }\ndialogue = { parent = \"master\", gain_db = -2 }\n\n[[duck]]\nwhen = \"dialogue\"\nduck = \"music\"\ndb = -6\n\n[sounds.\"music/cave.low\"]\ntone = { wave = \"triangle\", notes = [110, 110, 131, 110, 98, 98, 110, 131], note_ms = 750, attack_ms = 30, release_ms = 200, gain = 0.5 }\n\n[music.cave]\nbpm = 80\nfade_ms = 400\nlayers = [ { sound = \"music/cave.low\" }, { sound = \"music/cave.high\", from = 0.3, to = 0.8 } ]",
         errors: "5101 at the table's line: a bus whose parent is not a bus, or a loop of parents; a duck naming no bus (`[[duck]]` must be an array of tables); a sound with nothing to play, a bad variation or tone, a wave that is not one of the five, or a bus that does not exist; a track without layers, a layer without a sound, a bpm outside 20 to 400, `beats_per_bar` outside 1 to 16, or `change_on` that is not bar, beat, or now (bar and beat need a bpm). The scene still runs without sound: `audio.status` shows the error. A music layer naming no sound, or a file that does not decode, is a warning there.",
     },
     FileDoc {
@@ -346,7 +346,7 @@ pub const FILES: &[FileDoc] = &[
             k("[[any]]", "array of tables", "", "Transitions (to, when, window, blend) from every state."),
         ],
         example_from: "examples/hollow/assets/anim/hero.toml",
-        example: "type = \"animator\"\ninitial = \"idle\"\n\n[states.idle]\nclip = \"idle\"\n\n[[states.idle.transitions]]\nto = \"run\"\nwhen = \"KinematicBody.grounded and abs(KinematicBody.velocity.x) > 0.5\"\n\n[states.run]\nclip = \"run\"\nevents = [{ frame = 0, name = \"footstep\", sound = \"sfx/step\" }]\n\n[[any]]\nto = \"jump\"\nwhen = \"not KinematicBody.grounded and KinematicBody.velocity.y > 0\"",
+        example: "type = \"animator\"\ninitial = \"idle\"\n\n[states.idle]\nclip = \"idle\"\n\n[[states.idle.transitions]]\nto = \"run\"\nwhen = \"KinematicBody.grounded and abs(KinematicBody.velocity.x) > 0.5\"\n\n[states.run]\nclip = \"run\"\nevents = [{ frame = 0, name = \"footstep\", sound = \"sfx/step\" }, { frame = 2, name = \"footstep\", sound = \"sfx/step\" }]\n\n[[any]]\nto = \"jump\"\nwhen = \"not KinematicBody.grounded and KinematicBody.velocity.y > 0\"",
         errors: "5201 at the line: no states, a state without a clip, a transition without `to` or `when` or naming no state, an unknown transition key, a condition that does not parse, a window or blend of the wrong shape, an event without a frame, an `initial` that is not a state. A clip the sprite does not have is reported when an entity runs the machine.",
     },
     FileDoc {
@@ -440,7 +440,7 @@ pub const FILES: &[FileDoc] = &[
             k("[[layers]] collision", "boolean", "false", "Whether its tiles collide (and block navigation)."),
         ],
         example_from: "examples/delve/maps/floor.tilemap.toml",
-        example: "kind = \"tilemap\"\nruntime = true\nwidth = 40\nheight = 20\ntile_size = 1.0\nchunk = 20\ncell = 1\n\n[[layers]]\nname = \"floor\"\ntileset = \"tiles/floor\"\nz = 0.0\n\n[[layers]]\nname = \"walls\"\ncollision = true",
+        example: "kind = \"tilemap\"\nruntime = true\nwidth = 40\nheight = 20\ntile_size = 1.0\nchunk = 20\ncell = 1\n\n[[layers]]\nname = \"floor\"\ntileset = \"tiles/dungeon\"\nz = 0.0\n\n[[layers]]\nname = \"walls\"\nz = 0.0\ncollision = true",
         errors: "5301 at the index: not \"tilemap\", no `[[layers]]` (an inline `layers = [...]` array is not read), a layer without a name, a size or chunk under 1, a cell size that is not 1, 2, or 4, or a chunks or layer name that is not a plain folder name. A manifest whose hash differs from the index's, or a chunk that is not the size or hash its manifest line says: 5302 (\"The chunks changed outside the tool\"). `[Tilemap] map` naming a file that does not open makes the map draw and collide with nothing, and its error is in `scene.tiles.info`.",
     },
     FileDoc {
