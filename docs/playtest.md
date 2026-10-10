@@ -50,10 +50,10 @@ From a machine on the tailnet:
 argus mark pull url=http://100.70.114.55:8765/
 ```
 
-From a machine that reaches klab only by SSH (this PC), open a tunnel first and pull through it:
+From a machine that reaches klab's SSH but not its port 8765, open a tunnel first and pull through it:
 
 ```bash
-ssh -N -L 18765:127.0.0.1:8765 kevin@192.168.1.176
+ssh -N -L 18765:127.0.0.1:8765 kevin@100.70.114.55
 ```
 
 ```bash
