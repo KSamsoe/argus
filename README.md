@@ -52,6 +52,10 @@ Argus is built on its own entity-component system rather than a general-purpose 
 
 Numbers from the phase 5 gate and item 5 (2026-10-08 and 09), on Kevin's laptop; [how it was built](docs/history.md) has the history, and [tuning and performance](docs/manual/tuning-and-performance.md) how to measure a game.
 
+## Play the games
+
+Each release has the four games above built and ready to run, nothing to install: `example-games-<version>` for Windows or Linux, on the [releases page](https://github.com/KSamsoe/argus/releases). Unpack it and run a game's program; its `README.txt` has the controls.
+
 ## Install
 
 Argus runs on Windows 10 or 11 and on Linux (x86-64, Ubuntu 24.04 or newer). Releases are on this repository; with the GitHub CLI signed in:

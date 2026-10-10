@@ -1,10 +1,12 @@
-# The sky: one big rect behind everything (lowest z), the size of the
-# scene's bounds.
+# The sky: one big sprite behind everything (lowest z), the size of the
+# scene's bounds. Its picture is a single column of colours, deep blue at
+# the top to pale at the horizon (frame 0 of assets/backdrop, tools/art.py),
+# stretched across the whole level.
 [Transform]
 pos = [24.5, 4.0]
 
 [Sprite]
-kind = "rect"
+atlas = "backdrop"
+frame = 0
 size = [49.0, 16.0]
-color = "#1E2A3A"
 z = -10.0

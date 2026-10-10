@@ -1,14 +1,11 @@
-# The pause screen's words, a child of @pause.
+# The pause screen's words, under its title on the plate.
 [Parent]
-entity = "@pause"
+entity = "@pause.panel"
 
 [UiNode]
-pad = [28.0, 18.0]
-
-[UiPanel]
-color = "#262C34"
-border = 2.0
+order = 1
 
 [UiText]
-text = "Paused. Escape to go on."
+text = "Escape to go on."
 align = "center"
+color = "muted"

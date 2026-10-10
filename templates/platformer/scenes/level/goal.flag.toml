@@ -5,13 +5,18 @@
 entity = "@goal"
 
 [Transform]
-pos = [0.55, 1.1]
+pos = [0.7, 0.95]
 
 # Where the engine puts it in the world, worked out from the parent's.
 [GlobalTransform]
 
+# Four frames of assets/sprites (tools/art.py), waving: the animator
+# assets/anim/flag.toml plays them round and round.
 [Sprite]
-kind = "rect"
-size = [0.9, 0.6]
-color = "#4ADE80"
+atlas = "sprites"
+frame = 17
+size = [1.1333333, 0.7333333]
 z = 1.0
+
+[Animator]
+machine = "anim/flag"

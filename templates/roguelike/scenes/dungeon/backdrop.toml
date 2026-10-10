@@ -1,0 +1,12 @@
+# The dark behind the dungeon: one plain rectangle, bigger than the view,
+# behind everything (z), in the colour of the rock far from any room
+# (tools/art.py's VOID), so the map's edge does not show. Change both
+# colours together.
+[Transform]
+pos = [14.5, 5.0]
+
+[Sprite]
+kind = "rect"
+size = [40.0, 24.0]
+color = "#0C0B10"
+z = -10.0

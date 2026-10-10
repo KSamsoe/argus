@@ -1,0 +1,17 @@
+# Sparkles: what scenes/level/sparkle.toml bursts where a coin is taken and
+# at the flag (systems/looks.luau). Each is the white spark of
+# assets/sprites, tinted by the colours below as it flies out and fades.
+type = "emitter"
+sprite = "sprites"
+frame = 35
+max = 300
+shape = "circle"
+radius = 0.15
+lifetime = [0.35, 0.65]
+speed = [1.5, 4.0]
+spread = 360
+drag = 3.5
+gravity = [0, -1.5]
+size = [[0, 0.33], [1, 0.1]]
+color = [[0, "#FFFFFFFF"], [0.35, "#FFE680FF"], [1, "#FFB82000"]]
+z = 6

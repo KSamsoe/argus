@@ -1,0 +1,7 @@
+# The hero and the enemies: drawn as they are, at their own colour, however
+# dark the room is round them (emissive), so they read even where the
+# light does not reach; the floor and walls are what the light falls on.
+# The hero names it in player.toml, the enemies get it from
+# systems/looks.luau.
+shader = "unlit"
+emissive = true

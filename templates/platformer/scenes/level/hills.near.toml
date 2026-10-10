@@ -1,0 +1,27 @@
+# Near hills with trees, just behind the level: a backdrop layer, as
+# clouds.toml is (frame 3 of assets/backdrop, a copy as its child 24 units
+# right). follow 0.5: they slide by at half the level's speed. They reach
+# down past the bottom of the view, so the pit shows them below.
+[Transform]
+pos = [0.0, 0.0]
+
+[Sprite]
+atlas = "backdrop"
+frame = 3
+size = [24.0, 8.0]
+z = -8.0
+
+[Parallax]
+follow = 0.5
+width = 24.0
+
+[children.copy.Transform]
+pos = [24.0, 0.0]
+
+[children.copy.GlobalTransform]
+
+[children.copy.Sprite]
+atlas = "backdrop"
+frame = 3
+size = [24.0, 8.0]
+z = -8.0

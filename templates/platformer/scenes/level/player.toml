@@ -9,14 +9,22 @@ tags = ["player"]
 [Transform]
 pos = [3.0, 1.0]
 
+# What shows: frames of assets/sprites (tools/art.py draws them), 16 x 18
+# pixels at 15 a unit, so a little wider than the box below to give the
+# arms and legs room to swing. The Animator picks the frame from how the
+# body moves (assets/anim/hero.toml); systems/looks.luau turns it to face
+# the way it runs.
 [Sprite]
-kind = "rect"
-size = [0.8, 1.2]
-color = "#F2A541"
+atlas = "sprites"
+size = [1.0666667, 1.2]
 z = 5.0
 
+[Animator]
+machine = "anim/hero"
+
 # The Collider is what stands and bumps, the Sprite only what shows: keep
-# them the same size.
+# the Sprite's height and the Collider's the same, so the feet are on the
+# ground.
 [Collider]
 size = [0.8, 1.2]
 

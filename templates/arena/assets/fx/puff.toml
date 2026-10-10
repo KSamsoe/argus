@@ -1,0 +1,18 @@
+# A puff of dust where an enemy dies: systems/looks.luau starts one of
+# these where it was. It throws its burst at once, and its entity is gone
+# when the last of the dust is. Each mote is frame 19 of sprites/actors,
+# growing as it slows, hot, then the enemies' orange, then fading dark.
+type = "emitter"
+sprite = "sprites/actors"
+frame = 19
+burst = 12
+max = 16
+shape = "circle"
+radius = 0.25
+lifetime = [0.3, 0.6]
+speed = [1.5, 4.5]
+spread = 360
+drag = 5
+size = [[0, 0.35], [1, 0.9]]
+color = [[0, "#FFF0C8E0"], [0.2, "#F0884CC0"], [1, "#3A2A2400"]]
+z = 1.5

@@ -1,0 +1,19 @@
+# A puff of dust: what scenes/level/dust.toml bursts at the hero's feet when
+# it jumps and lands (systems/looks.luau says how many). Little squares of
+# pale earth that fly up and out, slow, and fade. Every number marked tune
+# in the reference can be changed while the game runs (the editor's tuning
+# panel, or `argus tune fields asset=fx/dust`).
+type = "emitter"
+particle = "rect"
+max = 200
+shape = "box"
+box = [0.5, 0.05]
+lifetime = [0.25, 0.45]
+speed = [1.0, 2.6]
+direction = 90
+spread = 150
+gravity = [0, -3]
+drag = 5
+size = [[0, 0.27], [1, 0.1]]
+color = [[0, "#EADBBDF8"], [0.6, "#D9C6A0C0"], [1, "#C8B48C00"]]
+z = 4.5

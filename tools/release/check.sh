@@ -7,21 +7,25 @@
 # `argus build` checks each release itself: the packs play and look as the
 # project does, and the executable, run headless, reaches the same world.
 #
-#   tools/release/check.sh [stage dir] [--no-web]
+#   tools/release/check.sh [stage dir] [--no-web] [--keep <dir>]
 #
 # The stage dir defaults to stage.sh's. Swarm has a Rust plugin, which is
 # the one part of a release that needs Rust: it is released with cargo on
 # the PATH, and without, where the build must say that Rust is needed.
+# --keep puts the four games' releases for this platform in <dir>/<game>,
+# for the release's example-games archive.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 STAGE=
 WEB=1
-for a in "$@"; do
-  case "$a" in
-    --no-web) WEB=0 ;;
-    -*) echo "check.sh: unknown flag $a" >&2; exit 2 ;;
-    *) STAGE=$a ;;
+KEEP=
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --no-web) WEB=0; shift ;;
+    --keep) KEEP=$2; shift 2 ;;
+    -*) echo "check.sh: unknown flag $1" >&2; exit 2 ;;
+    *) STAGE=$1; shift ;;
   esac
 done
 case "$(uname -s)" in
@@ -86,6 +90,14 @@ release swarm "$OS" rust
 
 if [ "$failed" = 0 ]; then
   echo "the install releases every example"
+  if [ -n "$KEEP" ]; then
+    rm -rf "${KEEP:?}"
+    mkdir -p "$KEEP"
+    for g in hollow delve swarm outpost; do
+      cp -r "$WORK/out/$g-$OS" "$KEEP/$g"
+    done
+    echo "kept the games' $OS releases in $KEEP"
+  fi
 else
   echo "the install does NOT release every example"
   exit 1

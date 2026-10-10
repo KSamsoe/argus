@@ -9,6 +9,9 @@ there gave argus and argus-game mode 644 and install.sh refused the
 archive (the first release's check). Here the programs, the libraries,
 and the installer are 755, everything else 644, owned by no one, in a
 fixed order, so the archive is the same wherever it is made.
+
+The example-games archive goes through here too: each game is a folder
+with its program named after it (`hollow/hollow`) and its libraries.
 """
 
 import fnmatch
@@ -23,13 +26,15 @@ EXECUTABLE = [
     "bin/*",
     "runtime/*/*/argus-game",
     "runtime/*/*/argus-game.exe",
-    "runtime/*/*/*.so",
+    "*.so",
     "install.sh",
 ]
 
 
 def mode(rel):
-    return 0o755 if any(fnmatch.fnmatch(rel, p) for p in EXECUTABLE) else 0o644
+    parts = rel.split("/")
+    game = len(parts) == 2 and parts[0] == parts[1]
+    return 0o755 if game or any(fnmatch.fnmatch(rel, p) for p in EXECUTABLE) else 0o644
 
 
 def main():

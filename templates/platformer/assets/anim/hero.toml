@@ -1,0 +1,58 @@
+# Which of the hero's frames shows: a state machine on its Sprite
+# (scenes/level/player.toml names it). Each state plays a clip of
+# assets/sprites (its sidecar names the clips), and leaves by the first
+# transition whose condition holds. The conditions read the engine's
+# KinematicBody: standing on something, and how fast it moves. What to
+# change first: a clip's fps in tools/art.py, or a speed below.
+type = "animator"
+initial = "idle"
+
+[states.idle]
+clip = "idle"
+
+[[states.idle.transitions]]
+to = "run"
+when = "KinematicBody.grounded and abs(KinematicBody.velocity.x) > 0.5"
+
+[states.run]
+clip = "run"
+
+[[states.run.transitions]]
+to = "idle"
+when = "KinematicBody.grounded and abs(KinematicBody.velocity.x) <= 0.5"
+blend = 0.08
+
+[states.jump]
+clip = "jump"
+
+[[states.jump.transitions]]
+to = "fall"
+when = "KinematicBody.velocity.y <= 0"
+
+[states.fall]
+clip = "fall"
+
+[[states.fall.transitions]]
+to = "land"
+when = "KinematicBody.grounded"
+
+# A squash on touching down, then on.
+[states.land]
+clip = "land"
+
+[[states.land.transitions]]
+to = "run"
+when = "abs(KinematicBody.velocity.x) > 0.5 and time > 0.05"
+
+[[states.land.transitions]]
+to = "idle"
+when = "end"
+
+# From any state: leaving the ground, going up or coming down.
+[[any]]
+to = "jump"
+when = "not KinematicBody.grounded and KinematicBody.velocity.y > 0"
+
+[[any]]
+to = "fall"
+when = "not KinematicBody.grounded and KinematicBody.velocity.y < -1"

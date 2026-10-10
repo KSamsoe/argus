@@ -1,6 +1,6 @@
 # "Paused", in the middle of the screen: hidden until the pause action
-# (systems/pause.luau) shows it. The whole canvas, dimmed, with the word
-# in a panel in its centre.
+# (systems/pause.luau) shows it. The whole canvas, dimmed, with a panel in
+# its centre in the HUD's frame (ui/panel.png); the colours are ui.toml's.
 [UiRoot]
 interactive = false
 layer = 10
@@ -11,15 +11,34 @@ align = "center"
 visible = false
 
 [UiPanel]
-color = "#05070A99"
+color = "#05080AB0"
 
-[children.label.UiNode]
-pad = [24.0, 12.0]
-
-[children.label.UiPanel]
-color = "#1E2A30"
-border = 2.0
-
-[children.label.UiText]
-text = "Paused"
+[children.panel.UiNode]
+pad = [44.0, 20.0]
+# Above the middle, so the hero (and what is on it) still shows.
+offset = [0.0, -105.0]
+gap = 10.0
 align = "center"
+
+[children.panel.UiPanel]
+image = "ui/panel"
+slice = 5.0
+scale = 2.0
+
+[children.panel.children.title.UiNode]
+
+[children.panel.children.title.UiText]
+text = "PAUSED"
+size = 32.0
+color = "accent"
+align = "center"
+wrap = false
+
+[children.panel.children.hint.UiNode]
+order = 1
+
+[children.panel.children.hint.UiText]
+text = "Escape or P to play on"
+color = "muted"
+align = "center"
+wrap = false

@@ -1,0 +1,6 @@
+# The flag's cloth waving: one state, playing the flag clip of
+# assets/sprites (scenes/level/goal.flag.toml names this machine).
+type = "animator"
+
+[states.wave]
+clip = "flag"

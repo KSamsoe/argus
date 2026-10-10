@@ -1,0 +1,9 @@
+# Sparkles: an emitter that plays nothing by itself (playing = false).
+# systems/looks.luau bursts it where a coin is taken and at the flag;
+# assets/fx/sparkle.toml is what a sparkle looks like.
+[Transform]
+pos = [3.0, 0.0]
+
+[Emitter]
+effect = "fx/sparkle"
+playing = false

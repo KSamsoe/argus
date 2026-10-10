@@ -13,7 +13,9 @@
 #    either can release a game for both (item 1); manifests are rewritten.
 # 4. In target/release/v<version>/: the Windows zip, the Linux tar.gz, the
 #    Claude Desktop bundle (mcpb.py), the two installers (a first install
-#    starts from one), and SHA256SUMS.
+#    starts from one), the example games released on each platform by the
+#    checks (example-games-*, to play with nothing installed; not named
+#    argus-*, which the installers look for), and SHA256SUMS.
 # 5. With --publish: a draft release v<version> on the private repository
 #    (gh), with those files. Publishing the draft is a person's click.
 #
@@ -48,13 +50,15 @@ SHA=$(git rev-parse HEAD)
 OUT=target/release/v$VERSION
 WIN=target/stage/argus-$VERSION-windows
 LIN=target/stage/argus-$VERSION-linux
+GWIN=target/stage/example-games-$VERSION-windows
+GLIN=target/stage/example-games-$VERSION-linux
 echo "== release Argus $VERSION ($REV)"
-rm -rf "${OUT:?}" "${LIN:?}"
+rm -rf "${OUT:?}" "${LIN:?}" "${GLIN:?}"
 mkdir -p "$OUT"
 
 echo "== Windows: stage and check"
 bash tools/release/stage.sh "$WIN"
-bash tools/release/check.sh "$WIN"
+bash tools/release/check.sh "$WIN" --keep "$GWIN"
 
 echo "== Linux ($HOST): the commit, staged and checked there"
 git bundle create "target/release/argus-$REV.bundle" HEAD > /dev/null 2>&1
@@ -69,8 +73,10 @@ git fetch -q /tmp/argus-release.bundle HEAD
 git checkout -q --force "$SHA"
 git clean -qfd -e target
 bash tools/release/stage.sh "target/stage/argus-$VERSION-linux" --no-web
-bash tools/release/check.sh "target/stage/argus-$VERSION-linux" --no-web
-tar -C target/stage -czf /tmp/argus-release-linux.tar.gz "argus-$VERSION-linux"
+bash tools/release/check.sh "target/stage/argus-$VERSION-linux" --no-web \
+  --keep "target/stage/example-games-$VERSION-linux"
+tar -C target/stage -czf /tmp/argus-release-linux.tar.gz \
+  "argus-$VERSION-linux" "example-games-$VERSION-linux"
 REMOTE
 scp_ "$HOST:/tmp/argus-release-linux.tar.gz" "target/release/linux-stage.tar.gz"
 tar --force-local -C target/stage -xzf target/release/linux-stage.tar.gz
@@ -83,7 +89,10 @@ bash tools/release/manifest.sh "$WIN" "$VERSION" "$REV" windows
 bash tools/release/manifest.sh "$LIN" "$VERSION" "$REV" linux
 
 echo "== archives"
-python - "$WIN" "$OUT/argus-$VERSION-windows-x86_64.zip" <<'PY'
+cp tools/release/games-readme.txt "$GWIN/README.txt"
+cp tools/release/games-readme.txt "$GLIN/README.txt"
+zipdir() { # src out
+python - "$1" "$2" <<'PY'
 import os, sys, zipfile
 src, out = sys.argv[1], sys.argv[2]
 top = os.path.basename(src)
@@ -93,18 +102,22 @@ with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
             full = os.path.join(d, f)
             z.write(full, os.path.join(top, os.path.relpath(full, src)).replace(os.sep, "/"))
 PY
+}
+zipdir "$WIN" "$OUT/argus-$VERSION-windows-x86_64.zip"
+zipdir "$GWIN" "$OUT/example-games-$VERSION-windows-x86_64.zip"
 # The modes by path (tarball.py): this disk keeps no execute bits.
 python tools/release/tarball.py "$LIN" "$OUT/argus-$VERSION-linux-x86_64.tar.gz"
+python tools/release/tarball.py "$GLIN" "$OUT/example-games-$VERSION-linux-x86_64.tar.gz"
 python tools/release/mcpb.py "$WIN" "$OUT/argus-$VERSION.mcpb"
 cp tools/release/install.ps1 tools/release/install.sh "$OUT/"
-( cd "$OUT" && sha256sum argus-* install.* | sed 's/ \*/  /' > SHA256SUMS )
+( cd "$OUT" && sha256sum argus-* example-games-* install.* | sed 's/ \*/  /' > SHA256SUMS )
 cat "$OUT/SHA256SUMS"
 ls -la "$OUT"
 
 if [ "$PUBLISH" = 1 ]; then
   echo "== a draft release on GitHub"
-  gh release create "v$VERSION" "$OUT"/argus-* "$OUT"/install.* "$OUT/SHA256SUMS" \
+  gh release create "v$VERSION" "$OUT"/argus-* "$OUT"/example-games-* "$OUT"/install.* "$OUT/SHA256SUMS" \
     --draft --target "$SHA" --title "Argus $VERSION" \
-    --notes "Argus $VERSION ($REV). Install: install.ps1 (Windows) or install.sh (Linux) from the archive, or with a GitHub token from this release; see docs/install.md."
+    --notes "Argus $VERSION ($REV). Install: install.ps1 (Windows) or install.sh (Linux) from the archive, or with a GitHub token from this release; see docs/install.md. To play the four example games with nothing installed: example-games-$VERSION for Windows or Linux (its README.txt has the controls)."
 fi
 echo "== done: $OUT"

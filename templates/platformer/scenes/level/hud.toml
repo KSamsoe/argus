@@ -1,15 +1,22 @@
 # The line at the top left of the screen: a UI tree of one node, on the
 # screen rather than in the world. systems/hud.luau writes its words.
+# Its panel is assets/ui/panel.png (tools/art.py), nine-sliced: the 4
+# pixels round its edge keep their size while the middle stretches to fit
+# the words, each of its pixels drawn 3 canvas pixels wide, as the level's
+# art is.
 [UiRoot]
 interactive = false
 
 [UiNode]
 absolute = true
 offset = [12.0, 10.0]
-pad = [8.0, 4.0]
+pad = [16.0, 9.0]
 
 [UiPanel]
-color = "#05070A99"
+image = "ui/panel"
+slice = 4.0
+scale = 3.0
 
 [UiText]
 text = "Coins 0/3    Falls 0"
+color = "#F6E7C1"

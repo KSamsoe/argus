@@ -1,16 +1,19 @@
-# The arena: the floor you see is also the walls. Its Sprite's size is the
-# arena's size: the hero is kept inside it (sim.move) and enemies come in
+# The arena: the floor you see, and its edge is the walls. Its Sprite's
+# size is the arena's size: the hero is kept inside it (sim.move) and enemies come in
 # from its edges (sim.waves). Make it bigger here, and make the wall
-# (wall.toml) and the camera's height (camera.toml) bigger to match.
+# (wall.toml) and the camera's height (camera.toml) bigger to match; the
+# floor's picture stretches, so redraw it at the new size too (ARENA_W and
+# ARENA_H in tools/art.py).
 #
 # It also holds the wave director: change the waves' numbers here.
 [Transform]
 pos = [0.0, 0.0]
 
+# The floor's picture: frame 0 of sprites/room (tools/art.py draws it).
 [Sprite]
-kind = "rect"
+atlas = "sprites/room"
+frame = 0
 size = [32.0, 18.0]
-color = "#1E2A30"
 z = 0.0
 
 [Waves]

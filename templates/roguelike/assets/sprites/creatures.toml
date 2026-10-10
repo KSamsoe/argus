@@ -1,0 +1,8 @@
+# The creatures: 16 x 16 frames, four to a row, facing right, drawn by
+# tools/art.py. A row each: the hero (0 and 1 idle, 2 hurt, 3 fallen), then
+# the rat (4), the goblin (8), and the bat (12, not in the game yet), each
+# idle, idle, struck, and biting. systems/look.luau picks the frame each
+# turn and mirrors it to face the way the creature looks. A new kind of
+# monster is a new row here and a line in look.luau's ROWS.
+# Written by tools/art.py with the picture: to change either, change art.py and run it again.
+grid = [4, 4]

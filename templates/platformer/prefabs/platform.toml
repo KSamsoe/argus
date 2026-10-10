@@ -1,15 +1,20 @@
 # A solid block of the level: the hero stands on its top and is stopped by
 # its sides and its underside. The ground, the walls, and the ledge are all
 # this prefab (prefab = "platform" in their files), each with its own place
-# and size. Change the colour here and every block changes.
+# and size.
 #
 # A KinematicBody with solid = true is a solid: actors (the hero) cannot
 # pass through it. With no velocity it stays where it is; give it one and
 # it is a moving platform that carries the hero standing on it. Add
 # one_way = true for a platform the hero jumps up through from below.
+#
+# The Sprite is a plain earth-coloured rectangle the size of the block.
+# systems/looks.luau lays grass and earth tiles over it (planks over a
+# one-way one) and hides the rectangle, so a block of any size looks right;
+# take that file out and the rectangles show again.
 [Sprite]
 kind = "rect"
-color = "#3F5A3A"
+color = "#94633F"
 z = 0.0
 
 [Collider]
