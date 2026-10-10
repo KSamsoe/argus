@@ -83,7 +83,7 @@ Run from a checkout of the engine, with `--from-source`, or with `$ARGUS_ENGINE`
 argus build --target web
 ```
 
-This writes `dist/web/`: `index.html`, `main.js`, `pkg/` (the wasm module), and `data/` (the packs and `packs.json`). The check compares the packs' world and picture with the project's; the page itself is not run.
+This writes `dist/web/`: `index.html`, `main.js`, `pkg/` (the wasm module), and `data/` (the packs and `packs.json`). The page's title is the game's name, and under the game it lists the game's controls, each action's keyboard keys from `input.toml` (the menu's own `ui_` actions left out). The check compares the packs' world and picture with the project's; the page itself is not run.
 
 The page must be served over HTTP; opening `index.html` as a file does not work. A static web server should do, as long as it serves `.wasm` as `application/wasm` (Python's does); the engine's own checks use the playtest server below. For a quick look on your own machine:
 

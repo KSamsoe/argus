@@ -484,7 +484,13 @@ impl Game {
         self.r.set_ui(Some(self.p.ui.clone()));
         let store = self.p.particles.borrow();
         let tick = self.p.sched.tick();
-        let alpha = self.owed.clamp(0.0, 1.0) as f32;
+        // On a discrete clock a frame draws the latest turn (no time owed
+        // between turns): with the owed time, 0 there, a turn-based game
+        // drew a turn behind (Delve, 2026-10-10). As Scheduler::alpha has it.
+        let alpha = match kind {
+            ClockKind::Continuous => self.owed.clamp(0.0, 1.0) as f32,
+            ClockKind::Discrete => 1.0,
+        };
         self.r
             .render_frame(&self.p.world, tick, alpha, &extras, Some(&store))
             .map_err(|e| e.message)?;

@@ -34,6 +34,8 @@ for g in hollow delve outpost; do
   "$ARGUS" --project "$WORK/src/$g" build --target web --release --out "$WORK/site/$g" | tail -1
   # The build's report names this machine's folders; the site does without.
   rm -f "$WORK/site/$g/build.json"
+  # The site takes no reports, so the page does not offer F8's.
+  sed -i 's|<span id="f8">[^<]*</span>|<span id="f8"></span>|' "$WORK/site/$g/index.html"
 done
 cp tools/web/games/index.html "$WORK/site/index.html"
 for g in hollow delve swarm outpost; do

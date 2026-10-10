@@ -694,6 +694,13 @@ fn an_external_output_runs_the_mixer_at_its_rate_and_pulls_its_blocks() {
     e.pull(&mut block);
     assert!(peak(&block, 0) > 0.01, "{}", peak(&block, 0));
     assert_eq!(e.rendered_frames(), 4410);
+    // The sim's time does not move a mixer an output pulls: advanced by
+    // it as well, a page's mixer ran at twice its rate, and a turn-based
+    // game's skipped a turn's time at each press (2026-10-10).
+    e.advance_to(0.0);
+    e.advance_to(0.5);
+    e.advance_to(1.5);
+    assert_eq!(e.rendered_frames(), 4410, "only what the output pulled");
 
     e.set_hold(true);
     let mut held = vec![1.0f32; 128 * 2];

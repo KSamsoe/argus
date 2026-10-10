@@ -419,7 +419,16 @@ impl WebPlayer {
         let view = argus_render::view_for(&self.p.world, w, h);
         let extras = self.p.tile_extras(view);
         r.set_occluders(self.p.tile_occluders(view));
-        let alpha = self.owed.clamp(0.0, 1.0) as f32;
+        // On a discrete clock a frame draws the latest turn: no time owed
+        // between turns to blend across. With the continuous clock's owed
+        // time, 0 there, Delve drew a turn behind: a new direction showed
+        // a step the old way first, and a new floor the hero where they
+        // stood on the last one (found on the public games site,
+        // 2026-10-10). As Scheduler::alpha has it.
+        let alpha = match self.p.sched.driving().kind {
+            argus_sim::ClockKind::Continuous => self.owed.clamp(0.0, 1.0) as f32,
+            argus_sim::ClockKind::Discrete => 1.0,
+        };
         r.set_time(self.p.sched.time() as f32);
         r.set_ui(Some(self.p.ui.clone()));
         let store = self.p.particles.borrow();

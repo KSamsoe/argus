@@ -1030,8 +1030,13 @@ impl AudioEngine {
     /// Advance the mixer to sim time `t` seconds when no device is pulling
     /// it (headless). Capped at the clip history length per call; a longer
     /// jump just moves on. A time earlier than the last means a new run.
+    /// An external output (a page's AudioWorklet) pulls it too: advanced
+    /// as well, a page's mixer ran at twice its rate (Hollow's and
+    /// Outpost's music at 96,000 frames a second to a 48 kHz output) and a
+    /// turn-based game's skipped a turn's time at each press (Delve's music
+    /// on the public site, 2026-10-10).
     pub fn advance_to(&mut self, t: f64) {
-        if self.device_open() {
+        if self.device_open() || self.external.is_some() {
             self.last_time = Some(t);
             return;
         }

@@ -54,7 +54,9 @@ Numbers from the phase 5 gate and item 5 (2026-10-08 and 09), the games' rows me
 
 ## Play the games
 
-Each release has the four games above built and ready to run, nothing to install: `example-games-<version>` for Windows or Linux, on the [releases page](https://github.com/KSamsoe/argus/releases). Unpack it and run a game's program; its `README.txt` has the controls.
+**[Play Hollow, Delve, and Outpost in your browser](https://klab.tailde2255.ts.net/)**: the same games, tick for tick, drawn with WebGPU (or WebGL2). Click a game, then play with the keys its page lists. (Swarm runs its chase in a Rust plugin, which a page cannot load, so it plays on the desktop.)
+
+Each release also has the four games built and ready to run, nothing to install: `example-games-<version>` for Windows or Linux, on the [releases page](https://github.com/KSamsoe/argus/releases). Unpack it and run a game's program; its `README.txt` has the controls.
 
 ## Install
 

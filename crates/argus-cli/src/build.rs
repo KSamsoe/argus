@@ -393,6 +393,7 @@ fn build(inv: &Invocation, err: &mut dyn Write) -> Result<Json, String> {
         (Target::Web, Some(rt), _) => {
             crate::runtime::place_web(rt, &out_dir)?;
             packs_json(&out_dir, &built.packs, &code)?;
+            game_page(&out_dir, &root, &cfg.name)?;
             report["site"] = json!(plain(&out_dir));
         }
         (Target::Web, None, Some(engine)) => {
@@ -405,6 +406,7 @@ fn build(inv: &Invocation, err: &mut dyn Write) -> Result<Json, String> {
                 &cfg.modules,
                 err,
             )?;
+            game_page(&out_dir, &root, &cfg.name)?;
             report["site"] = json!(plain(&out_dir));
         }
         (_, rt, engine) => {
@@ -835,6 +837,126 @@ fn web(
     packs_json(out, packs, code)
 }
 
+/// The page's title and its line of controls, the game's own: its name,
+/// and each action's keyboard keys from its `input.toml`. The engine's page
+/// said Hollow's keys for every game (found on the public games site,
+/// 2026-10-10).
+fn game_page(out: &Path, root: &Path, name: &str) -> Result<(), String> {
+    let file = out.join("index.html");
+    let page = std::fs::read_to_string(&file).map_err(|e| format!("{}: {e}", file.display()))?;
+    let controls = match argus_input::ActionMap::load(root) {
+        Ok(Some(map)) => controls_line(&map),
+        _ => String::new(),
+    };
+    let mut title = name.to_string();
+    if let Some(c) = title.get_mut(..1) {
+        c.make_ascii_uppercase();
+    }
+    let page = page.replacen(
+        "<title>Argus</title>",
+        &format!("<title>{}</title>", html_text(&title)),
+        1,
+    );
+    let said = if controls.is_empty() {
+        "Click the game first.".to_string()
+    } else {
+        format!("{}. Click the game first.", html_text(&controls))
+    };
+    let page = fill_span(&page, "controls", &said);
+    std::fs::write(&file, page).map_err(|e| format!("{}: {e}", file.display()))
+}
+
+/// What a player presses, from the action map: each action a key plays,
+/// moving ones first, the menu's own (`ui_...`) left out:
+/// "Move: WASD or the arrow keys · Jump: Space or Z · Pause: Esc".
+fn controls_line(map: &argus_input::ActionMap) -> String {
+    use argus_input::ActionKind;
+    let mut acts: Vec<&argus_input::Action> = map
+        .actions
+        .iter()
+        .filter(|a| {
+            !a.name.starts_with("ui_") && a.name != "device" && a.kind != ActionKind::Pointer
+        })
+        .filter(|a| a.bindings.get("keyboard").is_some_and(|k| !k.is_empty()))
+        .collect();
+    // By name, a number at the end counted as one (speed_3 before
+    // speed_10); then a stable sort puts moving first, pause last.
+    acts.sort_by_key(|a| {
+        let name = a.name.trim_end_matches(|c: char| c.is_ascii_digit());
+        let n: u64 = a.name[name.len()..].parse().unwrap_or(0);
+        (name.to_string(), n)
+    });
+    acts.sort_by_key(|a| {
+        (
+            !matches!(a.kind, ActionKind::Axis2 | ActionKind::Axis),
+            matches!(a.name.as_str(), "pause" | "menu"),
+        )
+    });
+    acts.iter()
+        .map(|a| {
+            let keys: Vec<String> = a.bindings["keyboard"]
+                .iter()
+                .map(|k| key_words(k))
+                .collect();
+            let mut label = a.name.replace('_', " ");
+            if let Some(c) = label.get_mut(..1) {
+                c.make_ascii_uppercase();
+            }
+            format!("{label}: {}", keys.join(" or "))
+        })
+        .collect::<Vec<_>>()
+        .join(" · ")
+}
+
+/// A binding as a player reads it: `wasd` is WASD, `arrows` the arrow keys,
+/// `minus/equal` - and =, a letter its capital.
+fn key_words(k: &str) -> String {
+    match k {
+        "wasd" => "WASD".into(),
+        "arrows" => "the arrow keys".into(),
+        "space" => "Space".into(),
+        "escape" => "Esc".into(),
+        "period" => ".".into(),
+        "comma" => ",".into(),
+        "minus" => "-".into(),
+        "equal" => "=".into(),
+        _ if k.contains('/') => k
+            .split('/')
+            .map(key_words)
+            .collect::<Vec<_>>()
+            .join(" and "),
+        _ if k.len() == 1 => k.to_ascii_uppercase(),
+        _ => {
+            let mut s = k.to_string();
+            if let Some(c) = s.get_mut(..1) {
+                c.make_ascii_uppercase();
+            }
+            s
+        }
+    }
+}
+
+/// Text made safe for a page.
+fn html_text(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+/// A page's `<span id="...">...</span>` with `inner` inside, or the page as
+/// it was when it has no such span (a page from an older runtime).
+fn fill_span(page: &str, id: &str, inner: &str) -> String {
+    let open = format!("<span id=\"{id}\">");
+    let Some(start) = page.find(&open) else {
+        return page.to_string();
+    };
+    let from = start + open.len();
+    let Some(len) = page[from..].find("</span>") else {
+        return page.to_string();
+    };
+    format!("{}{inner}{}", &page[..from], &page[from + len..])
+}
+
 /// `data/packs.json`: the packs the page loads, its languages, its code.
 fn packs_json(out: &Path, packs: &[Pack], code: &str) -> Result<(), String> {
     let names: Vec<String> = std::fs::read_dir(out.join("data"))
@@ -856,4 +978,72 @@ fn packs_json(out: &Path, packs: &[Pack], code: &str) -> Result<(), String> {
     )
     .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const HOLLOW: &str = r#"
+[actions.move]
+type = "axis2"
+[actions.move.bindings]
+keyboard = ["wasd", "arrows"]
+gamepad = ["left_stick"]
+
+[actions.jump]
+type = "button"
+[actions.jump.bindings]
+keyboard = ["space", "z"]
+
+[actions.pause]
+type = "button"
+[actions.pause.bindings]
+keyboard = ["escape"]
+
+[actions.speed_10]
+type = "button"
+[actions.speed_10.bindings]
+keyboard = ["3"]
+
+[actions.speed_3]
+type = "button"
+[actions.speed_3.bindings]
+keyboard = ["2"]
+
+[actions.zoom]
+type = "axis"
+[actions.zoom.bindings]
+keyboard = ["minus/equal"]
+
+[actions.ui_confirm]
+type = "button"
+[actions.ui_confirm.bindings]
+keyboard = ["enter"]
+
+[actions.pointer]
+type = "pointer"
+[actions.pointer.bindings]
+mouse = ["position"]
+"#;
+
+    #[test]
+    fn a_page_says_the_games_own_controls() {
+        let map = argus_input::ActionMap::parse("input.toml", HOLLOW).unwrap();
+        assert_eq!(
+            controls_line(&map),
+            "Move: WASD or the arrow keys · Zoom: - and = · Jump: Space or Z · Speed 3: 2 · Speed 10: 3 · Pause: Esc"
+        );
+        let page = "<title>Argus</title><p><span id=\"controls\">Click the game first.</span> <span id=\"f8\">F8</span></p>";
+        let filled = fill_span(page, "controls", "Move: WASD. Click the game first.");
+        assert_eq!(
+            filled,
+            "<title>Argus</title><p><span id=\"controls\">Move: WASD. Click the game first.</span> <span id=\"f8\">F8</span></p>"
+        );
+        assert_eq!(
+            fill_span("<p>old page</p>", "controls", "x"),
+            "<p>old page</p>"
+        );
+        assert_eq!(html_text("a <b> & c"), "a &lt;b&gt; &amp; c");
+    }
 }
