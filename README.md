@@ -52,6 +52,23 @@ Argus is built on its own entity-component system rather than a general-purpose 
 
 Numbers from the phase 5 gate and item 5 (2026-10-08 and 09), the games' rows measured again with their new art (2026-10-10), on Kevin's laptop; [how it was built](docs/history.md) has the history, and [tuning and performance](docs/manual/tuning-and-performance.md) how to measure a game.
 
+## Why not an engine with an AI plugin?
+
+The usual way to make games with an agent today is an existing engine with an assistant added to its editor: Unity with Coplay's MCP for Unity or Unity's own Unity AI, or Godot with an MCP server. Those plugins let an agent work the editor through its API: read the scene and its objects, read the console, run tests, and press the editor's buttons. That works, and it puts a large, proven engine behind the agent. Argus starts from the other end: the engine itself is built for an agent, so what an agent most needs is part of every game rather than something the plugin has to reach through the editor for.
+
+| | An editor with an AI plugin | Argus |
+|---|---|---|
+| What the agent talks to | The editor, which has to be open, through the calls its plugin offers | The running game: a background program holds the live world, and the agent, the editor, the tests, and the command line all use the same protocol to reach it, with or without an editor open |
+| What it sees | The scene's objects and their components, console logs, and screenshots | The frame as data, about 3 KB: what is on screen, where, and what it is; and an event log in which each event says what caused it |
+| Time | Play mode runs forward, and a moment that went wrong is gone unless someone kept it | Run, step, and seek back to any earlier frame. Every run is the same, bit for bit, on Windows, on Linux, and in the browser, so a moment a player flags opens at that exact frame, and a failing test hands over a replay |
+| Knowing a change works | The engine's test framework, with the tests a team writes and wires up | Scenarios that play the game headless, over one seed or a hundred, in seconds; every template comes with them, and a change is done when they pass |
+| Changes | Edits in the editor, with the editor's undo | Transactions with an author and a note, in one change feed; any one can be undone, and `propose` lets a person try a change before it is kept |
+| The project | Scenes and prefabs saved in the engine's own formats, best changed through the editor | Plain text: one TOML file per entity, and Luau scripts that reload while the game runs; an agent can read, change, and diff all of it |
+| What the agent reads to learn the engine | The engine's docs online, and what the model already knows | The manual and the reference compiled into the engine, matched to the installed version and readable over MCP, and an `ARGUS.md` in every project describing that game |
+| Releasing | A build, checked by playing it | `argus build` checks that the release plays and looks as the project does, with no compiler needed |
+
+Where the big engines are ahead, and will stay ahead for a while: 3D, which Argus does not do at all; decades of tools, an asset store, and a very large community; consoles, phones, and the Mac, where Argus does not run yet; and generated assets (Coplay and Unity AI make models, sound, and voices; Argus's examples draw their art with scripts). Argus is young, at version 0.0.4, and 2D only.
+
 ## Play the games
 
 **[Play Hollow, Delve, and Outpost in your browser](https://klab.tailde2255.ts.net/)**: the same games, tick for tick, drawn with WebGPU (or WebGL2). Click a game, then play with the keys its page lists. (Swarm runs its chase in a Rust plugin, which a page cannot load, so it plays on the desktop.)
