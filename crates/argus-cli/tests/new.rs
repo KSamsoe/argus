@@ -73,7 +73,8 @@ fn a_new_project_from_the_blank_template_passes_its_scenarios_and_points_an_agen
         "@AGENTS.md\n"
     );
     // A repository, when git is here: a build's code revision is its commit.
-    let git = Command::new("git").arg("--version").output().is_ok();
+    let git =
+        argus_daemon::daemon::git_usable() && Command::new("git").arg("--version").output().is_ok();
     assert_eq!(r["git"], git, "{r}");
     assert_eq!(dir.join(".git").is_dir(), git);
 }

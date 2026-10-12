@@ -119,7 +119,9 @@ fn connect_quiet(inv: &Invocation, err: &mut dyn Write) -> Result<Client, String
 /// Start a daemon for the project in the background and wait until it
 /// answers. Returns its `daemon.json`.
 pub fn start(root: &Path, inv: &Invocation, err: &mut dyn Write) -> Result<Json, String> {
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    // Started as the install's file, not the link: install.sh finds the
+    // daemons to stop by where they were started from.
+    let exe = crate::exe().map_err(|e| e.to_string())?;
     let log_dir = root.join(".argus");
     let _ = std::fs::create_dir_all(&log_dir);
     let log = std::fs::OpenOptions::new()
@@ -262,7 +264,7 @@ pub fn editor_command(inv: &Invocation, out: &mut dyn Write, err: &mut dyn Write
             }
         }
     };
-    let exe = match std::env::current_exe() {
+    let exe = match crate::exe() {
         Ok(me) => me.with_file_name(format!("argus-editor{}", std::env::consts::EXE_SUFFIX)),
         Err(e) => {
             let _ = writeln!(err, "argus: {e}");

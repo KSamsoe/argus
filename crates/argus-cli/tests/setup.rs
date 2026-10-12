@@ -161,6 +161,9 @@ fn claude_desktop_is_user_scope_and_writes_the_store_apps_copy_too() {
     let (_t, home, game) = world("desktop");
     let (roaming, local) = if cfg!(windows) {
         (home.join("AppData/Roaming"), home.join("AppData/Local"))
+    } else if cfg!(target_os = "macos") {
+        let support = home.join("Library/Application Support");
+        (support.clone(), support)
     } else {
         (home.join(".config"), home.join(".local/share"))
     };

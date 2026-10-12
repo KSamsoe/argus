@@ -265,6 +265,12 @@ fn an_agent_with_no_file_system_writes_a_script_reloads_it_and_can_undo_it() {
         "C:/Windows/x.luau",
         ".argus/daemon.json",
         "dist/x",
+        // A disk that ignores case, or Windows' trailing dots and short
+        // names, would open the real folders through these.
+        ".GIT/hooks/pre-commit",
+        "Dist/x",
+        ".git./config",
+        "GIT~1/config",
     ] {
         let (e, is_error) = m.tool("write_file", json!({ "path": bad, "text": "x" }));
         assert!(is_error, "{bad}: {e}");

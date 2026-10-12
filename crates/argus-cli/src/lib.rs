@@ -126,6 +126,18 @@ pub struct Invocation {
     pub for_agent: bool,
 }
 
+/// This program's path, in the install. A Mac names a program by the link
+/// it was started through (`~/.local/bin/argus`, which install.sh makes),
+/// where Linux names the file the link points to; the install's folders
+/// are beside the file. Windows' canonical form is a `\\?\` path, which
+/// reports would show, and it starts no program through a link.
+pub fn exe() -> std::io::Result<std::path::PathBuf> {
+    let exe = std::env::current_exe()?;
+    #[cfg(not(windows))]
+    let exe = exe.canonicalize().unwrap_or(exe);
+    Ok(exe)
+}
+
 /// Parse a command line (without the program name).
 pub fn parse(argv: &[String]) -> Result<Invocation, String> {
     let mut inv = Invocation::default();

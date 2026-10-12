@@ -3016,10 +3016,17 @@ impl Daemon {
         if parts.iter().any(|p| *p == ".." || *p == ".") {
             return Err(bad("a path in the project does not leave it"));
         }
-        if matches!(
-            parts.first(),
-            Some(&".argus") | Some(&".git") | Some(&"dist")
-        ) {
+        // As the disk would read the name: a Mac's and Windows' disks ignore
+        // case (`.GIT` is `.git`), Windows drops a name's trailing dots and
+        // spaces (`.git.`), and its short names alias these (`GIT~1`).
+        let first = parts
+            .first()
+            .map(|p| p.trim_end_matches(['.', ' ']).to_ascii_lowercase())
+            .unwrap_or_default();
+        if matches!(first.as_str(), ".argus" | ".git" | "dist")
+            || first.starts_with("git~")
+            || first.starts_with("argus~")
+        {
             return Err(bad(
                 "the engine's own folders and builds are not the project's files",
             ));
@@ -7493,10 +7500,42 @@ pub fn event_json(world: &World, seq: u64, rec: &EventRecord) -> Json {
     row
 }
 
+/// Whether git can be run without asking the person anything. A Mac
+/// without Apple's developer tools has a `/usr/bin/git` that only offers to
+/// install them, in a dialog, each time it is run; `xcode-select -p` says
+/// whether they are there, without one.
+pub fn git_usable() -> bool {
+    static USABLE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *USABLE.get_or_init(|| {
+        if !cfg!(target_os = "macos") {
+            return true;
+        }
+        let first = std::env::var_os("PATH").and_then(|p| {
+            std::env::split_paths(&p)
+                .map(|d| d.join("git"))
+                .find(|g| g.is_file())
+        });
+        match first {
+            Some(g) if g == Path::new("/usr/bin/git") => {
+                std::process::Command::new("/usr/bin/xcode-select")
+                    .arg("-p")
+                    .output()
+                    .is_ok_and(|o| o.status.success())
+            }
+            Some(_) => true,
+            None => false,
+        }
+    })
+}
+
 /// The code a run was made with (§6 run identity): `git:<revision>`, with
 /// `+dirty` when files under the project differ from it, or `none` outside
-/// a repository. No console window opens for git on Windows.
+/// a repository (or with no git to ask). No console window opens for git
+/// on Windows.
 pub fn code_version(root: &Path) -> String {
+    if !git_usable() {
+        return "none".to_string();
+    }
     let git = |args: &[&str]| -> Option<String> {
         let mut c = std::process::Command::new("git");
         c.arg("-C").arg(root).args(args);

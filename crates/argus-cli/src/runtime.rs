@@ -53,7 +53,7 @@ pub fn root() -> Option<PathBuf> {
             return Some(PathBuf::from(d));
         }
     }
-    let exe = std::env::current_exe().ok()?;
+    let exe = crate::exe().ok()?;
     let dir = exe.parent()?.parent()?.join("runtime");
     dir.is_dir().then_some(dir)
 }

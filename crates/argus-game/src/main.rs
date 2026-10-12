@@ -151,6 +151,10 @@ fn tell(msg: &str, boxed: bool) {
 
 fn run(args: Args) -> Result<(), String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    // A Mac names a program by the link it was started through; the game's
+    // data is beside the file the link points to.
+    #[cfg(not(windows))]
+    let exe = exe.canonicalize().unwrap_or(exe);
     let dir = exe.parent().unwrap_or(Path::new(".")).to_path_buf();
     let data = args.data.clone().unwrap_or_else(|| dir.join("data"));
     // The game's files live in memory, under a root that is not on disk.

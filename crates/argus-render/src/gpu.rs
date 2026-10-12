@@ -255,6 +255,13 @@ impl Gpu {
             compatible_surface: surface,
         };
         let mut adapter = instance.request_adapter(&opts).await;
+        if adapter.is_none() && software && cfg!(target_os = "macos") {
+            // Metal has no software rasteriser: a Mac draws a software
+            // frame (a picture golden's) with its GPU, and says so, the
+            // adapter not being a CPU one.
+            opts.force_fallback_adapter = false;
+            adapter = instance.request_adapter(&opts).await;
+        }
         if adapter.is_none() && !software {
             // No hardware: take the software rasteriser rather than nothing
             // (design section 9: identical in CI with the software adapter).
@@ -263,7 +270,7 @@ impl Gpu {
         }
         let adapter = adapter.ok_or_else(|| {
             ArgusError::new(crate::codes::NO_ADAPTER, "no graphics adapter, hardware or software")
-                .hint("On Windows the DirectX 12 WARP rasteriser is the fallback; on Linux install lavapipe or Mesa's llvmpipe.")
+                .hint("On Windows the DirectX 12 WARP rasteriser is the fallback; on Linux install lavapipe or Mesa's llvmpipe; a Mac draws with Metal, which every Mac since 2012 has.")
         })?;
         let (device, queue) = adapter
             .request_device(

@@ -556,7 +556,8 @@ local function make_t(ctx, spec, seed)
   -- with the software rasteriser, so it is the same picture on any machine
   -- of one system: WARP on Windows and lavapipe on Linux are two
   -- rasterisers, and Hollow's goldens differ between them at text and
-  -- sprite edges by 0.4 to 0.6% of pixels (phase 5 item 11). It is compared with
+  -- sprite edges by 0.4 to 0.6% of pixels (phase 5 item 11). A Mac has no
+  -- software rasteriser and draws it with Metal. It is compared with
   -- tests/goldens/<scenario>/<name>.seed<n>.png by obs.frame's golden.
   -- opts: width, height (640 x 360), threshold (how different a pixel must
   -- be, 0.1), max (the share of pixels that may differ, 0.001).
