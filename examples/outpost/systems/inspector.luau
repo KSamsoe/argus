@@ -408,6 +408,17 @@ return system "sim.colony.inspector" {
       if focus ~= nil then root.focus = q:entity(focus) end
       ins.refresh = 0
     end
+
+    -- The words, six times a second of the player's time (every ten ticks
+    -- at 1x, every hundred at 10x), and at once on a change.
+    if ins.refresh > 0 and #q:events("ui.pressed") == 0 then
+      ins.refresh -= 1
+      return
+    end
+    -- The buttons' state with the words: a page, a list page, and Follow
+    -- change only by a press or a page change, which refresh at once. (Every
+    -- tick, this walk of every button in the game was most of what the open
+    -- inspector cost: 0.05 ms a tick in the stress scene.)
     for e, b in q:each("UiButton") do
       if string.sub(b.event, 1, 12) == "inspect.tab." then
         local tab = string.sub(b.event, 13)
@@ -420,13 +431,6 @@ return system "sim.colony.inspector" {
       elseif b.event == "inspect.follow" then
         e:get("UiText").key = if ins.follow then "inspect.person.unfollow" else "inspect.person.follow"
       end
-    end
-
-    -- The words, six times a second of the player's time (every ten ticks
-    -- at 1x, every hundred at 10x), and at once on a change.
-    if ins.refresh > 0 and #q:events("ui.pressed") == 0 then
-      ins.refresh -= 1
-      return
     end
     local rules = q:entity("@colony"):get("Colony")
     ins.refresh = 10 * math.max(1, math.floor(q:speed()))
