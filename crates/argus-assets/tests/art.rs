@@ -415,3 +415,103 @@ fn scripts_share_a_module_and_a_changed_module_reimports_them() {
     assert!(!imp.entries().contains_key("colours"));
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// A script's maths is libm's, the same on every machine: not the
+/// built-ins Luau would call for math.sin and the rest (the arena's port
+/// measured thousands of differences between the two).
+#[test]
+fn a_scripts_math_is_libms() {
+    let script = "local s = { sin = 0, cos = 0, exp = 0, pow = 0, atan2 = 0, log = 0 }\nfor i = 1, 2000 do\n  local x = i * 0.0137 - 9\n  s.sin += math.sin(x)\n  s.cos += math.cos(x)\n  s.exp += math.exp(x / 4)\n  s.pow += math.pow(1 + i / 1000, 1.37)\n  s.atan2 += math.atan2(x, 1.5)\n  s.log += math.log(i)\nend\nfor _, k in { \"sin\", \"cos\", \"exp\", \"pow\", \"atan2\", \"log\" } do\n  print(k, string.format(\"%.17g\", s[k]))\nend\nreturn art.sprite{ frames = { art.canvas(1, 1) } }\n";
+    let got = argus_assets::art::run("m.art.luau", script)
+        .unwrap()
+        .printed;
+    let (mut a, mut b, mut c, mut d, mut e, mut f) = (0f64, 0f64, 0f64, 0f64, 0f64, 0f64);
+    for i in 1..=2000 {
+        let x = i as f64 * 0.0137 - 9.0;
+        a += libm::sin(x);
+        b += libm::cos(x);
+        c += libm::exp(x / 4.0);
+        d += libm::pow(1.0 + i as f64 / 1000.0, 1.37);
+        e += libm::atan2(x, 1.5);
+        f += libm::log(i as f64);
+    }
+    let want = [
+        ("sin", a),
+        ("cos", b),
+        ("exp", c),
+        ("pow", d),
+        ("atan2", e),
+        ("log", f),
+    ];
+    assert_eq!(got.len(), want.len(), "{got:?}");
+    // Seventeen digits read back as the very double.
+    for (line, (k, v)) in got.iter().zip(want) {
+        let (name, num) = line.split_once(' ').unwrap();
+        assert_eq!(name, k);
+        assert_eq!(
+            num.parse::<f64>().unwrap().to_bits(),
+            v.to_bits(),
+            "{k}: {num} against {v:e}"
+        );
+    }
+}
+
+/// A colour's numbers, for a script's own arithmetic.
+#[test]
+fn rgba_answers_a_colours_numbers() {
+    let s = argus_assets::art::run(
+        "x.art.luau",
+        "local r, g, b, a = art.rgba(\"#10203040\")\nassert(r == 16 and g == 32 and b == 48 and a == 64)\nlocal _, _, _, o = art.rgba(\"#ABCDEF\")\nassert(o == 255)\nreturn art.sprite{ frames = { art.canvas(1, 1) } }\n",
+    );
+    assert!(s.is_ok(), "{:?}", s.err().map(|e| e.message));
+}
+
+/// A fresh importer (a scene load, a scenario run, a build) takes what an
+/// unchanged script drew last time instead of running it again; a change
+/// to the script or a module runs it again.
+#[test]
+fn an_unchanged_script_is_not_run_again() {
+    let dir = project("memo");
+    write(&dir, "pal.lib.luau", "return { c = \"#00FF00\" }\n");
+    write(
+        &dir,
+        "s.art.luau",
+        "local pal = require(\"pal\")\nreturn art.sprite{ frames = { art.canvas(2, 2, pal.c) } }\n",
+    );
+    let mut imp = Importer::new(&dir);
+    assert!(imp.scan().failed.is_empty());
+    let tex = sprite(&imp, "s").texture.clone();
+    // Mark the cached sheet: if the script ran again, it would draw over it.
+    argus_assets::encode_png(&tex, 2, 2, &[255, 0, 0, 255].repeat(4)).unwrap();
+    let mut fresh = Importer::new(&dir);
+    assert!(fresh.scan().failed.is_empty());
+    assert_eq!(
+        px(&sprite(&fresh, "s"), 0, 0, 0),
+        [255, 0, 0, 255],
+        "taken, not drawn again"
+    );
+    assert_eq!(sprite(&fresh, "s").frames.len(), 1);
+    // A module changed: drawn again.
+    write(&dir, "pal.lib.luau", "return { c = \"#0000FF\" }\n");
+    let mut fresh = Importer::new(&dir);
+    assert!(fresh.scan().failed.is_empty());
+    assert_eq!(
+        px(&sprite(&fresh, "s"), 0, 0, 0),
+        [0, 0, 255, 255],
+        "the module changed"
+    );
+    // The script changed: drawn again.
+    write(
+        &dir,
+        "s.art.luau",
+        "return art.sprite{ frames = { art.canvas(2, 2, \"#FFFFFF\") } }\n",
+    );
+    let mut fresh = Importer::new(&dir);
+    assert!(fresh.scan().failed.is_empty());
+    assert_eq!(
+        px(&sprite(&fresh, "s"), 0, 0, 0),
+        [255, 255, 255, 255],
+        "the script changed"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}

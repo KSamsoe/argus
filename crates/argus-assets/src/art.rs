@@ -942,6 +942,14 @@ fn install(lua: &Lua, printed: Rc<RefCell<Vec<String>>>) -> mlua::Result<()> {
             Ok(hex([r, g, b, a]))
         })?,
     )?;
+    // A colour's numbers, 0 to 255: r, g, b, a.
+    art.set(
+        "rgba",
+        lua.create_function(|_, c: Value| {
+            let [r, g, b, a] = color(&c)?;
+            Ok((r, g, b, a))
+        })?,
+    )?;
     art.set(
         "rgb",
         lua.create_function(|_, (r, g, b, a): (u8, u8, u8, Option<u8>)| {
@@ -1037,6 +1045,10 @@ pub fn run_in(
             .at(Some(at))
     };
     let lua = Lua::new();
+    // Luau calls its own built-ins for math.sin and the rest unless told
+    // math may change, and those are the platform's: math is libm's (set in
+    // install) only if the compiler looks it up.
+    lua.set_compiler(mlua::Compiler::new().set_mutable_globals(vec!["math".to_string()]));
     let printed = Rc::new(RefCell::new(Vec::new()));
     install(&lua, printed.clone()).map_err(|e| fail(e.to_string()))?;
     let used: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(Vec::new()));
@@ -1355,9 +1367,126 @@ pub fn pack(frames: &[ArtFrame]) -> (u32, u32, Vec<[u32; 4]>, Vec<u8>) {
     (w, h, rects, sheet)
 }
 
+/// What an art script drew, kept beside its sheet in the import cache
+/// (`.argus/assets/<name>.art.json`), so a fresh importer (each scene
+/// load, each scenario run, a build) takes the sheet again without
+/// running the script while the script and its modules are the same.
+struct Memo {
+    /// The importer's version and the script's bytes.
+    key0: u64,
+    /// That and every module's bytes, in `modules`' order.
+    key: u64,
+    modules: Vec<String>,
+    size: [u32; 4],
+    ppu: f32,
+    frames: Vec<crate::Frame>,
+    clips: BTreeMap<String, Clip>,
+    notes: Vec<String>,
+}
+
+impl Memo {
+    fn to_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "key0": self.key0.to_string(),
+            "key": self.key.to_string(),
+            "modules": self.modules,
+            "size": self.size,
+            "pixels_per_unit": self.ppu,
+            "frames": self.frames.iter().map(|f| serde_json::json!({
+                "rect": f.rect, "pivot": f.pivot, "ms": f.duration_ms, "properties": f.properties,
+            })).collect::<Vec<_>>(),
+            "clips": self.clips.iter().map(|(n, c)| (n.clone(), serde_json::json!({
+                "frames": c.frames, "fps": c.fps, "loop": c.looping, "direction": c.direction.name(),
+            }))).collect::<serde_json::Map<_, _>>(),
+            "notes": self.notes,
+        })
+    }
+
+    fn from_json(v: &serde_json::Value) -> Option<Memo> {
+        let u = |k: &str| v.get(k)?.as_str()?.parse::<u64>().ok();
+        let arr = |x: &serde_json::Value| -> Option<Vec<f64>> {
+            x.as_array()?.iter().map(|n| n.as_f64()).collect()
+        };
+        let size = arr(v.get("size")?)?;
+        let frames = v
+            .get("frames")?
+            .as_array()?
+            .iter()
+            .map(|f| {
+                let r = arr(f.get("rect")?)?;
+                let p = arr(f.get("pivot")?)?;
+                Some(crate::Frame {
+                    rect: [r[0] as u32, r[1] as u32, r[2] as u32, r[3] as u32],
+                    pivot: [p[0] as f32, p[1] as f32],
+                    duration_ms: f.get("ms")?.as_u64()? as u32,
+                    properties: f
+                        .get("properties")?
+                        .as_object()?
+                        .iter()
+                        .map(|(k, x)| Some((k.clone(), x.as_str()?.to_string())))
+                        .collect::<Option<_>>()?,
+                })
+            })
+            .collect::<Option<Vec<_>>>()?;
+        let clips = v
+            .get("clips")?
+            .as_object()?
+            .iter()
+            .map(|(n, c)| {
+                let direction = match c.get("direction")?.as_str()? {
+                    "reverse" => Direction::Reverse,
+                    "pingpong" => Direction::PingPong,
+                    _ => Direction::Forward,
+                };
+                Some((
+                    n.clone(),
+                    Clip {
+                        frames: arr(c.get("frames")?)?.iter().map(|f| *f as u32).collect(),
+                        fps: c.get("fps").and_then(|x| x.as_f64()).map(|x| x as f32),
+                        looping: c.get("loop")?.as_bool()?,
+                        direction,
+                    },
+                ))
+            })
+            .collect::<Option<BTreeMap<_, _>>>()?;
+        Some(Memo {
+            key0: u("key0")?,
+            key: u("key")?,
+            modules: v
+                .get("modules")?
+                .as_array()?
+                .iter()
+                .map(|m| m.as_str().map(str::to_string))
+                .collect::<Option<_>>()?,
+            size: [
+                size[0] as u32,
+                size[1] as u32,
+                size[2] as u32,
+                size[3] as u32,
+            ],
+            ppu: v.get("pixels_per_unit")?.as_f64()? as f32,
+            frames,
+            clips,
+            notes: v
+                .get("notes")?
+                .as_array()?
+                .iter()
+                .map(|m| m.as_str().map(str::to_string))
+                .collect::<Option<_>>()?,
+        })
+    }
+}
+
+fn mix_in(h: &mut u64, bytes: &[u8]) {
+    for b in bytes {
+        *h = (*h ^ *b as u64).wrapping_mul(0x0100_0000_01b3);
+    }
+}
+
 impl crate::Importer {
     /// Import an art script: run it, pack its frames, and cache the sheet
-    /// as a PNG's would be.
+    /// as a PNG's would be; or, while the script and its modules are as
+    /// they were, take the sheet it drew last time.
     pub(crate) fn import_art(
         &self,
         name: &str,
@@ -1380,21 +1509,11 @@ impl crate::Importer {
         }
         let bytes = self.read_in(g.layer, file)?;
         fnv(&mut hash, &bytes);
-        let source = String::from_utf8_lossy(&bytes);
-        let prefix = self.shown(g.layer, "");
-        let (sprite, modules) = run_in(
-            &shown,
-            &source,
-            Some(Modules {
-                dir: self.dir(g.layer),
-                shown: &prefix,
-            }),
-        )?;
-        for m in &modules {
-            if let Ok(b) = self.read_in(g.layer, m) {
-                fnv(&mut hash, &b);
-            }
-        }
+        let texture = self.cache.join(format!("{name}.png"));
+        let memo_file = self.cache.join(format!("{name}.art.json"));
+        let mut key0 = 0xcbf2_9ce4_8422_2325u64;
+        mix_in(&mut key0, crate::IMPORTER_VERSION.as_bytes());
+        mix_in(&mut key0, &bytes);
         let mut warnings: Vec<Warning> = Vec::new();
         if let Some(s) = &g.sidecar {
             warnings.push(Warning {
@@ -1405,12 +1524,78 @@ impl crate::Importer {
                 at: self.shown(g.layer, s),
             });
         }
-        for p in &sprite.printed {
-            warnings.push(Warning {
-                message: format!("the script printed: {p}"),
+        let sprite_of = |m: &Memo, hash: u64, mut warnings: Vec<Warning>| {
+            warnings.extend(m.notes.iter().map(|n| Warning {
+                message: n.clone(),
                 at: shown.clone(),
-            });
+            }));
+            Entry {
+                name: name.to_string(),
+                sidecar: g.sidecar.clone(),
+                hash,
+                warnings,
+                asset: Asset::Sprite(SpriteAsset {
+                    source: Some(file.to_string()),
+                    width: m.size[0],
+                    height: m.size[1],
+                    texture: texture.clone(),
+                    texture_size: [m.size[2], m.size[3]],
+                    normal: None,
+                    frames: m.frames.clone(),
+                    clips: m.clips.clone(),
+                    pixels_per_unit: m.ppu,
+                    shape: None,
+                    autotile: BTreeMap::new(),
+                    aseprite: None,
+                }),
+                ms: 0.0,
+            }
+        };
+        // What it drew last time, if nothing it reads has changed since.
+        let memo = std::fs::read_to_string(&memo_file)
+            .ok()
+            .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+            .and_then(|v| Memo::from_json(&v))
+            .filter(|m| m.key0 == key0 && texture.exists());
+        if let Some(m) = memo {
+            let (mut key, mut h) = (key0, hash);
+            let mut all = true;
+            for rel in &m.modules {
+                match self.read_in(g.layer, rel) {
+                    Ok(b) => {
+                        mix_in(&mut key, &b);
+                        fnv(&mut h, &b);
+                    }
+                    Err(_) => all = false,
+                }
+            }
+            if all && key == m.key {
+                let modules = m.modules.clone();
+                return Ok((sprite_of(&m, h, warnings), modules));
+            }
         }
+        let source = String::from_utf8_lossy(&bytes);
+        let prefix = self.shown(g.layer, "");
+        let (sprite, modules) = run_in(
+            &shown,
+            &source,
+            Some(Modules {
+                dir: self.dir(g.layer),
+                shown: &prefix,
+            }),
+        )?;
+        let mut key = key0;
+        for m in &modules {
+            if let Ok(b) = self.read_in(g.layer, m) {
+                mix_in(&mut key, &b);
+                fnv(&mut hash, &b);
+            }
+        }
+        let mut notes: Vec<String> = sprite
+            .printed
+            .iter()
+            .map(|p| format!("the script printed: {p}"))
+            .collect();
         let (w, h, rects, sheet) = pack(&sprite.frames);
         if w > MAX_SIDE || h > MAX_SIDE {
             return Err(ArgusError::new(
@@ -1437,10 +1622,7 @@ impl crate::Importer {
             .enumerate()
             .map(|(i, (f, r))| {
                 if f.canvas.rgba.as_chunks::<4>().0.iter().all(|p| p[3] == 0) {
-                    warnings.push(Warning {
-                        message: format!("frame {i} is empty"),
-                        at: shown.clone(),
-                    });
+                    notes.push(format!("frame {i} is empty"));
                 }
                 Frame {
                     rect: *r,
@@ -1450,31 +1632,19 @@ impl crate::Importer {
                 }
             })
             .collect();
-        let texture = self.cache.join(format!("{name}.png"));
         encode_png(&texture, tw, th, &tex)?;
-        Ok((
-            Entry {
-                name: name.to_string(),
-                sidecar: g.sidecar.clone(),
-                hash,
-                warnings,
-                asset: Asset::Sprite(SpriteAsset {
-                    source: Some(file.to_string()),
-                    width: w,
-                    height: h,
-                    texture,
-                    texture_size: [tw, th],
-                    normal: None,
-                    frames,
-                    clips: sprite.clips,
-                    pixels_per_unit: sprite.pixels_per_unit,
-                    shape: None,
-                    autotile: BTreeMap::new(),
-                    aseprite: None,
-                }),
-                ms: 0.0,
-            },
-            modules,
-        ))
+        let memo = Memo {
+            key0,
+            key,
+            modules: modules.clone(),
+            size: [w, h, tw, th],
+            ppu: sprite.pixels_per_unit,
+            frames,
+            clips: sprite.clips,
+            notes,
+        };
+        // A memo that cannot be written only costs the next import a run.
+        let _ = std::fs::write(&memo_file, memo.to_json().to_string());
+        Ok((sprite_of(&memo, hash, warnings), modules))
     }
 }
