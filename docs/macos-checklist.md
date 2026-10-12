@@ -68,7 +68,7 @@ Left for later: a game released for the Mac is a bare executable beside its `dat
   - stops running daemons without `/proc`;
   - clears the quarantine flag a browser download puts on the files (Gatekeeper would refuse the programs, which are signed but not notarised).
 
-**Written (2026-10-12)**, not yet run end to end: `release.sh` has not made a release with the Mac in it.
+**Built (2026-10-12)**: release 0.0.5, from 071b316. klab staged the Mac install, and every program passed `macho_check.py`. The Windows install released Delve, Hollow, Outpost, Puppet, and Toybox for the Mac, each checked, and refused Swarm with the plugin reason. Taken back out of the archives, the programs are mode 755 and pass the check again; Hollow and Outpost have Steam's library beside them. The Mac Claude Desktop bundle declares `darwin` and keeps `bin/argus` executable. The release's last step, that bundle, first failed: `mcpb.py` ran the Windows `argus.exe` from its own folder by a relative path. It runs it by an absolute one now, and the bundle and `SHA256SUMS` were made by hand from the same stages.
 
 ## 4. The testing packet
 

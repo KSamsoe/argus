@@ -35,6 +35,8 @@ def version():
 
 def tools(argus):
     """The server's tools, from tools/list on a server with no project."""
+    # It runs in its own folder, where a path relative to here is not.
+    argus = os.path.abspath(argus)
     req = [
         {"jsonrpc": "2.0", "id": 1, "method": "initialize",
          "params": {"protocolVersion": "2025-06-18", "capabilities": {},
