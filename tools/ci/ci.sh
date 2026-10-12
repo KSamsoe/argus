@@ -56,6 +56,35 @@ if [ "${CI:-}" = true ]; then
 fi
 # After the cleaning, which takes the whole of target/ with it.
 mkdir -p "$LOGS"
+STARTED="$LOGS/.started"
+touch "$STARTED"
+
+# Every build of a test is its own program, named by a hash of what it was
+# built from, so a version bump or a changed dependency makes new ones and
+# leaves the old (this laptop once held 1,172 of them, 160 GB, and C: ran
+# out). After every run, local or on the runner, a test program built
+# before the run goes when one of its name was built during it: that one
+# replaced it.
+prune_stale() {
+  local d f name n=0 bytes=0 size
+  for d in "$TARGET/debug/deps" "$TARGET/release/deps"; do
+    [ -d "$d" ] || continue
+    find "$d" -maxdepth 1 -type f -newer "$STARTED" -regextype posix-extended \
+      -regex '.*/[^/]+-[0-9a-f]{16}(\.exe)?' -printf '%f\n' |
+      sed -E 's/-[0-9a-f]{16}(\.exe)?$//' | sort -u > "$LOGS/.fresh"
+    while IFS= read -r f; do
+      name=$(printf '%s' "$f" | sed -E 's/-[0-9a-f]{16}(\.exe)?$//')
+      if grep -qxF "$name" "$LOGS/.fresh"; then
+        size=$(stat -c %s "$d/$f" 2>/dev/null || echo 0)
+        rm -f "$d/$f" "$d/${f%.exe}.d" && n=$((n + 1)) && bytes=$((bytes + size))
+      fi
+    done < <(find "$d" -maxdepth 1 -type f ! -newer "$STARTED" -regextype posix-extended \
+      -regex '.*/[^/]+-[0-9a-f]{16}(\.exe)?' -printf '%f\n')
+  done
+  rm -f "$LOGS/.fresh"
+  [ "$n" -gt 0 ] && echo "--- pruned $n test programs older builds left ($((bytes / 1048576)) MB)"
+  return 0
+}
 
 step_fmt() { cargo fmt --all -- --check --color never; }
 step_clippy() { cargo clippy --workspace --all-targets -q -- -D warnings; }
@@ -113,6 +142,7 @@ for s in "${STEPS[@]}"; do
     FAILED+=("$s")
   fi
 done
+prune_stale
 if [ ${#FAILED[@]} -gt 0 ]; then
   echo "failed: ${FAILED[*]}"
   exit 1
