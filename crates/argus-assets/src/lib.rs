@@ -21,6 +21,7 @@
 #![warn(missing_docs)]
 
 pub mod animator;
+pub mod art;
 pub mod aseprite;
 pub mod bc7;
 mod catalog;
@@ -495,6 +496,8 @@ struct Group {
     tiled: Option<String>,
     /// `<name>.json`: a Spine skeleton (phase 5 item 8).
     spine: Option<String>,
+    /// `<name>.art.luau`: an art script that draws a sprite.
+    art: Option<String>,
     /// One of the map `tiled`'s embedded tilesets, not the map itself.
     embedded: bool,
 }
@@ -509,7 +512,9 @@ fn group_files<'a>(
     let mut groups: BTreeMap<String, Group> = BTreeMap::new();
     for rel in rels {
         let lower = rel.to_ascii_lowercase();
-        let (name, slot) = if let Some(n) = lower.strip_suffix(".atlas.toml") {
+        let (name, slot) = if let Some(n) = lower.strip_suffix(".art.luau") {
+            (rel[..n.len()].to_string(), 9)
+        } else if let Some(n) = lower.strip_suffix(".atlas.toml") {
             (rel[..n.len()].to_string(), 2)
         } else if let Some(n) = lower.strip_suffix(".toml") {
             (rel[..n.len()].to_string(), 2)
@@ -554,6 +559,7 @@ fn group_files<'a>(
             6 => g.aseprite = Some(rel.clone()),
             7 => g.tiled = Some(rel.clone()),
             8 => g.spine = Some(rel.clone()),
+            9 => g.art = Some(rel.clone()),
             _ => g.sidecar = Some(rel.clone()),
         }
     }
@@ -903,6 +909,8 @@ impl Importer {
                         &g.normal,
                         &g.aseprite,
                         &g.tiled,
+                        &g.spine,
+                        &g.art,
                     ]
                     .into_iter()
                     .flatten()
@@ -981,6 +989,8 @@ impl Importer {
                 &g.normal,
                 &g.aseprite,
                 &g.tiled,
+                &g.spine,
+                &g.art,
             ]
             .into_iter()
             .flatten()
@@ -1067,10 +1077,18 @@ impl Importer {
         if let Some(t) = &g.tiled {
             return self.import_tiled(name, g, t, side_text.as_deref(), side_file.as_deref(), hash);
         }
-        let sources: Vec<&String> = [&g.png, &g.wav, &g.wgsl, &g.font, &g.aseprite, &g.spine]
-            .into_iter()
-            .flatten()
-            .collect();
+        let sources: Vec<&String> = [
+            &g.png,
+            &g.wav,
+            &g.wgsl,
+            &g.font,
+            &g.aseprite,
+            &g.spine,
+            &g.art,
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
         if sources.len() > 1 {
             return Err(ArgusError::new(
                 codes::AMBIGUOUS,
@@ -1097,6 +1115,9 @@ impl Importer {
         }
         if let Some(j) = &g.spine {
             return self.import_skeleton(name, g, j, hash);
+        }
+        if let Some(a) = &g.art {
+            return self.import_art(name, g, a, hash);
         }
         if let Some(a) = &g.aseprite {
             return self.import_aseprite(

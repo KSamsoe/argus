@@ -722,3 +722,22 @@ fn a_font_imports_as_a_distance_field_atlas_of_the_glyphs_text_needs() {
         r.failed
     );
 }
+
+/// A Spine export changed on disk is imported again (found adding art
+/// scripts, 2026-10-11: a skeleton's JSON was not among the files a scan
+/// compares, so a new export kept the old skeleton until the daemon
+/// restarted).
+#[test]
+fn a_changed_skeleton_is_imported_again() {
+    let dir = project("spine-change");
+    let one = r#"{ "skeleton": { "spine": "4.1.24" }, "bones": [ { "name": "root" } ] }"#;
+    let two = r#"{ "skeleton": { "spine": "4.1.24" }, "bones": [ { "name": "root" }, { "name": "arm", "parent": "root" } ] }"#;
+    write(&dir, "puppet/puppet.json", one);
+    let mut imp = Importer::new(&dir);
+    let rep = imp.scan();
+    assert!(rep.failed.is_empty(), "{:?}", rep.failed);
+    write(&dir, "puppet/puppet.json", two);
+    let rep = imp.scan();
+    assert_eq!(rep.imported, vec!["puppet/puppet".to_string()], "{rep:?}");
+    std::fs::remove_dir_all(&dir).ok();
+}

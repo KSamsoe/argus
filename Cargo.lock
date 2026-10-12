@@ -269,6 +269,8 @@ dependencies = [
  "argus-os",
  "flate2",
  "hound",
+ "libm",
+ "mlua",
  "png 0.17.16",
  "quick-xml 0.41.0",
  "serde_json",

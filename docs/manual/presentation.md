@@ -77,6 +77,37 @@ size = [1.0, 1.625]
 z = 5.0
 ```
 
+### Art scripts
+
+A sprite can also be drawn by a script: `assets/sprites/slime.art.luau` is the sprite `sprites/slime`, in place of a PNG and its sidecar. It is Luau, drawing on canvases with a pixel-art kit, `art`, and it ends by returning the sprite's frames and clips. The importer runs it, packs the frames into a sheet, and from then on it is a sprite like any other: scenes, animators, and releases use it the same way, and a release carries the picture, not the script. Change the script and the game shows the change while it runs, as it does for a game script. Nothing else is needed: no image editor, no Python.
+
+```lua
+-- assets/sprites/slime.art.luau: a slime of two frames, bouncing.
+local pal = { body = "#4CAF50", shine = "#A5D6A7", eye = "#1B1B1B", line = "#1E3A20" }
+
+local function slime(squash)
+  local c = art.canvas(12, 12)
+  c:ellipse(5.5, 7 + squash, 5 - squash, 4 - squash, pal.body)
+  c:pixel(4, 6, pal.eye)
+  c:pixel(7, 6, pal.eye)
+  c:shade{ light = pal.shine }   -- light on the edges facing up and left
+  c:outline(pal.line)            -- a line round all of it
+  return c
+end
+
+return art.sprite{
+  pixels_per_unit = 12,
+  pivot = {0.5, 0},               -- it stands on its bottom edge
+  clips = { bounce = { slime(0), slime(1), fps = 4 } },
+}
+```
+
+Coordinates are pixels, x right and y down from the top left, as in an image file; colours are `"#RRGGBB"`, `"#RRGGBBAA"`, or `"none"`. The kit draws pixels, lines, rectangles, circles, rings, ellipses, and polygons; fills, outlines, shades from a light, dithers, and textures with noise and speckles; mirrors, flips, rotates, scales, crops, and draws one canvas over another; and mixes, lightens, darkens, and makes colours. `art.rng(seed)` gives seeded random numbers and `art.grid` cuts a sheet into frames. The whole kit, and every key `art.sprite` takes, is in the reference: `argus docs files section=art.luau`.
+
+A script is sandboxed: it cannot read files, the clock, or the network, and `math.random` is refused in favour of `art.rng(seed)`. Its maths is the same on every machine, so the same script draws the same pixels everywhere. A mistake is an import error with the script's line, and `print` comes back as a warning on the asset, in `argus asset list`. To look at what it drew, put it in a scene and use `observe`; the packed sheet is in `.argus/assets/<name>.png`.
+
+The templates' art is drawn this way: their `assets/*.art.luau` are worked examples of characters, tiles, and panels.
+
 ## Animation
 
 ### The animator

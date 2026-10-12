@@ -18,6 +18,9 @@ ttf-parser = "0.25"
 flate2 = "1"
 # Tiled's XML files (.tmx, .tsx), phase 5 item 4.
 quick-xml = "0.41"
+# Art scripts (assets/*.art.luau): a sandboxed Luau, its math from libm.
+mlua = { version = "0.10", features = ["luau"] }
+libm = "0.2"
 
 [dev-dependencies]
 # The tests write WAV fixtures.

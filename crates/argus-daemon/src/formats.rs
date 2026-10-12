@@ -283,7 +283,7 @@ pub const FILES: &[FileDoc] = &[
     },
     FileDoc {
         title: "assets/: art, sound, and their sidecars",
-        intro: "Everything under `assets/` (and a mod's `mods/<id>/assets/`) is imported when the project opens and again when it changes (the daemon polls twice a second; `asset.import` now). An asset's name is its path under `assets/` without the extension: `assets/sprites/hero.png` is `sprites/hero`, and scenes name it so (`[Sprite] atlas = \"sprites/hero\"`, `[Animator] machine = \"anim/hero\"`, `[Emitter] effect = \"fx/pop\"`, `[Skeleton] skeleton = \"puppet/puppet\"`, ui.toml's `font = \"fonts/LiberationSans-Regular\"`; a Tilemap's `map` is the exception, a path from the project's root). The source decides the kind: `.png` a sprite (`<name>.normal.png` beside it is its normal map, for lights), `.aseprite` or `.ase` a sprite, `.wav` or `.ogg` a sound, `.wgsl` a material's shader, `.ttf` or `.otf` a font, `.json` a Spine 4 skeleton, `.tsx`, `.tsj`, `.tmx`, `.tmj` Tiled files (above); other extensions and names starting with `.` are ignored. A `.toml` of the same name beside the source is its sidecar (an older `.atlas.toml` still is); a `.toml` alone is an asset by itself, its kind its `type` (`sprite`, `sound`, `animator`, `emitter`, `material`, `font`) or, without one, the keys it has (`states` or `initial`: an animator; `rate`, `burst`, or `lifetime`: an emitter; `shader`, `params`, or `blend`: a material; `variations`, `tone`, `file`, or `bus`: a sound; `kind`, `grid`, `frames`, `clips`, `pivot`, or `color`: a sprite). Two sources with one name (a `.png` and a `.wav`) are refused. `asset.list` lists them with their warnings; `asset.get` one as imported; `asset.sidecar` and `edit` asset ops read and change a sidecar. A mod's asset in its namespace is added, and one with a name the game has replaces it.",
+        intro: "Everything under `assets/` (and a mod's `mods/<id>/assets/`) is imported when the project opens and again when it changes (the daemon polls twice a second; `asset.import` now). An asset's name is its path under `assets/` without the extension: `assets/sprites/hero.png` is `sprites/hero`, and scenes name it so (`[Sprite] atlas = \"sprites/hero\"`, `[Animator] machine = \"anim/hero\"`, `[Emitter] effect = \"fx/pop\"`, `[Skeleton] skeleton = \"puppet/puppet\"`, ui.toml's `font = \"fonts/LiberationSans-Regular\"`; a Tilemap's `map` is the exception, a path from the project's root). The source decides the kind: `.png` a sprite (`<name>.normal.png` beside it is its normal map, for lights), `.aseprite` or `.ase` a sprite, `.art.luau` a sprite an art script draws, `.wav` or `.ogg` a sound, `.wgsl` a material's shader, `.ttf` or `.otf` a font, `.json` a Spine 4 skeleton, `.tsx`, `.tsj`, `.tmx`, `.tmj` Tiled files (above); other extensions and names starting with `.` are ignored. A `.toml` of the same name beside the source is its sidecar (an older `.atlas.toml` still is); a `.toml` alone is an asset by itself, its kind its `type` (`sprite`, `sound`, `animator`, `emitter`, `material`, `font`) or, without one, the keys it has (`states` or `initial`: an animator; `rate`, `burst`, or `lifetime`: an emitter; `shader`, `params`, or `blend`: a material; `variations`, `tone`, `file`, or `bus`: a sound; `kind`, `grid`, `frames`, `clips`, `pivot`, or `color`: a sprite). Two sources with one name (a `.png` and a `.wav`) are refused. `asset.list` lists them with their warnings; `asset.get` one as imported; `asset.sidecar` and `edit` asset ops read and change a sidecar. A mod's asset in its namespace is added, and one with a name the game has replaces it.",
         keys: &[],
         example_from: "",
         example: "",
@@ -326,6 +326,38 @@ pub const FILES: &[FileDoc] = &[
         example_from: "",
         example: "",
         errors: "5201: `layers` that is not a list of names, or names none of which the file has (some missing: a warning); a clip naming no tag and giving no frames. 5203: a normal map beside an Aseprite file. A file that does not read: 5202.",
+    },
+    FileDoc {
+        title: "assets/<name>.art.luau: an art script",
+        intro: "A Luau file the importer runs to draw a sprite, in place of a PNG and its sidecar: `assets/sprites/slime.art.luau` is the sprite `sprites/slime`. It draws on canvases with the kit `art` and ends with `return art.sprite{ ... }`, the sprite's frames and clips; the importer packs the frames into a sheet and caches it as it does a PNG, so scenes, animators, and a release use it as any sprite (a release carries the sheet, never the script). It is imported again when it changes, while the game runs. Coordinates are pixels, x right and y down from the top left, as in a PNG; a colour is `\"#RRGGBB\"`, `\"#RRGGBBAA\"`, `\"#RGB\"`, or `\"none\"`; drawing writes the colour as given (only `draw` blends). Sandboxed and the same on every machine: no `os`, files, clock, or network; `math` is libm's (pure Rust, the same everywhere); `math.random` is refused (use `art.rng(seed)`); `print` comes back as a warning. A sidecar beside it is not read. Ten seconds and 512 MB at most; a canvas is 1 to 2048 pixels a side.",
+        keys: &[
+            k("art.sprite{ frames }", "list", "[]", "Frames in order, numbered from 0 as `Sprite.frame` counts: each a canvas, or `{ canvas, pivot = {x, y}, ms = n, properties = { slope = {0, 1} } }`. The same canvas twice is one frame."),
+            k("art.sprite{ clips }", "table", "{}", "Clips by name: `walk = { a, b, c, fps = 8 }` (canvases, or frame numbers from 0), with `loop` (default true) and `direction` (forward, reverse, pingpong). A canvas only a clip names becomes a frame after `frames`' (clips taken by name)."),
+            k("art.sprite{ pixels_per_unit }", "number", "16", "Pixels a world unit."),
+            k("art.sprite{ pivot }", "{x, y}", "{0.5, 0.5}", "Every frame's pivot, a fraction of the frame, y up from the bottom (`{0.5, 0}` stands it on its feet)."),
+            k("art.sprite{ ms }", "integer", "100", "How long a frame shows when its clip gives no fps."),
+            k("art.canvas(w, h, fill)", "function", "clear", "A new canvas, filled with `fill`. Its size is `c.w`, `c.h`."),
+            k("c:pixel(x, y, color), c:get(x, y)", "methods", "", "One pixel; `get` answers `\"#RRGGBBAA\"`, or nil outside."),
+            k("c:rect(x, y, w, h, color), c:box(x, y, w, h, color)", "methods", "", "A filled rectangle; its outline, one pixel wide."),
+            k("c:line(x0, y0, x1, y1, color)", "method", "", "A line, pixel by pixel."),
+            k("c:circle(cx, cy, r, color), c:ring(cx, cy, r, color), c:ellipse(cx, cy, rx, ry, color)", "methods", "", "A filled circle, its one-pixel ring, a filled ellipse. A centre of 7.5 sits between pixels, for an even width."),
+            k("c:poly({x1, y1, x2, y2, ...}, color)", "method", "", "A filled polygon, three points or more."),
+            k("c:fill(x, y, color)", "method", "", "Flood fill: the pixels of (x, y)'s colour joined to it."),
+            k("c:outline(color, corners)", "method", "", "A line round what is drawn: every clear pixel beside a drawn one (diagonals too with corners = true)."),
+            k("c:shade{ light, dark, from = {dx, dy} }", "method", "from = {-1, -1}", "Light on the drawn pixels facing the light (`from`, a direction), dark on those facing away."),
+            k("c:dither(x, y, w, h, color, amount)", "method", "", "An ordered dither of `color` over the rectangle, `amount` from 0 to 1."),
+            k("c:noise(x, y, w, h, colors, scale, seed, only_drawn)", "method", "scale 4, seed 1", "The rectangle in `colors` (a list) picked by smooth noise; only the drawn pixels with only_drawn."),
+            k("c:speckle(colors, amount, seed)", "method", "seed 1", "A share `amount` of the drawn pixels in random `colors`."),
+            k("c:mirror(axis), c:flip(axis), c:rotate(turns)", "methods", "\"x\", 1", "Mirror copies the left (or top) half onto the other; flip and rotate (quarter turns clockwise) answer a new canvas."),
+            k("c:draw(other, x, y), c:recolor({ [from] = to }), c:copy(), c:crop(x, y, w, h), c:scale(k)", "methods", "", "Draw another canvas over this one (blending by alpha); swap colours; a copy; a part; k times bigger."),
+            k("art.grid(canvas, w, h)", "function", "", "A sheet cut into frames of w x h, row by row."),
+            k("art.rng(seed)", "function", "seed 1", "Seeded numbers, the same every run: `:int(lo, hi)`, `:float(lo, hi)`, `:chance(p)`, `:pick(list)`."),
+            k("art.noise(x, y, seed)", "function", "", "Smooth noise from 0 to 1."),
+            k("art.mix(a, b, t), art.lighten(c, k), art.darken(c, k), art.alpha(c, a), art.hsv(h, s, v, a), art.rgb(r, g, b, a)", "functions", "", "Colours: between two, toward white or black, with an alpha, from hue (degrees), saturation, and value, from 0 to 255."),
+        ],
+        example_from: "a slime of two frames, bouncing",
+        example: "local pal = { body = \"#4CAF50\", shine = \"#A5D6A7\", eye = \"#1B1B1B\", line = \"#1E3A20\" }\nlocal function slime(squash)\n  local c = art.canvas(12, 12)\n  c:ellipse(5.5, 7 + squash, 5 - squash, 4 - squash, pal.body)\n  c:pixel(4, 6, pal.eye)\n  c:pixel(7, 6, pal.eye)\n  c:shade{ light = pal.shine }\n  c:outline(pal.line)\n  return c\nend\nreturn art.sprite{\n  pixels_per_unit = 12,\n  pivot = {0.5, 0},\n  clips = { bounce = { slime(0), slime(1), fps = 4 } },\n}",
+        errors: "5202 at the script's line: a Luau error, a colour that is not one, a canvas past 2048 pixels, a sprite with no frames, a clip naming a frame there is not, a key art.sprite does not take, a script that ran past ten seconds, `math.random` or `os`. 5203: a normal map beside an art script.",
     },
     FileDoc {
         title: "assets/<name>.toml with type = \"sound\": a sound",
@@ -607,7 +639,12 @@ pub fn files(level: usize) -> String {
             } else {
                 format!("`{}`", f.example_from)
             };
-            let _ = writeln!(o, "From {from}:\n\n```toml\n{}\n```\n", f.example);
+            let lang = if f.title.contains(".luau") {
+                "lua"
+            } else {
+                "toml"
+            };
+            let _ = writeln!(o, "From {from}:\n\n```{lang}\n{}\n```\n", f.example);
         }
         if !f.errors.is_empty() {
             let _ = writeln!(o, "When it is wrong: {}\n", f.errors);
@@ -1611,7 +1648,12 @@ mod tests {
         assert!(!all.contains('\u{2014}'), "no em dashes");
         for f in FILES {
             assert!(!f.title.is_empty() && !f.intro.is_empty(), "{}", f.title);
-            if !f.example.is_empty() {
+            if f.title.contains(".art.luau") {
+                // An art script's example draws what it says.
+                if let Err(e) = argus_assets::art::run("example.art.luau", f.example) {
+                    panic!("{}'s example does not draw: {}", f.title, e.message);
+                }
+            } else if !f.example.is_empty() {
                 assert!(
                     toml_edit::ImDocument::parse(f.example.to_string()).is_ok(),
                     "{}'s example is not TOML",
