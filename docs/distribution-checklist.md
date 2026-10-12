@@ -5,7 +5,7 @@ After phase 5, Argus runs only where it was built: a clone of the private reposi
 ## Decided with Kevin (2026-10-09)
 
 - **Who first: Kevin's machines, then people he invites.** Releases live on the private GitHub repository. A collaborator installs with a GitHub token, and no license or public listing is needed yet. Going public later is a switch (a public releases repository, a license, the MCP registry), not a rebuild.
-- **Windows and Linux first.** Both are built and tested here: this laptop, and klab as the Linux machine. macOS is recorded as not built, as in phase 5 item 11.
+- **Windows and Linux first.** Both are built and tested here: this laptop, and klab as the Linux machine. macOS is recorded as not built, as in phase 5 item 11. (From 0.0.5 a Mac build is cross-built on klab and tested on a Mac by Todd: [macos-checklist.md](macos-checklist.md).)
 - **Every MCP client:** Claude Code and Claude Desktop, Cursor and VS Code, Codex CLI and Gemini CLI, and remote MCP for the web apps (claude.ai, ChatGPT).
 - **Releasing a game needs no Rust.** The install carries the game runtime for each platform and the web player, and `argus build` packs a game around them. A game with Rust plugins still needs Rust, for the plugin only.
 

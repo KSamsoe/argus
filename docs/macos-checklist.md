@@ -52,6 +52,8 @@ Left for later: a game released for the Mac is a bare executable beside its `dat
 - `tools/release/stage.sh --target macos` on Linux stages `argus-<version>-macos`, laid out as the other installs are: `bin/`, `runtime/macos/standard` and `runtime/macos/steam` (with `libsteam_api.dylib`), `templates/`, `install.sh`, `manifest.json`.
 - It cannot run what it built, so it ends by checking each program's architectures and signature instead of running `argus version`.
 
+**Built (2026-10-12).** `stage.sh --target macos` builds each program for each architecture with cargo-zigbuild and joins the two with `lipo.py`. cargo-zigbuild's own `universal2` target once made an editor whose arm64 part was 384 KB, from a 9.5 MB arm64 build, on an incremental build. Signing kept only its x86_64 part, and the check caught it. Then it signs the programs and checks every file. The stage is 200 files, 136 MB, and every program passes `macho_check.py`.
+
 ## 3. The release has the Mac
 
 - `release.sh` stages the Mac install on klab beside the Linux one.
@@ -65,6 +67,8 @@ Left for later: a game released for the Mac is a bare executable beside its `dat
   - checks it with `shasum -a 256` when there is no `sha256sum`;
   - stops running daemons without `/proc`;
   - clears the quarantine flag a browser download puts on the files (Gatekeeper would refuse the programs, which are signed but not notarised).
+
+**Written (2026-10-12)**, not yet run end to end: `release.sh` has not made a release with the Mac in it.
 
 ## 4. The testing packet
 
@@ -85,6 +89,10 @@ Left for later: a game released for the Mac is a bare executable beside its `dat
   - `argus self-update` and `argus uninstall`.
 - The digests the four games' scenarios end on, from Windows and klab, so the report says which differ. The games played back identically on Windows, Linux, and in Chrome.
 - The report is a GitHub issue on the repository (with `gh`), or a file Todd sends. It has every check's result, the machine (chip, macOS version), and anything the agent saw that the packet did not ask about.
+
+**Written (2026-10-12):** `docs/mac-testing.md`: sections 0 to 12, from the machine to Rust plugins, then the report. Every command in it was run on Windows first, with what it answered. The expected results are `mac-expected.json`, made by `tools/release/mac_expected.py`:
+- each example game's digests, scenario by scenario and seed by seed, from Windows;
+- what `generate` makes of a laser seed 3 and a creature seed 2: the recipe's and the script's bytes, the sheet's and the preview's, and the sound's description.
 
 ## 5. The release Todd downloads
 

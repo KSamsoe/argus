@@ -19,32 +19,32 @@ desktop = ["render", "dep:gilrs"]
 rigid = ["dep:argus-rigid"]
 
 [dependencies]
-argus-ui = { path = "../argus-ui", version = "0.0.4" }
-argus-os = { path = "../argus-os", version = "0.0.4" }
-argus-ecs = { path = "../argus-ecs", version = "0.0.4" }
-argus-sim = { path = "../argus-sim", version = "0.0.4" }
-argus-luau = { path = "../argus-luau", version = "0.0.4" }
-argus-scene = { path = "../argus-scene", version = "0.0.4" }
-argus-input = { path = "../argus-input", version = "0.0.4" }
-argus-assets = { path = "../argus-assets", version = "0.0.4" }
-argus-nav = { path = "../argus-nav", version = "0.0.4" }
-argus-jobs = { path = "../argus-jobs", version = "0.0.4" }
-argus-dialogue = { path = "../argus-dialogue", version = "0.0.4" }
-argus-timeline = { path = "../argus-timeline", version = "0.0.4" }
-argus-tiles = { path = "../argus-tiles", version = "0.0.4" }
-argus-physics = { path = "../argus-physics", version = "0.0.4" }
-argus-camera = { path = "../argus-camera", version = "0.0.4" }
-argus-post = { path = "../argus-post", version = "0.0.4" }
-argus-light = { path = "../argus-light", version = "0.0.4" }
-argus-anim = { path = "../argus-anim", version = "0.0.4" }
-argus-skeletal = { path = "../argus-skeletal", version = "0.0.4" }
-argus-platform = { path = "../argus-platform", version = "0.0.4" }
-argus-tween = { path = "../argus-tween", version = "0.0.4" }
-argus-particles = { path = "../argus-particles", version = "0.0.4" }
-argus-plugins = { path = "../argus-plugins", version = "0.0.4" }
-argus-rigid = { path = "../argus-rigid", version = "0.0.4", optional = true }
-argus-render = { path = "../argus-render", version = "0.0.4", optional = true }
-argus-audio = { path = "../argus-audio", version = "0.0.4", optional = true }
+argus-ui = { path = "../argus-ui", version = "0.0.5" }
+argus-os = { path = "../argus-os", version = "0.0.5" }
+argus-ecs = { path = "../argus-ecs", version = "0.0.5" }
+argus-sim = { path = "../argus-sim", version = "0.0.5" }
+argus-luau = { path = "../argus-luau", version = "0.0.5" }
+argus-scene = { path = "../argus-scene", version = "0.0.5" }
+argus-input = { path = "../argus-input", version = "0.0.5" }
+argus-assets = { path = "../argus-assets", version = "0.0.5" }
+argus-nav = { path = "../argus-nav", version = "0.0.5" }
+argus-jobs = { path = "../argus-jobs", version = "0.0.5" }
+argus-dialogue = { path = "../argus-dialogue", version = "0.0.5" }
+argus-timeline = { path = "../argus-timeline", version = "0.0.5" }
+argus-tiles = { path = "../argus-tiles", version = "0.0.5" }
+argus-physics = { path = "../argus-physics", version = "0.0.5" }
+argus-camera = { path = "../argus-camera", version = "0.0.5" }
+argus-post = { path = "../argus-post", version = "0.0.5" }
+argus-light = { path = "../argus-light", version = "0.0.5" }
+argus-anim = { path = "../argus-anim", version = "0.0.5" }
+argus-skeletal = { path = "../argus-skeletal", version = "0.0.5" }
+argus-platform = { path = "../argus-platform", version = "0.0.5" }
+argus-tween = { path = "../argus-tween", version = "0.0.5" }
+argus-particles = { path = "../argus-particles", version = "0.0.5" }
+argus-plugins = { path = "../argus-plugins", version = "0.0.5" }
+argus-rigid = { path = "../argus-rigid", version = "0.0.5", optional = true }
+argus-render = { path = "../argus-render", version = "0.0.5", optional = true }
+argus-audio = { path = "../argus-audio", version = "0.0.5", optional = true }
 gilrs = { version = "0.11", optional = true }
 toml_edit = "0.22"
 serde_json = "1"

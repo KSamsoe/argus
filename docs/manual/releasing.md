@@ -121,7 +121,7 @@ argus build: the install has no linux standard runtime in <install>\runtime (it 
 
 Two limits. A game with Rust plugins is released on its own platform, since its plugins are compiled for the machine that builds them. And from source, a desktop build is made only on its own platform.
 
-macOS is accepted as a target, but there is no macOS runtime and macOS has never been built or tested.
+The macOS runtime is new in 0.0.5. It is one universal program, for Apple Silicon and Intel Macs, made on Linux, so every install can release a game for the Mac. It had not run on a Mac when it shipped; [docs/mac-testing.md](../mac-testing.md) is how it is being tested. A Mac release is the game's executable beside its `data/`, run from Terminal; it is not yet an `.app`, and it is signed ad hoc, not notarised, so a player who downloads it with a browser clears the mark first: `xattr -dr com.apple.quarantine <folder>`.
 
 ## Patches
 
@@ -345,7 +345,7 @@ Players need nothing else: no Argus, no Rust, no runtime to install. A game keep
 |---|---|
 | Windows | `%APPDATA%\<name>` |
 | Linux | `$XDG_DATA_HOME/<name>`, or `~/.local/share/<name>` |
-| macOS | `~/Library/Application Support/<name>` (not built yet) |
+| macOS | `~/Library/Application Support/<name>` |
 
 The executable takes a few flags, mostly for testing: `--lang <code>` plays in a language pack, `--scene` and `--seed` choose what loads, `--data <dir>` reads packs from elsewhere, `--mods <dir>` and `--no-mods` as above, and `--headless <ticks>` runs with no window and prints the world's digest.
 
