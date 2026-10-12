@@ -452,3 +452,36 @@ fn write_the_kinds_as_wavs() {
         }
     }
 }
+
+/// A sound that clips says so, and a note's brightness is in the sentence.
+#[test]
+fn a_description_says_when_a_sound_clips_and_how_its_brightness_goes() {
+    use argus_audio::hear::hear;
+    let loud = synth(
+        &Tone {
+            wave: Wave::Square,
+            freq: 220.0,
+            ms: 300.0,
+            gain: 1.0,
+            punch: 0.0,
+            ..Tone::default()
+        },
+        RATE,
+    );
+    let h = hear(&loud, RATE);
+    assert!(h.text.contains("it clips"), "{}", h.text);
+    let dull = synth(
+        &Tone {
+            wave: Wave::Saw,
+            freq: 300.0,
+            ms: 400.0,
+            lowpass: 6000.0,
+            lowpass_sweep: -14000.0,
+            ..Tone::default()
+        },
+        RATE,
+    );
+    let h = hear(&dull, RATE);
+    assert!(h.text.contains("grows duller"), "{}", h.text);
+    assert!(!h.text.contains("clips"), "{}", h.text);
+}

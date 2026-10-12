@@ -30,7 +30,7 @@ The tools, by what they are for. Each is also a shell command (`argus query enti
 
 ### Files, and which tools to use
 
-Agents with their own file access (Claude Code, Cursor, Codex, Gemini, VS Code) can edit the project's files directly and run `argus` in a shell. Agents without it (Claude Desktop, and any agent over MCP alone) use `read_file` and `write_file`. They stay inside the open project's folder, and a write is an ordinary edit: it is in the change feed with its author and note, and `edit undo=true` takes it back.
+Agents with their own file access (Claude Code, Cursor, Codex, Gemini, VS Code) can edit the project's files directly and run `argus` in a shell. Agents without it (Claude Desktop, and any agent over MCP alone) use `read_file` and `write_file`. They stay inside the open project's folder, and a write is an ordinary edit: it is in the change feed with its author and note, and `edit undo=true` takes it back. A file changed directly works as well (the game takes it at `reload`, or an entity file at `scene load`), but the change feed does not have it, so prefer `edit` and `write_file` for a change a person will want to see or undo.
 
 After writing a script or an asset, call `reload` so the running game takes it. A script with an error stays out, the last good version keeps running, and `reload` answers with the error's file, line, and message.
 

@@ -1712,9 +1712,9 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "audio.describe",
-        doc: "What a sound is like, for someone who cannot hear it: each variation measured from the samples the mixer plays (a file's or a tone's). Its length, peak and loudness, when it is loudest and when it has faded to a tenth, its pitch every 40 ms where it has one (and how much of it does), its zero crossings a second (high is bright or hissy), and all of that in a sentence.",
+        doc: "What a sound is like, for someone who cannot hear it: each variation measured from the samples the mixer plays (a file's or a tone's). Its length, peak and loudness, when it is loudest and when it has faded to a tenth, its pitch every 40 ms where it has one (and how much of it does), its zero crossings a second (high is bright or hissy) and its brightness (the frequency of a sine that moves as much from sample to sample: it falls as a filter closes over a note), how much of it clips at full scale, and all of that in a sentence.",
         params: &[req("sound", STRING, "the sound's name, as q:play spells it: sfx/jump")],
-        returns: "{sound, variations: [{source, text, seconds, peak_db, loudness_db, loudest_s, faded_s, pitched, pitch_hz: [[s, hz]], crossings_per_s: [[s, n]]}]}",
+        returns: "{sound, variations: [{source, text, seconds, peak_db, loudness_db, loudest_s, faded_s, pitched, clipped_ms, pitch_hz: [[s, hz]], crossings_per_s: [[s, n]], brightness_hz: [[s, hz]]}]}",
     },
     MethodDoc {
         name: "audio.device",

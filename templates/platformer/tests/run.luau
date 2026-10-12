@@ -20,7 +20,7 @@ local function jump_at(t, x)
     if hero_x(t) >= x then
       t.input:hold("jump", true, 20)
       t:step(2)
-      t:run_until { event = "body.landed", max_frames = 120 }
+      t:run_until { event = "body.landed", where = { entity = "@player" }, max_frames = 120 }
       return
     end
     t:step(1)

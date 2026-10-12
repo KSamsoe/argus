@@ -263,7 +263,7 @@ end
 -- misspelt max_frames would run the default 100,000. speed = "max" is the only speed
 -- there is (the phase 0 design named it), so it is accepted and changes nothing.
 local RUN_UNTIL_KEYS = {
-  event = true, max_frames = true, max_ticks = true, sim_time = true,
+  event = true, where = true, max_frames = true, max_ticks = true, sim_time = true,
   frames = true, ticks = true, speed = true,
 }
 
@@ -272,7 +272,7 @@ local function run_until(ctx, opts)
   for k in pairs(opts) do
     if not RUN_UNTIL_KEYS[k] then
       error("run_until has no key " .. tostring(k)
-        .. ": it takes event (with max_frames), sim_time, or frames", 0)
+        .. ": it takes event (with where and max_frames), sim_time, or frames", 0)
     end
   end
   if opts.speed ~= nil and opts.speed ~= "max" then
@@ -280,6 +280,37 @@ local function run_until(ctx, opts)
   end
   ctx.ran_any = true
   local interval = tick_interval(ctx)
+  if opts.where ~= nil and opts.event == nil then
+    error("run_until's where filters an event: give event too", 0)
+  end
+  if opts.event ~= nil and opts.where ~= nil then
+    -- An event of that name whose fields match: run to each of them in
+    -- turn until one does, or the ticks run out.
+    local max = opts.max_frames or opts.max_ticks or 100000
+    local since = callm("obs.events", { limit = 1 }).last_seq or 0
+    local spent, last = 0, nil
+    while spent < max do
+      last = callm("sim.run_until", { event = opts.event, max_ticks = math.min(interval or max, max - spent) })
+      spent += last.ticks or 0
+      if interval ~= nil then sample_series(ctx) end
+      if last.hit then
+        local r = callm("obs.events", { name = opts.event, since = since, limit = 10000 })
+        for _, row in ipairs(r.rows or {}) do
+          if subset(opts.where, row.fields or {}) then
+            last.ticks = spent
+            last.event = row
+            return last
+          end
+          since = row.seq
+        end
+        last.hit = false
+      elseif (last.ticks or 0) == 0 then
+        break
+      end
+    end
+    if last then last.ticks = spent end
+    return last
+  end
   if opts.event ~= nil then
     local max = opts.max_frames or opts.max_ticks or 100000
     if interval == nil then

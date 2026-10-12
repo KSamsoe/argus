@@ -16,7 +16,7 @@ return scenario "the ledge is too high to walk up, and a jump lands on it" {
 
     t.input:hold("jump", true, 20)
     t:step(2)
-    t:run_until { event = "body.landed", max_frames = 120 }
+    t:run_until { event = "body.landed", where = { entity = "@player" }, max_frames = 120 }
     t.expect:events("body.jumped"):count():eq(1)
     t.expect:field("@player", "Transform.pos.x"):gt(36)
     t.expect:field("@player", "Transform.pos.y"):near(3.1, 0.01)

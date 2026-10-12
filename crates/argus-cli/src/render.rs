@@ -205,6 +205,23 @@ pub fn test_report(r: &Json) -> String {
             sc["scene"].as_str().unwrap_or("?"),
             ms
         );
+        // What the scenario said with t:log, from its first seed (a failed
+        // one's, when one failed).
+        let said = failed.first().copied().or(seeds.first());
+        let lines: Vec<&str> = said
+            .and_then(|s| s["log"].as_array())
+            .map(|l| l.iter().filter_map(Json::as_str).collect())
+            .unwrap_or_default();
+        for l in lines.iter().take(10) {
+            let _ = writeln!(out, "    log: {l}");
+        }
+        if lines.len() > 10 {
+            let _ = writeln!(
+                out,
+                "    log: ... {} more (--json has them all)",
+                lines.len() - 10
+            );
+        }
         for s in failed.iter().take(10) {
             let seed = cell(&s["seed"]);
             if let Some(e) = s["error"].as_str() {

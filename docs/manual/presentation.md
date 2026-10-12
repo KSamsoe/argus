@@ -560,7 +560,7 @@ m.intensity = math.min(1, n / 30)
 
 `argus audio describe sound=sfx/jump` says what a sound is like, measured from the samples the mixer plays, a file's or a tone's: its length, its peak and loudness, when it is loudest and when it has faded, how its pitch moves (where it has one) and how bright it is, in numbers and in a sentence: "0.17 s long, peak -6.0 dB; loudest at 0.00 s, faded to a tenth by 0.16 s; a note starting near 560 Hz at 0.00 s, ending near 826 Hz at 0.14 s (higher)".
 
-Every play is an event (`sound.play` asked, `sound.played` with the variation chosen, or `sound.missing`), and music changes are `music.started`, `music.layer`, and `music.queued`. `argus audio status` shows the buses with their levels and ducking, the voices, and the music. `argus audio clip` writes the last seconds of the mix as a WAV for a person to hear. Headless, the mixer runs on sim time, so the clip is the same every run.
+Every play is an event (`sound.play` asked, `sound.played` with the variation chosen and the gain and pitch it played at, its jitter included, or `sound.missing`), and music changes are `music.started`, `music.layer`, and `music.queued`. `argus audio status` shows the buses with their levels and ducking, the voices, and the music. `argus audio clip` writes the last seconds of the mix as a WAV for a person to hear. Headless, the mixer runs on sim time, so the clip is the same every run.
 
 ## Where to go next
 

@@ -22,8 +22,14 @@ pub struct Heard {
     pub pitch: Vec<(f32, f32)>,
     /// Zero crossings a second, every 20 ms (high is bright or hissy).
     pub brightness: Vec<(f32, f32)>,
+    /// How bright, every 20 ms, as the frequency a sine that moves as much
+    /// sample to sample would have (its energy's centre, roughly): it
+    /// falls as a filter closes over a note, which crossings do not show.
+    pub brightness_hz: Vec<(f32, f32)>,
     /// The share of its audible windows that have a pitch.
     pub pitched: f32,
+    /// Seconds of it at full scale, cut flat.
+    pub clipped_s: f32,
     /// All of it in a sentence.
     pub text: String,
 }
@@ -109,6 +115,8 @@ pub fn hear(samples: &[f32], rate: u32) -> Heard {
     let sr = rate as f32;
     let seconds = samples.len() as f32 / sr;
     let peak = samples.iter().fold(0.0f32, |m, x| m.max(x.abs()));
+    // At full scale: a sound louder than the mix's range, cut flat there.
+    let clipped_s = samples.iter().filter(|x| x.abs() >= 0.999).count() as f32 / sr;
     let n = ((WIN_S * sr) as usize).max(1);
     let wins: Vec<(f32, &[f32])> = samples
         .chunks(n)
@@ -136,6 +144,7 @@ pub fn hear(samples: &[f32], rate: u32) -> Heard {
         .collect();
     let mut pitch = Vec::new();
     let mut brightness = Vec::new();
+    let mut brightness_hz = Vec::new();
     for &i in &audible {
         let (t, w) = wins[i];
         if let Some(p) = pitch_of(w, rate) {
@@ -146,6 +155,13 @@ pub fn hear(samples: &[f32], rate: u32) -> Heard {
             .filter(|x| (x[0] <= 0.0) != (x[1] <= 0.0))
             .count();
         brightness.push((t, ups as f32 / (w.len() as f32 / sr)));
+        let d: Vec<f32> = w.windows(2).map(|x| x[1] - x[0]).collect();
+        let level = rms(w);
+        if level > 1e-6 {
+            // A sine of f moves 2 sin(pi f / sr) of its level a sample.
+            let k = (rms(&d) / level / 2.0).min(1.0);
+            brightness_hz.push((t, libm::asinf(k) * sr / std::f32::consts::PI));
+        }
     }
     let pitched = if audible.is_empty() {
         0.0
@@ -212,6 +228,21 @@ pub fn hear(samples: &[f32], rate: u32) -> Heard {
                 };
                 text.push_str(&format!(", ending near {} at {t1:.2} s ({way})", hz(f1)));
             }
+            if let (Some(a), Some(b)) = (brightness_hz.first(), brightness_hz.last()) {
+                if b.1 < a.1 * 0.7 {
+                    text.push_str(&format!(
+                        "; it grows duller (its brightness falls from {} to {})",
+                        hz(a.1),
+                        hz(b.1)
+                    ));
+                } else if b.1 > a.1 * 1.4 {
+                    text.push_str(&format!(
+                        "; it grows brighter (its brightness rises from {} to {})",
+                        hz(a.1),
+                        hz(b.1)
+                    ));
+                }
+            }
         } else {
             let mean = brightness.iter().map(|b| b.1).sum::<f32>() / brightness.len().max(1) as f32;
             let tone = if mean > 8000.0 {
@@ -236,6 +267,12 @@ pub fn hear(samples: &[f32], rate: u32) -> Heard {
             }
         }
     }
+    if clipped_s > 0.0005 {
+        text.push_str(&format!(
+            "; it clips: {:.0} ms of it is cut flat at full scale (lower its gain)",
+            clipped_s * 1000.0
+        ));
+    }
     Heard {
         seconds,
         peak_db: db(peak),
@@ -244,7 +281,9 @@ pub fn hear(samples: &[f32], rate: u32) -> Heard {
         faded_s: faded,
         pitch,
         brightness,
+        brightness_hz,
         pitched,
+        clipped_s,
         text,
     }
 }
@@ -262,8 +301,10 @@ impl Heard {
             "loudest_s": r2(self.loudest_s),
             "faded_s": r2(self.faded_s),
             "pitched": r2(self.pitched),
+            "clipped_ms": (self.clipped_s as f64 * 1000.0).round(),
             "pitch_hz": self.pitch.iter().step_by(2).map(|(t, f)| json!([r2(*t), r0(*f)])).collect::<Vec<_>>(),
             "crossings_per_s": self.brightness.iter().step_by(2).map(|(t, f)| json!([r2(*t), r0(*f)])).collect::<Vec<_>>(),
+            "brightness_hz": self.brightness_hz.iter().step_by(2).map(|(t, f)| json!([r2(*t), r0(*f)])).collect::<Vec<_>>(),
         })
     }
 }
