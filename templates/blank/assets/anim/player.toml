@@ -1,19 +1,19 @@
-# Which of the player's clips plays (the clips are cut in assets/player.toml):
-# walk while the move action is held, as sim.move walks the player, and idle
-# when it is let go. A new state here plays another clip.
+# Which of the player's clips plays (the clips are drawn in
+# assets/player.art.luau): walk while the move action is held, as sim.move
+# walks the player, and idle when it is let go. A new state here plays
+# another clip.
 type = "animator"
 initial = "idle"
+# The art faces right: mirrored while the player walks left, and still
+# facing that way when they stop.
+face = "Actions.move.x"
 
 [states.idle]
 clip = "idle"
 
 [[states.idle.transitions]]
 to = "walk"
-when = "Actions.move.x != 0"
-
-[[states.idle.transitions]]
-to = "walk"
-when = "Actions.move.y != 0"
+when = "Actions.move.x != 0 or Actions.move.y != 0"
 
 [states.walk]
 clip = "walk"

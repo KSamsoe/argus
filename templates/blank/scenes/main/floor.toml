@@ -1,6 +1,6 @@
-# Something to walk over, so the walking shows. Its picture is
-# assets/floor.png (drawn by tools/art.py), stretched over the 30 x 30
-# units of size; put your own floor.png there and nothing else changes.
+# Something to walk over, so the walking shows. Its picture is drawn by
+# assets/floor.art.luau, over the 30 x 30 units of size; a floor.png in
+# its place would do as well, and nothing else would change.
 [Transform]
 pos = [0.0, 0.0]
 

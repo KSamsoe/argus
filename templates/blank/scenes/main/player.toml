@@ -12,18 +12,17 @@ speed = 6.0
 [Transform]
 pos = [0.0, 0.0]
 
-# Drawn from assets/player.png, cut into frames by its sidecar
-# assets/player.toml; size is how big it is in world units, whatever the
-# image's pixels. To use your own art, replace player.png (keep the frames
-# in a row, or change the sidecar's grid) and nothing else changes.
+# Drawn by assets/player.art.luau, a script of rows of pixels; size is
+# how big it is in world units, whatever the art's pixels. To use art from
+# a paint program, put player.png (and a player.toml cutting it into the
+# same frames and clips) in its place, and nothing else changes.
 [Sprite]
 atlas = "player"
 size = [2.0, 2.0]
 z = 2.0
 
 # Picks the frames: assets/anim/player.toml plays walk while the player
-# walks and idle when they stop; systems/look.luau mirrors it when they
-# walk left.
+# walks and idle when they stop, and mirrors it while they walk left.
 [Animator]
 machine = "anim/player"
 

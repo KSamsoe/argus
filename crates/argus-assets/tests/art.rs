@@ -208,3 +208,32 @@ fn a_scripts_mistakes_are_errors_with_the_line_and_chance_and_clocks_are_not_the
     );
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// Pixel art as text: each character a colour from the key; one the key
+/// does not have leaves its pixel alone.
+#[test]
+fn rows_draw_pixel_art_written_as_text() {
+    let dir = project("rows");
+    write(
+        &dir,
+        "key.art.luau",
+        r##"
+local c = art.canvas(5, 3, "#000000")
+c:rows(0, 0, {
+  ".#o#.",
+  "#ooo#",
+  ".#.#.",
+}, { ["#"] = "#FFFFFF", o = "#FF0000" })
+return art.sprite{ frames = { c } }
+"##,
+    );
+    let mut imp = Importer::new(&dir);
+    let rep = imp.scan();
+    assert!(rep.failed.is_empty(), "{:?}", rep.failed);
+    let s = sprite(&imp, "key");
+    assert_eq!(px(&s, 0, 0, 0), [0, 0, 0, 255], "a dot leaves the fill");
+    assert_eq!(px(&s, 0, 1, 0), [255, 255, 255, 255]);
+    assert_eq!(px(&s, 0, 2, 1), [255, 0, 0, 255]);
+    assert_eq!(px(&s, 0, 2, 2), [0, 0, 0, 255]);
+    std::fs::remove_dir_all(&dir).ok();
+}

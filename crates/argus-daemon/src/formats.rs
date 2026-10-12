@@ -340,6 +340,7 @@ pub const FILES: &[FileDoc] = &[
             k("c:pixel(x, y, color), c:get(x, y)", "methods", "", "One pixel; `get` answers `\"#RRGGBBAA\"`, or nil outside."),
             k("c:rect(x, y, w, h, color), c:box(x, y, w, h, color)", "methods", "", "A filled rectangle; its outline, one pixel wide."),
             k("c:line(x0, y0, x1, y1, color)", "method", "", "A line, pixel by pixel."),
+            k("c:rows(x, y, rows, key)", "method", "", "Pixel art as text: `rows` a list of strings, each character a colour from `key` (`{ [\"#\"] = \"#1E3A20\", o = \"#4CAF50\" }`), drawn from (x, y); a character the key does not have (`.`) leaves its pixel as it is."),
             k("c:circle(cx, cy, r, color), c:ring(cx, cy, r, color), c:ellipse(cx, cy, rx, ry, color)", "methods", "", "A filled circle, its one-pixel ring, a filled ellipse. A centre of 7.5 sits between pixels, for an even width."),
             k("c:poly({x1, y1, x2, y2, ...}, color)", "method", "", "A filled polygon, three points or more."),
             k("c:fill(x, y, color)", "method", "", "Flood fill: the pixels of (x, y)'s colour joined to it."),
