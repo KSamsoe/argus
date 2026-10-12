@@ -62,6 +62,10 @@ const canvas = document.getElementById("game");
 const form = document.getElementById("report");
 const note = document.getElementById("note");
 
+// The game's own page script (web/game.js in its project), when packs.json
+// names one: imported once the player is ready (host channel item 2).
+let pageScript = null;
+
 // A release build lists its packs in data/packs.json (argus build); the
 // spike's page has one pack of every file.
 async function loadPlayer() {
@@ -71,6 +75,7 @@ async function loadPlayer() {
     .then((r) => (r.ok ? r.json() : null))
     .catch(() => null);
   if (listed) {
+    pageScript = listed.script ?? null;
     const packs = [];
     for (const name of listed.packs) {
       packs.push(new Uint8Array(await (await fetch("data/" + name)).arrayBuffer()));
@@ -292,6 +297,13 @@ try {
   // The sound's queue: how deep it is now, and the render quanta (128
   // frames each) the worklet could not fill since it started.
   window.argus.sound = () => ({ ...sound, queued_ms: sound.rate ? Math.round(((sound.sent - sound.played) * 1000) / sound.rate) : 0 });
+
+  // The game's own page script, with window.argus set: what it sends the
+  // game reaches the scripts with player.message, and what the game sends
+  // its host it reads with player.take_sent (host channel items 0 to 2).
+  if (pageScript) {
+    import("./" + pageScript).catch((e) => console.error(`${pageScript}: ${e}`));
+  }
 
   // The game's settings say whether it fills the screen (phase 3 item 1).
   // A browser allows that only shortly after a key press or a click, which

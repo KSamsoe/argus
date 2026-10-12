@@ -863,7 +863,45 @@ fn game_page(out: &Path, root: &Path, name: &str) -> Result<(), String> {
         format!("{}. Click the game first.", html_text(&controls))
     };
     let page = fill_span(&page, "controls", &said);
-    std::fs::write(&file, page).map_err(|e| format!("{}: {e}", file.display()))
+    std::fs::write(&file, page).map_err(|e| format!("{}: {e}", file.display()))?;
+    page_script(out, root)
+}
+
+/// A game's own page script (host channel item 2): the project's `web/`
+/// folder goes beside the page, and when it has a `game.js`, packs.json
+/// names it so the page imports it once the player is ready, with
+/// `window.argus` set. That is where a game talks to the world outside it
+/// (the Bring Your Own Game Master game calls its model there).
+fn page_script(out: &Path, root: &Path) -> Result<(), String> {
+    let src = root.join("web");
+    if !src.is_dir() {
+        return Ok(());
+    }
+    copy_dir(&src, &out.join("web")).map_err(|e| format!("web/: {e}"))?;
+    if !out.join("web").join("game.js").is_file() {
+        return Ok(());
+    }
+    let listed = out.join("data").join("packs.json");
+    let mut v: Json = std::fs::read_to_string(&listed)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_else(|| json!({}));
+    v["script"] = json!("web/game.js");
+    std::fs::write(&listed, v.to_string()).map_err(|e| format!("{}: {e}", listed.display()))
+}
+
+fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(to)?;
+    for entry in std::fs::read_dir(from)? {
+        let entry = entry?;
+        let dest = to.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_dir(&entry.path(), &dest)?;
+        } else {
+            std::fs::copy(entry.path(), dest)?;
+        }
+    }
+    Ok(())
 }
 
 /// What a player presses, from the action map: each action a key plays,

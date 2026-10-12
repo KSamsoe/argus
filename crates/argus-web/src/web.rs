@@ -369,6 +369,26 @@ impl WebPlayer {
         out
     }
 
+    /// Text for the game's scripts, as a `host.message` event
+    /// `{channel, text}` on the next tick (host channel item 0): recorded
+    /// with the run's input, so a report carries it. Returns the turns a
+    /// discrete game took (one).
+    pub fn message(&mut self, channel: &str, text: &str) -> Result<u32, JsValue> {
+        self.p.message(channel, text).map(|n| n as u32).map_err(js)
+    }
+
+    /// What the game sent its host since the last call (`q:send`), oldest
+    /// first, as JSON `[{tick, channel, text}]` (host channel item 1).
+    pub fn take_sent(&mut self) -> String {
+        let rows: Vec<Json> = self
+            .p
+            .take_sent()
+            .into_iter()
+            .map(|(tick, channel, text)| serde_json::json!({ "tick": tick, "channel": channel, "text": text }))
+            .collect();
+        Json::Array(rows).to_string()
+    }
+
     /// The saves the game asked to load since the last call (`q:load`), by
     /// name; the page finds each in its storage and hands it to `load`.
     pub fn take_loads(&mut self) -> js_sys::Array {

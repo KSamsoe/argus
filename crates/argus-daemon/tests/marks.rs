@@ -333,3 +333,68 @@ fn a_replay_is_a_mark_with_no_queue() {
         "the second save replaced the first: {o}"
     );
 }
+
+/// The host channel's gate (item 0): a run with messages in it, marked,
+/// reproduces in a daemon that did not take the mark, with nobody sending
+/// the messages again. A message changes the world here because a script
+/// writes its text into the player's Health, which the digest reads.
+#[test]
+fn a_mark_with_host_messages_in_it_reproduces_without_the_host() {
+    let t = temp("marks-messages");
+    project(t.path());
+    write(
+        t.path(),
+        "systems/ruling.luau",
+        r#"return system "sim.ruling" {
+  stage = "sim",
+  reads = { "Health" },
+  writes = { "Health" },
+  doc = "Applies a ruling from the host: its text is the HP the player is left with.",
+  run = function(q)
+    for _, ev in ipairs(q:events("host.message")) do
+      q:entity("@player"):get("Health").cur = tonumber(ev.text) or 0
+    end
+  end,
+}"#,
+    );
+    let digest = {
+        let mut d = open(t.path());
+        ok(&mut d, "sim.step", json!({ "n": 50 }));
+        ok(
+            &mut d,
+            "input.message",
+            json!({ "channel": "gm.ruling", "text": "7" }),
+        );
+        ok(&mut d, "sim.step", json!({ "n": 100 }));
+        ok(
+            &mut d,
+            "input.message",
+            json!({ "channel": "gm.ruling", "text": "3" }),
+        );
+        ok(&mut d, "sim.step", json!({ "n": 100 }));
+        let hp = ok(&mut d, "world.get", json!({ "entity": "@player" }))["components"]["Health"]
+            ["cur"]
+            .clone();
+        assert_eq!(hp, 3);
+        // Back before the second message, and on again: the journal brings it in.
+        ok(&mut d, "sim.seek", json!({ "frame": 120 }));
+        let hp = ok(&mut d, "world.get", json!({ "entity": "@player" }))["components"]["Health"]
+            ["cur"]
+            .clone();
+        assert_eq!(hp, 7, "at 120 only the first message had come");
+        ok(&mut d, "sim.step", json!({ "n": 130 }));
+        let hp = ok(&mut d, "world.get", json!({ "entity": "@player" }))["components"]["Health"]
+            ["cur"]
+            .clone();
+        assert_eq!(hp, 3, "stepping on replays the second");
+        let m = ok(&mut d, "mark.drop", json!({ "note": "the second ruling" }));
+        ok(&mut d, "mark.get", json!({ "id": m["id"] }))["digest"].clone()
+    };
+    let mut d = open(t.path());
+    let r = ok(&mut d, "mark.open", json!({ "id": 1 }));
+    assert_eq!(r["digest"]["mark"], digest);
+    assert_eq!(r["digest"]["same"], true, "{r}");
+    let hp = ok(&mut d, "world.get", json!({ "entity": "@player" }))["components"]["Health"]["cur"]
+        .clone();
+    assert_eq!(hp, 3, "the ruling replayed from the mark, not sent again");
+}

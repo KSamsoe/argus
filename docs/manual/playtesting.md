@@ -95,7 +95,7 @@ A mark is a moment a person flags while playing, with a note: "jump feels floaty
 argus mark drop note="jump feels floaty"
 ```
 
-A mark keeps, in `.argus/marks/<id>/`: the frame as a picture, a two-second clip replayed from the run, the last two seconds of sound, the five seconds of input and events before it, the world's digest, and a replay file that reproduces the moment after the daemon is gone. On a discrete clock the seconds are turns.
+A mark keeps, in `.argus/marks/<id>/`: the frame as a picture, a two-second clip replayed from the run, the last two seconds of sound, the five seconds of input and events before it, the world's digest, and a replay file that reproduces the moment after the daemon is gone. On a discrete clock the seconds are turns. The input it keeps includes the host's messages (see [Talking to the host](gameplay.md#talking-to-the-host)), so a turn decided by an outside service replays without asking it again.
 
 Marks wait in a queue for the agent:
 

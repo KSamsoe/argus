@@ -40,6 +40,7 @@ pub const CHANGES: &[&str] = &[
     "edit.lock",
     "edit.unlock",
     "input.inject",
+    "input.message",
     "input.script",
     "input.record",
     "input.replay",

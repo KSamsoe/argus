@@ -1184,6 +1184,36 @@ impl UserData for QueryHandle {
                 Ok(())
             },
         );
+        // send("gm.request", text): text for whatever hosts the game (the
+        // page, the daemon's subscribers), as a host.send event {channel,
+        // text}. A release build keeps it for the page's take_sent (host
+        // channel item 1). The reply, if any, comes back as a message.
+        m.add_method("send", |_, this, (channel, text): (String, String)| {
+            let ok = !channel.is_empty()
+                && channel.len() <= 64
+                && channel
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'));
+            if !ok {
+                return Err(mlua::Error::runtime(format!(
+                    "q:send: bad channel {channel:?}: a short name, letters, digits, '.', '_' and '-', up to 64"
+                )));
+            }
+            if text.len() > 64 * 1024 {
+                return Err(mlua::Error::runtime(format!(
+                    "q:send: {} bytes is too long; a text is up to 64 KiB",
+                    text.len()
+                )));
+            }
+            ctx(&this.link)?.emit(
+                "host.send",
+                vec![
+                    ("channel".to_string(), Value::Str(channel)),
+                    ("text".to_string(), Value::Str(text)),
+                ],
+            );
+            Ok(())
+        });
         // events("body.landed"): the game events emitted so far this tick
         // with that name (all of them for no name), oldest first, each a
         // table of its fields plus `name`. How a script reacts to a contact

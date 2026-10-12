@@ -122,6 +122,9 @@ step_web() {
   # listener on this machine.
   cargo build -q -p argus-cli || return 1
   ARGUS="$TARGET/debug/argus$EXE" timeout 300 node tools/web/editor-check.mjs > "$LOGS/editor-check.json" || { cat "$LOGS/editor-check.json"; return 1; }
+  # The host channel: a project's web/game.js loaded by its web build, a
+  # message from the page reaching a script, and q:send's answer back.
+  timeout 1800 node tools/web/host-check.mjs "$TARGET/debug/argus$EXE" "$LOGS/host-check" > "$LOGS/host-check.json" || { cat "$LOGS/host-check.json"; return 1; }
 }
 
 STEPS=("$@")

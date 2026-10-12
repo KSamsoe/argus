@@ -14,6 +14,8 @@ use std::rc::Rc;
 pub const ACTIONS: &str = "Actions";
 /// Name of the input system.
 pub const SYSTEM: &str = "input.actions";
+/// The event a message from the host arrives as.
+pub const MESSAGE_EVENT: &str = "host.message";
 
 /// Marks an entity as receiving a player slot's actions.
 #[derive(Component, Clone, Copy, Debug, PartialEq)]
@@ -59,13 +61,25 @@ pub fn install(
         .reads(slot_id)
         .writes(actions_id)
         .source(format!("{}:1", map.file))
-        .doc("Applies injected, scripted, or replayed input for this tick and writes each player slot's Actions.");
+        .doc("Applies injected, scripted, or replayed input for this tick, writes each player slot's Actions, and hands the tick's messages from the host to the scripts as host.message events.");
     let st = state.clone();
     sched.add_system(
         desc,
         Box::new(move |ctx| {
             let tick = ctx.tick;
             st.borrow_mut().begin_tick(tick);
+            // Text from the host (host channel item 0), oldest first.
+            let inbox = st.borrow().inbox().to_vec();
+            for (slot, channel, text) in inbox {
+                ctx.emit(
+                    MESSAGE_EVENT,
+                    vec![
+                        ("channel".to_string(), Value::Str(channel)),
+                        ("text".to_string(), Value::Str(text)),
+                        ("slot".to_string(), Value::UInt(u64::from(slot))),
+                    ],
+                );
+            }
             let entities = ctx.query().has(slot_id).has(actions_id).entities();
             let st = st.borrow();
             for e in entities {

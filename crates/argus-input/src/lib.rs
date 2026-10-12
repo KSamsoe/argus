@@ -31,9 +31,9 @@ pub use map::{Action, ActionKind, ActionMap, Slot};
 pub use rebind::{InputBinding, InputToggle, REBIND};
 pub use state::{
     ActionValue, Command, InjectReport, InputSnapshot, InputState, JournalEntry, Listen, LogEntry,
-    Rebound,
+    Message, Rebound, MAX_CHANNEL, MAX_MESSAGE,
 };
-pub use system::{install, register, PlayerSlot, ACTIONS, SYSTEM};
+pub use system::{install, register, PlayerSlot, ACTIONS, MESSAGE_EVENT, SYSTEM};
 
 /// Error codes this crate adds to the 4xxx block.
 pub mod codes {

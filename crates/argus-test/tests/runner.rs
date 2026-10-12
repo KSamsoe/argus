@@ -621,3 +621,44 @@ fn run_until_refuses_a_key_it_does_not_take() {
         "the first call ran, the second did not: {seed}"
     );
 }
+
+/// The host channel (item 0 and 1): a scenario sends text as the page would,
+/// a script answers with q:send, and the answer is an event a scenario can
+/// check. The Bring Your Own Game Master game's scripted GM works this way.
+#[test]
+fn a_scenario_sends_a_message_and_checks_the_scripts_answer() {
+    let (t, mut d) = fixture("message");
+    common::write(
+        t.path(),
+        "systems/echo.luau",
+        r#"return system "sim.echo" {
+  stage = "sim",
+  doc = "Sends each host message back on the echo channel, longer.",
+  run = function(q)
+    for _, ev in ipairs(q:events("host.message")) do
+      q:send("echo", ev.channel .. ":" .. ev.text .. "!")
+    end
+  end,
+}"#,
+    );
+    common::write(
+        t.path(),
+        "tests/message.luau",
+        r#"return scenario "a message comes back" {
+  scene = "arena", seed = 7,
+  run = function(t)
+    t.input:message("gm.ruling", "tie the door")
+    t:step(1)
+    t.expect:events("host.message", { channel = "gm.ruling", text = "tie the door" }):count():eq(1)
+    t.expect:events("host.send", { channel = "echo", text = "gm.ruling:tie the door!" }):count():eq(1)
+  end,
+}"#,
+    );
+    let r = run(&mut d, &Options::default()).unwrap();
+    assert_eq!(
+        r["ok"],
+        true,
+        "{}",
+        serde_json::to_string_pretty(&r).unwrap()
+    );
+}

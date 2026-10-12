@@ -1000,6 +1000,16 @@ pub const METHODS: &[MethodDoc] = &[
         returns: "{action, slot, tick, until}",
     },
     MethodDoc {
+        name: "input.message",
+        doc: "Send the game text from the host, as a page or a model's answer would: the next tick's scripts get it as a host.message event {channel, text, slot}. Recorded with the run's input, so a seek, a replay, a mark, or a report brings it in again. On a discrete clock it is a turn, as a key press is (a game that shouldn't spend one freezes it).",
+        params: &[
+            req("channel", STRING, "a short name the game chose: letters, digits, . _ -, up to 64"),
+            req("text", STRING, "up to 64 KiB"),
+            opt("slot", INTEGER, "default 1"),
+        ],
+        returns: "{channel, slot, tick, bytes}",
+    },
+    MethodDoc {
         name: "input.script",
         doc: "Schedule several injects at ticks relative to now.",
         params: &[

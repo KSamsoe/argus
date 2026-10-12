@@ -96,7 +96,7 @@ Two rules about declarations catch people out:
 | finding entities | `q:each("A", "B")`, `q:count("A")`, `q:entity("@id")`, `q:get(e, "A")` |
 | near a point | `q:within(pos, r, "A")`, `q:nearest(pos, r, "A")` |
 | making and removing | `q:spawn(...)`, `q:spawn_many(n, {...}, fn)`, `q:spawn_prefab(name, fields)`, `q:despawn(e)` |
-| events | `q:emit(name, fields)`, `q:events(name)` |
+| events | `q:emit(name, fields)`, `q:events(name)`, `q:send(channel, text)` (text for the host; see [Talking to the host](gameplay.md#talking-to-the-host)) |
 | randomness | `q:rng()`, then `rng:next()`, `rng:below(n)`, `rng:range(lo, hi)`, `rng:chance(p)` |
 | time control | `q:freeze()`, `q:speed()`, `q:speed(x)` |
 | saves | `q:save(name)`, `q:load(name)` |

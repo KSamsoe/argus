@@ -29,7 +29,7 @@ use serde_json::Value as Json;
 use std::path::Path;
 
 const TAG: &[u8; 4] = b"ARGR";
-const VERSION: u32 = 6;
+const VERSION: u32 = 7;
 
 /// A replay file, read back. The two worlds stay bytes until a live world
 /// (with the components registered) reads them.
@@ -148,7 +148,7 @@ pub fn decode(bytes: &[u8]) -> Result<ReplayFile> {
     let time = r.f64()?;
     let world = r.bytes()?.to_vec();
     let sim = SimState::decode(&mut r)?;
-    let input = r.opt(|r| InputSnapshot::decode_as(r, version >= 4))?;
+    let input = r.opt(|r| InputSnapshot::decode_as(r, version >= 4, version >= 7))?;
     let pools = r.bytes()?.to_vec();
     let rooms = r.opt(|r| StreamState::decode_as(r, version >= 3))?;
     let mut contacts = Vec::new();

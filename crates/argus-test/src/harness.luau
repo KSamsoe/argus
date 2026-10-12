@@ -484,6 +484,11 @@ local function make_t(ctx, spec, seed)
     if type(now) == "number" then rest = 0 elseif type(now) == "table" then rest = { 0, 0 } end
     return callm("input.inject", { action = action, value = rest })
   end
+  -- Text from the host (the page, a model's answer): the next tick's
+  -- scripts get it as a host.message event {channel, text, slot}.
+  function t.input:message(channel, text)
+    return callm("input.message", { channel = channel, text = text })
+  end
   function t:run_until(opts) return run_until(ctx, opts) end
   function t:advance(opts) return advance(ctx, opts) end
   function t:step(n) return run_until(ctx, { frames = n or 1 }) end

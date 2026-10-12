@@ -53,6 +53,9 @@ pub struct Player {
     /// Saves the game asked to load (`q:load`), until
     /// [`Player::take_loads`].
     loads: Vec<String>,
+    /// What the game sent its host (`q:send`): tick, channel, text, until
+    /// [`Player::take_sent`] (host channel item 1).
+    sent: Vec<(u64, String, String)>,
     /// Events seen, and sounds the mixer answered.
     pub events: u64,
     /// `sound.played` answers so far.
@@ -167,6 +170,7 @@ impl Player {
             host: a.host,
             saves: Rc::new(RefCell::new(Vec::new())),
             loads: Vec::new(),
+            sent: Vec::new(),
             events: 0,
             sounds: 0,
             events_digest: 0xcbf29ce484222325,
@@ -221,6 +225,31 @@ impl Player {
     /// [`Player::load`].
     pub fn take_loads(&mut self) -> Vec<String> {
         std::mem::take(&mut self.loads)
+    }
+
+    /// What the game sent its host since the last call (`q:send`), oldest
+    /// first: (tick, channel, text). The page answers with
+    /// [`Player::message`] (host channel item 1).
+    pub fn take_sent(&mut self) -> Vec<(u64, String, String)> {
+        std::mem::take(&mut self.sent)
+    }
+
+    /// Text from the host for the next tick's scripts, as a `host.message`
+    /// event (host channel item 0): journaled with the run's input, so a
+    /// report or a seek carries it. On a discrete clock it is a turn, as a
+    /// key press is; returns the turns taken.
+    pub fn message(&mut self, channel: &str, text: &str) -> Result<u64> {
+        let st = self
+            .input
+            .clone()
+            .ok_or_else(|| ArgusError::new(1, "this project has no input.toml"))?;
+        let now = self.sched.tick();
+        st.borrow_mut().message(now, 1, channel, text)?;
+        if self.sched.driving().kind == ClockKind::Discrete {
+            self.step(1)?;
+            return Ok(1);
+        }
+        Ok(0)
     }
 
     /// Load a save (§6): the save's scene opened fresh with its seed, then
@@ -570,6 +599,20 @@ impl Player {
             if let Event::Game { name, fields } = &rec.event {
                 if name == "load.requested" {
                     self.loads.push(crate::savegame::request_name(fields));
+                }
+                if name == "host.send" {
+                    let text_of = |k: &str| {
+                        fields
+                            .iter()
+                            .find(|(n, _)| n == k)
+                            .and_then(|(_, v)| match v {
+                                argus_ecs::Value::Str(s) => Some(s.clone()),
+                                _ => None,
+                            })
+                            .unwrap_or_default()
+                    };
+                    self.sent
+                        .push((rec.frame, text_of("channel"), text_of("text")));
                 }
             }
             if let Event::Game { name, fields } = &rec.event {

@@ -376,6 +376,30 @@ A few events are requests the engine listens for:
 | `sound.stop {entity, fade_ms}` | stops the spatial sounds playing from that entity, fading over `fade_ms` |
 | any name a `PostFlash`, `PostShake`, or `PostHitStop` lists in `on` | starts that effect (`hit` when `on` is empty) |
 
+## Talking to the host
+
+Whatever runs the game can trade text with it: the page of a web build, the daemon's clients, a scenario. A game whose turns are decided outside it uses this. Bring Your Own Game Master sends the scene to an AI model the page calls, and the model's answer comes back in.
+
+Text comes in as a **message**: a channel, a short name the game chooses, and a text of up to 64 KiB. The next tick's scripts get it as a `host.message` event with `channel`, `text`, and `slot`:
+
+```lua
+for _, ev in ipairs(q:events("host.message")) do
+  if ev.channel == "gm.ruling" then
+    apply_ruling(q, ev.text)
+  end
+end
+```
+
+A message is input. It is recorded with the run's other input, so a seek, a replay, a mark, a player's report, or a scenario brings it in again at the same tick, and nobody has to send it twice. A run that depends on a model's answers still reproduces exactly. On a discrete clock a message is a turn, as a key press is; a game that shouldn't spend one freezes it (see [Pausing](#pausing)).
+
+A script sends text out with `q:send(channel, text)`. It is an event, `host.send`, with `channel` and `text`, so it is in the event log, `argus events name=host.send`, and `t.expect:events` like any other.
+
+| Who sends a message | How |
+|---|---|
+| the page of a web build | `player.message(channel, text)`, and `player.take_sent()` for what the game sent (see [Releasing](releasing.md)) |
+| the daemon | `argus input message channel=gm.ruling text='...'` (the `input.message` method) |
+| a scenario | `t.input:message(channel, text)` |
+
 ## Randomness
 
 Randomness comes from **named streams**. A system that wants random numbers names its stream with the `rng` key and draws from `q:rng()`. Each stream is seeded from the run's seed and its own name only, so adding or reordering systems never changes another system's numbers, and the same seed always gives the same run. From `examples/delve/systems/potions.luau`:

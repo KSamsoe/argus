@@ -744,3 +744,137 @@ fn a_restore_can_move_forward_along_the_recorded_run() {
     assert!(st.future().is_empty(), "past both commands");
     assert_eq!(st.fields_for(1), at20);
 }
+
+// ----- host channel item 0: messages from the host ----------------------------
+
+/// Run ticks `from..to` and write down the inbox each tick: (tick, channel, text).
+fn run_inbox(st: &mut InputState, from: u64, to: u64) -> Vec<(u64, String, String)> {
+    let mut out = Vec::new();
+    for t in from..to {
+        st.begin_tick(t);
+        for (_, c, x) in st.inbox() {
+            out.push((t, c.clone(), x.clone()));
+        }
+    }
+    out
+}
+
+#[test]
+fn a_message_reaches_the_tick_it_is_for_and_only_that_tick() {
+    let mut st = InputState::new(map(), true);
+    run_inbox(&mut st, 0, 3);
+    st.message(3, 1, "gm.ruling", "{\"intent\": \"tie the door\"}")
+        .unwrap();
+    st.message(3, 1, "gm.note", "second").unwrap();
+    let got = run_inbox(&mut st, 3, 6);
+    assert_eq!(
+        got,
+        vec![
+            (
+                3,
+                "gm.ruling".into(),
+                "{\"intent\": \"tie the door\"}".into()
+            ),
+            (3, "gm.note".into(), "second".into()),
+        ],
+        "both at tick 3, in the order sent, and gone after"
+    );
+    assert_eq!(st.journal().len(), 2, "journaled like an inject");
+}
+
+#[test]
+fn a_restore_brings_the_messages_in_again_including_one_pending_at_the_keyframe() {
+    let mut st = InputState::new(map(), true);
+    run_inbox(&mut st, 0, 4);
+    // Sent before the keyframe, for the tick after it: the keyframe must carry it.
+    st.message(4, 1, "gm.ruling", "pending").unwrap();
+    let key = st.snapshot();
+    let mut first = run_inbox(&mut st, 4, 6);
+    st.message(6, 1, "gm.ruling", "after").unwrap();
+    st.inject(6, 1, "fire", None, None, false).unwrap();
+    first.extend(run_inbox(&mut st, 6, 10));
+    assert_eq!(first.len(), 2);
+
+    st.restore(&key);
+    let again = run_inbox(&mut st, 4, 10);
+    assert_eq!(again, first, "the same messages at the same ticks");
+    assert!(st.future().is_empty());
+    assert_eq!(st.take_branch(), None, "replaying is not branching");
+
+    // A live message after a restore branches the run, as an inject does.
+    st.restore(&key);
+    run_inbox(&mut st, 4, 5);
+    st.message(5, 1, "gm.ruling", "another answer").unwrap();
+    assert_eq!(st.take_branch(), Some(5));
+    let branched = run_inbox(&mut st, 5, 10);
+    assert_eq!(
+        branched,
+        vec![(5, "gm.ruling".into(), "another answer".into())]
+    );
+}
+
+#[test]
+fn messages_survive_a_keyframe_and_a_journal_on_disk() {
+    use argus_ecs::codec::{Reader, Writer};
+    let mut st = InputState::new(map(), true);
+    run_inbox(&mut st, 0, 2);
+    let text = "a ruling\nwith lines, \"quotes\" and {braces}, and \u{e9}";
+    st.message(2, 1, "gm.ruling", text).unwrap();
+    let key = st.snapshot();
+
+    let mut w = Writer::new();
+    key.encode(&mut w, 0);
+    for e in st.journal() {
+        e.encode(&mut w);
+    }
+    let bytes = w.into_bytes();
+    let mut r = Reader::new(&bytes, "test");
+    let back = argus_input::InputSnapshot::decode_as(&mut r, true, true).unwrap();
+    let entry = argus_input::JournalEntry::decode(&mut r).unwrap();
+    assert_eq!(&entry, &st.journal()[0]);
+
+    let mut fresh = InputState::new(map(), true);
+    fresh.load_journal(Vec::new(), &back);
+    assert_eq!(
+        run_inbox(&mut fresh, 2, 3),
+        vec![(2, "gm.ruling".into(), text.into())]
+    );
+}
+
+#[test]
+fn a_bad_channel_or_a_text_too_long_is_refused() {
+    let mut st = InputState::new(map(), true);
+    for bad in ["", "has space", "slash/no", &"x".repeat(65)] {
+        let e = st.message(0, 1, bad, "hi").unwrap_err();
+        assert!(e.message.contains("channel"), "{bad:?}: {}", e.message);
+    }
+    let long = "x".repeat(argus_input::MAX_MESSAGE + 1);
+    let e = st.message(0, 1, "gm.ruling", &long).unwrap_err();
+    assert!(e.message.contains("too long"), "{}", e.message);
+    assert!(st.journal().is_empty(), "nothing refused is journaled");
+}
+
+#[test]
+fn a_message_arrives_as_a_host_message_event_for_the_scripts() {
+    let (mut w, mut s, state) = rig(true);
+    state
+        .borrow_mut()
+        .message(s.tick(), 1, "gm.ruling", "{\"ok\": true}")
+        .unwrap();
+    s.step(&mut w, 1).unwrap();
+    let got: Vec<_> = w
+        .events()
+        .iter()
+        .filter_map(|r| match &r.event {
+            argus_ecs::Event::Game { name, fields } if name == "host.message" => {
+                Some(fields.clone())
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(got.len(), 1);
+    let field = |k: &str| got[0].iter().find(|(n, _)| n == k).map(|(_, v)| v.clone());
+    assert_eq!(field("channel"), Some(Value::Str("gm.ruling".into())));
+    assert_eq!(field("text"), Some(Value::Str("{\"ok\": true}".into())));
+    assert_eq!(field("slot"), Some(Value::UInt(1)));
+}

@@ -52,6 +52,7 @@ pub const SECTIONS: &[ApiSection] = &[
             d("t.input:hold(action, value, frames)", "Hold an action at a value (`{1, 0}` for an axis2, `true` for a button) for n ticks, or until released when `frames` is nil. On a discrete clock hold across the turn: a press and release with no tick between is never seen."),
             d("t.input:tap(action, value)", "The action at a value for one tick."),
             d("t.input:release(action)", "The action back at rest (false, 0, or {0, 0})."),
+            d("t.input:message(channel, text)", "Text from the host, as a web page or the daemon would send it (`input.message`): the next tick's scripts get a `host.message` event `{channel, text, slot}`. A scripted stand-in for an outside service, such as a model's answer. On a discrete clock it is a turn."),
         ],
     },
     ApiSection {

@@ -253,7 +253,26 @@ pub enum Command {
         /// The name bound.
         binding: Option<String>,
     },
+    /// `input.message`: text from the host (the page, the daemon, a
+    /// scenario) for the next tick's scripts, as a `host.message` event
+    /// (host channel item 0).
+    Message {
+        /// Player slot.
+        slot: u8,
+        /// The channel, a short name the game chose.
+        channel: String,
+        /// The text.
+        text: String,
+    },
 }
+
+/// A message from the host: slot, channel, text.
+pub type Message = (u8, String, String);
+
+/// The longest channel name a message may have.
+pub const MAX_CHANNEL: usize = 64;
+/// The longest text a message may carry.
+pub const MAX_MESSAGE: usize = 64 * 1024;
 
 /// A command and the tick it came before (the next tick to run).
 #[derive(Clone, Debug, PartialEq)]
@@ -280,6 +299,8 @@ pub struct InputSnapshot {
     /// 2): a seek back before a rebind undoes it. `None` in a keyframe
     /// read from a file older than that, which leaves the map as it is.
     map: Option<MapState>,
+    /// Messages sent and not yet due, by the tick they are for.
+    messages: BTreeMap<u64, Vec<Message>>,
 }
 
 /// What a run can change of the map: each action's bindings by device and
@@ -326,6 +347,10 @@ pub struct InputState {
     listening: Option<Listen>,
     /// What listening came to, until `take_rebound`.
     rebound: Vec<Rebound>,
+    /// Messages sent and not yet due, by the tick they are for.
+    messages: BTreeMap<u64, Vec<Message>>,
+    /// The messages due this tick, for `input.actions` to hand the scripts.
+    inbox: Vec<Message>,
 }
 
 /// An action waiting for a key.
@@ -368,6 +393,8 @@ impl InputState {
             live: false,
             listening: None,
             rebound: Vec::new(),
+            messages: BTreeMap::new(),
+            inbox: Vec::new(),
             current: BTreeMap::new(),
             pressed: Vec::new(),
             released: Vec::new(),
@@ -763,6 +790,60 @@ impl InputState {
             .collect()
     }
 
+    /// `input.message {channel, text}` at `now` (the next tick to run): the
+    /// text reaches that tick's scripts as a `host.message` event. Journaled,
+    /// so a seek or a replay brings it in again (host channel item 0).
+    pub fn message(&mut self, now: u64, slot: u8, channel: &str, text: &str) -> Result<()> {
+        self.message_raw(now, slot, channel, text)?;
+        self.journal_live(
+            now,
+            Command::Message {
+                slot,
+                channel: channel.to_string(),
+                text: text.to_string(),
+            },
+        );
+        Ok(())
+    }
+
+    fn message_raw(&mut self, now: u64, slot: u8, channel: &str, text: &str) -> Result<()> {
+        self.map.slot(slot)?;
+        let ok = !channel.is_empty()
+            && channel.len() <= MAX_CHANNEL
+            && channel
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'));
+        if !ok {
+            return Err(ArgusError::new(
+                codes::BAD_VALUE,
+                format!("bad message channel {channel:?}"),
+            )
+            .hint(format!(
+                "A channel is a short name the game chose: letters, digits, '.', '_' and '-', up to {MAX_CHANNEL}."
+            )));
+        }
+        if text.len() > MAX_MESSAGE {
+            return Err(ArgusError::new(
+                codes::BAD_VALUE,
+                format!("a message of {} bytes is too long", text.len()),
+            )
+            .hint(format!(
+                "A message carries up to {MAX_MESSAGE} bytes of text."
+            )));
+        }
+        self.messages
+            .entry(now)
+            .or_default()
+            .push((slot, channel.to_string(), text.to_string()));
+        Ok(())
+    }
+
+    /// The messages due this tick, oldest first: what `input.actions` hands
+    /// the scripts as `host.message` events.
+    pub fn inbox(&self) -> &[Message] {
+        &self.inbox
+    }
+
     /// Apply everything scheduled up to and including `tick`; called by the
     /// `input.actions` system at the start of each tick. Returns the
     /// entries applied this tick.
@@ -778,6 +859,12 @@ impl InputState {
         self.pressed.clear();
         self.released.clear();
         self.last_tick = Some(tick);
+        self.inbox.clear();
+        let due: Vec<u64> = self.messages.range(..=tick).map(|(t, _)| *t).collect();
+        for t in due {
+            self.inbox
+                .extend(self.messages.remove(&t).unwrap_or_default());
+        }
         let due: Vec<u64> = self.scheduled.range(..=tick).map(|(t, _)| *t).collect();
         let mut applied = Vec::new();
         for t in due {
@@ -879,6 +966,13 @@ impl InputState {
                 let _ = self.bind_raw(action, device, names.clone());
             }
             Command::Took { binding } => self.took(binding.clone()),
+            Command::Message {
+                slot,
+                channel,
+                text,
+            } => {
+                let _ = self.message_raw(now, *slot, channel, text);
+            }
         }
     }
 
@@ -918,6 +1012,8 @@ impl InputState {
             live: false,
             listening: None,
             rebound: Vec::new(),
+            messages: self.messages.clone(),
+            inbox: self.inbox.clone(),
         }
     }
 
@@ -941,6 +1037,7 @@ impl InputState {
                     .collect(),
                 listening: self.listening.clone(),
             }),
+            messages: self.messages.clone(),
         }
     }
 
@@ -956,6 +1053,8 @@ impl InputState {
         self.last_tick = s.last_tick;
         self.device_last = s.device_last.clone();
         self.releases = s.releases.clone();
+        self.messages = s.messages.clone();
+        self.inbox.clear();
         self.cursor = s.cursor.min(self.journal.len());
         if let Some(m) = &s.map {
             for (name, bindings, toggle) in &m.actions {
@@ -1262,11 +1361,23 @@ impl InputSnapshot {
                 w.u64(l.entity.to_bits());
             });
         });
+        w.count(self.messages.len());
+        for (tick, list) in &self.messages {
+            w.u64(*tick);
+            w.count(list.len());
+            for (slot, channel, text) in list {
+                w.u8(*slot);
+                w.str(channel);
+                w.str(text);
+            }
+        }
     }
 
     /// Read what [`InputSnapshot::encode`] wrote; `with_map` for a file
-    /// that has the map's state (replay files from version 4).
-    pub fn decode_as(r: &mut Reader, with_map: bool) -> Result<InputSnapshot> {
+    /// that has the map's state (replay files from version 4),
+    /// `with_messages` for one that has the messages not yet due (from
+    /// version 7).
+    pub fn decode_as(r: &mut Reader, with_map: bool, with_messages: bool) -> Result<InputSnapshot> {
         let mut scheduled = BTreeMap::new();
         for _ in 0..r.count()? {
             let tick = r.u64()?;
@@ -1305,6 +1416,45 @@ impl InputSnapshot {
             }
             releases.insert(k, spans);
         }
+        let cursor = r.u32()? as usize;
+        let map = if with_map {
+            r.opt(|r| {
+                let mut actions = Vec::new();
+                for _ in 0..r.count()? {
+                    let name = r.str()?;
+                    let mut bindings = BTreeMap::new();
+                    for _ in 0..r.count()? {
+                        let device = r.str()?;
+                        let names = (0..r.count()?).map(|_| r.str()).collect::<Result<_>>()?;
+                        bindings.insert(device, names);
+                    }
+                    actions.push((name, bindings, r.bool()?));
+                }
+                let listening = r.opt(|r| {
+                    Ok(Listen {
+                        action: r.str()?,
+                        device: r.str()?,
+                        entity: argus_ecs::Entity::from_bits(r.u64()?),
+                    })
+                })?;
+                Ok(MapState { actions, listening })
+            })?
+        } else {
+            None
+        };
+        let mut messages = BTreeMap::new();
+        if with_messages {
+            for _ in 0..r.count()? {
+                let tick = r.u64()?;
+                let mut list = Vec::new();
+                for _ in 0..r.count()? {
+                    let slot = r.u8()?;
+                    let channel = r.str()?;
+                    list.push((slot, channel, r.str()?));
+                }
+                messages.insert(tick, list);
+            }
+        }
         Ok(InputSnapshot {
             scheduled,
             current,
@@ -1313,32 +1463,9 @@ impl InputSnapshot {
             last_tick,
             device_last,
             releases,
-            cursor: r.u32()? as usize,
-            map: if with_map {
-                r.opt(|r| {
-                    let mut actions = Vec::new();
-                    for _ in 0..r.count()? {
-                        let name = r.str()?;
-                        let mut bindings = BTreeMap::new();
-                        for _ in 0..r.count()? {
-                            let device = r.str()?;
-                            let names = (0..r.count()?).map(|_| r.str()).collect::<Result<_>>()?;
-                            bindings.insert(device, names);
-                        }
-                        actions.push((name, bindings, r.bool()?));
-                    }
-                    let listening = r.opt(|r| {
-                        Ok(Listen {
-                            action: r.str()?,
-                            device: r.str()?,
-                            entity: argus_ecs::Entity::from_bits(r.u64()?),
-                        })
-                    })?;
-                    Ok(MapState { actions, listening })
-                })?
-            } else {
-                None
-            },
+            cursor,
+            map,
+            messages,
         })
     }
 }
@@ -1405,6 +1532,16 @@ impl JournalEntry {
                 w.u8(5);
                 w.opt(binding.as_deref(), |w, b| w.str(b));
             }
+            Command::Message {
+                slot,
+                channel,
+                text,
+            } => {
+                w.u8(6);
+                w.u8(*slot);
+                w.str(channel);
+                w.str(text);
+            }
         }
     }
 
@@ -1461,6 +1598,11 @@ impl JournalEntry {
             },
             5 => Command::Took {
                 binding: r.opt(|r| r.str())?,
+            },
+            6 => Command::Message {
+                slot: r.u8()?,
+                channel: r.str()?,
+                text: r.str()?,
             },
             k => return Err(r.bad(format!("input command kind {k}"))),
         };

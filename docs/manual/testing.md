@@ -97,6 +97,7 @@ A scenario presses the game's actions from `input.toml`, never raw keys:
 | `t.input:hold(action, value, frames)` | Hold an action at a value for n ticks. `{1, 0}` for a stick or axis pair, `true` for a button. Without `frames`, hold until released. |
 | `t.input:tap(action, value)` | The action at a value for one tick. |
 | `t.input:release(action)` | Back to rest (false, 0, or `{0, 0}`). |
+| `t.input:message(channel, text)` | Text from the host, as the page of a web build would send it: the next tick's scripts get a `host.message` event. A scripted stand-in for an outside service (a model's answer) lives here. |
 
 Input is read when a tick runs. On a discrete clock, hold the action across the turn: a press and release with no tick between them is never seen. From `examples/hollow/tests/run.luau`:
 

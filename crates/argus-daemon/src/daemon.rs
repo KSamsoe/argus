@@ -565,6 +565,11 @@ impl Daemon {
                 self.input_branched();
                 r
             }
+            "input.message" => {
+                let r = self.input_message(params);
+                self.input_branched();
+                r
+            }
             "input.record" => self.input_record(params),
             "input.replay" => {
                 let r = self.input_replay(params);
@@ -4053,6 +4058,18 @@ impl Daemon {
             .borrow_mut()
             .inject(now, slot, action, params.get("value"), frames, hold)?;
         Ok(json!({ "action": action, "slot": slot, "tick": r.tick, "until": r.until }))
+    }
+
+    /// `input.message {channel, text, slot}`: text from the host for the
+    /// next tick's scripts, as a `host.message` event (host channel item 0).
+    fn input_message(&mut self, params: &Json) -> Result<Json> {
+        let channel = json::str_param(params, "channel")?;
+        let text = json::str_param(params, "text")?;
+        let slot = json::u64_param(params, "slot", 1)? as u8;
+        let now = self.sched.tick();
+        let st = self.input()?;
+        st.borrow_mut().message(now, slot, channel, text)?;
+        Ok(json!({ "channel": channel, "slot": slot, "tick": now, "bytes": text.len() }))
     }
 
     fn input_script(&mut self, params: &Json) -> Result<Json> {

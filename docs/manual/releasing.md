@@ -104,6 +104,23 @@ It is not part of an Argus install yet. See [Playtesting](playtesting.md) for pu
 
 A game with Rust plugins has no web build, since a page cannot load a library: `argus build --target web` says so and stops. Swarm is such a game.
 
+### The game's own page script
+
+A project's `web/` folder goes into the build beside the page. When it has a `game.js`, the page imports it once the game is running, with `window.argus.player` set. That is where a game talks to the world outside it: a server, an AI model, the browser's own storage. The script trades text with the game ([Talking to the host](gameplay.md#talking-to-the-host)):
+
+```js
+const { player } = window.argus;
+setInterval(async () => {
+  for (const { channel, text } of JSON.parse(player.take_sent())) {
+    if (channel !== "gm.request") continue;
+    const answer = await fetch("/gm", { method: "POST", body: text }).then((r) => r.text());
+    player.message("gm.ruling", answer);
+  }
+}, 100);
+```
+
+`player.take_sent()` is what the game sent since the last call (`q:send`), as JSON `[{tick, channel, text}]`; `player.message(channel, text)` sends it a message, which its scripts get on the next tick. A player's report keeps the messages with the rest of the input, so a report replays without the outside world.
+
 ## A release for the other platform
 
 From an install, build for the other desktop platform with its runtime:
