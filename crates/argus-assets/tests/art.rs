@@ -238,6 +238,25 @@ return art.sprite{ frames = { c } }
     std::fs::remove_dir_all(&dir).ok();
 }
 
+/// A clip can say its frames as a range, as a sidecar's does.
+#[test]
+fn a_clip_takes_a_range_of_frames() {
+    let dir = project("range");
+    write(
+        &dir,
+        "walker.art.luau",
+        "local f = {}\nfor i = 1, 5 do f[i] = art.canvas(2, 2, art.hsv(i * 60, 1, 1)) end\nreturn art.sprite{ frames = f, clips = { walk = { from = 1, to = 4, fps = 10 } } }\n",
+    );
+    let mut imp = Importer::new(&dir);
+    let rep = imp.scan();
+    assert!(rep.failed.is_empty(), "{:?}", rep.failed);
+    assert_eq!(
+        sprite(&imp, "walker").clips["walk"].frames,
+        vec![1, 2, 3, 4]
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
 /// The sprite generators write art scripts that draw: every kind at
 /// several seeds, the same script for the same seed.
 #[test]

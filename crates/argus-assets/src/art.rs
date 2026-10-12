@@ -1150,6 +1150,16 @@ fn read_sprite(t: &Table) -> mlua::Result<ArtSprite> {
                     other => fs.push(add(&other, &mut frames)?),
                 }
             }
+            // A range, as a sidecar's clip says one: from and to, from 0.
+            match (c.get::<Option<u32>>("from")?, c.get::<Option<u32>>("to")?) {
+                (Some(lo), Some(hi)) if hi >= lo => fs.extend(lo..=hi),
+                (None, None) => {}
+                _ => {
+                    return Err(bad(format!(
+                        "clip {name}: from and to go together, from the lower frame to the higher"
+                    )))
+                }
+            }
             if fs.is_empty() {
                 return Err(bad(format!("clip {name} has no frames")));
             }
