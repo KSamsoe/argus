@@ -302,14 +302,20 @@ fn generated_sprites_are_pinned_pixels() {
         .map(|(kind, _)| {
             let text = artgen::generate(kind, 1, "sprites/x").unwrap();
             let s = argus_assets::art::run("sprites/x.art.luau", &text).unwrap();
-            let h = s.frames.iter().flat_map(|f| f.canvas.rgba.iter()).fold(
-                0xcbf2_9ce4_8422_2325u64,
-                |h, b| (h ^ *b as u64).wrapping_mul(0x0100_0000_01b3),
-            );
+            let h = s
+                .frames
+                .iter()
+                .flat_map(|f| f.canvas.rgba.iter())
+                .fold(0xcbf2_9ce4_8422_2325u64, |h, b| {
+                    (h ^ *b as u64).wrapping_mul(0x0100_0000_01b3)
+                });
             (kind.to_string(), h)
         })
         .collect();
-    let want: Vec<(String, u64)> = PINNED_KINDS.iter().map(|(k, h)| (k.to_string(), *h)).collect();
+    let want: Vec<(String, u64)> = PINNED_KINDS
+        .iter()
+        .map(|(k, h)| (k.to_string(), *h))
+        .collect();
     assert_eq!(got, want);
 }
 

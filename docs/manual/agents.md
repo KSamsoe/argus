@@ -23,6 +23,7 @@ The tools, by what they are for. Each is also a shell command (`argus query enti
 | Looking | `summary`, `query` (entities, paths, strings, timelines, tuning), `describe` (a component or system), `observe` (the frame as data, or a picture), `events` (what happened, and why) |
 | Reading and writing files | `read_file` (a file, or a folder's listing), `write_file` (a script, scene file, test, or any text file in the project, as an undoable edit) |
 | Changing the game | `edit` (entities, components, tiles, strings, def rows, assets, prefabs, and files, in one transaction with a note), `propose` (a change for a person to try before it is kept) |
+| Making art and sound | `generate` (a sound effect or a sprite from a kind and a seed, free and offline, written as an asset to change; a sprite's answer has its picture) |
 | Moving time | `run` (steps, turns, until an event, play and pause, saves), `seek` (to any earlier frame) |
 | Checking | `test` (the scenarios, with seeds, tuning values set, or a sweep across values), `profile` (cost per system against the performance targets) |
 | The loop with a person | `reload` (take changed scripts and assets), `marks` (moments a player flagged, with notes; `action=open` reproduces one), `review` (questions put to a person, and their answers) |
