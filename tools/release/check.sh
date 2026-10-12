@@ -7,23 +7,30 @@
 # `argus build` checks each release itself: the packs play and look as the
 # project does, and the executable, run headless, reaches the same world.
 #
-#   tools/release/check.sh [stage dir] [--no-web] [--keep <dir>]
+#   tools/release/check.sh [stage dir] [--no-web] [--keep <dir>] [--for macos]
 #
 # The stage dir defaults to stage.sh's. Swarm has a Rust plugin, which is
 # the one part of a release that needs Rust: it is released with cargo on
 # the PATH, and without, where the build must say that Rust is needed.
 # --keep puts the four games' releases for this platform in <dir>/<game>,
 # for the release's example-games archive.
+#
+# --for macos releases them for the Mac instead, from the install's macOS
+# runtime: a Mac executable is not run here, so `argus build` checks the
+# packs alone. Swarm must be refused, its plugin being compiled on the
+# machine it runs on, and --keep keeps the other three games.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 STAGE=
 WEB=1
 KEEP=
+FOR=
 while [ $# -gt 0 ]; do
   case "$1" in
     --no-web) WEB=0; shift ;;
     --keep) KEEP=$2; shift 2 ;;
+    --for) FOR=$2; shift 2 ;;
     -*) echo "check.sh: unknown flag $1" >&2; exit 2 ;;
     *) STAGE=$1; shift ;;
   esac
@@ -81,6 +88,27 @@ release() { # name target rust|no-rust [expect-failure-text]
 }
 
 echo "checking $STAGE ($("$ARGUS" version))"
+if [ -n "$FOR" ]; then
+  [ "$FOR" = macos ] || { echo "check.sh: --for takes macos" >&2; exit 2; }
+  for g in delve hollow outpost puppet toybox; do
+    release "$g" macos no-rust
+  done
+  release swarm macos rust "compiled for the machine they run on"
+  if [ "$failed" = 0 ]; then
+    echo "the install releases every example for macos"
+    if [ -n "$KEEP" ]; then
+      rm -rf "${KEEP:?}"
+      mkdir -p "$KEEP"
+      for g in hollow delve outpost; do
+        cp -r "$WORK/out/$g-macos" "$KEEP/$g"
+      done
+      echo "kept the games' macos releases in $KEEP"
+    fi
+    exit 0
+  fi
+  echo "the install does NOT release every example for macos"
+  exit 1
+fi
 for g in delve hollow outpost puppet toybox; do
   release "$g" "$OS" no-rust
   [ "$WEB" = 1 ] && release "$g" web no-rust

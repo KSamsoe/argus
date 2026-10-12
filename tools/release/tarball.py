@@ -1,5 +1,5 @@
-"""The Linux release archive (distribution item 5), with its modes set by
-path rather than read from the disk:
+"""The Linux and macOS release archives (distribution item 5), with their
+modes set by path rather than read from the disk:
 
     python tools/release/tarball.py <stage dir> <out.tar.gz>
 
@@ -27,6 +27,7 @@ EXECUTABLE = [
     "runtime/*/*/argus-game",
     "runtime/*/*/argus-game.exe",
     "*.so",
+    "*.dylib",
     "install.sh",
 ]
 
