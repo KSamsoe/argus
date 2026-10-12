@@ -650,7 +650,7 @@ local function variant(k)
     );
     let detail = match *mat {
         "grass" => "  c:speckle({ \"#8FCB6A\", \"#A5D97C\" }, 0.06, SEED + k)\n",
-        "stone" => "  for _ = 1, 2 do\n    local x, y = r:int(0, SIZE - 1), r:int(0, SIZE - 1)\n    c:line(x, y, (x + r:int(2, 5)) % SIZE, (y + r:int(-2, 2)) % SIZE, \"#33373F\")\n  end\n",
+        "stone" => "  for _ = 1, 2 do -- cracks, wrapping at the edges as the noise does\n    local x, y, len, dy = r:int(0, SIZE - 1), r:int(0, SIZE - 1), r:int(3, 6), r:int(-1, 1)\n    for i = 0, len - 1 do\n      c:pixel((x + i) % SIZE, (y + math.floor(dy * i / 2)) % SIZE, \"#33373F\")\n    end\n  end\n",
         "dirt" => "  c:speckle({ \"#A07B58\", \"#4A3222\" }, 0.05, SEED + k)\n",
         "sand" => "  for x = 0, SIZE - 1 do\n    local y = (math.floor(x / 3) + k * 4) % SIZE\n    c:pixel(x, y, \"#EFDDB0\")\n  end\n",
         "water" => "  c:speckle({ \"#E6F4FF\" }, 0.025, SEED + k)\n",
