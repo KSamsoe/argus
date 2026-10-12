@@ -357,3 +357,61 @@ const PINNED_KINDS: [(&str, u64); 6] = [
     ("plant", 17621447597582241628),
     ("rock", 4439055114142076959),
 ];
+
+/// Scripts share a module: `require("colours")` loads
+/// assets/colours.lib.luau, and a change to it reimports every script
+/// that uses it. A mistake in a module names its own line; a module that
+/// is not there says so, and the script imports once it is.
+#[test]
+fn scripts_share_a_module_and_a_changed_module_reimports_them() {
+    let dir = project("modules");
+    write(&dir, "colours.lib.luau", "return { grass = \"#00FF00\" }\n");
+    let script = "local pal = require(\"colours\")\nlocal c = art.canvas(2, 2, pal.grass)\nreturn art.sprite{ frames = { c } }\n";
+    write(&dir, "a.art.luau", script);
+    write(&dir, "b.art.luau", script);
+    let mut imp = Importer::new(&dir);
+    let rep = imp.scan();
+    assert!(rep.failed.is_empty(), "{:?}", rep.failed);
+    assert_eq!(px(&sprite(&imp, "a"), 0, 0, 0), [0, 255, 0, 255]);
+    write(&dir, "colours.lib.luau", "return { grass = \"#0000FF\" }\n");
+    let mut rep = imp.scan();
+    rep.imported.sort();
+    assert_eq!(
+        rep.imported,
+        vec!["a".to_string(), "b".to_string()],
+        "{rep:?}"
+    );
+    assert_eq!(px(&sprite(&imp, "b"), 0, 0, 0), [0, 0, 255, 255]);
+    // A mistake in the module, at its line.
+    write(
+        &dir,
+        "colours.lib.luau",
+        "local x = 1\nreturn { grass = nil .. \"x\" }\n",
+    );
+    let rep = imp.scan();
+    let f = rep.failed.iter().find(|f| f.name == "a").expect("a fails");
+    assert_eq!(
+        f.error.r#ref.as_deref(),
+        Some("assets/colours.lib.luau:2"),
+        "{}",
+        f.error.message
+    );
+    // No module: said, and imported when it comes back.
+    std::fs::remove_file(dir.join("assets/colours.lib.luau")).unwrap();
+    let rep = imp.scan();
+    let f = rep.failed.iter().find(|f| f.name == "a").expect("a fails");
+    assert!(
+        f.error
+            .message
+            .contains("there is no assets/colours.lib.luau"),
+        "{}",
+        f.error.message
+    );
+    write(&dir, "colours.lib.luau", "return { grass = \"#FF0000\" }\n");
+    let rep = imp.scan();
+    assert!(rep.failed.is_empty(), "{:?}", rep.failed);
+    assert_eq!(px(&sprite(&imp, "a"), 0, 0, 0), [255, 0, 0, 255]);
+    // A module is not an asset.
+    assert!(!imp.entries().contains_key("colours"));
+    std::fs::remove_dir_all(&dir).ok();
+}

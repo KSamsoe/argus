@@ -548,6 +548,12 @@ fn vorbis(shown: &str, _wav: &[u8]) -> std::result::Result<Vec<u8>, String> {
     Err(format!("{shown}: packs are made natively (argus build)"))
 }
 
+/// An art script's module (assets/**/*.lib.luau): read when the art is
+/// imported, and the art is in the pack, so a player has no use for it.
+fn is_art_module(rel: &str) -> bool {
+    rel.ends_with(".lib.luau") && (rel.starts_with("assets/") || rel.contains("/assets/"))
+}
+
 fn is_script(rel: &str) -> bool {
     rel.ends_with(".luau")
         && ["components/", "defs/", "systems/"]
@@ -592,7 +598,7 @@ pub fn build_mod(root: &Path, id: &str, opts: &BuildOptions) -> Result<Built> {
     let mut made = Made::default();
     let mut left_out = Vec::new();
     for rel in &all {
-        if sprites.sources.contains(rel) {
+        if sprites.sources.contains(rel) || is_art_module(rel) {
             left_out.push(format!("mods/{id}/{rel}"));
             continue;
         }
@@ -699,7 +705,7 @@ pub fn build(root: &Path, opts: &BuildOptions) -> Result<Built> {
     let mut made = Made::default();
     let mut left_out = Vec::new();
     for rel in &all {
-        if sprites.sources.contains(rel) {
+        if sprites.sources.contains(rel) || is_art_module(rel) {
             left_out.push(rel.clone());
             continue;
         }

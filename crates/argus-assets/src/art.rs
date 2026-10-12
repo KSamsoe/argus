@@ -977,32 +977,113 @@ fn install(lua: &Lua, printed: Rc<RefCell<Vec<String>>>) -> mlua::Result<()> {
     Ok(())
 }
 
-/// The line of a Luau error in `file`, when it names one.
-fn line_in(msg: &str, file: &str) -> Option<u32> {
-    let at = msg.find(&format!("{file}:"))? + file.len() + 1;
-    let digits: String = msg[at..]
-        .chars()
-        .take_while(|c| c.is_ascii_digit())
-        .collect();
-    digits.parse().ok()
+/// Where an error happened: the first place the message names (Luau names
+/// the innermost first), the script's line or a module's
+/// (`assets/colours.lib.luau:3`); else the script.
+fn locate(msg: &str, file: &str) -> String {
+    let mut best: Option<(usize, String)> = None;
+    let mut consider = |at: usize, path: &str, rest: &str| {
+        let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+        if !digits.is_empty() && best.as_ref().is_none_or(|(b, _)| at < *b) {
+            best = Some((at, format!("{path}:{digits}")));
+        }
+    };
+    let main = format!("{file}:");
+    if let Some(i) = msg.find(&main) {
+        consider(i, file, &msg[i + main.len()..]);
+    }
+    if let Some(i) = msg.find(".lib.luau:") {
+        let start = msg[..i]
+            .rfind([' ', '\n', '\t', '"', '[', '('])
+            .map(|k| k + 1)
+            .unwrap_or(0);
+        let end = i + ".lib.luau".len();
+        consider(start, &msg[start..end], &msg[end + 1..]);
+    }
+    best.map(|(_, a)| a).unwrap_or_else(|| file.to_string())
 }
 
 /// Run an art script and read the sprite it returns. `file` is how errors
-/// name it (`assets/sprites/hero.art.luau`).
+/// name it (`assets/sprites/hero.art.luau`). It cannot `require` a module;
+/// [`run_in`] can.
 pub fn run(file: &str, source: &str) -> Result<ArtSprite> {
+    run_in(file, source, None).map(|(s, _)| s)
+}
+
+/// Where an art script finds the modules it requires: the `assets/`
+/// folder they are in, and how its files are named in messages
+/// (`assets/`, or a mod's `mods/<id>/assets/`).
+pub struct Modules<'a> {
+    /// The folder.
+    pub dir: &'a std::path::Path,
+    /// Its files' names begin with this.
+    pub shown: &'a str,
+}
+
+/// [`run`], with `require("name")` loading `<dir>/name.lib.luau` (a
+/// module: Luau that returns a value, such as a palette or a helper
+/// function), each once. Answers the sprite and the modules it loaded,
+/// relative to `dir`.
+pub fn run_in(
+    file: &str,
+    source: &str,
+    modules: Option<Modules<'_>>,
+) -> Result<(ArtSprite, Vec<String>)> {
     let fail = |m: String| {
-        let line = line_in(&m, file);
+        let at = locate(&m, file);
         let msg = m.replace(&format!("{file}:"), "line ");
         ArgusError::new(codes::BAD_SOURCE, format!("{file}: {msg}"))
             .hint("An art script returns art.sprite{ frames = {...}, clips = {...}, pixels_per_unit = n } (argus docs files section=art).")
-            .at(Some(match line {
-                Some(l) => format!("{file}:{l}"),
-                None => file.to_string(),
-            }))
+            .at(Some(at))
     };
     let lua = Lua::new();
     let printed = Rc::new(RefCell::new(Vec::new()));
     install(&lua, printed.clone()).map_err(|e| fail(e.to_string()))?;
+    let used: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(Vec::new()));
+    {
+        let dir = modules
+            .as_ref()
+            .map(|m| (m.dir.to_path_buf(), m.shown.to_string()));
+        let used = used.clone();
+        let loaded: Rc<RefCell<HashMap<String, Value>>> = Rc::new(RefCell::new(HashMap::new()));
+        let loading: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(Vec::new()));
+        let require = lua
+            .create_function(move |lua, name: String| {
+                let Some((dir, shown)) = &dir else {
+                    return Err(bad("require loads modules beside the project's art scripts; here there are none"));
+                };
+                let ok = !name.is_empty()
+                    && name.split('/').all(|p| {
+                        !p.is_empty() && p != "." && p != ".." && p.chars().all(|c| c.is_ascii_alphanumeric() || "_-.".contains(c))
+                    });
+                if !ok {
+                    return Err(bad(format!(
+                        "require({name:?}): a module's name is its path under assets/ without .lib.luau, such as \"colours\" or \"lib/shade\""
+                    )));
+                }
+                if let Some(v) = loaded.borrow().get(&name) {
+                    return Ok(v.clone());
+                }
+                if loading.borrow().contains(&name) {
+                    return Err(bad(format!("module {name} requires itself, through {}", loading.borrow().join(" and "))));
+                }
+                let rel = format!("{name}.lib.luau");
+                let text = std::fs::read_to_string(dir.join(&rel)).map_err(|_| {
+                    bad(format!("require({name:?}): there is no {shown}{rel}"))
+                })?;
+                used.borrow_mut().push(rel.clone());
+                loading.borrow_mut().push(name.clone());
+                let v: mlua::Result<Value> = lua.load(&text).set_name(format!("={shown}{rel}")).eval();
+                loading.borrow_mut().pop();
+                let v = v?;
+                loaded.borrow_mut().insert(name, v.clone());
+                Ok(v)
+            })
+            .map_err(|e| fail(e.to_string()))?;
+        lua.globals()
+            .set("require", require)
+            .map_err(|e| fail(e.to_string()))?;
+    }
     lua.set_memory_limit(MEMORY)
         .map_err(|e| fail(e.to_string()))?;
     let started = argus_os::time::Instant::now();
@@ -1029,7 +1110,10 @@ pub fn run(file: &str, source: &str) -> Result<ArtSprite> {
     };
     let mut sprite = read_sprite(&t).map_err(|e| fail(e.to_string()))?;
     sprite.printed = printed.borrow().clone();
-    Ok(sprite)
+    let mut used = used.borrow().clone();
+    used.sort();
+    used.dedup();
+    Ok((sprite, used))
 }
 
 fn canvas_of(v: &Value) -> Option<AnyUserData> {
@@ -1297,7 +1381,20 @@ impl crate::Importer {
         let bytes = self.read_in(g.layer, file)?;
         fnv(&mut hash, &bytes);
         let source = String::from_utf8_lossy(&bytes);
-        let sprite = run(&shown, &source)?;
+        let prefix = self.shown(g.layer, "");
+        let (sprite, modules) = run_in(
+            &shown,
+            &source,
+            Some(Modules {
+                dir: self.dir(g.layer),
+                shown: &prefix,
+            }),
+        )?;
+        for m in &modules {
+            if let Ok(b) = self.read_in(g.layer, m) {
+                fnv(&mut hash, &b);
+            }
+        }
         let mut warnings: Vec<Warning> = Vec::new();
         if let Some(s) = &g.sidecar {
             warnings.push(Warning {
@@ -1377,7 +1474,7 @@ impl crate::Importer {
                 }),
                 ms: 0.0,
             },
-            Vec::new(),
+            modules,
         ))
     }
 }

@@ -998,10 +998,21 @@ impl Importer {
             .map(|f| self.shown(g.layer, f))
             .collect();
             files.sort();
-            let stamp: Stamp = files
+            let mut stamp: Stamp = files
                 .iter()
                 .filter_map(|f| tree.get(f).map(|s| (f.clone(), *s)))
                 .collect();
+            if g.art.is_some() && self.failed.contains_key(&name) {
+                // A failed art script may have failed in a module, or for
+                // want of one: any module of its layer changing, or a new
+                // one, tries it again.
+                let prefix = self.shown(g.layer, "");
+                for (f, s) in &tree {
+                    if f.starts_with(&prefix) && f.ends_with(".lib.luau") {
+                        stamp.insert(f.clone(), *s);
+                    }
+                }
+            }
             let prev = self.inputs.get(&name);
             let unchanged = prev.is_some_and(|p| {
                 p.iter().all(|(f, s)| tree.get(f) == Some(s))
@@ -1036,6 +1047,16 @@ impl Importer {
                     self.entries.insert(name, entry);
                 }
                 Err(error) => {
+                    if g.art.is_some() {
+                        // It may have failed in a module: any module of its
+                        // layer changing tries it again.
+                        let prefix = self.shown(g.layer, "");
+                        for (f, s) in &tree {
+                            if f.starts_with(&prefix) && f.ends_with(".lib.luau") {
+                                stamp.insert(f.clone(), *s);
+                            }
+                        }
+                    }
                     self.inputs.insert(name.clone(), stamp);
                     self.entries.remove(&name);
                     let f = Failure {

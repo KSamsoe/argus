@@ -104,6 +104,8 @@ return art.sprite{
 
 Coordinates are pixels, x right and y down from the top left, as in an image file; colours are `"#RRGGBB"`, `"#RRGGBBAA"`, or `"none"`. The kit draws pixels, lines, rectangles, circles, rings, ellipses, and polygons; fills, outlines, shades from a light, dithers, and textures with noise and speckles; mirrors, flips, rotates, scales, crops, and draws one canvas over another; and mixes, lightens, darkens, and makes colours. `art.rng(seed)` gives seeded random numbers and `art.grid` cuts a sheet into frames. The whole kit, and every key `art.sprite` takes, is in the reference: `argus docs files section=art.luau`.
 
+Scripts share code and colours through modules. `local pal = require("colours")` runs `assets/colours.lib.luau`, a Luau file that returns something (a table of colours, a helper function), and a change to it imports again every script that requires it, so one palette can colour several sprites. A module is not an asset, and a release leaves it out.
+
 A script is sandboxed: it cannot read files, the clock, or the network, and `math.random` is refused in favour of `art.rng(seed)`. Its maths is the same on every machine, so the same script draws the same pixels everywhere. A mistake is an import error with the script's line, and `print` comes back as a warning on the asset, in `argus asset list`. To look at what it drew, put it in a scene and use `observe`; the packed sheet is in `.argus/assets/<name>.png`.
 
 The templates' art is drawn this way: their `assets/*.art.luau` are worked examples of characters, tiles, and panels.
