@@ -81,8 +81,10 @@ pub enum Wave {
     Noise,
 }
 
-/// A described placeholder sound: a wave, a length, an envelope, and
-/// optionally a note sequence (placeholder music loops are tones too).
+/// A described sound: a wave, a length, an envelope, and optionally a note
+/// sequence (placeholder music loops are tones too); and the controls of a
+/// sound-effect synthesiser (after sfxr), each neutral by default, so a
+/// tone without them sounds as tones always have.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Tone {
     /// Waveform.
@@ -103,6 +105,78 @@ pub struct Tone {
     pub notes: Vec<f32>,
     /// Length of each note in ms.
     pub note_ms: f32,
+    /// How much louder the start of the body (after the attack) is than
+    /// its end, 0 to 1: a hit's snap.
+    pub punch: f32,
+    /// How fast the slide itself changes, Hz per second per second.
+    pub slide_accel: f32,
+    /// Vibrato depth, a share of the pitch (0.05 is 5 percent).
+    pub vibrato: f32,
+    /// Vibrato rate, Hz.
+    pub vibrato_hz: f32,
+    /// A jump in pitch partway, as a multiple (1.5 a fifth up; 1 none): a
+    /// coin's second note.
+    pub jump: f32,
+    /// When the jump comes, ms into the note.
+    pub jump_ms: f32,
+    /// The square's duty, 0 to 1 (0.5 a square; less, thinner).
+    pub duty: f32,
+    /// How the duty moves, per second.
+    pub duty_sweep: f32,
+    /// Start the pitch's slide, jump, and vibrato over every this many ms
+    /// (0 never): a power-up's rising steps.
+    pub repeat_ms: f32,
+    /// Low-pass cutoff in Hz (0: none).
+    pub lowpass: f32,
+    /// How the low-pass cutoff moves, Hz per second.
+    pub lowpass_sweep: f32,
+    /// The low-pass's resonance, 0 to 1.
+    pub resonance: f32,
+    /// High-pass cutoff in Hz (0: none).
+    pub highpass: f32,
+    /// How the high-pass cutoff moves, Hz per second.
+    pub highpass_sweep: f32,
+    /// A phaser: a copy this many ms behind, taken away (0: none).
+    pub phaser_ms: f32,
+    /// How the phaser's delay moves, ms per second.
+    pub phaser_sweep: f32,
+    /// Noise with a pitch: a new random value every half period of the
+    /// frequency (an explosion's rumble), not every sample.
+    pub noise_pitch: bool,
+}
+
+impl Default for Tone {
+    /// A tone as `audio.toml` reads one that says only its wave.
+    fn default() -> Tone {
+        Tone {
+            wave: Wave::Sine,
+            freq: 440.0,
+            ms: 120.0,
+            attack_ms: 3.0,
+            release_ms: 40.0,
+            gain: 0.5,
+            slide: 0.0,
+            notes: Vec::new(),
+            note_ms: 250.0,
+            punch: 0.0,
+            slide_accel: 0.0,
+            vibrato: 0.0,
+            vibrato_hz: 6.0,
+            jump: 1.0,
+            jump_ms: 0.0,
+            duty: 0.5,
+            duty_sweep: 0.0,
+            repeat_ms: 0.0,
+            lowpass: 0.0,
+            lowpass_sweep: 0.0,
+            resonance: 0.0,
+            highpass: 0.0,
+            highpass_sweep: 0.0,
+            phaser_ms: 0.0,
+            phaser_sweep: 0.0,
+            noise_pitch: false,
+        }
+    }
 }
 
 /// One variation of a sound.
@@ -319,16 +393,35 @@ fn tone_from(t: &dyn toml_edit::TableLike, file: &str, line: u32) -> Result<Tone
         .and_then(|v| v.as_array())
         .map(|a| a.iter().filter_map(num).collect())
         .unwrap_or_default();
+    let d = Tone::default();
+    let n = |key: &str, default: f32| get_num(t, key).unwrap_or(default);
     Ok(Tone {
         wave,
-        freq: get_num(t, "freq").unwrap_or(440.0),
-        ms: get_num(t, "ms").unwrap_or(120.0).max(1.0),
-        attack_ms: get_num(t, "attack_ms").unwrap_or(3.0).max(0.0),
-        release_ms: get_num(t, "release_ms").unwrap_or(40.0).max(0.0),
-        gain: get_num(t, "gain").unwrap_or(0.5).clamp(0.0, 1.0),
-        slide: get_num(t, "slide").unwrap_or(0.0),
+        freq: n("freq", d.freq),
+        ms: n("ms", d.ms).max(1.0),
+        attack_ms: n("attack_ms", d.attack_ms).max(0.0),
+        release_ms: n("release_ms", d.release_ms).max(0.0),
+        gain: n("gain", d.gain).clamp(0.0, 1.0),
+        slide: n("slide", d.slide),
         notes,
-        note_ms: get_num(t, "note_ms").unwrap_or(250.0).max(1.0),
+        note_ms: n("note_ms", d.note_ms).max(1.0),
+        punch: n("punch", d.punch).clamp(0.0, 1.0),
+        slide_accel: n("slide_accel", d.slide_accel),
+        vibrato: n("vibrato", d.vibrato).clamp(0.0, 1.0),
+        vibrato_hz: n("vibrato_hz", d.vibrato_hz).max(0.0),
+        jump: n("jump", d.jump).max(0.01),
+        jump_ms: n("jump_ms", d.jump_ms).max(0.0),
+        duty: n("duty", d.duty).clamp(0.0, 1.0),
+        duty_sweep: n("duty_sweep", d.duty_sweep),
+        repeat_ms: n("repeat_ms", d.repeat_ms).max(0.0),
+        lowpass: n("lowpass", d.lowpass).max(0.0),
+        lowpass_sweep: n("lowpass_sweep", d.lowpass_sweep),
+        resonance: n("resonance", d.resonance).clamp(0.0, 1.0),
+        highpass: n("highpass", d.highpass).max(0.0),
+        highpass_sweep: n("highpass_sweep", d.highpass_sweep),
+        phaser_ms: n("phaser_ms", d.phaser_ms).max(0.0),
+        phaser_sweep: n("phaser_sweep", d.phaser_sweep),
+        noise_pitch: get_bool(t, "noise_pitch").unwrap_or(d.noise_pitch),
     })
 }
 

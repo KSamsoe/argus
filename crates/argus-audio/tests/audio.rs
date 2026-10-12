@@ -129,6 +129,7 @@ fn buses_gain_mute_pan_and_duck_as_declared() {
             slide: 0.0,
             notes: vec![],
             note_ms: 1.0,
+            ..Default::default()
         },
         48_000,
     );
@@ -411,6 +412,7 @@ fn a_burst_is_limited_not_clipped_and_a_capped_sound_steals_its_oldest_voice() {
             slide: 0.0,
             notes: vec![],
             note_ms: 1.0,
+            ..Default::default()
         },
         48_000,
     );
@@ -483,6 +485,7 @@ fn silence_mixes_to_the_same_state_by_the_short_path() {
                 slide: 0.0,
                 notes: vec![],
                 note_ms: 1.0,
+                ..Default::default()
             },
             48_000,
         )

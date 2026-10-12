@@ -20,6 +20,8 @@
 pub mod config;
 #[cfg(feature = "device")]
 pub mod device;
+pub mod gen;
+pub mod hear;
 pub mod mixer;
 pub mod sound;
 
@@ -464,6 +466,51 @@ impl AudioEngine {
     /// Reload every sound from disk (a WAV changed).
     pub fn reload_sounds(&mut self) {
         self.load_sounds();
+    }
+
+    /// What each variation of a sound is like, measured from the samples
+    /// it plays (`hear`): its file's path or `tone`, and what it is like.
+    /// `None` for a sound there is not.
+    pub fn hear(&self, name: &str) -> Option<Vec<(String, hear::Heard)>> {
+        let l = self.sounds.get(name)?;
+        let labels: Vec<String> = l
+            .def
+            .variations
+            .iter()
+            .map(|v| match v {
+                Source::File(f) => f.clone(),
+                Source::Tone(_) => "tone".to_string(),
+            })
+            .collect();
+        Some(
+            l.clips
+                .iter()
+                .enumerate()
+                .map(|(i, c)| {
+                    let label = if labels.len() == l.clips.len() {
+                        labels[i].clone()
+                    } else {
+                        format!("variation {}", i + 1)
+                    };
+                    (label, hear::hear(c, self.rate))
+                })
+                .collect(),
+        )
+    }
+
+    /// A sound's tones, as it is defined (`None` for a sound there is not).
+    pub fn tones(&self, name: &str) -> Option<Vec<config::Tone>> {
+        let l = self.sounds.get(name)?;
+        Some(
+            l.def
+                .variations
+                .iter()
+                .filter_map(|v| match v {
+                    Source::Tone(t) => Some(t.clone()),
+                    Source::File(_) => None,
+                })
+                .collect(),
+        )
     }
 
     /// Sounds by name.

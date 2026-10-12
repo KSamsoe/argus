@@ -259,6 +259,21 @@ pub const TOOLS: &[ToolDoc] = &[
         calls: &["test.run"],
     },
     ToolDoc {
+        name: "generate",
+        doc: "Make a sound effect as an asset, free and offline: from a kind (pickup, laser, explosion, powerup, hit, jump, blip, step, click) and a seed, or as a variation of a sound there is. It writes assets/<name>.toml, a sound whose [tone] is a synthesiser's controls you can read and change, as one edit (in the change feed with its author and note; edit undo=true takes it back), imports it so q:play(\"<name>\") plays it, and answers with what it is like: its length, loudness, and how its pitch and brightness move, in numbers and a sentence. Another seed is another take; change the numbers in the file and reload to shape it. It will not replace a file that is there unless replace=true.",
+        params: &[
+            req("name", STRING, "the asset's name: sfx/jump (written to assets/sfx/jump.toml)"),
+            opt("sound", STRING, "the kind of sound effect"),
+            opt("from", STRING, "instead, a sound there is (made of a tone) to make a variation of"),
+            opt("vary", NUMBER, "with from: how far each control moves, a share of itself; default 0.1"),
+            opt("seed", INTEGER, "another seed, another take; default 1"),
+            opt("replace", BOOLEAN, "replace the file if it is there"),
+            opt("note", STRING, "why, for the change feed"),
+            opt("author", STRING, "default \"agent:claude\" (or $ARGUS_AUTHOR)"),
+        ],
+        calls: &["asset.generate", "edit.begin", "edit.file", "edit.commit", "asset.import", "audio.describe"],
+    },
+    ToolDoc {
         name: "reload",
         doc: "Take changes made on disk now: scripts are recompiled and swapped in while the world goes on from the current frame, Rust plugins (plugins/<name>/) are rebuilt and the changed ones swapped in the same way, and assets are reimported. Answers with what changed and every script error. With mods: the scene loaded again from its start with those mods from the project's mods/ laid over the game, in that order ([] for none), answering with mods.list.",
         params: &[opt("mods", ARRAY, "mod ids in load order: load the scene again with them (the world starts over)")],
@@ -706,6 +721,18 @@ pub const METHODS: &[MethodDoc] = &[
             req("to", STRING, ""),
         ],
         returns: "{kind, from, to, refs, rewritten: [file]}",
+    },
+    MethodDoc {
+        name: "asset.generate",
+        doc: "A new sound asset's text, made from a kind and a seed (or as a variation of a sound there is), and what it is like (audio.describe's numbers and sentence). It writes nothing: the generate tool writes it as an edit. The text is a sound sidecar (type = \"sound\") whose [tone] is a sound-effect synthesiser's controls, headed by what made it; the same kind and seed make the same text. Kinds: pickup, laser, explosion, powerup, hit, jump, blip, step, click.",
+        params: &[
+            req("name", STRING, "the asset's name, its path under assets/ without .toml: sfx/jump"),
+            opt("sound", STRING, "the kind: pickup, laser, explosion, powerup, hit, jump, blip, step, click"),
+            opt("from", STRING, "instead of a kind, a sound there is (made of a tone) to vary"),
+            opt("vary", NUMBER, "with from, how far each control moves, a share of itself; default 0.1"),
+            opt("seed", INTEGER, "picks within the kind's ranges; default 1"),
+        ],
+        returns: "{name, file, exists, text, heard: {text, seconds, peak_db, ...}}",
     },
     MethodDoc {
         name: "scene.transition",
@@ -1671,6 +1698,12 @@ pub const METHODS: &[MethodDoc] = &[
             opt("path", STRING, "default .argus/clips/audio-<tick>.wav"),
         ],
         returns: "{path, seconds, frames, peak_db}",
+    },
+    MethodDoc {
+        name: "audio.describe",
+        doc: "What a sound is like, for someone who cannot hear it: each variation measured from the samples the mixer plays (a file's or a tone's). Its length, peak and loudness, when it is loudest and when it has faded to a tenth, its pitch every 40 ms where it has one (and how much of it does), its zero crossings a second (high is bright or hissy), and all of that in a sentence.",
+        params: &[req("sound", STRING, "the sound's name, as q:play spells it: sfx/jump")],
+        returns: "{sound, variations: [{source, text, seconds, peak_db, loudness_db, loudest_s, faded_s, pitched, pitch_hz: [[s, hz]], crossings_per_s: [[s, n]]}]}",
     },
     MethodDoc {
         name: "audio.device",

@@ -260,6 +260,34 @@ effects = \"actor:Health.cur = 4\"
     assert!(!is_err && got["rows"].is_array(), "{got}");
     let (is_err, _, got, _) = m.tool("reload", json!({}));
     assert!(!is_err && got["errors"].is_object(), "{got}");
+
+    // A sound made from a kind and a seed: written as an edit, imported,
+    // and described; not over one that is there; undone like any edit.
+    let (is_err, _, got, _) = m.tool(
+        "generate",
+        json!({ "name": "sfx/zap", "sound": "laser", "seed": 2 }),
+    );
+    assert!(!is_err, "{got}");
+    let on_disk = std::fs::read_to_string(m.root.join("assets/sfx/zap.toml")).unwrap();
+    assert_eq!(json!(on_disk.replace("\r\n", "\n")), got["text"]);
+    assert!(
+        on_disk.contains("argus generate name=sfx/zap sound=laser seed=2"),
+        "{on_disk}"
+    );
+    let heard = got["heard"]["text"].as_str().unwrap();
+    assert!(
+        heard.contains("a note") && heard.contains("(lower)"),
+        "{heard}"
+    );
+    assert_eq!(got["edit"]["author"], "agent:claude");
+    let (is_err, _, got, _) = m.tool("generate", json!({ "name": "sfx/zap", "sound": "jump" }));
+    assert!(
+        is_err && got["message"].as_str().unwrap().contains("there already"),
+        "{got}"
+    );
+    let (is_err, _, got, _) = m.tool("edit", json!({ "undo": true }));
+    assert!(!is_err, "{got}");
+    assert!(!m.root.join("assets/sfx/zap.toml").exists(), "undone");
     let (is_err, _, got, _) = m.tool("test", json!({ "name": "no scenario is called this" }));
     assert!(!is_err, "{got}");
 

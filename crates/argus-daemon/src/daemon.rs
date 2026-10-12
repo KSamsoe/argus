@@ -587,6 +587,7 @@ impl Daemon {
                 Ok(st.state_json(slot))
             }
             "asset.move" => self.asset_move(params),
+            "asset.generate" => self.asset_generate(params),
             "asset.list" => self.asset_list(params),
             "asset.sidecar" => self.asset_sidecar(params),
             "asset.get" => {
@@ -831,6 +832,7 @@ impl Daemon {
             "audio.stop" => self.audio_stop(params),
             "audio.bus" => self.audio_bus(params),
             "audio.clip" => self.audio_clip(params),
+            "audio.describe" => self.audio_describe(params),
             "audio.device" => self.audio_device(params),
             "render.window" => self.render_window(params),
             "render.status" => Ok(self.render_status()),
@@ -6574,6 +6576,109 @@ impl Daemon {
         }))
     }
 
+    /// `audio.describe`: what a sound is like, for someone who cannot hear
+    /// it, each variation measured from the samples the mixer plays.
+    #[cfg(feature = "audio")]
+    fn audio_describe(&mut self, params: &Json) -> Result<Json> {
+        let name = json::str_param(params, "sound")?.to_string();
+        let a = self.audio_engine()?;
+        let heard = a.hear(&name).ok_or_else(|| {
+            ArgusError::new(
+                argus_audio::codes::UNKNOWN_SOUND,
+                format!("there is no sound {name:?}"),
+            )
+            .hint("audio.toml's [sounds] and the sound assets (asset.list kind=sound) are the sounds; a sound made a moment ago plays once asset.import has taken it.")
+        })?;
+        let variations: Vec<Json> = heard
+            .iter()
+            .map(|(src, h)| {
+                let mut o = h.to_json();
+                o["source"] = json!(src);
+                o
+            })
+            .collect();
+        Ok(json!({ "sound": name, "variations": variations }))
+    }
+
+    /// `asset.generate`: a new sound asset's text, from a kind and a seed
+    /// or as a variation of a sound there is, with what it is like. It
+    /// writes nothing; the generate tool writes it, as an edit.
+    #[cfg(feature = "audio")]
+    fn asset_generate(&mut self, params: &Json) -> Result<Json> {
+        use argus_audio::gen;
+        let root = self.require_session()?.root.clone();
+        let name = json::str_param(params, "name")?
+            .trim()
+            .trim_start_matches("assets/")
+            .trim_end_matches(".toml")
+            .trim_matches('/')
+            .to_string();
+        if name.is_empty()
+            || name
+                .split('/')
+                .any(|p| p.is_empty() || p == "." || p == "..")
+        {
+            return Err(ArgusError::new(
+                codes::BAD_PARAMS,
+                format!("{name:?} is not an asset name"),
+            )
+            .hint("An asset's name is its path under assets/ without the extension: sfx/jump."));
+        }
+        let seed = json::u64_param(params, "seed", 1)?;
+        let file = format!("assets/{name}.toml");
+        let exists = root.join(&file).exists();
+        let kinds = || {
+            gen::KINDS
+                .iter()
+                .map(|(k, d)| format!("{k} ({d})"))
+                .collect::<Vec<_>>()
+                .join("; ")
+        };
+        let (tone, text) = match (json::opt_str(params, "sound")?, json::opt_str(params, "from")?) {
+            (Some(kind), None) => {
+                let t = gen::generate(kind, seed).map_err(|m| {
+                    ArgusError::new(codes::BAD_PARAMS, m).hint(format!("The kinds: {}.", kinds()))
+                })?;
+                let text = gen::sidecar(&name, kind, seed, None, &t);
+                (t, text)
+            }
+            (None, Some(from)) => {
+                let share = json::f64_param(params, "vary", 0.1)? as f32;
+                let tones = self.audio_engine()?.tones(from).ok_or_else(|| {
+                    ArgusError::new(
+                        argus_audio::codes::UNKNOWN_SOUND,
+                        format!("there is no sound {from:?} to vary"),
+                    )
+                })?;
+                let Some(t) = tones.first() else {
+                    return Err(ArgusError::new(
+                        codes::BAD_PARAMS,
+                        format!("{from} plays a file, not a tone; from= varies a tone"),
+                    ));
+                };
+                let v = gen::vary(t, share, seed);
+                let text = gen::sidecar(&name, "", seed, Some((from, share)), &v);
+                (v, text)
+            }
+            _ => {
+                return Err(ArgusError::new(
+                    codes::BAD_PARAMS,
+                    "asset.generate takes sound=<kind> (a new one) or from=<sound> (a variation of one)",
+                )
+                .hint(format!("The kinds: {}.", kinds())))
+            }
+        };
+        let rate = 48_000;
+        let heard = argus_audio::hear::hear(&argus_audio::sound::synth(&tone, rate), rate);
+        Ok(json!({
+            "name": name,
+            "file": file,
+            "exists": exists,
+            "text": text,
+            "heard": heard.to_json(),
+        }))
+    }
+
     #[cfg(feature = "audio")]
     fn audio_device(&mut self, params: &Json) -> Result<Json> {
         let open = json::bool_param(params, "open", true)?;
@@ -6608,6 +6713,14 @@ impl Daemon {
     }
     #[cfg(not(feature = "audio"))]
     fn audio_device(&mut self, _p: &Json) -> Result<Json> {
+        Err(ArgusError::new(5103, "this daemon was built without audio"))
+    }
+    #[cfg(not(feature = "audio"))]
+    fn audio_describe(&mut self, _p: &Json) -> Result<Json> {
+        Err(ArgusError::new(5103, "this daemon was built without audio"))
+    }
+    #[cfg(not(feature = "audio"))]
+    fn asset_generate(&mut self, _p: &Json) -> Result<Json> {
         Err(ArgusError::new(5103, "this daemon was built without audio"))
     }
 

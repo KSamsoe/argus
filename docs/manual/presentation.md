@@ -476,6 +476,17 @@ variations = [ { wave = "noise", ms = 35, release_ms = 25 }, { wave = "noise", m
 
 A sound plays one of its `variations` each time, picked from the run's seed: a file path (WAV or Ogg Vorbis, under `assets/`) or a synthesised `tone` (`sine`, `square`, `saw`, `triangle`, or `noise`, with `freq`, `ms`, `slide`, or `notes`). Tones let a game have sound before any audio files exist; Hollow, Delve, Swarm, and Outpost use nothing else. `gain_jitter` and `pitch_jitter` vary each play, `max_voices` caps how many play at once, and `loop` loops. A sound can also be a sidecar under `assets/` with `type = "sound"` and the same keys.
 
+A tone is also a sound-effect synthesiser. Beside its wave, pitch, length, and envelope it takes `punch` (the start louder than the end), `slide_accel` (a slide that eases off), `jump` and `jump_ms` (a second note partway, as a coin has), `vibrato` and `vibrato_hz`, `duty` and `duty_sweep` (a thinner square), `repeat_ms` (a power-up's steps), `lowpass`, `highpass`, and their sweeps, `resonance`, `phaser_ms`, and `noise_pitch` (noise with a pitch, for a rumble). Every one is off unless you give it; `argus docs files section=audio.toml` says what each does. A tone is the same samples on every machine and in the browser.
+
+You need not start from nothing: the `generate` tool (or `argus generate`) makes a sound effect from a kind and a seed, free and offline, and writes it as a sound asset you then change:
+
+```sh
+argus generate name=sfx/zap sound=laser seed=3     # assets/sfx/zap.toml
+argus generate name=sfx/zap2 from=sfx/zap vary=0.15 # another take on it
+```
+
+The kinds are `pickup`, `laser`, `explosion`, `powerup`, `hit`, `jump`, `blip`, `step`, and `click`; another seed is another take on the same kind. The file says the command that made it, and it is an edit like any other: in the change feed with its author and note, undone with `edit undo=true`. It will not write over a file that is there unless you say `replace=true`. The answer says what the sound is like (below), so an agent can check a jump rises before anyone listens.
+
 A script plays a sound by name:
 
 ```lua
@@ -505,6 +516,8 @@ m.intensity = math.min(1, n / 30)
 ```
 
 ### Checking sound without ears
+
+`argus audio describe sound=sfx/jump` says what a sound is like, measured from the samples the mixer plays, a file's or a tone's: its length, its peak and loudness, when it is loudest and when it has faded, how its pitch moves (where it has one) and how bright it is, in numbers and in a sentence: "0.17 s long, peak -6.0 dB; loudest at 0.00 s, faded to a tenth by 0.16 s; a note starting near 560 Hz at 0.00 s, ending near 826 Hz at 0.14 s (higher)".
 
 Every play is an event (`sound.play` asked, `sound.played` with the variation chosen, or `sound.missing`), and music changes are `music.started`, `music.layer`, and `music.queued`. `argus audio status` shows the buses with their levels and ducking, the voices, and the music. `argus audio clip` writes the last seconds of the mix as a WAV for a person to hear. Headless, the mixer runs on sim time, so the clip is the same every run.
 

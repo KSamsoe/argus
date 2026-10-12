@@ -265,6 +265,68 @@ pub fn run(c: &mut dyn Caller, name: &str, args: &Json) -> Result<Json, Json> {
             "test.run",
             pick(args, &["name", "file", "seeds", "update", "set", "sweep"]),
         ),
+        "generate" => {
+            let made = c.call(
+                "asset.generate",
+                pick(args, &["name", "sound", "from", "vary", "seed"]),
+            )?;
+            let file = made["file"].as_str().unwrap_or_default().to_string();
+            let replace = args.get("replace").and_then(Json::as_bool).unwrap_or(false);
+            if made["exists"] == json!(true) && !replace {
+                return Err(bad(format!(
+                    "{file} is there already; give another name, or replace=true to replace it (edit undo=true takes the change back)"
+                )));
+            }
+            let author = args
+                .get("author")
+                .and_then(Json::as_str)
+                .map(str::to_string)
+                .unwrap_or_else(default_author);
+            let note = args
+                .get("note")
+                .and_then(Json::as_str)
+                .map(str::to_string)
+                .unwrap_or_else(|| {
+                    match (
+                        args.get("sound").and_then(Json::as_str),
+                        args.get("from").and_then(Json::as_str),
+                    ) {
+                        (Some(k), _) => format!("generated a {k} sound"),
+                        (_, Some(f)) => format!("a variation of {f}"),
+                        _ => "a generated sound".to_string(),
+                    }
+                });
+            let tx = c.call("edit.begin", json!({ "author": author, "note": note }))?["tx"].clone();
+            if let Err(e) = c.call(
+                "edit.file",
+                json!({ "tx": tx, "file": file, "text": made["text"] }),
+            ) {
+                let _ = c.call("edit.abort", json!({ "tx": tx }));
+                return Err(e);
+            }
+            let committed = c
+                .call("edit.commit", json!({ "tx": tx }))
+                .inspect_err(|_| {
+                    let _ = c.call("edit.abort", json!({ "tx": tx }));
+                })?;
+            let imported = c.call("asset.import", json!({}))?;
+            let name = made["name"].clone();
+            // The mixer's own measure of what it now plays; the generator's
+            // when the project has no mixer.
+            let heard = c
+                .call("audio.describe", json!({ "sound": name }))
+                .map(|d| d["variations"][0].clone())
+                .unwrap_or_else(|_| made["heard"].clone());
+            Ok(json!({
+                "name": name,
+                "file": file,
+                "text": made["text"],
+                "heard": heard,
+                "edit": committed,
+                "imported": imported["imported"],
+                "failed": imported["failed"],
+            }))
+        }
         "reload" => {
             if let Some(m) = args.get("mods").filter(|v| !v.is_null()) {
                 let loaded = c.call("scene.load", json!({ "mods": m }))?;

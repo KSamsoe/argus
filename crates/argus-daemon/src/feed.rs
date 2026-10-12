@@ -179,6 +179,8 @@ pub const READS: &[&str] = &[
     "render.stream",
     "audio.status",
     "audio.clip",
+    "audio.describe",
+    "asset.generate",
     "prof.frame",
     "prof.worst",
     "prof.systems",

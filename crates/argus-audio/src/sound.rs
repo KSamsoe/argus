@@ -174,7 +174,9 @@ pub fn synth_all(tones: &[&Tone], rate: u32) -> Vec<Clip> {
 }
 
 /// Synthesise a described tone at `rate`. Deterministic: noise uses a
-/// fixed seed, so the same description is the same samples everywhere.
+/// fixed seed, and the sines are `libm`'s (pure Rust, not the platform's),
+/// so the same description is the same samples everywhere, the browser
+/// included.
 pub fn synth(t: &Tone, rate: u32) -> Clip {
     let sr = rate as f32;
     let notes: Vec<f32> = if t.notes.is_empty() {
@@ -192,16 +194,40 @@ pub fn synth(t: &Tone, rate: u32) -> Clip {
     let release = (t.release_ms / 1000.0 * sr) as usize;
     let mut out = Vec::with_capacity(note_len * notes.len());
     let mut noise: u32 = 0x9E37_79B9;
+    let mut held = 0.0f32;
     let mut phase = 0.0f32;
+    let tau = std::f32::consts::TAU;
+    let repeat = t.repeat_ms / 1000.0;
+    // The filters' and the phaser's state carries on from note to note.
+    let (mut low, mut band) = (0.0f32, 0.0f32);
+    let (mut hp_in, mut hp_out) = (0.0f32, 0.0f32);
+    let mut delay = vec![0.0f32; if t.phaser_ms > 0.0 { 4096 } else { 0 }];
+    let mut at = 0usize;
+    let body = note_len.saturating_sub(attack + release).max(1);
     for &f0 in &notes {
         for i in 0..note_len {
             let secs = i as f32 / sr;
-            let f = (f0 + t.slide * secs).max(0.0);
+            // The pitch's own clock: it starts over every repeat.
+            let pt = if repeat > 0.0 { secs % repeat } else { secs };
+            let mut f = f0 + t.slide * pt + 0.5 * t.slide_accel * pt * pt;
+            if t.jump != 1.0 && pt * 1000.0 >= t.jump_ms {
+                f *= t.jump;
+            }
+            if t.vibrato != 0.0 {
+                f *= 1.0 + t.vibrato * libm::sinf(tau * t.vibrato_hz * secs);
+            }
+            let f = f.max(0.0);
+            let before = phase;
             phase = (phase + f / sr).fract();
-            let s = match t.wave {
-                Wave::Sine => (phase * std::f32::consts::TAU).sin(),
+            let mut s = match t.wave {
+                Wave::Sine => libm::sinf(phase * tau),
                 Wave::Square => {
-                    if phase < 0.5 {
+                    let duty = if t.duty_sweep != 0.0 {
+                        (t.duty + t.duty_sweep * secs).clamp(0.02, 0.98)
+                    } else {
+                        t.duty
+                    };
+                    if phase < duty {
                         1.0
                     } else {
                         -1.0
@@ -210,12 +236,46 @@ pub fn synth(t: &Tone, rate: u32) -> Clip {
                 Wave::Saw => 2.0 * phase - 1.0,
                 Wave::Triangle => 1.0 - 4.0 * (phase - 0.5).abs(),
                 Wave::Noise => {
-                    noise ^= noise << 13;
-                    noise ^= noise >> 17;
-                    noise ^= noise << 5;
-                    (noise as f32 / u32::MAX as f32) * 2.0 - 1.0
+                    // Pitched, a new value each half period; else each sample.
+                    let fresh = !t.noise_pitch
+                        || phase < before
+                        || (before < 0.5 && phase >= 0.5)
+                        || out.is_empty();
+                    if fresh {
+                        noise ^= noise << 13;
+                        noise ^= noise >> 17;
+                        noise ^= noise << 5;
+                        held = (noise as f32 / u32::MAX as f32) * 2.0 - 1.0;
+                    }
+                    held
                 }
             };
+            if t.lowpass > 0.0 {
+                // A two-pole state-variable filter.
+                let fc = (t.lowpass + t.lowpass_sweep * secs).clamp(20.0, sr * 0.2);
+                let k = 2.0 * libm::sinf(std::f32::consts::PI * fc / sr);
+                let damp = 1.4 * (1.0 - 0.9 * t.resonance);
+                low += k * band;
+                let high = s - low - damp * band;
+                band += k * high;
+                s = low;
+            }
+            if t.highpass > 0.0 {
+                let fc = (t.highpass + t.highpass_sweep * secs).clamp(1.0, sr * 0.45);
+                let rc = 1.0 / (tau * fc);
+                let a = rc / (rc + 1.0 / sr);
+                hp_out = a * (hp_out + s - hp_in);
+                hp_in = s;
+                s = hp_out;
+            }
+            if !delay.is_empty() {
+                let n = delay.len();
+                let d = ((t.phaser_ms + t.phaser_sweep * secs).max(0.0) / 1000.0 * sr) as usize;
+                let back = delay[(at + n - d.min(n - 1)) % n];
+                delay[at] = s;
+                at = (at + 1) % n;
+                s -= back;
+            }
             // Per-note envelope: attack ramp, release ramp at the end.
             let env_a = if attack > 0 && i < attack {
                 i as f32 / attack as f32
@@ -228,7 +288,14 @@ pub fn synth(t: &Tone, rate: u32) -> Clip {
             } else {
                 1.0
             };
-            out.push(s * t.gain * env_a.min(env_r));
+            // Punch: the body starts louder than it ends.
+            let punch = if t.punch > 0.0 {
+                let u = (i.saturating_sub(attack) as f32 / body as f32).min(1.0);
+                (1.0 + t.punch * (1.0 - u)) / (1.0 + t.punch)
+            } else {
+                1.0
+            };
+            out.push((s * t.gain * env_a.min(env_r) * punch).clamp(-1.0, 1.0));
         }
     }
     out.into()
