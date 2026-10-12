@@ -41,6 +41,7 @@ fn rig(machine: &str, clips: &[(&str, Clip)]) -> Rig {
         .field("frame", FieldType::U32)
         .field("blend_frame", FieldType::U32)
         .field("blend", FieldType::F32)
+        .field("flip_x", FieldType::Bool)
         .build()
         .unwrap();
     world.register_schema(sprite).unwrap();
@@ -543,4 +544,67 @@ fn perf_two_thousand_animators() {
         total / 300
     );
     assert!(anim.mean_ms < 0.3, "{} ms", anim.mean_ms);
+}
+
+/// `or` joins groups of terms (`and` binds tighter), so idle to walk is one
+/// transition, not two; and `face` mirrors the sprite while its field is
+/// below zero, keeping the way it faced at zero (the art passes wrote a
+/// script for both).
+#[test]
+fn or_joins_terms_and_face_mirrors_the_sprite_by_a_field() {
+    let mut r = rig(
+        r#"type = "animator"
+initial = "idle"
+face = "Body.vx"
+
+[states.idle]
+clip = "idle"
+
+[[states.idle.transitions]]
+to = "walk"
+when = "Body.grounded and Body.vx > 0.5 or Body.grounded and Body.vx < -0.5 or Body.dash > 0"
+
+[states.walk]
+clip = "walk"
+
+[[states.walk.transitions]]
+to = "idle"
+when = "abs(Body.vx) <= 0.5 and Body.dash == 0"
+"#,
+        &[
+            ("idle", clip(&[0], 1.0, true)),
+            ("walk", clip(&[1, 2], 8.0, true)),
+        ],
+    );
+    let e = r.actor();
+    let flip = |r: &Rig| r.world.get_field(e, "Sprite.flip_x").unwrap() == Value::Bool(true);
+    r.set(e, "Body.grounded", true);
+    r.tick(1);
+    assert_eq!(r.state(e), "idle");
+    // Walking left: the second group holds, and the sprite is mirrored.
+    r.set(e, "Body.vx", -2.0f32);
+    r.tick(1);
+    assert_eq!(r.state(e), "walk");
+    assert!(flip(&r), "facing left");
+    // Stopped: idle again, still facing left.
+    r.set(e, "Body.vx", 0.0f32);
+    r.tick(1);
+    assert_eq!(r.state(e), "idle");
+    assert!(flip(&r), "a stop keeps the facing");
+    // Right: the first group; facing right.
+    r.set(e, "Body.vx", 2.0f32);
+    r.tick(1);
+    assert_eq!(r.state(e), "walk");
+    assert!(!flip(&r), "facing right");
+    // In the air, neither and-group holds; the third (a dash) alone does.
+    r.set(e, "Body.vx", 0.0f32);
+    r.tick(1);
+    assert_eq!(r.state(e), "idle");
+    r.set(e, "Body.grounded", false);
+    r.set(e, "Body.vx", 2.0f32);
+    r.tick(1);
+    assert_eq!(r.state(e), "idle", "airborne: no group holds");
+    r.set(e, "Body.dash", 1i32);
+    r.tick(1);
+    assert_eq!(r.state(e), "walk", "the dash group");
 }

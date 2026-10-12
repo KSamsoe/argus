@@ -398,3 +398,25 @@ fn particles_draw_with_their_effects_material() {
     assert_eq!((rep.particles, rep.stats.materials), (1, 2), "{rep:?}");
     assert_eq!(px(&r, 0.0, 0.0), [255, 255, 0]);
 }
+
+/// Draw order is z, whatever the material: a sprite with its own material
+/// under a higher sheet with none is covered by it, and over a lower one
+/// covers it (the colony template's art pass found the first drawn on top).
+#[test]
+fn a_material_sprite_keeps_its_place_in_z() {
+    let Some(mut r) = renderer() else { return };
+    let mut w = world();
+    let flat = spec(
+        "materials/flat",
+        None,
+        Some("fn material(in: MaterialInput, p: Params) -> vec4<f32> {\n    return vec4<f32>(1.0, 0.0, 0.0, 1.0);\n}\n"),
+    );
+    load(&mut r, &[("materials/flat", &flat)]);
+    sprite(&mut w, -2.0, 0.0, "rect", 2.0, "", "materials/flat", 1.0);
+    sprite(&mut w, -2.0, 0.0, "rect", 4.0, "#0000FF", "", 50.0);
+    sprite(&mut w, 2.0, 0.0, "rect", 2.0, "", "materials/flat", 50.0);
+    sprite(&mut w, 2.0, 0.0, "rect", 4.0, "#0000FF", "", 1.0);
+    r.render(&w, 0, 1.0).unwrap();
+    assert_eq!(px(&r, -2.0, 0.0), [0, 0, 255], "the higher sheet covers it");
+    assert_eq!(px(&r, 2.0, 0.0), [255, 0, 0], "it covers the lower sheet");
+}

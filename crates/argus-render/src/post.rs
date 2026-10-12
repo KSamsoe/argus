@@ -15,10 +15,12 @@ pub enum PostKind {
     /// The palette colour for each pixel's brightness: `a.x` how much,
     /// `a.y` how many colours, `palette` dark to light.
     Palette,
-    /// Toward a colour: `a` the colour (linear), `b.x` how much.
+    /// Toward a colour: `a` the colour (linear), `b.x` how much, a share
+    /// of the way as it looks (in sRGB).
     Flash,
-    /// Darker toward the edges: `a.x` how dark, `a.y` where it starts,
-    /// `a.z` how gradual, shares of the screen's height.
+    /// Darker toward the edges: `a.x` how dark, as it looks (in sRGB),
+    /// `a.y` where it starts, `a.z` how gradual, shares of the screen's
+    /// height.
     Vignette,
     /// Toward a colour, as `Flash`.
     Fade,
@@ -105,6 +107,24 @@ fn at(uv: vec2<f32>) -> vec4<f32> {
     return textureSampleLevel(src, samp, clamp(uv, vec2<f32>(0.0), vec2<f32>(1.0)), 0.0);
 }
 
+// The passes that take a share (flash, fade, vignette) work in the light a
+// person sees, sRGB, not the linear light the picture is drawn in: a flash
+// at 0.1 is a tenth of the way to its colour as it looks, on a dark screen
+// as on a bright one.
+fn to_srgb(c: vec3<f32>) -> vec3<f32> {
+    let x = clamp(c, vec3<f32>(0.0), vec3<f32>(1.0));
+    return select(1.055 * pow(x, vec3<f32>(1.0 / 2.4)) - 0.055, x * 12.92, x <= vec3<f32>(0.0031308));
+}
+
+fn to_linear(c: vec3<f32>) -> vec3<f32> {
+    let x = clamp(c, vec3<f32>(0.0), vec3<f32>(1.0));
+    return select(pow((x + 0.055) / 1.055, vec3<f32>(2.4)), x / 12.92, x <= vec3<f32>(0.04045));
+}
+
+fn toward(c: vec3<f32>, to: vec3<f32>, k: f32) -> vec3<f32> {
+    return to_linear(mix(to_srgb(c), to_srgb(to), k));
+}
+
 // A share of the screen's height (y up) as a texture offset (y down).
 fn share(v: vec2<f32>) -> vec2<f32> {
     return vec2<f32>(v.x * p.size.y * p.size.z, -v.y);
@@ -135,7 +155,7 @@ fn palette(v: V) -> @location(0) vec4<f32> {
 @fragment
 fn flash(v: V) -> @location(0) vec4<f32> {
     let c = at(v.uv);
-    return vec4<f32>(mix(c.rgb, p.a.rgb, p.b.x), c.a);
+    return vec4<f32>(toward(c.rgb, p.a.rgb, p.b.x), c.a);
 }
 
 @fragment
@@ -143,13 +163,13 @@ fn vignette(v: V) -> @location(0) vec4<f32> {
     let c = at(v.uv);
     let d = length((v.uv - vec2<f32>(0.5)) * vec2<f32>(p.size.x * p.size.w, 1.0));
     let k = smoothstep(p.a.y, p.a.y + max(p.a.z, 0.0001), d);
-    return vec4<f32>(c.rgb * (1.0 - p.a.x * k), c.a);
+    return vec4<f32>(to_linear(to_srgb(c.rgb) * (1.0 - p.a.x * k)), c.a);
 }
 
 @fragment
 fn fade(v: V) -> @location(0) vec4<f32> {
     let c = at(v.uv);
-    return vec4<f32>(mix(c.rgb, p.a.rgb, p.b.x), c.a);
+    return vec4<f32>(toward(c.rgb, p.a.rgb, p.b.x), c.a);
 }
 
 @fragment

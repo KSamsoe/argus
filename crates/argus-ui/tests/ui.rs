@@ -536,7 +536,7 @@ fn a_players_settings_scale_the_text_and_swap_the_palette() {
         "5 characters of 6 at size 8"
     );
     let shared = Shared::default();
-    let quads = |w: &World| argus_ui::draw::draw_list(w, &shared, &|_| None);
+    let quads = |w: &World| argus_ui::draw::draw_list(w, &shared, &|_, _| None);
     let before = quads(&u.w);
     let flat = |q: &[argus_ui::draw::Quad]| {
         q.iter()
@@ -918,7 +918,7 @@ fn a_font_asset_lays_out_by_its_advances_and_draws_from_its_field() {
     assert_eq!(r[2], want.ceil());
     assert!(font.measure("Wave to AVA", 20.0) <= want);
     assert_eq!(r[3], 25.0, "one line");
-    let quads = argus_ui::draw::draw_list(&u.w, &shared.borrow(), &|_| None);
+    let quads = argus_ui::draw::draw_list(&u.w, &shared.borrow(), &|_, _| None);
     let glyphs: Vec<_> = quads
         .iter()
         .filter_map(|q| match &q.paint {

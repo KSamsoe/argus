@@ -161,7 +161,7 @@ return system "sim.look" {
     local missing = 1 - hp.cur / math.max(1, hp.max)
     for _, lit, vig in q:each("Lighting", "PostVignette") do
       near(lit, "level", level)
-      near(vig, "amount", 0.25 + 0.4 * missing)
+      near(vig, "amount", 0.13 + 0.29 * missing)
     end
 
     -- Sparks where blows landed.

@@ -17,11 +17,13 @@ use std::rc::Rc;
 pub enum Paint {
     /// A flat colour.
     Flat,
-    /// Part of a sprite's first frame: `sub` is u0, v0, u1, v1 as
-    /// fractions of the frame.
+    /// Part of a sprite's frame: `sub` is u0, v0, u1, v1 as fractions of
+    /// the frame.
     Image {
         /// The sprite asset.
         sprite: Rc<str>,
+        /// Its frame (the first if it has no such frame).
+        frame: u32,
         /// The part of its frame.
         sub: [f32; 4],
     },
@@ -53,12 +55,12 @@ pub struct Quad {
     pub node: Entity,
 }
 
-/// The UI's quads in draw order. `frame_size` gives a sprite's frame size
-/// in pixels (for nine-slicing); `None` for one the renderer lacks.
+/// The UI's quads in draw order. `frame_size` gives the size in pixels of
+/// a sprite's frame (for nine-slicing); `None` for one the renderer lacks.
 pub fn draw_list(
     world: &World,
     shared: &Shared,
-    frame_size: &dyn Fn(&str) -> Option<[f32; 2]>,
+    frame_size: &dyn Fn(&str, u32) -> Option<[f32; 2]>,
 ) -> Vec<Quad> {
     let Some(rect_id) = world.component_id_of::<UiRect>() else {
         return Vec::new();
@@ -149,7 +151,8 @@ pub fn draw_list(
             } else {
                 let sprite: Rc<str> = Rc::from(image.as_str());
                 let tint = fade(fill.unwrap_or([1.0; 4]));
-                match frame_size(&image) {
+                let frame = p.frame;
+                match frame_size(&image, frame) {
                     Some(fs) if p.slice > 0.0 => {
                         let k = if p.scale > 0.0 { p.scale } else { 1.0 };
                         nine(pos, size, fs, p.slice, k, |pos, size, sub| {
@@ -158,6 +161,7 @@ pub fn draw_list(
                                 size,
                                 Paint::Image {
                                     sprite: sprite.clone(),
+                                    frame,
                                     sub,
                                 },
                                 tint,
@@ -169,6 +173,7 @@ pub fn draw_list(
                         size,
                         Paint::Image {
                             sprite,
+                            frame,
                             sub: [0.0, 0.0, 1.0, 1.0],
                         },
                         tint,

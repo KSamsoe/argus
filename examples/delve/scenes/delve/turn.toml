@@ -47,7 +47,7 @@ level = 0.62
 
 # The edges close in as the hero's hit points fall (sim.look).
 [PostVignette]
-amount = 0.25
+amount = 0.13
 radius = 0.5
 softness = 0.5
 

@@ -7,7 +7,7 @@ use std::collections::HashMap;
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::Arc;
 
-/// One instance as the shader reads it (80 bytes).
+/// One instance as the shader reads it (96 bytes).
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Instance {
@@ -21,6 +21,9 @@ pub struct Instance {
     pub color: [f32; 4],
     /// The material's per-sprite values.
     pub extra: [f32; 4],
+    /// How many times the frame repeats across and down (1, 1 for once);
+    /// the last two unused.
+    pub tile: [f32; 4],
 }
 
 /// A run of instances drawn with one atlas and one material.
@@ -668,7 +671,7 @@ impl Gpu {
                 buffers: &[wgpu::VertexBufferLayout {
                     array_stride: std::mem::size_of::<Instance>() as u64,
                     step_mode: wgpu::VertexStepMode::Instance,
-                    attributes: &wgpu::vertex_attr_array![0 => Float32x4, 1 => Float32x4, 2 => Float32x4, 3 => Float32x4, 4 => Float32x4],
+                    attributes: &wgpu::vertex_attr_array![0 => Float32x4, 1 => Float32x4, 2 => Float32x4, 3 => Float32x4, 4 => Float32x4, 5 => Float32x4],
                 }],
                 compilation_options: Default::default(),
             },

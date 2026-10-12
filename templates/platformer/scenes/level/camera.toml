@@ -18,7 +18,7 @@ lookahead = [0.25, 0.0]
 [PostFlash]
 on = "hero.hurt"
 color = "#FF3030"
-peak = 0.45
+peak = 0.42
 decay = 2.0
 
 [PostShake]

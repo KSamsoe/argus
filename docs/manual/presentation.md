@@ -18,6 +18,9 @@ The `Sprite` component draws an entity. Its main fields:
 | `z` | Draw order: higher is in front |
 | `flip_x`, `visible` | Mirror it, or hide it |
 | `material` | Draw it with a material (below) |
+| `repeat` | How many times its frame repeats across and down: `[14, 7]` is a floor of 14 by 7 tiles in one sprite (default `[1, 1]`, once) |
+
+A see-through `color` (`#0B163096`) blends in linear light, as lighting does, so a dark sheet over the scene takes away less than its alpha suggests: black at half alpha leaves white at about three quarters of its brightness as you see it. For a night or a dimming that reads as its number, use a `PostFade` toward a dark colour (below), whose amount is a share of what you see.
 
 ### Shapes before art
 
@@ -107,7 +110,8 @@ when = "not KinematicBody.grounded and KinematicBody.velocity.y > 0"
 
 The entity says which machine: `[Animator] machine = "anim/hero"`.
 
-- A **condition** is terms joined by `and` (there is no `or`): a field of the entity (`KinematicBody.grounded`), `abs(...)`, or `end` (a one-shot clip finished), `time` (seconds in the state), `frame`, `loops`, compared with `<`, `<=`, `>`, `>=`, `==`, `!=`.
+- A **condition** is terms joined by `and` and `or` (`and` binds tighter): a field of the entity (`KinematicBody.grounded`), `abs(...)`, or `end` (a one-shot clip finished), `time` (seconds in the state), `frame`, `loops`, compared with `<`, `<=`, `>`, `>=`, `==`, `!=`. `"Body.grounded and Body.vx > 0.5 or Body.dash > 0"` holds when walking on the ground or dashing.
+- `face = "KinematicBody.velocity.x"`, at the top of the machine, mirrors the sprite while that field is below zero and unmirrors it above zero; at zero it keeps the way it faced, so a hero who stops faces the way they walked. Draw the art facing right.
 - `[[any]]` transitions are checked first, from every state.
 - `blend` cross-fades into the next clip; `window = [first, last]` limits a transition to some frames.
 - **Events by frame** fire an event with the entity, frame, and state, and can play a sound. The run's feet above play `sfx/step`. These events come from `anim.update` in the late stage, so only a late system ordered after it sees them with `q:events`.
@@ -228,7 +232,7 @@ The first three listen for an event named in `on` (`hit` when empty), and an `am
 [PostFlash]
 on = "player.fell"
 color = "#FF3030"
-peak = 0.45
+peak = 0.68
 decay = 2.0
 
 [PostShake]
@@ -241,6 +245,8 @@ frames = 6
 
 [PostFade]
 ```
+
+Flash, fade, and vignette strengths are shares of what you see: a flash at 0.1 takes the screen a tenth of the way to its colour, on a dark cave as on a bright sky, and a vignette at 0.25 takes a quarter of the brightness from the edges. (Before 0.0.5 they were shares of linear light, so a small flash showed strongly on a dark screen; the examples' values were changed to look as they did.)
 
 At each room change Hollow tweens `PostFade.amount` a little toward black and back (a timeline; see [content](content.md#timelines-and-cutscenes)). On a discrete clock, effects step with turns, so a flash fades only as turns pass.
 
@@ -361,7 +367,7 @@ The engine's tokens are `text`, `muted`, `panel`, `border`, `focus`, `accent`, a
 | `UiRoot` | The top of a tree: its `layer`, which player slot drives it, whether it is `interactive`, and `follow` to hang it from a world entity |
 | `UiNode` | Layout, flexbox style: `direction`, `justify`, `align`, `gap`, `pad`, `size`, `fill`, `absolute` with `anchor` and `pivot`, `order`, `visible` |
 | `UiText` | Words: `text`, or a string table's `key`; `size`, `color`, `font`, `align`, `wrap` |
-| `UiPanel` | What a node draws behind it: a `color`, an `image` (nine-sliced with `slice`), a `border` |
+| `UiPanel` | What a node draws behind it: a `color`, an `image` (nine-sliced with `slice`; `frame` picks one frame of a sheet), a `border` |
 | `UiButton` | Takes focus and is pressed; emits `ui.pressed` and its own `event` |
 | `UiRect` | Where the node landed (written by the layout) |
 

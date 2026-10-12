@@ -431,7 +431,7 @@ pub fn compose(spec: &MaterialSpec) -> Composed {
     }
     s.push_str(
         "    let texel = 1.0 / vec2<f32>(textureDimensions(atlas_tex));\n    \
-         let m = MaterialInput(v.uv, v.local, v.world, v.color, v.frame, texel, view.roll.z);\n    \
+         let m = MaterialInput(tiled_uv(v), v.local, v.world, v.color, v.frame, texel, view.roll.z);\n    \
          let c = material(m, p);\n",
     );
     match spec.blend {

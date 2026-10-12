@@ -399,7 +399,7 @@ return system "late.colony.art" {
       if not e:has("PostVignette") then table.insert(bare, e:id()) end
     end
     for _, id in ipairs(bare) do
-      q:entity(id):insert("PostVignette", { amount = 0.32, radius = 0.6, softness = 0.5 })
+      q:entity(id):insert("PostVignette", { amount = 0.17, radius = 0.6, softness = 0.5 })
     end
 
     -- The HUD, the menu, and the inspector on wooden panels.

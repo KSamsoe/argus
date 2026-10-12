@@ -417,3 +417,71 @@ fn hierarchy_propagates_every_tick_and_maintenance_runs_at_frame_end() {
     assert_eq!(w.frame(), 3, "end_frame ran once per tick");
     assert_eq!(s.tick(), 3);
 }
+
+/// `before` is `after` from the other side: a system runs ahead of one it
+/// names, however they were registered, and the errors say which word.
+#[test]
+fn before_orders_ahead_of_the_named_system_and_its_errors_say_before() {
+    let mut s = Scheduler::new(SchedulerConfig::default());
+    let log = Rc::new(RefCell::new(Vec::new()));
+    s.add_system(
+        SystemDesc::new("late.engine", Stage::Late),
+        logger(&log, "engine"),
+    )
+    .unwrap();
+    s.add_system(
+        SystemDesc::new("late.other", Stage::Late),
+        logger(&log, "other"),
+    )
+    .unwrap();
+    s.add_system(
+        SystemDesc::new("late.look", Stage::Late).before("late.engine"),
+        logger(&log, "look"),
+    )
+    .unwrap();
+    let mut w = World::new();
+    s.step(&mut w, 1).unwrap();
+    // Only look-before-engine is promised; other was registered first
+    // among those ready, and nothing orders it against look.
+    assert_eq!(*log.borrow(), ["other", "look", "engine"]);
+
+    // A cycle made of one before and one after.
+    let mut s = Scheduler::new(SchedulerConfig::default());
+    s.add_system(
+        SystemDesc::new("a", Stage::Sim).before("b"),
+        Box::new(|_| Ok(())),
+    )
+    .unwrap();
+    s.add_system(
+        SystemDesc::new("b", Stage::Sim).before("a"),
+        Box::new(|_| Ok(())),
+    )
+    .unwrap();
+    let err = s.validate().unwrap_err();
+    assert_eq!(err.code, sim_codes::ORDER_CYCLE);
+
+    let mut s = Scheduler::new(SchedulerConfig::default());
+    s.add_system(
+        SystemDesc::new("a", Stage::Sim).before("ghost"),
+        Box::new(|_| Ok(())),
+    )
+    .unwrap();
+    let err = s.validate().unwrap_err();
+    assert_eq!(err.code, sim_codes::UNKNOWN_SYSTEM);
+    assert!(
+        err.message.contains("runs before \"ghost\""),
+        "{}",
+        err.message
+    );
+
+    let mut s = Scheduler::new(SchedulerConfig::default());
+    s.add_system(SystemDesc::new("a", Stage::Input), Box::new(|_| Ok(())))
+        .unwrap();
+    s.add_system(
+        SystemDesc::new("b", Stage::Sim).before("a"),
+        Box::new(|_| Ok(())),
+    )
+    .unwrap();
+    let err = s.validate().unwrap_err();
+    assert!(err.message.contains("stage"), "{}", err.message);
+}

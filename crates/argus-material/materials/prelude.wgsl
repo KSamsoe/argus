@@ -21,6 +21,7 @@ struct Inst {
     @location(2) uv: vec4<f32>,
     @location(3) color: vec4<f32>,
     @location(4) extra: vec4<f32>,  // the material's per-sprite values
+    @location(5) tile: vec4<f32>,   // repeats across and down; unused
 };
 
 struct VOut {
@@ -31,6 +32,8 @@ struct VOut {
     @location(3) world: vec2<f32>,
     @location(4) @interpolate(flat) frame: vec4<f32>,
     @location(5) @interpolate(flat) extra: vec4<f32>,
+    // How many times the frame repeats across and down the sprite.
+    @location(6) @interpolate(flat) tile: vec2<f32>,
 };
 
 @vertex
@@ -45,7 +48,13 @@ fn vs_main(@builtin(vertex_index) vi: u32, inst: Inst) -> VOut {
     var out: VOut;
     out.color = inst.color;
     out.extra = inst.extra;
-    out.uv = vec2<f32>(inst.uv.x + (c.x + 0.5) * inst.uv.z, inst.uv.y + (0.5 - c.y) * inst.uv.w);
+    out.tile = inst.tile.xy;
+    // A repeated frame runs on past its rect, from the top left; the
+    // fragment brings it back in (tiled_uv).
+    out.uv = vec2<f32>(
+        inst.uv.x + (c.x + 0.5) * inst.tile.x * inst.uv.z,
+        inst.uv.y + (0.5 - c.y) * inst.tile.y * inst.uv.w,
+    );
     // A mirrored frame has a negative width; the rect is its bounds.
     let u0 = min(inst.uv.x, inst.uv.x + inst.uv.z);
     let u1 = max(inst.uv.x, inst.uv.x + inst.uv.z);
@@ -75,6 +84,17 @@ fn vs_main(@builtin(vertex_index) vi: u32, inst: Inst) -> VOut {
     let ndc = unrolled / view.half;
     out.clip = vec4<f32>(ndc.x, ndc.y, 0.0, 1.0);
     return out;
+}
+
+// Where in the atlas a fragment samples: for a repeated frame, the uv
+// brought back inside the frame's rect, so the frame tiles the sprite; for
+// one drawn once, the uv as it is. No branch: a material may take
+// derivatives after it (sdf_text does), and WARP lost its device over one.
+fn tiled_uv(v: VOut) -> vec2<f32> {
+    let lo = v.frame.xy;
+    let size = max(v.frame.zw - v.frame.xy, vec2<f32>(1e-8));
+    let r = (v.uv - lo) / size;
+    return select(lo + (r - floor(r)) * size, v.uv, v.tile == vec2<f32>(1.0));
 }
 
 // What a material's fragment function is given.

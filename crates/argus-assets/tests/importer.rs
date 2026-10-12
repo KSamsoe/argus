@@ -356,21 +356,21 @@ fn an_animator_imports_with_its_states_and_its_mistakes_have_lines() {
     assert_eq!(run.transitions[0].window, Some([2, 3]));
     let idle = a.state("idle").unwrap();
     let w = &idle.transitions[0].when;
-    assert_eq!(w.terms.len(), 2);
+    assert_eq!((w.groups.len(), w.groups[0].len()), (1, 2));
     assert_eq!(
-        w.terms[1].what,
+        w.groups[0][1].what,
         Operand::Field {
             path: "Body.vel.x".into(),
             abs: true
         }
     );
-    assert_eq!(w.terms[1].cmp, Some((Op::Gt, 0.5)));
+    assert_eq!(w.groups[0][1].cmp, Some((Op::Gt, 0.5)));
     assert!(
         idle.transitions[0].at.ends_with(":9"),
         "{}",
         idle.transitions[0].at
     );
-    assert_eq!(a.any[0].when.terms[0].what, Operand::End);
+    assert_eq!(a.any[0].when.groups[0][0].what, Operand::End);
     assert_eq!(imp.entries()["anim/blink"].kind(), "animator");
     assert_eq!(imp.animators().count(), 2);
     let j = e.to_json();
@@ -379,7 +379,9 @@ fn an_animator_imports_with_its_states_and_its_mistakes_have_lines() {
     // Mistakes are errors naming the line.
     for (text, line, words) in [
         ("[states.a]\nclip = \"a\"\n\n[[states.a.transitions]]\nto = \"b\"\nwhen = \"end\"\n", 5, "not a state; the states are a"),
-        ("[states.a]\nclip = \"a\"\n\n[[states.a.transitions]]\nto = \"a\"\nwhen = \"end or time > 1\"\n", 6, "join with and"),
+        ("[states.a]\nclip = \"a\"\n\n[[states.a.transitions]]\nto = \"a\"\nwhen = \"end or\"\n", 6, "ends where a value was expected"),
+        ("face = \"grounded\"\n[states.a]\nclip = \"a\"\n", 1, "face: "),
+        ("face = 3\n[states.a]\nclip = \"a\"\n", 1, "face is a field path"),
         ("[states.a]\nclip = \"a\"\n\n[[states.a.transitions]]\nto = \"a\"\nwhen = \"Body = 1\"\n", 6, "use == or !="),
         ("[states.a]\nclip = \"a\"\n\n[[states.a.transitions]]\nto = \"a\"\nwhen = \"grounded\"\n", 6, "not a field path"),
         ("[states.a]\nclip = \"a\"\nfps = true\n", 3, "a number or a field path"),

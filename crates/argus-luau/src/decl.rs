@@ -174,6 +174,8 @@ pub struct SystemDecl {
     pub stage: String,
     /// `after` list.
     pub after: Vec<String>,
+    /// `before` list.
+    pub before: Vec<String>,
     /// Component names read.
     pub reads: Vec<String>,
     /// Component names written.
@@ -230,9 +232,9 @@ fn bad(msg: impl Into<String>, hint: &str, source: Option<String>) -> mlua::Erro
 }
 
 /// The keys a `system "name" { ... }` declaration takes.
-pub(crate) const SYSTEM_KEYS: [&str; 11] = [
-    "stage", "run", "after", "reads", "writes", "spawns", "clock", "rng", "doc", "on_load",
-    "unfrozen",
+pub(crate) const SYSTEM_KEYS: [&str; 12] = [
+    "stage", "run", "after", "before", "reads", "writes", "spawns", "clock", "rng", "doc",
+    "on_load", "unfrozen",
 ];
 
 fn here(lua: &Lua) -> String {
@@ -551,11 +553,7 @@ pub(crate) fn install_globals(lua: &Lua) -> LuaResult<()> {
                         other => format!("{other:?}"),
                     };
                     if !SYSTEM_KEYS.contains(&key.as_str()) {
-                        let hint = if key == "before" {
-                            "There is no before: name this system in the other's after instead, or put the other in this one's after.".to_string()
-                        } else {
-                            format!("A system takes {}.", SYSTEM_KEYS.join(", "))
-                        };
+                        let hint = format!("A system takes {}.", SYSTEM_KEYS.join(", "));
                         return Err(bad(
                             format!("system {name}: unknown key {key}"),
                             &hint,
@@ -584,6 +582,7 @@ pub(crate) fn install_globals(lua: &Lua) -> LuaResult<()> {
                     name: name.clone(),
                     stage,
                     after: string_list(&owner, "after", spec.get("after")?, &source)?,
+                    before: string_list(&owner, "before", spec.get("before")?, &source)?,
                     reads: string_list(&owner, "reads", spec.get("reads")?, &source)?,
                     writes: string_list(&owner, "writes", spec.get("writes")?, &source)?,
                     spawns: string_list(&owner, "spawns", spec.get("spawns")?, &source)?,

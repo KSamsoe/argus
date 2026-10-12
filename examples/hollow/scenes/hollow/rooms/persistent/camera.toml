@@ -20,7 +20,7 @@ blend = 0.8
 [PostFlash]
 on = "player.fell"
 color = "#FF3030"
-peak = 0.45
+peak = 0.68
 decay = 2.0
 
 [PostShake]

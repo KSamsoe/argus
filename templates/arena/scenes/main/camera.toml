@@ -28,7 +28,7 @@ shadows = false
 [PostFlash]
 on = "player.hurt"
 color = "#FF2E2E"
-peak = 0.035
+peak = 0.16
 decay = 0.35
 
 [PostShake]

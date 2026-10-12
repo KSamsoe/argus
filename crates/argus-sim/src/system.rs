@@ -111,6 +111,9 @@ pub struct SystemDesc {
     pub stage: Stage,
     /// Systems in the same stage that must run before this one.
     pub after: Vec<String>,
+    /// Systems in the same stage that must run after this one (an engine
+    /// system a script cannot name itself in).
+    pub before: Vec<String>,
     /// Declared reads and writes.
     pub access: Access,
     /// Clock binding.
@@ -158,6 +161,7 @@ impl SystemDesc {
             name: name.into(),
             stage,
             after: Vec::new(),
+            before: Vec::new(),
             access: Access::new(),
             clock: ClockBinding::Driving,
             rng: None,
@@ -212,6 +216,11 @@ impl SystemDesc {
     /// Run after another system in the same stage.
     pub fn after(mut self, name: impl Into<String>) -> Self {
         self.after.push(name.into());
+        self
+    }
+    /// Run before another system in the same stage.
+    pub fn before(mut self, name: impl Into<String>) -> Self {
+        self.before.push(name.into());
         self
     }
     /// Declare a read.

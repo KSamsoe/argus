@@ -563,7 +563,8 @@ fn post_passes_change_the_picture_in_order() {
     assert_eq!(plain.pixel(160, 90)[..3], [255, 0, 0]);
     let clear = plain.pixel(5, 90);
 
-    // Flash: half way to white.
+    // Flash: half way to white, as it looks (in sRGB, not linear light,
+    // where half way is 188).
     w.insert(
         cam,
         PostFlash {
@@ -574,8 +575,25 @@ fn post_passes_change_the_picture_in_order() {
     .unwrap();
     let img = shot(&mut r, &w, "flash");
     let p = img.pixel(160, 90);
-    assert!(p[0] == 255 && p[1] > 150 && p[1] < 230, "pink: {p:?}");
+    assert!(p[0] == 255 && p[1].abs_diff(128) <= 2, "pink: {p:?}");
+    // A tenth of the way is a tenth as it looks: 26 of 255 where the red
+    // has no green (in linear light it was 89, a third).
+    w.set_field(cam, "PostFlash.amount", 0.1f32).unwrap();
+    let p = shot(&mut r, &w, "flash-tenth").pixel(160, 90);
+    assert!(p[0] == 255 && p[1].abs_diff(26) <= 2, "a tenth: {p:?}");
     w.remove(cam, w.component_id("PostFlash").unwrap()).unwrap();
+
+    // Fade half way to black: half as bright, as it looks.
+    w.insert(
+        cam,
+        PostFade {
+            amount: 0.5,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let p = shot(&mut r, &w, "fade-half").pixel(160, 90);
+    assert!(p[0].abs_diff(128) <= 2 && p[1] == 0, "half dark: {p:?}");
 
     // Fade all the way: black.
     w.insert(
@@ -842,4 +860,85 @@ fn perf_post_stack_five_passes_at_1080p() {
         lit - with
     );
     assert!(cost < 1.5, "five passes and the lighting took {cost:.3} ms");
+}
+
+/// A sprite repeats its frame across and down (the art passes laid floors
+/// as many tile entities): [2, 1] draws it twice across, mirrored as a
+/// whole when flipped; [1, 1] is the frame once, as before; 0 counts as 1;
+/// a fraction shows part of the last.
+#[test]
+fn a_sprite_repeats_its_frame() {
+    let Some(mut r) = renderer(64, 64) else {
+        return;
+    };
+    let dir = std::env::temp_dir().join(format!("argus-repeat-{}", std::process::id()));
+    std::fs::create_dir_all(dir.join("assets")).unwrap();
+    // One frame of eight pixels: four yellow, then four cyan, so a sample
+    // in a band's middle is a pure colour whatever the filtering.
+    argus_render::Image {
+        width: 8,
+        height: 1,
+        rgba: [[255u8, 255, 0, 255]; 4]
+            .into_iter()
+            .chain([[0, 255, 255, 255]; 4])
+            .flatten()
+            .collect(),
+    }
+    .save_png(&dir.join("assets").join("stripe.png"))
+    .unwrap();
+    r.load_atlases(&dir).unwrap();
+    let mut w = world_with_camera(8.0);
+    let e = w.spawn();
+    w.insert(e, Transform::at(0.0, 0.0)).unwrap();
+    let atlas = w.strings().intern("stripe");
+    let draw = |r: &mut argus_render::Renderer, w: &mut World, repeat: [f32; 2], flip: bool| {
+        w.insert(
+            e,
+            Sprite {
+                atlas,
+                size: Vec2::new(4.0, 4.0),
+                flip_x: flip,
+                repeat: Vec2::new(repeat[0], repeat[1]),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        r.render(w, 0, 1.0).unwrap();
+        let img = r.capture().unwrap();
+        // 8 pixels a unit: the sprite spans x 16..48; four bands of 8.
+        [20, 28, 36, 44].map(|x| {
+            let p = img.pixel(x, 32);
+            if p[..3] == [255, 255, 0] {
+                'Y'
+            } else if p[..3] == [0, 255, 255] {
+                'C'
+            } else {
+                '?'
+            }
+        })
+    };
+    assert_eq!(
+        draw(&mut r, &mut w, [1.0, 1.0], false),
+        ['Y', 'Y', 'C', 'C']
+    );
+    assert_eq!(
+        draw(&mut r, &mut w, [2.0, 1.0], false),
+        ['Y', 'C', 'Y', 'C']
+    );
+    assert_eq!(
+        draw(&mut r, &mut w, [2.0, 3.0], false),
+        ['Y', 'C', 'Y', 'C']
+    );
+    assert_eq!(draw(&mut r, &mut w, [2.0, 1.0], true), ['C', 'Y', 'C', 'Y']);
+    assert_eq!(
+        draw(&mut r, &mut w, [0.0, -1.0], false),
+        ['Y', 'Y', 'C', 'C']
+    );
+    // One and a half: a whole frame (32 / 1.5 = 21.3 pixels), then the
+    // yellow half of the next.
+    assert_eq!(
+        draw(&mut r, &mut w, [1.5, 1.0], false),
+        ['Y', 'C', 'C', 'Y']
+    );
+    std::fs::remove_dir_all(&dir).ok();
 }

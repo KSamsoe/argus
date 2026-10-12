@@ -388,3 +388,67 @@ fn the_three_hundredth_shadowed_light_still_lights_and_shadows() {
         assert!(bright(shadowed) < 20, "{who}: shadowed {shadowed:?}");
     }
 }
+
+/// A repeated sprite repeats its normal map with its picture: a frame whose
+/// left half leans toward +x and right half toward -x, drawn twice across,
+/// faces away from a light on its right a quarter of the way in, where
+/// drawn once it faces toward it.
+#[test]
+fn a_repeated_sprite_repeats_its_normals() {
+    for mut r in renderers() {
+        let who = r.gpu().adapter.clone();
+        let mut w = world();
+        light_on(&mut w, "#000000");
+        r.gpu_mut().add_atlas_rgba(
+            "halves",
+            8,
+            8,
+            &[255u8; 8 * 8 * 4],
+            vec![[0.0, 0.0, 1.0, 1.0]],
+        );
+        let normal: Vec<u8> = (0..64)
+            .flat_map(|i| {
+                if i % 8 < 4 {
+                    [230u8, 128, 204, 255]
+                } else {
+                    [26u8, 128, 204, 255]
+                }
+            })
+            .collect();
+        assert!(
+            r.gpu_mut().set_atlas_normal("halves", 8, 8, &normal),
+            "{who}"
+        );
+        let e = w.spawn();
+        w.insert(e, Transform::at(0.0, 0.0)).unwrap();
+        let s = Sprite {
+            atlas: w.strings().intern("halves"),
+            size: Vec2::new(4.0, 2.0),
+            ..Default::default()
+        };
+        w.insert(e, s).unwrap();
+        lamp(
+            &mut w,
+            4.0,
+            0.0,
+            Light {
+                radius: 12.0,
+                falloff: 1.0,
+                height: 1.0,
+                ..Default::default()
+            },
+        );
+        let quarter = |r: &mut Renderer, w: &World| {
+            r.render(w, 0, 1.0).unwrap();
+            bright(at(&r.capture().unwrap(), -0.5, 0.0))
+        };
+        let once = quarter(&mut r, &w);
+        w.update::<Sprite, _>(e, |s| s.repeat = Vec2::new(2.0, 1.0))
+            .unwrap();
+        let twice = quarter(&mut r, &w);
+        assert!(
+            twice + 100 < once,
+            "{who}: repeated, the second quarter faces away ({twice}) where once it faced the light ({once})"
+        );
+    }
+}

@@ -49,14 +49,14 @@ height = 5.0
 shadows = false
 
 [PostVignette]
-amount = 0.42
+amount = 0.24
 radius = 0.5
 softness = 0.6
 
 [PostFlash]
 on = "damage"
 color = "#FF2848"
-peak = 0.015
+peak = 0.11
 decay = 0.12
 
 [PostShake]

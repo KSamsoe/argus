@@ -12,6 +12,10 @@
 //! - [`PostCrt`]: an old screen's scanlines, curve, bleed, and phosphor
 //!   mask (phase 5 item 3).
 //!
+//! Flash, fade, and vignette amounts are shares of what a person sees (the
+//! pass works in sRGB), not of linear light: a flash at 0.1 is a tenth of
+//! the way to its colour on a dark screen as on a bright one.
+//!
 //! And [`PostHitStop`]: on its event the game freezes for a few ticks (or runs
 //! slowly) while the post effects play on. Hit-flash, hit-stop, and shake
 //! are the three systems that make an impact feel heavy, tuned together in
@@ -115,7 +119,7 @@ pub struct PostFlash {
     pub color: StrId,
     /// Strength at the flash.
     #[argus(
-        doc = "Strength at the flash, 0 to 1 (times the event's amount field, if any)",
+        doc = "Strength at the flash, 0 to 1: the share of the way to the colour as it looks, 0.1 a tenth (times the event's amount field, if any)",
         range(0, 1),
         tune
     )]
@@ -197,7 +201,11 @@ pub struct PostFade {
     #[argus(doc = "The colour faded to, #RRGGBB; empty for black", tune)]
     pub color: StrId,
     /// How far.
-    #[argus(doc = "How far, 0 (none) to 1 (all colour)", range(0, 1), tune)]
+    #[argus(
+        doc = "How far, 0 (none) to 1 (all colour), as it looks: 0.5 is half way",
+        range(0, 1),
+        tune
+    )]
     pub amount: f32,
     /// Place in the stack.
     #[argus(doc = "Place in the stack: lower runs first")]
@@ -285,7 +293,11 @@ impl Default for PostCrt {
 #[argus(doc = "Vignette, a post pass: the screen darkens toward its edges")]
 pub struct PostVignette {
     /// How dark at the edges.
-    #[argus(doc = "How dark at the edges, 0 to 1", range(0, 1), tune)]
+    #[argus(
+        doc = "How dark at the edges, 0 to 1, as it looks: 0.25 takes a quarter of the brightness away",
+        range(0, 1),
+        tune
+    )]
     pub amount: f32,
     /// Where darkening starts.
     #[argus(

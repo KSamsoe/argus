@@ -362,7 +362,7 @@ fn the_player_runs_jumps_and_lands_and_its_footsteps_fire_a_sound() {
     write(
         t.path(),
         "assets/anim/hero.toml",
-        &ANIMATOR.replace("when = \"end\"", "when = \"end or time > 1\""),
+        &ANIMATOR.replace("when = \"end\"", "when = \"end or\""),
     );
     let r = ok(&mut d, "asset.import", json!({}));
     assert_eq!(r["failed"].as_array().unwrap().len(), 1, "{r}");
@@ -371,7 +371,7 @@ fn the_player_runs_jumps_and_lands_and_its_footsteps_fire_a_sound() {
         r["failed"][0]["message"]
             .as_str()
             .unwrap()
-            .contains("join with and"),
+            .contains("ends where a value was expected"),
         "{r}"
     );
     let at = r["failed"][0]["at"].as_str().unwrap();

@@ -72,26 +72,28 @@ fn holds(t: &CTrans, a: &Animator, cols: &Cols, row: usize) -> bool {
             return false;
         }
     }
-    t.terms.iter().all(|term| {
-        let v = match &term.what {
-            COperand::Field(f, abs) => {
-                let v = cols.read(f, row);
-                if *abs {
-                    v.abs()
-                } else {
-                    v
+    t.groups.iter().any(|g| {
+        g.iter().all(|term| {
+            let v = match &term.what {
+                COperand::Field(f, abs) => {
+                    let v = cols.read(f, row);
+                    if *abs {
+                        v.abs()
+                    } else {
+                        v
+                    }
                 }
-            }
-            COperand::End => a.ended as u8 as f32,
-            COperand::Time => a.time,
-            COperand::Frame => a.frame as f32,
-            COperand::Loops => a.loops as f32,
-        };
-        let b = match term.cmp {
-            Some((op, x)) => op.test(v, x),
-            None => v != 0.0,
-        };
-        b != term.not
+                COperand::End => a.ended as u8 as f32,
+                COperand::Time => a.time,
+                COperand::Frame => a.frame as f32,
+                COperand::Loops => a.loops as f32,
+            };
+            let b = match term.cmp {
+                Some((op, x)) => op.test(v, x),
+                None => v != 0.0,
+            };
+            b != term.not
+        })
     })
 }
 
@@ -179,15 +181,17 @@ fn run(
     let mut events: Events = Vec::new();
     let world: &World = ctx.world();
     let compiled = &mut st.compiled;
-    let (atlas_f, frame_f, bframe_f, blend_f) = match sprite.map(|s| world.registry().schema(s)) {
-        Some(sc) => (
-            sc.field("atlas").cloned(),
-            sc.field("frame").cloned(),
-            sc.field("blend_frame").cloned(),
-            sc.field("blend").cloned(),
-        ),
-        None => (None, None, None, None),
-    };
+    let (atlas_f, frame_f, bframe_f, blend_f, flip_f) =
+        match sprite.map(|s| world.registry().schema(s)) {
+            Some(sc) => (
+                sc.field("atlas").cloned(),
+                sc.field("frame").cloned(),
+                sc.field("blend_frame").cloned(),
+                sc.field("blend").cloned(),
+                sc.field("flip_x").cloned(),
+            ),
+            None => (None, None, None, None, None),
+        };
     let skel_f = skel.and_then(|s| world.registry().schema(s).field("skeleton").cloned());
     world.query().has(anim).for_each_view(|view| {
         let arch = view.archetype();
@@ -368,6 +372,14 @@ fn run(
                         0.0
                     };
                     sc.set_by(row, bw, Value::Float(w as f64))?;
+                }
+                // Facing: mirrored while the field is below zero; at zero
+                // as it was.
+                if let (Some(f), Some(xf)) = (&m.face, &flip_f) {
+                    let v = cols.read(f, row);
+                    if v != 0.0 {
+                        sc.set_by(row, xf, Value::Bool(v < 0.0))?;
+                    }
                 }
             }
         }

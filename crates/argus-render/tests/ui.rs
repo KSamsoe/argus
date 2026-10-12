@@ -368,3 +368,57 @@ fn a_stem_thinner_than_a_pixel_keeps_its_ink_wherever_it_falls() {
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// A panel can be one frame of a sheet (the art passes cut each panel into
+/// a file of its own): frame 1 of two; past the last, the first.
+#[test]
+fn a_panel_draws_one_frame_of_its_image() {
+    let Some(mut r) = renderer(960, 540) else {
+        return;
+    };
+    let dir = std::env::temp_dir().join(format!("argus-panel-frame-{}", std::process::id()));
+    std::fs::create_dir_all(dir.join("assets")).unwrap();
+    // Two frames by grid: red, then blue.
+    argus_render::Image {
+        width: 2,
+        height: 1,
+        rgba: vec![255, 0, 0, 255, 0, 0, 255, 255],
+    }
+    .save_png(&dir.join("assets").join("plates.png"))
+    .unwrap();
+    std::fs::write(
+        dir.join("assets").join("plates.atlas.toml"),
+        "grid = [2, 1]\n",
+    )
+    .unwrap();
+    r.load_atlases(&dir).unwrap();
+    let (mut w, mut s, shared) = world();
+    r.set_ui(Some(shared.clone()));
+    let top = node(&mut w, None, UiNode::default());
+    let panel = node(
+        &mut w,
+        Some(top),
+        UiNode {
+            absolute: true,
+            size: Vec2::new(200.0, 100.0),
+            offset: Vec2::new(100.0, 50.0),
+            ..UiNode::default()
+        },
+    );
+    let image = w.strings().intern("plates");
+    for (frame, want) in [(0, [255, 0, 0]), (1, [0, 0, 255]), (7, [255, 0, 0])] {
+        w.insert(
+            panel,
+            UiPanel {
+                image,
+                frame,
+                ..UiPanel::default()
+            },
+        )
+        .unwrap();
+        s.run_load(&mut w).unwrap();
+        let img = shot(&mut r, &w, &format!("panel-frame-{frame}"));
+        assert_eq!(img.pixel(200, 100)[..3], want, "frame {frame}");
+    }
+    std::fs::remove_dir_all(&dir).ok();
+}

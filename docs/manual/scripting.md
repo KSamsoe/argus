@@ -73,7 +73,8 @@ From `examples/swarm/systems/bullets.luau`. The keys:
 | `run` | yes | `function(q) ... end`, called once a tick (once a turn on a discrete clock). |
 | `reads`, `writes` | | The components it touches. A component in `writes` may be read too. Anything else is an error when it happens. |
 | `spawns` | | The prefabs it spawns with `q:spawn_prefab` (`spawns = {"bullet"}`). Naming one grants all its components, so they need not be in `writes`. |
-| `after` | | Systems in the same stage this one runs after. There is no `before`: name this system in the other one's `after`. |
+| `after` | | Systems in the same stage this one runs after. |
+| `before` | | Systems in the same stage this one runs before: for one you cannot change, such as an engine system. A look system that sets an animator's inputs says `before = { "anim.update" }`, so the frame changes the same tick. (`argus script systems` shows the order, and `last` on the engine systems that end their stage, such as `particles.update`, which already run after yours.) |
 | `doc` | | What it does. Shown in `ARGUS.md`, `argus script systems`, and the editor. |
 | `rng` | | The name of its random stream, for `q:rng()`. |
 | `clock` | | `continuous` or `discrete`, in a scene that has both; by default the scene's own clock. |

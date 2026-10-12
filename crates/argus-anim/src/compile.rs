@@ -41,7 +41,8 @@ pub(crate) struct CTerm {
 #[derive(Clone, Debug)]
 pub(crate) struct CTrans {
     pub to: usize,
-    pub terms: Vec<CTerm>,
+    /// Groups joined by or, each its terms joined by and.
+    pub groups: Vec<Vec<CTerm>>,
     pub window: Option<[u32; 2]>,
     pub blend: f32,
 }
@@ -75,6 +76,8 @@ pub(crate) struct Machine {
     pub states: Vec<CState>,
     pub any: Vec<CTrans>,
     pub by_id: HashMap<StrId, usize>,
+    /// The field the sprite faces by.
+    pub face: Option<FieldRef>,
 }
 
 /// One state's clip for one sprite: atlas frames in play order and their
@@ -186,26 +189,30 @@ fn trans(
         .iter()
         .position(|s| s.name == t.to)
         .ok_or_else(|| format!("to = {:?} is not a state", t.to))?;
-    let mut terms = Vec::new();
-    for term in &t.when.terms {
-        let what = match &term.what {
-            Operand::Field { path, abs } => {
-                COperand::Field(resolve(reg, path, used, forbid)?, *abs)
-            }
-            Operand::End => COperand::End,
-            Operand::Time => COperand::Time,
-            Operand::Frame => COperand::Frame,
-            Operand::Loops => COperand::Loops,
-        };
-        terms.push(CTerm {
-            not: term.not,
-            what,
-            cmp: term.cmp,
-        });
+    let mut groups = Vec::new();
+    for group in &t.when.groups {
+        let mut terms = Vec::new();
+        for term in group {
+            let what = match &term.what {
+                Operand::Field { path, abs } => {
+                    COperand::Field(resolve(reg, path, used, forbid)?, *abs)
+                }
+                Operand::End => COperand::End,
+                Operand::Time => COperand::Time,
+                Operand::Frame => COperand::Frame,
+                Operand::Loops => COperand::Loops,
+            };
+            terms.push(CTerm {
+                not: term.not,
+                what,
+                cmp: term.cmp,
+            });
+        }
+        groups.push(terms);
     }
     Ok(CTrans {
         to,
-        terms,
+        groups,
         window: t.window,
         blend: t.blend,
     })
@@ -269,12 +276,20 @@ impl Compiled {
                     .position(|s| s.name == spec.initial)
                     .unwrap_or(0);
                 let by_id = states.iter().enumerate().map(|(i, s)| (s.id, i)).collect();
+                let face = match &spec.face {
+                    None => None,
+                    Some(p) => Some(
+                        resolve(reg, p, &mut used, forbid)
+                            .map_err(|m| (format!("face: {m}"), spec.face_at.clone()))?,
+                    ),
+                };
                 Ok(Machine {
                     name: name.clone(),
                     initial,
                     states,
                     any,
                     by_id,
+                    face,
                 })
             };
             match compile() {

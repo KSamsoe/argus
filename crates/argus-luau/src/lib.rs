@@ -800,6 +800,9 @@ impl ScriptHost {
         for a in &s.after {
             desc = desc.after(a);
         }
+        for b in &s.before {
+            desc = desc.before(b);
+        }
         if let Some(r) = &s.rng {
             desc = desc.rng(r);
         }

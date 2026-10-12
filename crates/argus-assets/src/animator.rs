@@ -5,6 +5,7 @@
 //! # assets/anim/hero.toml
 //! type = "animator"
 //! initial = "idle"
+//! face = "KinematicBody.velocity.x" # mirrored while this is below 0
 //!
 //! [states.idle]
 //! clip = "idle"                  # a clip of the entity's sprite
@@ -38,12 +39,18 @@
 //! ```
 //!
 //! Conditions are field comparisons, never script (§17): terms joined by
-//! `and`, each `[not] operand [op value]` where the operand is a field
-//! path (`Component.field`, `.x`/`.y` into a vec2, optionally `abs(...)`)
-//! or `end`, `time`, `frame`, `loops`, and `op` is `<`, `<=`, `>`, `>=`,
+//! `and` and `or` (`and` binds tighter, as in a dialogue's conditions),
+//! each `[not] operand [op value]` where the operand is a field path
+//! (`Component.field`, `.x`/`.y` into a vec2, optionally `abs(...)`) or
+//! `end`, `time`, `frame`, `loops`, and `op` is `<`, `<=`, `>`, `>=`,
 //! `==`, `!=`. A term with no comparison is true when the value is nonzero.
 //! This module checks the syntax; `argus-anim` resolves the fields against
 //! a world's components.
+//!
+//! `face` names a field the sprite faces by: below zero it is mirrored
+//! (`Sprite.flip_x`), above zero it is not, and at zero it keeps the way
+//! it faced, so a hero who stops still faces the way they walked. The art
+//! is drawn facing right.
 
 use crate::codes;
 use argus_ecs::{ArgusError, Result};
@@ -121,11 +128,12 @@ pub struct Term {
     pub cmp: Option<(Op, f32)>,
 }
 
-/// Terms that must all hold.
+/// Groups of terms joined by `or`: the condition holds when every term of
+/// some group does.
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct Condition {
-    /// The terms.
-    pub terms: Vec<Term>,
+    /// The groups, each its terms joined by `and`.
+    pub groups: Vec<Vec<Term>>,
     /// As written.
     pub text: String,
 }
@@ -194,6 +202,10 @@ pub struct AnimatorSpec {
     pub states: Vec<StateSpec>,
     /// Transitions from every state, checked before the state's own.
     pub any: Vec<TransitionSpec>,
+    /// The field the sprite faces by (mirrored below zero).
+    pub face: Option<String>,
+    /// `file:line` of `face`.
+    pub face_at: String,
     /// The sidecar, `assets/...`.
     pub file: String,
 }
@@ -205,7 +217,7 @@ impl AnimatorSpec {
     }
 }
 
-const HINT: &str = "An animator is type = \"animator\", initial = \"<state>\", and [states.<name>] with clip, loop, fps, windup, anticipation, hold, hold_frame, events, and [[states.<name>.transitions]] with to, when, window, blend; [[any]] holds transitions from every state.";
+const HINT: &str = "An animator is type = \"animator\", initial = \"<state>\", face = \"<Component.field>\" (mirrored below 0), and [states.<name>] with clip, loop, fps, windup, anticipation, hold, hold_frame, events, and [[states.<name>.transitions]] with to, when, window, blend; [[any]] holds transitions from every state.";
 
 fn bad(file: &str, line: u32, msg: impl Into<String>) -> ArgusError {
     ArgusError::new(codes::BAD_SIDECAR, msg.into())
@@ -231,6 +243,7 @@ pub fn parse_condition(text: &str) -> std::result::Result<Condition, String> {
             "when is empty; write a condition such as \"end\" or \"KinematicBody.grounded\"".into(),
         );
     }
+    let mut groups = Vec::new();
     let mut terms = Vec::new();
     let mut i = 0;
     loop {
@@ -310,15 +323,19 @@ pub fn parse_condition(text: &str) -> std::result::Result<Condition, String> {
             None => break,
             Some("and") => i += 1,
             Some("or") => {
+                groups.push(std::mem::take(&mut terms));
+                i += 1;
+            }
+            Some(t) => {
                 return Err(format!(
-                    "{text:?}: conditions join with and; for or, write a second transition"
+                    "{text:?}: expected and or or after a term, found {t:?}"
                 ))
             }
-            Some(t) => return Err(format!("{text:?}: expected and after a term, found {t:?}")),
         }
     }
+    groups.push(terms);
     Ok(Condition {
-        terms,
+        groups,
         text: text.to_string(),
     })
 }
@@ -493,7 +510,7 @@ pub fn parse_animator(file: &str, text: &str) -> Result<(AnimatorSpec, Vec<(Stri
     })?;
     let mut warnings = Vec::new();
     for (k, i) in doc.as_table().iter() {
-        if !["type", "initial", "states", "any"].contains(&k) {
+        if !["type", "initial", "face", "states", "any"].contains(&k) {
             warnings.push((format!("unknown key {k:?}, ignored"), line_of(text, i)));
         }
     }
@@ -629,6 +646,19 @@ pub fn parse_animator(file: &str, text: &str) -> Result<(AnimatorSpec, Vec<(Stri
     }
     if let Some(any) = doc.get("any") {
         spec.any = transitions(file, text, any, "any")?;
+    }
+    if let Some(f) = doc.get("face") {
+        let line = line_of(text, f);
+        let p = f.as_str().ok_or_else(|| {
+            bad(
+                file,
+                line,
+                "face is a field path such as \"KinematicBody.velocity.x\"",
+            )
+        })?;
+        check_path(p).map_err(|m| bad(file, line, format!("face: {m}")))?;
+        spec.face = Some(p.to_string());
+        spec.face_at = format!("{file}:{line}");
     }
     spec.initial = match doc.get("initial") {
         Some(i) => i

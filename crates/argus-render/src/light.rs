@@ -195,6 +195,7 @@ struct Inst {
     @location(2) uv: vec4<f32>,
     @location(3) color: vec4<f32>,
     @location(4) extra: vec4<f32>,
+    @location(5) tile: vec4<f32>,
 };
 
 struct NOut {
@@ -202,6 +203,10 @@ struct NOut {
     @location(0) uv: vec2<f32>,
     // cos and sin of the sprite's rotation; its mirroring in x and y.
     @location(1) @interpolate(flat) turn: vec4<f32>,
+    // The frame's rect (u min, v min, u max, v max) and its repeats, as
+    // the sprite shader has them.
+    @location(2) @interpolate(flat) frame: vec4<f32>,
+    @location(3) @interpolate(flat) tile: vec2<f32>,
 };
 
 @vertex
@@ -213,7 +218,14 @@ fn vs_normal(@builtin(vertex_index) vi: u32, inst: Inst) -> NOut {
     let c = corners[vi];
     let size = inst.pos_size.zw;
     var o: NOut;
-    o.uv = vec2<f32>(inst.uv.x + (c.x + 0.5) * inst.uv.z, inst.uv.y + (0.5 - c.y) * inst.uv.w);
+    o.uv = vec2<f32>(
+        inst.uv.x + (c.x + 0.5) * inst.tile.x * inst.uv.z,
+        inst.uv.y + (0.5 - c.y) * inst.tile.y * inst.uv.w,
+    );
+    let u0 = min(inst.uv.x, inst.uv.x + inst.uv.z);
+    let u1 = max(inst.uv.x, inst.uv.x + inst.uv.z);
+    o.frame = vec4<f32>(u0, inst.uv.y, u1, inst.uv.y + inst.uv.w);
+    o.tile = inst.tile.xy;
     let r = inst.rot_z.x;
     let cs = cos(r);
     let sn = sin(r);
@@ -231,11 +243,15 @@ fn vs_normal(@builtin(vertex_index) vi: u32, inst: Inst) -> NOut {
 
 @fragment
 fn fs_normal(v: NOut) -> @location(0) vec4<f32> {
-    let base = textureSampleLevel(atlas_tex, atlas_samp, v.uv, 0.0);
+    // A repeated frame's uv brought back inside its rect (tiled_uv).
+    let size = max(v.frame.zw - v.frame.xy, vec2<f32>(1e-8));
+    let t = (v.uv - v.frame.xy) / size;
+    let uv = select(v.frame.xy + (t - floor(t)) * size, v.uv, v.tile == vec2<f32>(1.0));
+    let base = textureSampleLevel(atlas_tex, atlas_samp, uv, 0.0);
     if (base.a < 0.5) {
         discard;
     }
-    let s = textureSampleLevel(normal_tex, normal_samp, v.uv, 0.0);
+    let s = textureSampleLevel(normal_tex, normal_samp, uv, 0.0);
     var n = s.xyz * 2.0 - vec3<f32>(1.0);
     n.x = n.x * v.turn.z;
     n.y = n.y * v.turn.w;
@@ -455,7 +471,7 @@ impl LightPass {
                 buffers: &[wgpu::VertexBufferLayout {
                     array_stride: std::mem::size_of::<crate::gpu::Instance>() as u64,
                     step_mode: wgpu::VertexStepMode::Instance,
-                    attributes: &wgpu::vertex_attr_array![0 => Float32x4, 1 => Float32x4, 2 => Float32x4, 3 => Float32x4, 4 => Float32x4],
+                    attributes: &wgpu::vertex_attr_array![0 => Float32x4, 1 => Float32x4, 2 => Float32x4, 3 => Float32x4, 4 => Float32x4, 5 => Float32x4],
                 }],
                 compilation_options: Default::default(),
             },

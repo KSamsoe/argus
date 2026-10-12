@@ -320,6 +320,11 @@ pub struct UiPanel {
     /// Image.
     #[argus(doc = "A sprite asset drawn over the fill, tinted by it; empty: none")]
     pub image: StrId,
+    /// Which frame of the image.
+    #[argus(
+        doc = "Which frame of the image, 0 first: a panel can be one frame of a sheet; past the last, the first"
+    )]
+    pub frame: u32,
     /// Nine-slice inset.
     #[argus(
         doc = "Nine-slice: pixels of the image's edge that keep their size (corners) while the middle stretches; 0: stretched whole"

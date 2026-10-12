@@ -99,6 +99,11 @@ pub struct Sprite {
         doc = "Material to draw with: an asset (materials/glow) or a built-in (unlit, lit, palette, dissolve, outline, sdf_text); empty for the plain sprite"
     )]
     pub material: StrId,
+    /// How many times the frame repeats across and down.
+    #[argus(
+        doc = "How many times the frame repeats across and down the sprite: [1, 1] draws it once, [14, 7] a floor of 14 x 7 tiles in one sprite; a fraction shows part of the last tile (right and bottom); 0 or less counts as 1"
+    )]
+    pub repeat: Vec2,
 }
 
 impl Default for Sprite {
@@ -115,6 +120,7 @@ impl Default for Sprite {
             blend_frame: 0,
             blend: 0.0,
             material: StrId::EMPTY,
+            repeat: Vec2::new(1.0, 1.0),
         }
     }
 }
@@ -528,6 +534,9 @@ pub struct Extra {
     /// Draw order.
     pub z: f32,
 }
+
+/// An instance's frame drawn once (not repeated).
+const ONCE: [f32; 4] = [1.0, 1.0, 0.0, 0.0];
 
 /// Runs of instances into `flat` and `runs`: back to front by z, runs by
 /// material and atlas within equal z, one draw a run; particle groups go in
@@ -1273,6 +1282,8 @@ impl Renderer {
                     }
                 }
                 let mk = (mi as u64) << 16;
+                let once = |n: f32| if n > 0.0 { n } else { 1.0 };
+                let tile = [once(s.repeat.x), once(s.repeat.y), 0.0, 0.0];
                 // Sort key: z as an order-preserving integer, then atlas.
                 let zb = s.z.to_bits();
                 let zo = if zb & 0x8000_0000 != 0 {
@@ -1286,6 +1297,7 @@ impl Renderer {
                     uv,
                     color,
                     extra,
+                    tile,
                 };
                 instances.push(((zo << 32) | mk | run, inst));
                 // Lit, an Emissive sprite again after the light, at its own
@@ -1314,6 +1326,7 @@ impl Renderer {
                                 uv: buv,
                                 color: [color[0], color[1], color[2], color[3] * w],
                                 extra,
+                                tile,
                             },
                         ));
                     }
@@ -1484,6 +1497,7 @@ impl Renderer {
                         uv,
                         color,
                         extra: [0.0; 4],
+                        tile: ONCE,
                     },
                 ));
             }
@@ -1589,6 +1603,7 @@ impl Renderer {
                             c[3] * tint[3],
                         ],
                         extra,
+                        tile: ONCE,
                     });
                 }
                 if pflat.len() > start {
@@ -1803,9 +1818,9 @@ impl Renderer {
             [w as f32, h as f32],
         );
         let names = self.gpu.atlas_names();
-        let frame_size = |name: &str| -> Option<[f32; 2]> {
+        let frame_size = |name: &str, frame: u32| -> Option<[f32; 2]> {
             let a = self.gpu.atlas(name)?;
-            let f = a.frames.first()?;
+            let f = a.frames.get(frame as usize).or(a.frames.first())?;
             Some([f[2].abs() * a.width as f32, f[3] * a.height as f32])
         };
         let mut quads = if guard.is_some() {
@@ -1831,7 +1846,7 @@ impl Renderer {
         for q in quads {
             let (atlas, frame, sub, material) = match &q.paint {
                 Paint::Flat => ("rect", 0u32, full, 0usize),
-                Paint::Image { sprite, sub } => (&**sprite, 0, *sub, 0),
+                Paint::Image { sprite, frame, sub } => (&**sprite, *frame, *sub, 0),
                 Paint::Glyph { atlas, frame, sdf } => (
                     &**atlas,
                     *frame,
@@ -1849,7 +1864,16 @@ impl Renderer {
             let Some(uv) = self
                 .gpu
                 .atlas(atlas)
-                .and_then(|a| a.frames.get(frame as usize))
+                .and_then(|a| {
+                    let f = a.frames.get(frame as usize);
+                    // A panel's frame past the last is the first, as a
+                    // sprite's is; a glyph's is not drawn.
+                    if matches!(q.paint, Paint::Image { .. }) {
+                        f.or(a.frames.first())
+                    } else {
+                        f
+                    }
+                })
                 .copied()
             else {
                 continue;
@@ -1872,6 +1896,7 @@ impl Renderer {
                     q.color[3],
                 ],
                 extra: [0.0; 4],
+                tile: ONCE,
             });
             let tl = fit.to_window([q.clip[0], q.clip[1]]);
             let br = fit.to_window([q.clip[2], q.clip[3]]);

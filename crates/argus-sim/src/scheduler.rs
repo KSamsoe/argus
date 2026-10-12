@@ -262,8 +262,10 @@ pub struct SystemInfo {
     pub name: String,
     /// Stage.
     pub stage: Stage,
-    /// Ordering constraints.
+    /// Systems it runs after.
     pub after: Vec<String>,
+    /// Systems it runs before.
+    pub before: Vec<String>,
     /// Declared reads, by component name.
     pub reads: Vec<String>,
     /// Declared writes, by component name.
@@ -684,6 +686,7 @@ impl Scheduler {
                     name: s.desc.name.clone(),
                     stage: s.desc.stage,
                     after: s.desc.after.clone(),
+                    before: s.desc.before.clone(),
                     reads: names(&s.desc.access.reads),
                     writes: names(&writes_of(&s.desc)),
                     clock: s.desc.clock,
@@ -759,37 +762,44 @@ impl Scheduler {
             let mut indeg: HashMap<usize, usize> = members.iter().map(|&i| (i, 0)).collect();
             let mut edges: HashMap<usize, Vec<usize>> = HashMap::new();
             for &i in &members {
-                for dep in &self.systems[i].desc.after {
+                let d = &self.systems[i].desc;
+                // `after` is an edge from the other system to this one,
+                // `before` from this one to the other.
+                let deps = d
+                    .after
+                    .iter()
+                    .map(|n| (n, "after"))
+                    .chain(d.before.iter().map(|n| (n, "before")));
+                for (dep, word) in deps {
                     if self.tolerate_missing && !by_name.contains_key(dep.as_str()) {
-                        dangling.push((self.systems[i].desc.name.clone(), dep.clone()));
+                        dangling.push((d.name.clone(), dep.clone()));
                         continue;
                     }
                     let &j = by_name.get(dep.as_str()).ok_or_else(|| {
                         ArgusError::new(
                             crate::codes::UNKNOWN_SYSTEM,
                             format!(
-                                "system {} runs after {dep:?}, which is not registered",
-                                self.systems[i].desc.name
+                                "system {} runs {word} {dep:?}, which is not registered",
+                                d.name
                             ),
                         )
                         .hint("Check the name, or register the other system first.")
-                        .at(self.systems[i].desc.source.clone())
+                        .at(d.source.clone())
                     })?;
                     if self.systems[j].desc.stage != stage {
                         return Err(ArgusError::new(
                             crate::codes::ORDER_CYCLE,
                             format!(
-                                "system {} runs after {dep:?}, which is in stage {} not {}",
-                                self.systems[i].desc.name,
-                                self.systems[j].desc.stage,
-                                stage
+                                "system {} runs {word} {dep:?}, which is in stage {} not {}",
+                                d.name, self.systems[j].desc.stage, stage
                             ),
                         )
-                        .hint("after only orders systems within one stage; stages already order each other.")
-                        .at(self.systems[i].desc.source.clone()));
+                        .hint("after and before only order systems within one stage; stages already order each other.")
+                        .at(d.source.clone()));
                     }
-                    edges.entry(j).or_default().push(i);
-                    *indeg.get_mut(&i).unwrap() += 1;
+                    let (from, to) = if word == "after" { (j, i) } else { (i, j) };
+                    edges.entry(from).or_default().push(to);
+                    *indeg.get_mut(&to).unwrap() += 1;
                 }
             }
             let mut ready: Vec<usize> = members.iter().copied().filter(|i| indeg[i] == 0).collect();
@@ -818,9 +828,12 @@ impl Scheduler {
                     .collect();
                 return Err(ArgusError::new(
                     crate::codes::ORDER_CYCLE,
-                    format!("after constraints form a cycle among: {}", stuck.join(", ")),
+                    format!(
+                        "after and before constraints form a cycle among: {}",
+                        stuck.join(", ")
+                    ),
                 )
-                .hint("Remove one after entry so the stage has a linear order."));
+                .hint("Remove one after or before entry so the stage has a linear order."));
             }
             order[stage.index()] = out;
         }
@@ -857,6 +870,8 @@ impl Scheduler {
                         !conflicts(&me.access, &other.access)
                             && !me.after.contains(&other.name)
                             && !other.after.contains(&me.name)
+                            && !me.before.contains(&other.name)
+                            && !other.before.contains(&me.name)
                     });
                 if !fits {
                     members.clear();
