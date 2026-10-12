@@ -22,13 +22,33 @@ export MACOSX_DEPLOYMENT_TARGET=${MACOSX_DEPLOYMENT_TARGET:-11.0}
 # program would refuse to start on an older Mac. Zig takes the version
 # only in the target (`aarch64-macos.11.0-none`; -mmacosx-version-min is
 # ignored), so cargo-zigbuild finds this `zig` first, which puts it there.
+#
+# It also gives Zig each `-framework` once. rustc passes one for every
+# crate that links a framework (Foundation three times for argus), and
+# Zig's linker, unlike Apple's, writes a load command for each: 0.0.5's
+# programs named Foundation up to five times, and macOS 27's loader
+# stops a program that names a library twice ("dyld: duplicate linked
+# dylib"), so every one of them crashed at launch on Todd's Mac.
+# macho_check.py now fails a program that does.
 ARGUS_ZIG_SHIM=$HOME/tools/zig-macos-shim
 mkdir -p "$ARGUS_ZIG_SHIM"
 cat > "$ARGUS_ZIG_SHIM/zig" <<SHIM
 #!/bin/sh
 n=\$#
+seen=" "
+framework=0
 for a in "\$@"; do
-  case "\$a" in *-macos-none) a="\${a%-macos-none}-macos.$MACOSX_DEPLOYMENT_TARGET-none" ;; esac
+  if [ "\$framework" = 1 ]; then
+    framework=0
+    case "\$seen" in *" \$a "*) continue ;; esac
+    seen="\$seen\$a "
+    set -- "\$@" -framework "\$a"
+    continue
+  fi
+  case "\$a" in
+    -framework) framework=1; continue ;;
+    *-macos-none) a="\${a%-macos-none}-macos.$MACOSX_DEPLOYMENT_TARGET-none" ;;
+  esac
   set -- "\$@" "\$a"
 done
 shift "\$n"

@@ -74,6 +74,7 @@ argus version
 If it fails, the words matter:
 - `Killed: 9` means the signature was refused;
 - `dyld: Library not loaded` or `Symbol not found` means a library or symbol is missing;
+- `dyld: duplicate linked dylib` means the program names a system library twice, which macOS 27 refuses (0.0.5 did; the build now checks for it);
 - "cannot be opened" means Gatekeeper refused it.
 
 Record which one, then try `~/.local/share/argus/app/bin/argus version` directly.

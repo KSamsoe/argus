@@ -11,7 +11,12 @@ and each part must:
 - run on macOS 11 or later (the first with Apple Silicon);
 - load only Apple's system frameworks and libraries, or a library beside
   it (`@loader_path/`, Steam's), so it runs on a Mac with nothing else
-  installed.
+  installed;
+- list each library once. macOS 27's loader stops a program at launch
+  ("dyld: duplicate linked dylib") that names one twice, and Zig's linker
+  wrote one entry per `-framework` it was given — Foundation four times —
+  until macos-env.sh's shim stopped giving it the same one twice. Found by
+  Todd's test of 0.0.5, the first Mac build: every program crashed.
 
 Apple's own `codesign --verify` would do the first, but it runs only on
 a Mac, and rcodesign's verify reports every ad-hoc signature as broken.
@@ -104,10 +109,9 @@ def check_part(name, part):
     for lib in sorted(set(loads)):
         if not lib.startswith(ALLOWED):
             problems.append(f"{arch}: loads {lib}, which a Mac does not have")
-    dupes = sorted({l for l in loads if loads.count(l) > 1})
+    for lib in sorted({l for l in loads if loads.count(l) > 1}):
+        problems.append(f"{arch}: loads {lib} {loads.count(lib)} times, which macOS 27 refuses to start")
     summary = f"{arch} {kind or 'unsigned'}, macOS {version(minos) if minos else '?'}+, {len(set(loads))} libraries"
-    if dupes:
-        summary += f" ({len(dupes)} listed twice or more)"
     return problems, summary
 
 

@@ -32,7 +32,7 @@ Nothing here has run on a Mac. Until Todd's report comes back, "built" means com
 
 `tools/release/macho_check.py` checks each file without a Mac: both architectures, every page of its code against its signature's hashes, macOS 11 or older as its oldest, and only Apple's libraries (or Steam's, beside it) loaded. rcodesign's own `verify` reports every ad-hoc signature as broken. A program with one changed byte fails the check.
 
-One oddity remains: Zig's linker lists a few frameworks more than once (Foundation three times), which Apple's own linker does not. macOS is expected to load it anyway; the packet's first check would show it if not.
+**Found by testing (Todd, 0.0.5, macOS 27): every program crashed at launch** with `dyld: duplicate linked dylib`. Zig's linker writes a load command for every `-framework` it is given, and rustc gives one for each crate that links a framework, so 0.0.5's programs named Foundation up to five times, CoreGraphics up to four, CoreFoundation and AppKit twice. Apple's linker would have listed each once. macOS 27's loader refuses a program that names a library twice. The build had counted the repeats but not failed on them, expecting macOS to load them anyway. Now `macos-env.sh`'s `zig` gives Zig each `-framework` once, and `macho_check.py` fails a program that names any library twice. Relinked that way on klab, `argus` for Apple Silicon loads each of its 18 libraries once.
 
 **Mac bugs found by reading the code (2026-10-12), fixed:**
 
