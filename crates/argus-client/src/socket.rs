@@ -10,8 +10,10 @@ use serde_json::Value as Json;
 use std::path::{Path, PathBuf};
 
 /// The socket name for a project: a namespaced name where the platform
-/// has them (Windows pipes, Linux abstract sockets), else a file under
-/// `.argus/`.
+/// has them (Windows pipes, Linux abstract sockets, and on a Mac, which has
+/// neither, a file of that name in /tmp, which interprocess makes), else a
+/// file under `.argus/`. A Mac's file can outlive its daemon; the next one
+/// takes it over when nothing answers on it (`argus_daemon::server`).
 pub fn socket_name_for(root: &Path) -> String {
     let mut h: u64 = 0xcbf29ce484222325;
     for b in root.to_string_lossy().as_bytes() {

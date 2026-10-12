@@ -32,7 +32,7 @@ pub fn root() -> Result<PathBuf, String> {
             return Ok(PathBuf::from(d));
         }
     }
-    if let Some(d) = std::env::current_exe()
+    if let Some(d) = crate::exe()
         .ok()
         .and_then(|e| Some(e.parent()?.parent()?.join("templates")))
         .filter(|d| d.is_dir())
@@ -292,6 +292,9 @@ fn rename(toml: &Path, name: &str) -> Result<(), String> {
 /// A repository for the project, when git is here and the project is not
 /// inside one already: a build's code revision is its commit.
 fn git_init(dir: &Path) -> bool {
+    if !argus_daemon::daemon::git_usable() {
+        return false;
+    }
     let inside = Command::new("git")
         .arg("-C")
         .arg(dir)

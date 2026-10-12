@@ -1,7 +1,7 @@
 """Make argus.mcpb, the MCP Bundle for Claude Desktop (distribution item 4),
 from a staged install (tools/release/stage.sh):
 
-    python tools/release/mcpb.py [stage dir] [out file]
+    python tools/release/mcpb.py [stage dir] [out file] [--tools-from <argus>]
 
 A bundle is a zip with manifest.json (manifest_version 0.3, a "binary"
 server) beside the program. It holds bin/argus and templates/: the MCP
@@ -12,7 +12,9 @@ folder when the bundle is installed; left empty, the server starts on no
 project and offers them.
 
 The manifest's tools are the server's own tools/list, asked of the staged
-argus, so the bundle names what it serves.
+argus, so the bundle names what it serves. A macOS stage's argus cannot be
+run here, so its tools are asked of another platform's argus of the same
+commit (--tools-from), which serves the same ones.
 """
 
 import json
@@ -33,6 +35,8 @@ def version():
 
 def tools(argus):
     """The server's tools, from tools/list on a server with no project."""
+    # It runs in its own folder, where a path relative to here is not.
+    argus = os.path.abspath(argus)
     req = [
         {"jsonrpc": "2.0", "id": 1, "method": "initialize",
          "params": {"protocolVersion": "2025-06-18", "capabilities": {},
@@ -56,7 +60,8 @@ def tools(argus):
     raise SystemExit(f"mcpb.py: {argus} mcp did not list its tools: {out[:500]}")
 
 
-def manifest(v, rev, tool_list):
+def manifest(v, rev, tool_list, os_name):
+    exe = "bin/argus.exe" if os_name == "windows" else "bin/argus"
     return {
         "manifest_version": "0.3",
         "name": "argus",
@@ -72,9 +77,9 @@ def manifest(v, rev, tool_list):
         "author": {"name": "Kevin"},
         "server": {
             "type": "binary",
-            "entry_point": "bin/argus.exe",
+            "entry_point": exe,
             "mcp_config": {
-                "command": "${__dirname}/bin/argus.exe",
+                "command": "${__dirname}/" + exe,
                 "args": ["mcp", "--project", "${user_config.project}"],
             },
         },
@@ -87,21 +92,33 @@ def manifest(v, rev, tool_list):
                 "required": False,
             },
         },
-        "compatibility": {"platforms": ["win32"]},
+        "compatibility": {"platforms": ["win32" if os_name == "windows" else "darwin"]},
         "keywords": ["game", "engine", "2d", "argus"],
     }
 
 
 def main():
     v = version()
-    stage = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "target", "stage", f"argus-{v}-windows")
-    out = sys.argv[2] if len(sys.argv) > 2 else os.path.join(os.path.dirname(stage), f"argus-{v}.mcpb")
-    argus = os.path.join(stage, "bin", "argus.exe")
-    if not os.path.isfile(argus):
-        raise SystemExit(f"mcpb.py: no {argus}; run tools/release/stage.sh first (the bundle is for Windows)")
+    args = sys.argv[1:]
+    tools_from = None
+    if "--tools-from" in args:
+        i = args.index("--tools-from")
+        tools_from = args[i + 1]
+        del args[i:i + 2]
+    stage = args[0] if args else os.path.join(ROOT, "target", "stage", f"argus-{v}-windows")
+    out = args[1] if len(args) > 1 else os.path.join(os.path.dirname(stage), f"argus-{v}.mcpb")
     staged = json.load(open(os.path.join(stage, "manifest.json"), encoding="utf-8"))
-    m = manifest(v, staged["revision"], tools(argus))
-    files = [("bin/argus.exe", argus)]
+    os_name = staged["os"]
+    if os_name not in ("windows", "macos"):
+        raise SystemExit(f"mcpb.py: Claude Desktop runs on Windows and macOS, not {os_name}")
+    exe = "bin/argus.exe" if os_name == "windows" else "bin/argus"
+    argus = os.path.join(stage, exe)
+    if not os.path.isfile(argus):
+        raise SystemExit(f"mcpb.py: no {argus}; run tools/release/stage.sh first")
+    if os_name == "macos" and not tools_from:
+        raise SystemExit("mcpb.py: a macOS stage's argus does not run here; name one that does with --tools-from")
+    m = manifest(v, staged["revision"], tools(tools_from or argus), os_name)
+    files = [(exe, argus)]
     tdir = os.path.join(stage, "templates")
     for dirpath, _, names in os.walk(tdir):
         for n in sorted(names):
@@ -111,7 +128,17 @@ def main():
     with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("manifest.json", json.dumps(m, indent=2) + "\n")
         for arc, full in files:
-            z.write(full, arc)
+            if arc == exe and os_name != "windows":
+                # Executable when unpacked: the mode, as a Unix zip keeps it.
+                # This disk keeps none to copy.
+                info = zipfile.ZipInfo.from_file(full, arc)
+                info.create_system = 3
+                info.external_attr = 0o100755 << 16
+                info.compress_type = zipfile.ZIP_DEFLATED
+                with open(full, "rb") as f:
+                    z.writestr(info, f.read())
+            else:
+                z.write(full, arc)
     os.replace(tmp, out)
     print(f"{out}: {len(files) + 1} files, {os.path.getsize(out) // 1024} KiB, {len(m['tools'])} tools, Argus {v} ({staged['revision']})")
 

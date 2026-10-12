@@ -92,6 +92,10 @@ struct App {
     /// it asked of the UI since the last take.
     access: Option<accesskit_winit::Adapter>,
     asks: Arc<Mutex<Vec<accesskit::ActionRequest>>>,
+    /// The fullscreen the game last asked for, so it is set when that
+    /// changes and not on every frame, which undid the player's own (a
+    /// Mac's green button, a desktop's key for it).
+    fullscreen: std::cell::Cell<Option<bool>>,
 }
 
 /// No tree until the game sends one (it builds it on its own thread).
@@ -142,6 +146,8 @@ impl App {
                 w.set_visible(self.visible);
                 self.id = Some(w.id());
                 self.window = Some(Arc::new(w));
+                // A new window is not yet as the game asked.
+                self.fullscreen.set(None);
             }
             Err(_) => self.closed = true,
         }
@@ -271,6 +277,7 @@ impl WindowHost {
                 destroyed: false,
                 access: None,
                 asks: Arc::new(Mutex::new(Vec::new())),
+                fullscreen: std::cell::Cell::new(None),
             },
         };
         // The first pump creates the window (`resumed` or `about_to_wait`).
@@ -328,8 +335,11 @@ impl WindowHost {
     /// (`UiSettings.fullscreen`, phase 3 item 1).
     pub fn set_fullscreen(&self, on: bool) {
         if let Some(w) = &self.app.window {
-            if w.fullscreen().is_some() != on {
-                w.set_fullscreen(on.then_some(winit::window::Fullscreen::Borderless(None)));
+            if self.app.fullscreen.get() != Some(on) {
+                self.app.fullscreen.set(Some(on));
+                if w.fullscreen().is_some() != on {
+                    w.set_fullscreen(on.then_some(winit::window::Fullscreen::Borderless(None)));
+                }
             }
         }
     }

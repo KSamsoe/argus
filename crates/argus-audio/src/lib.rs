@@ -1249,8 +1249,10 @@ impl AudioEngine {
             };
             let rate = device::probe(RATE).map_err(e)?;
             self.use_rate(rate);
-            self.device =
-                Some(device::open(self.mixer.clone(), rate, self.hold.clone()).map_err(e)?);
+            let out = device::open(self.mixer.clone(), rate, self.hold.clone()).map_err(e)?;
+            // A device that refused that rate plays at its own.
+            self.use_rate(out.rate);
+            self.device = Some(out);
             Ok(())
         }
         #[cfg(not(feature = "device"))]

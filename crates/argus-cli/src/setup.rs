@@ -105,7 +105,8 @@ struct Target {
 
 struct Homes {
     home: PathBuf,
-    /// Windows' roaming application data; elsewhere `~/.config`.
+    /// Windows' roaming application data; a Mac's `~/Library/Application
+    /// Support`; elsewhere `~/.config`.
     config: PathBuf,
     /// Windows' local application data.
     local: PathBuf,
@@ -123,6 +124,11 @@ fn homes() -> Result<Homes, String> {
     if let Some(h) = env("ARGUS_SETUP_HOME") {
         let (config, local) = if cfg!(windows) {
             (h.join("AppData/Roaming"), h.join("AppData/Local"))
+        } else if cfg!(target_os = "macos") {
+            (
+                h.join("Library/Application Support"),
+                h.join("Library/Application Support"),
+            )
         } else {
             (h.join(".config"), h.join(".local/share"))
         };
@@ -141,6 +147,11 @@ fn homes() -> Result<Homes, String> {
             env("APPDATA").unwrap_or_else(|| home.join("AppData/Roaming")),
             env("LOCALAPPDATA").unwrap_or_else(|| home.join("AppData/Local")),
         )
+    } else if cfg!(target_os = "macos") {
+        // Claude Desktop and VS Code keep their settings here on a Mac,
+        // XDG or not.
+        let support = home.join("Library/Application Support");
+        (support.clone(), support)
     } else {
         (
             env("XDG_CONFIG_HOME").unwrap_or_else(|| home.join(".config")),

@@ -67,7 +67,7 @@ pub const SECTIONS: &[ApiSection] = &[
             d("t.expect:perf(stage)", "`:p95_ms()`: the stage's (or `tick`) 95th-percentile milliseconds over the last 600 ticks, compared with `perf_margin` slack."),
             d("t.expect:series(\"Comp.field\", { every = 1, where = ... })", "Sample a field (summed over `where`'s entities) every `every` sim seconds (turns on a discrete clock) from here on: `:samples()`, `:last()`, `:min()`, `:max()`, `:trend()` (the slope per sample, at least two). Declare it before the run it should watch."),
             d("t.expect:snapshot(name, { select, where })", "A golden: the rows of a `world.query` kept in `tests/goldens/<scenario>/<name>.seed<n>.json`, recorded on the first run and compared after (added, removed, changed rows)."),
-            d("t.expect:image(name, { width, height, threshold, max })", "A picture golden, drawn with the software rasteriser at 640 x 360 and compared with `tests/goldens/<scenario>/<name>.seed<n>.png`: `threshold` is how different a pixel must be (0.1), `max` the share of pixels that may differ (0.001). Recorded on the first run; the same picture on machines of one system only (Windows and Linux rasterise text edges differently)."),
+            d("t.expect:image(name, { width, height, threshold, max })", "A picture golden, drawn with the software rasteriser at 640 x 360 and compared with `tests/goldens/<scenario>/<name>.seed<n>.png`: `threshold` is how different a pixel must be (0.1), `max` the share of pixels that may differ (0.001). Recorded on the first run; the same picture on machines of one system only (Windows and Linux rasterise text edges differently, and a Mac, having no software rasteriser, draws it with its GPU)."),
         ],
     },
     ApiSection {

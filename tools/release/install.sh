@@ -8,8 +8,9 @@
 # else `gh auth token` (the GitHub CLI, signed in). The archive's checksum is
 # checked against the release's SHA256SUMS before anything is put in place.
 #
-# Argus goes in ~/.local/share/argus/app (bin/, runtime/, templates/), with
-# links to its programs in ~/.local/bin. The version before stays as
+# On Linux and macOS alike (the release's linux-x86_64 or macos-universal
+# archive), Argus goes in ~/.local/share/argus/app (bin/, runtime/,
+# templates/), with links to its programs in ~/.local/bin. The version before stays as
 # app.old until the new one has started (`argus version`), then is removed;
 # if the new one does not start, the old one is put back. Nothing needs
 # root. --uninstall takes it all out again, except the projects and Argus's
@@ -37,6 +38,14 @@ while [ $# -gt 0 ]; do
 done
 APP=$INTO/app
 say() { echo "argus install: $*"; }
+case "$(uname -s)" in
+  Darwin) PLATFORM=macos-universal ;;
+  *) PLATFORM=linux-x86_64 ;;
+esac
+# A file's SHA-256: macOS has shasum where Linux has sha256sum.
+sha256() {
+  if command -v sha256sum > /dev/null 2>&1; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d' ' -f1
+}
 
 if [ "$WAITFOR" -gt 0 ]; then
   n=0
@@ -44,11 +53,18 @@ if [ "$WAITFOR" -gt 0 ]; then
 fi
 
 stop_daemons() {
-  # Daemons run from the install; stop them so its files can go.
-  for p in /proc/[0-9]*; do
-    exe=$(readlink "$p/exe" 2>/dev/null || true)
-    case "$exe" in "$1"/*) kill "${p#/proc/}" 2>/dev/null || true ;; esac
-  done
+  # Daemons run from the install; stop them so its files can go. A Mac has
+  # no /proc, but its ps names each program by the path it was started as.
+  if [ -d /proc/self ]; then
+    for p in /proc/[0-9]*; do
+      exe=$(readlink "$p/exe" 2>/dev/null || true)
+      case "$exe" in "$1"/*) kill "${p#/proc/}" 2>/dev/null || true ;; esac
+    done
+  else
+    ps -axo pid=,comm= | while read -r pid exe; do
+      case "$exe" in "$1"/*) kill "$pid" 2>/dev/null || true ;; esac
+    done
+  fi
 }
 
 if [ "$UNINSTALL" = 1 ]; then
@@ -77,8 +93,8 @@ if [ -z "$ARCHIVE" ]; then
       /"url":/ { url = $0 }
       /"name":/ { if (index($0, want)) { sub(/.*"url": *"/, "", url); sub(/".*/, "", url); print url; exit } }'
   }
-  NAME=$(printf '%s\n' "$JSON" | tr ',' '\n' | grep -o '"name": *"argus-[^"]*-linux-x86_64.tar.gz"' | head -1 | sed 's/.*"\(argus-[^"]*\)"/\1/')
-  [ -n "$NAME" ] || { echo "install.sh: the release has no Linux archive" >&2; exit 1; }
+  NAME=$(printf '%s\n' "$JSON" | tr ',' '\n' | grep -o "\"name\": *\"argus-[^\"]*-$PLATFORM.tar.gz\"" | head -1 | sed 's/.*"\(argus-[^"]*\)"/\1/')
+  [ -n "$NAME" ] || { echo "install.sh: the release has no $PLATFORM archive" >&2; exit 1; }
   URL=$(asset_url "\"$NAME\"")
   SUMS=$(asset_url '"SHA256SUMS"')
   [ -n "$URL" ] && [ -n "$SUMS" ] || { echo "install.sh: the release lacks $NAME or SHA256SUMS" >&2; exit 1; }
@@ -88,7 +104,7 @@ if [ -z "$ARCHIVE" ]; then
   api -H "Accept: application/octet-stream" -o "$ARCHIVE" "$URL"
   api -H "Accept: application/octet-stream" -o "$INTO/downloads/SHA256SUMS" "$SUMS"
   want=$(grep " $NAME\$" "$INTO/downloads/SHA256SUMS" | cut -d' ' -f1)
-  have=$(sha256sum "$ARCHIVE" | cut -d' ' -f1)
+  have=$(sha256 "$ARCHIVE")
   if [ -z "$want" ] || [ "$want" != "$have" ]; then
     rm -f "$ARCHIVE"
     echo "install.sh: $NAME does not match its checksum (expected $want, got $have); nothing was installed" >&2
@@ -105,6 +121,12 @@ TOP=$(find "$INTO/unpack" -mindepth 1 -maxdepth 1 -type d | head -1)
 [ -x "$TOP/bin/argus" ] || { echo "install.sh: $ARCHIVE is not an Argus archive (no argus-*/bin/argus in it)" >&2; exit 1; }
 mv "$TOP" "$NEW"
 rm -rf "$INTO/unpack"
+# A Mac marks what a browser downloaded, and Gatekeeper then refuses the
+# programs, which are signed but not notarised. The checksum vouched for
+# them, so the mark goes.
+if [ "$(uname -s)" = Darwin ]; then
+  xattr -dr com.apple.quarantine "$NEW" 2>/dev/null || true
+fi
 "$NEW/bin/argus" version > /dev/null || { echo "install.sh: the new argus does not start" >&2; exit 1; }
 
 if [ -d "$APP" ]; then

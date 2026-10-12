@@ -31,6 +31,16 @@ fn pick(want: u32) -> Result<(cpal::Device, cpal::SupportedStreamConfig), String
     let device = host
         .default_output_device()
         .ok_or_else(|| "no audio output device".to_string())?;
+    // A Mac's device runs at the rate the system set it to, and a stream
+    // at another rate makes CoreAudio change it for every program on the
+    // Mac (and some devices refuse): the mixer takes the device's rate.
+    if cfg!(target_os = "macos") {
+        if let Ok(c) = device.default_output_config() {
+            if c.channels() >= 2 {
+                return Ok((device, c));
+            }
+        }
+    }
     let mut chosen = None;
     if let Ok(ranges) = device.supported_output_configs() {
         for r in ranges {
@@ -53,17 +63,31 @@ fn pick(want: u32) -> Result<(cpal::Device, cpal::SupportedStreamConfig), String
 
 /// Open the default device and start pulling from `mixer`, unless `hold`.
 pub fn open(mixer: Arc<Mutex<Mixer>>, want: u32, hold: Arc<AtomicBool>) -> Result<Output, String> {
-    let (device, supported) = pick(want)?;
+    let (device, mut supported) = pick(want)?;
     let name = device.name().unwrap_or_else(|_| "audio device".to_string());
+    let start = |s: &cpal::SupportedStreamConfig| {
+        let config: cpal::StreamConfig = s.config();
+        match s.sample_format() {
+            cpal::SampleFormat::F32 => build::<f32>(&device, &config, mixer.clone(), hold.clone()),
+            cpal::SampleFormat::I16 => build::<i16>(&device, &config, mixer.clone(), hold.clone()),
+            cpal::SampleFormat::U16 => build::<u16>(&device, &config, mixer.clone(), hold.clone()),
+            other => Err(format!("unsupported sample format {other:?}")),
+        }
+    };
+    let stream = match start(&supported) {
+        Ok(s) => s,
+        // The rate asked for, refused: the device's own, once.
+        Err(e) => match device.default_output_config() {
+            Ok(d) if d != supported => {
+                let s = start(&d).map_err(|e2| format!("{e}; at the device's own rate, {e2}"))?;
+                supported = d;
+                s
+            }
+            _ => return Err(e),
+        },
+    };
     let rate = supported.sample_rate().0;
     let channels = supported.channels();
-    let config: cpal::StreamConfig = supported.config();
-    let stream = match supported.sample_format() {
-        cpal::SampleFormat::F32 => build::<f32>(&device, &config, mixer, hold),
-        cpal::SampleFormat::I16 => build::<i16>(&device, &config, mixer, hold),
-        cpal::SampleFormat::U16 => build::<u16>(&device, &config, mixer, hold),
-        other => return Err(format!("unsupported sample format {other:?}")),
-    }?;
     stream.play().map_err(|e| e.to_string())?;
     Ok(Output {
         _stream: stream,

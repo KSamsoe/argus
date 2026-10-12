@@ -224,15 +224,17 @@ return system "late.colony.art" {
     -- Colonists, and what they work on and carry: every one each tick in
     -- a small colony, a quarter of them in turn in a big one (the stress
     -- scene's two hundred), so the pass stays a small share of the tick.
+    -- Faster, as many times fewer a tick: a colonist is dressed as often
+    -- in the player's time at 10x as at 1x (a frame is drawn every tenth
+    -- tick there; this pass was a fifth of the stress scene's tick).
     local walk = math.floor(clock * 8) % 4
     local n = q:count("Colonist")
-    local slices = if n > 100 then 8 elseif n > 24 then 4 else 1
+    local slices = (if n > 100 then 8 elseif n > 24 then 4 else 1) * math.max(1, math.floor(q:speed()))
     local slot = q.tick % slices
     local i = 0
-    for e, _, s in q:each("Colonist", "Sprite") do
+    for _, who, s, w, nav, t in q:each("Colonist", "Sprite", "Worker", "NavAgent", "Transform") do
       i += 1
-      if i % slices == slot and e:has("Worker") and e:has("NavAgent") then
-        local who, w, nav, t = e:get("Colonist"), e:get("Worker"), e:get("NavAgent"), e:get("Transform")
+      if i % slices == slot then
         local was = s.frame
         local row
         if s.atlas == "colonist" then

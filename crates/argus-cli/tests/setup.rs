@@ -6,15 +6,31 @@ use serde_json::Value as Json;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-fn temp(name: &str) -> PathBuf {
+/// A temp directory removed on drop, used as its path.
+struct Temp(PathBuf);
+
+impl Drop for Temp {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+impl std::ops::Deref for Temp {
+    type Target = Path;
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+fn temp(name: &str) -> Temp {
     let d = std::env::temp_dir().join(format!("argus-setup-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
-    d
+    Temp(d)
 }
 
-/// A home and a project in it.
-fn world(name: &str) -> (PathBuf, PathBuf) {
+/// A home and a project in it, and the guard that removes them.
+fn world(name: &str) -> (Temp, PathBuf, PathBuf) {
     let base = temp(name);
     let home = base.join("home");
     let project = base.join("game");
@@ -25,7 +41,7 @@ fn world(name: &str) -> (PathBuf, PathBuf) {
         "name = \"game\"\nclock = \"continuous@60\"\n",
     )
     .unwrap();
-    (home, project)
+    (base, home, project)
 }
 
 fn setup(home: &Path, project: &Path, args: &[&str]) -> Json {
@@ -55,7 +71,7 @@ fn plain(p: &Path) -> String {
 
 #[test]
 fn each_client_gets_its_own_project_file_and_key() {
-    let (home, game) = world("project");
+    let (_t, home, game) = world("project");
     for (client, file, key) in [
         ("claude-code", ".mcp.json", "mcpServers"),
         ("cursor", ".cursor/mcp.json", "mcpServers"),
@@ -98,7 +114,7 @@ fn each_client_gets_its_own_project_file_and_key() {
 
 #[test]
 fn a_file_with_other_servers_keeps_them_and_is_backed_up() {
-    let (home, game) = world("merge");
+    let (_t, home, game) = world("merge");
     let file = game.join(".mcp.json");
     let before = "{\n    \"mcpServers\": {\n        \"other\": { \"command\": \"x\" }\n    },\n    \"zeta\": true\n}\n";
     std::fs::write(&file, before).unwrap();
@@ -115,7 +131,7 @@ fn a_file_with_other_servers_keeps_them_and_is_backed_up() {
 
 #[test]
 fn a_user_entry_opens_no_project_unless_one_is_named() {
-    let (home, game) = world("user");
+    let (_t, home, game) = world("user");
     let r = setup(&home, &game, &["cursor", "--scope", "user"]);
     assert_eq!(r["scope"], "user", "{r}");
     let v = read(&home.join(".cursor/mcp.json"));
@@ -142,9 +158,12 @@ fn a_user_entry_opens_no_project_unless_one_is_named() {
 
 #[test]
 fn claude_desktop_is_user_scope_and_writes_the_store_apps_copy_too() {
-    let (home, game) = world("desktop");
+    let (_t, home, game) = world("desktop");
     let (roaming, local) = if cfg!(windows) {
         (home.join("AppData/Roaming"), home.join("AppData/Local"))
+    } else if cfg!(target_os = "macos") {
+        let support = home.join("Library/Application Support");
+        (support.clone(), support)
     } else {
         (home.join(".config"), home.join(".local/share"))
     };
@@ -181,7 +200,7 @@ fn claude_desktop_is_user_scope_and_writes_the_store_apps_copy_too() {
 
 #[test]
 fn with_no_client_it_lists_them_and_which_are_here() {
-    let (home, game) = world("list");
+    let (_t, home, game) = world("list");
     std::fs::create_dir_all(home.join(".gemini")).unwrap();
     let r = setup(&home, &game, &[]);
     let list = r["clients"].as_array().unwrap();
@@ -204,7 +223,7 @@ fn with_no_client_it_lists_them_and_which_are_here() {
 
 #[test]
 fn a_gemini_project_gets_a_gemini_md_that_imports_agents_md() {
-    let (home, game) = world("gemini");
+    let (_t, home, game) = world("gemini");
     std::fs::write(game.join("AGENTS.md"), "# Working on game\n").unwrap();
     setup(&home, &game, &["gemini"]);
     assert_eq!(

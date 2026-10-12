@@ -3,9 +3,25 @@
 //! was taken (both found writing the file-format reference).
 
 use argus_tiles::MapFile;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-fn map(name: &str, keys: &str) -> (PathBuf, &'static str) {
+/// A temp directory removed on drop, used as its path.
+struct Temp(PathBuf);
+
+impl Drop for Temp {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+impl std::ops::Deref for Temp {
+    type Target = Path;
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+fn map(name: &str, keys: &str) -> (Temp, &'static str) {
     let dir =
         std::env::temp_dir().join(format!("argus-tiles-numbers-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
@@ -16,7 +32,7 @@ fn map(name: &str, keys: &str) -> (PathBuf, &'static str) {
         format!("kind = \"tilemap\"\nwidth = 4\nheight = 4\nchunks = \"m.chunks\"\nhash = \"fnv1a64:cbf29ce484222325\"\n{keys}\n\n[[layers]]\nname = \"ground\"\n"),
     )
     .unwrap();
-    (dir, rel)
+    (Temp(dir), rel)
 }
 
 #[test]

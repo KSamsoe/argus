@@ -116,6 +116,10 @@ fn running(root: &Path) -> Option<String> {
 /// An executable beside this one (`argus`, `argus.exe`).
 pub fn sibling(name: &str) -> Result<PathBuf, String> {
     let me = std::env::current_exe().map_err(|e| e.to_string())?;
+    // A Mac names this program by the link it was started through; its
+    // siblings are beside the file the link points to.
+    #[cfg(not(windows))]
+    let me = me.canonicalize().unwrap_or(me);
     let dir = me.parent().ok_or("the executable has no directory")?;
     let p = dir.join(format!("{name}{}", std::env::consts::EXE_SUFFIX));
     if p.exists() {

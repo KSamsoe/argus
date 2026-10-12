@@ -6,11 +6,27 @@ use serde_json::Value as Json;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
-fn temp(name: &str) -> PathBuf {
+/// A temp directory removed on drop, used as its path.
+struct Temp(PathBuf);
+
+impl Drop for Temp {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+impl std::ops::Deref for Temp {
+    type Target = Path;
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+fn temp(name: &str) -> Temp {
     let d = std::env::temp_dir().join(format!("argus-new-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
-    d
+    Temp(d)
 }
 
 fn new(args: &[&str]) -> Output {
@@ -27,7 +43,8 @@ fn new(args: &[&str]) -> Output {
 
 #[test]
 fn a_new_project_from_the_blank_template_passes_its_scenarios_and_points_an_agent_at_argus_md() {
-    let dir = temp("blank").join("lantern");
+    let t = temp("blank");
+    let dir = t.join("lantern");
     let o = new(&[dir.to_str().unwrap(), "--json"]);
     assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
     let r: Json = serde_json::from_slice(&o.stdout).unwrap();
@@ -56,7 +73,8 @@ fn a_new_project_from_the_blank_template_passes_its_scenarios_and_points_an_agen
         "@AGENTS.md\n"
     );
     // A repository, when git is here: a build's code revision is its commit.
-    let git = Command::new("git").arg("--version").output().is_ok();
+    let git =
+        argus_daemon::daemon::git_usable() && Command::new("git").arg("--version").output().is_ok();
     assert_eq!(r["git"], git, "{r}");
     assert_eq!(dir.join(".git").is_dir(), git);
 }
@@ -77,7 +95,8 @@ fn a_new_project_goes_in_a_new_or_empty_directory() {
 
 #[test]
 fn an_unknown_template_is_refused_with_the_ones_there_are() {
-    let dir = temp("unknown").join("x");
+    let t = temp("unknown");
+    let dir = t.join("x");
     let o = new(&[dir.to_str().unwrap(), "--template", "mmo", "--no-git"]);
     assert!(!o.status.success());
     let e = String::from_utf8_lossy(&o.stderr);
@@ -90,7 +109,8 @@ fn an_unknown_template_is_refused_with_the_ones_there_are() {
 
 #[test]
 fn the_name_can_differ_from_the_directory() {
-    let dir = temp("named").join("game");
+    let t = temp("named");
+    let dir = t.join("game");
     let o = new(&[
         dir.to_str().unwrap(),
         "--name",

@@ -26,11 +26,27 @@ fn exe(target: &str) -> &'static str {
     }
 }
 
-fn temp(name: &str) -> PathBuf {
+/// A temp directory removed on drop, used as its path.
+struct Temp(PathBuf);
+
+impl Drop for Temp {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+impl std::ops::Deref for Temp {
+    type Target = Path;
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+fn temp(name: &str) -> Temp {
     let d = std::env::temp_dir().join(format!("argus-runtime-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
-    d
+    Temp(d)
 }
 
 fn copy(from: &Path, to: &Path) {
@@ -49,14 +65,15 @@ fn copy(from: &Path, to: &Path) {
     }
 }
 
-/// A copy of Toybox (it uses the rigid-body module).
-fn toybox(name: &str) -> PathBuf {
-    let root = temp(name).join("toybox");
+/// A copy of Toybox (it uses the rigid-body module), and its guard.
+fn toybox(name: &str) -> (Temp, PathBuf) {
+    let t = temp(name);
+    let root = t.join("toybox");
     copy(
         &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/toybox"),
         &root,
     );
-    root
+    (t, root)
 }
 
 fn argus(args: &[&str]) -> Output {
@@ -83,25 +100,27 @@ fn write(path: &Path, bytes: &[u8]) {
 }
 
 /// Stand-in runtimes, as `tools/release/stage.sh` lays them out: the other
-/// platform's standard variant and the web's, made by `version`.
-fn runtimes(name: &str, version: &str) -> PathBuf {
-    let root = temp(&format!("{name}-rt")).join("runtime");
+/// platform's standard variant and the web's, made by `version`; and
+/// their guard.
+fn runtimes(name: &str, version: &str) -> (Temp, PathBuf) {
+    let t = temp(&format!("{name}-rt"));
+    let root = t.join("runtime");
     let (_, rev) = engine();
     let meta = |target: &str, variant: &str| {
         json!({ "version": version, "revision": rev, "target": target, "variant": variant, "modules": ["rigid"] })
             .to_string()
     };
-    let t = other();
-    let dir = root.join(t).join("standard");
-    write(&dir.join(format!("argus-game{}", exe(t))), b"the runtime");
-    write(&dir.join("runtime.json"), meta(t, "standard").as_bytes());
+    let os = other();
+    let dir = root.join(os).join("standard");
+    write(&dir.join(format!("argus-game{}", exe(os))), b"the runtime");
+    write(&dir.join("runtime.json"), meta(os, "standard").as_bytes());
     let web = root.join("web");
     write(&web.join("pkg/argus_web.js"), b"glue");
     write(&web.join("pkg/argus_web_bg.wasm"), b"module");
     write(&web.join("index.html"), b"<!doctype html>");
     write(&web.join("main.js"), b"// page");
     write(&web.join("runtime.json"), meta("web", "web").as_bytes());
-    root
+    (t, root)
 }
 
 fn build(project: &Path, runtime: &Path, out: &Path, extra: &[&str]) -> Output {
@@ -127,8 +146,8 @@ fn report(o: &Output) -> Json {
 
 #[test]
 fn a_release_for_the_other_platform_is_the_installed_runtime_beside_the_packs() {
-    let game = toybox("other");
-    let rt = runtimes("other", &engine().0);
+    let (_g, game) = toybox("other");
+    let (_r, rt) = runtimes("other", &engine().0);
     let out = game.join("dist/other");
     let r = report(&build(&game, &rt, &out, &["--target", other()]));
     assert_eq!(r["runtime"]["prebuilt"], true, "{r}");
@@ -156,8 +175,8 @@ fn a_release_for_the_other_platform_is_the_installed_runtime_beside_the_packs() 
 
 #[test]
 fn a_web_release_is_the_installed_web_runtime_beside_the_packs() {
-    let game = toybox("web");
-    let rt = runtimes("web", &engine().0);
+    let (_g, game) = toybox("web");
+    let (_r, rt) = runtimes("web", &engine().0);
     let out = game.join("dist/web");
     let r = report(&build(&game, &rt, &out, &["--target", "web"]));
     assert_eq!(r["runtime"]["prebuilt"], true, "{r}");
@@ -185,8 +204,8 @@ fn a_web_release_is_the_installed_web_runtime_beside_the_packs() {
 
 #[test]
 fn a_runtime_from_another_version_is_refused() {
-    let game = toybox("version");
-    let rt = runtimes("version", "9.9.9");
+    let (_g, game) = toybox("version");
+    let (_r, rt) = runtimes("version", "9.9.9");
     let o = build(&game, &rt, &game.join("dist/x"), &["--target", other()]);
     assert!(!o.status.success());
     let e = String::from_utf8_lossy(&o.stderr);
@@ -195,13 +214,13 @@ fn a_runtime_from_another_version_is_refused() {
 
 #[test]
 fn a_steam_game_needs_the_steam_runtime_and_says_which_are_there() {
-    let game = toybox("steam");
+    let (_g, game) = toybox("steam");
     let toml = game.join("argus.toml");
     let text = std::fs::read_to_string(&toml)
         .unwrap()
         .replace(r#"modules = ["rigid"]"#, r#"modules = ["rigid", "steam"]"#);
     std::fs::write(&toml, text).unwrap();
-    let rt = runtimes("steam", &engine().0);
+    let (_r, rt) = runtimes("steam", &engine().0);
     let o = build(&game, &rt, &game.join("dist/x"), &["--target", other()]);
     assert!(!o.status.success());
     let e = String::from_utf8_lossy(&o.stderr);
@@ -214,8 +233,8 @@ fn a_steam_game_needs_the_steam_runtime_and_says_which_are_there() {
 
 #[test]
 fn from_source_the_other_platform_is_built_there() {
-    let game = toybox("source");
-    let rt = runtimes("source", &engine().0);
+    let (_g, game) = toybox("source");
+    let (_r, rt) = runtimes("source", &engine().0);
     let o = build(
         &game,
         &rt,

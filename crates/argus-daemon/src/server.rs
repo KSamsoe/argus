@@ -107,7 +107,21 @@ pub fn serve_with(
             });
         }
         Transport::Socket(name) => {
-            let listener = ListenerOptions::new().name(to_name(name)?).create_sync()?;
+            let listener = match ListenerOptions::new().name(to_name(name)?).create_sync() {
+                Ok(l) => l,
+                // A socket file a daemon left when it ended without
+                // dropping its listener (it exits by process::exit, or a
+                // Mac's Quit menu ends it): Linux's sockets are abstract and
+                // leave none, but a Mac's is a file in /tmp. Taken over when
+                // nothing answers on it; a daemon that still does keeps it.
+                Err(e) if e.kind() == std::io::ErrorKind::AddrInUse && connect(name).is_err() => {
+                    ListenerOptions::new()
+                        .name(to_name(name)?)
+                        .try_overwrite(true)
+                        .create_sync()?
+                }
+                Err(e) => return Err(e),
+            };
             if let Some(root) = project_root {
                 let mut info = serde_json::json!({
                     "socket": name,
