@@ -41,6 +41,12 @@ Today a template's art is a Python script (`tools/art.py`, 160 to 1,385 lines) t
 
 - The blank template's art first (160 lines), then the other four, so changing a template's art needs nothing but Argus. Each one draws the same pixels as its PNGs did, checked picture against picture, and plays as before.
 
+**Done (2026-10-11).** Blank by hand (its player pixel for pixel; its animator says idle to walk with `or` and faces the player with `face`, so the system that only mirrored the sprite is gone), the other four by four agents in parallel, each held to a frame-by-frame comparison with the PNGs it replaced (`scratchpad/port/compare_sprite.py`). Everything the Python drew without chance is the same pixel for pixel; what it drew by chance uses `art.rng` by the same rules (the roguelike's agent swapped one generator into both and got 0 pixels differing across its 32 tiles). Every scenario passes as before, and outside the art only comments and READMEs changed. Each template's shared colours and helpers are one module, `assets/shared.lib.luau`.
+
+The ports found, and the kit now has: frame ranges in clips (`from`, `to`); `c:alpha`; `art.rgba`; modules (`require`), with a change to one importing again every script that uses it; and two faults fixed. Luau compiled `math.sin` and the rest to its own built-ins, the platform's, past the libm functions, so a script could draw differently on another machine (now told `math` may change, and a test holds it to libm bit for bit). And art scripts ran again on every scene load and scenario run (the arena's tests went from 0.35 s to 1.75 s); what a script drew is kept beside its sheet now, keyed by its and its modules' bytes, and the arena's tests take 0.34 s.
+
+Left as they are: `art.mix` rounds a half up where Python rounded to even (the ports carry a half-to-even helper where they matched Python to the pixel); the `^` operator is the platform's `pow` (the reference says to use `math.pow`); there is no `math.hypot`; the packer leaves no gap between frames (sampling holds inside a frame, so nothing bleeds). The example games' art (Hollow, Delve, Swarm, Outpost) is still Python.
+
 ## 5. Docs and the agent's side
 
 - A manual chapter, "Making art and sound"; the reference's entries for the kit and the generators, generated as the rest is; `ARGUS.md` lists a project's art scripts and recipes.
