@@ -91,7 +91,7 @@ fn every_method_is_answered_and_its_required_params_are_the_truth() {
 #[test]
 fn the_tools_call_methods_that_exist() {
     assert!(
-        (10..=14).contains(&TOOLS.len()),
+        (10..=16).contains(&TOOLS.len()),
         "about a dozen tools, not a hundred"
     );
     for t in TOOLS {
