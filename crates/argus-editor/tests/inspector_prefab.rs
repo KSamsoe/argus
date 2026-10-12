@@ -69,10 +69,11 @@ fn a_person_changes_a_prefab_from_the_inspector() {
     );
     let socket = format!("{}-inspector-prefab", socket_name_for(t.path()));
     let (r, n) = (t.path().to_path_buf(), socket.clone());
-    std::thread::spawn(move || {
+    let thread = std::thread::spawn(move || {
         let d = common::open(&r);
         let _ = serve(d, Transport::Socket(n), Some(&r));
     });
+    let _daemon = common::Served::new(&socket, thread);
     let deadline = Instant::now() + Duration::from_secs(30);
     let mut agent = loop {
         if let Ok(c) = Client::connect(&socket) {

@@ -85,11 +85,41 @@ impl Drop for Mcp {
     }
 }
 
-fn temp(name: &str) -> PathBuf {
+/// A temp directory removed on drop, used as its path.
+struct Temp(PathBuf);
+
+impl Drop for Temp {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+impl std::ops::Deref for Temp {
+    type Target = Path;
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+fn temp(name: &str) -> Temp {
     let d = std::env::temp_dir().join(format!("argus-mcp-projects-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
-    d
+    Temp(d)
+}
+
+/// Stops a project's daemon on drop, failed test or not: a running daemon
+/// holds the project's files, and its folder could not be removed.
+struct Stop(PathBuf);
+
+impl Drop for Stop {
+    fn drop(&mut self) {
+        let _ = Command::new(env!("CARGO_BIN_EXE_argus"))
+            .arg("--project")
+            .arg(&self.0)
+            .args(["daemon", "stop"])
+            .output();
+    }
 }
 
 #[test]
@@ -133,6 +163,7 @@ fn with_no_project_the_server_offers_them_makes_one_and_opens_it() {
     );
 
     let dir = base.join("lantern");
+    let stop = Stop(dir.clone());
     let (made, is_error) = m.tool(
         "new_project",
         json!({ "dir": dir.to_string_lossy(), "template": "blank" }),
@@ -154,11 +185,7 @@ fn with_no_project_the_server_offers_them_makes_one_and_opens_it() {
     assert_eq!(p["under"].as_array().unwrap().len(), 1, "{p}");
 
     drop(m);
-    let _ = Command::new(env!("CARGO_BIN_EXE_argus"))
-        .arg("--project")
-        .arg(&dir)
-        .args(["daemon", "stop"])
-        .output();
+    drop(stop);
 }
 
 #[test]
@@ -184,6 +211,7 @@ fn an_agent_with_no_file_system_writes_a_script_reloads_it_and_can_undo_it() {
         json!({ "protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": { "name": "test", "version": "0" } }),
     );
     let dir = base.join("ember");
+    let stop = Stop(dir.clone());
     let (made, is_error) = m.tool("new_project", json!({ "dir": dir.to_string_lossy() }));
     assert!(!is_error, "{made}");
 
@@ -261,9 +289,5 @@ fn an_agent_with_no_file_system_writes_a_script_reloads_it_and_can_undo_it() {
     );
 
     drop(m);
-    let _ = Command::new(env!("CARGO_BIN_EXE_argus"))
-        .arg("--project")
-        .arg(&dir)
-        .args(["daemon", "stop"])
-        .output();
+    drop(stop);
 }

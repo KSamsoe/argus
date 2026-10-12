@@ -96,7 +96,7 @@ fn the_no_adapter_code_matches_the_renderer() {
 /// as it is. The red blob as drawn, then as no colour at all.
 #[test]
 fn obs_frame_sees_as_a_colour_blind_eye_sees() {
-    let (t, mut d) = open_with_sprites("frame-see-as");
+    let (_t, mut d) = open_with_sprites("frame-see-as");
     let centre = |d: &mut Daemon, see_as: &str| -> Option<[u8; 3]> {
         let r = match d.call(
             0,
@@ -125,5 +125,4 @@ fn obs_frame_sees_as_a_colour_blind_eye_sees() {
     assert_eq!(centre(&mut d, "normal").unwrap(), red);
     let e = err(&mut d, "obs.frame", json!({ "see_as": "sepia" }));
     assert!(e.message.contains("deuteranopia"), "{}", e.message);
-    drop(t);
 }

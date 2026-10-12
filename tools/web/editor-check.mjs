@@ -15,7 +15,7 @@
 // anything failed. Node 24 and the built CLI (target/debug/argus), no npm
 // packages.
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, mkdirSync, openSync, readFileSync, existsSync } from "node:fs";
+import { mkdtempSync, writeFileSync, mkdirSync, openSync, readFileSync, existsSync, rmSync } from "node:fs";
 import { createServer, connect as netConnect } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -163,6 +163,9 @@ function finish() {
   console.log(JSON.stringify(report, null, 2));
   try { browser.kill(); } catch (e) {}
   spawnSync(argus, ["--project", project, "daemon", "stop"], { encoding: "utf8" });
+  // The browser's profile: Windows keeps a killed Chrome's files open for
+  // a moment, so the removal tries again for a while.
+  try { rmSync(profile, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 }); } catch (e) {}
   process.exit(report.ok ? 0 : 1);
 }
 

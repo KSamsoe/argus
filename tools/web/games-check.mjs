@@ -9,7 +9,7 @@
 // (its WebSocket). The base url is the site served by serve.mjs, local or
 // the public one.
 import { spawn } from "node:child_process";
-import { mkdtempSync, mkdirSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, existsSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -117,4 +117,7 @@ try {
 report.ok = !report.error && Object.values(report.games).every((g) => g.ok);
 console.log(JSON.stringify(report, null, 2));
 browser.kill();
+// The browser's profile: Windows keeps a killed Chrome's files open for a
+// moment, so the removal tries again for a while.
+try { rmSync(profile, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 }); } catch {}
 process.exit(report.ok ? 0 : 1);
