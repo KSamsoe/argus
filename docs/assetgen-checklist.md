@@ -10,11 +10,15 @@ Today a template's art is a Python script (`tools/art.py`, 160 to 1,385 lines) t
 - A sound sidecar (`assets/sfx/jump.toml`, `type = "sound"`) holds a tone like `audio.toml` does; nothing new to learn.
 - Deterministic everywhere: the synthesiser's sine and exponentials come from a pure-Rust math library, not the platform's, so a recipe is the same samples on Windows, Linux, and in the browser.
 
+**Built (2026-10-11).** A tone takes `punch`, `slide_accel`, `jump` and `jump_ms`, `vibrato` and `vibrato_hz`, `duty` and `duty_sweep`, `repeat_ms`, `lowpass`, `lowpass_sweep`, `resonance`, `highpass`, `highpass_sweep`, `phaser_ms`, `phaser_sweep`, and `noise_pitch`, each off by default. A test holds the synthesiser to the 0.0.4 code: every tone without the new controls renders the same samples, bit for bit, but sines, which are libm's now and within 1e-6 of the platform's. `synth.rs` pins four generated tones' samples.
+
 ## 1. Sound generators
 
 - `argus asset generate sound <name> kind=<kind> [seed=<n>]` (and the `generate` MCP tool) writes a recipe: `pickup`, `laser`, `explosion`, `powerup`, `hit`, `jump`, `blip`, `step`, `click`. The seed picks values within the kind's ranges, so `seed=2` is another jump; `from=<sound> vary=<share>` makes a variation of one you have.
 - It is an edit (`edit.file`): in the change feed with its author and note, undone by `edit undo`.
 - Checking without ears: `asset get` on a sound says its length, peak, and loudness, and how its pitch and brightness move over time, in words an agent can check ("rises from 330 Hz to 660 Hz over 0.18 s, then fades").
+
+**Built (2026-10-11).** `asset.generate` makes the text (writing nothing); the `generate` tool (`argus generate name=sfx/zap sound=laser seed=3`) writes it as an edit with the command that made it at its head, refuses to write over a file unless `replace=true`, imports it, and answers with `audio.describe`'s measure. `audio.describe` works on any sound the mixer has, a file's or a tone's: length, peak, loudness, when it is loudest and when it has faded to a tenth, pitch every 40 ms by autocorrelation (a peak after a dip, so pitched noise is not taken for a note), zero crossings, and a sentence ("a note starting near 560 Hz at 0.00 s, ending near 826 Hz at 0.14 s (higher)"). Making the generators read well found two of their own faults: a laser's and a hit's slide took the pitch to nothing before the end (they slide to a share of where they began now), and footsteps were at -22 dB.
 
 ## 2. Art scripts
 
@@ -24,10 +28,14 @@ Today a template's art is a Python script (`tools/art.py`, 160 to 1,385 lines) t
 - Errors name the script's file and line, as a game script's do. `argus asset export <name>` writes the PNG for a person who wants the file.
 - A release build packs what the script drew, as it packs a PNG: a player's machine never runs it.
 
+**Built (2026-10-11).** `art.rs` in argus-assets: the VM, the kit (also `c:rows`, pixel art as text, which the templates' Python drew from), and the importer's half, sharing the PNG path's cache. A release pack leaves the script out, as it does a PNG's source. Live: a scratch game's slime turned from green to red as its script was saved, with the game running. Found on the way: a Spine skeleton's JSON was not among the files a scan compares, so a new export kept the old skeleton until a restart (fixed, with a test).
+
 ## 3. Sprite generators
 
 - `argus asset generate sprite <name> kind=<kind> [seed=<n>] [size=<px>] [palette=<name>]` writes an art script, not a picture, so what it makes is code to change: `creature`, `character` (with idle and walk frames), `item`, `tile` (grass, stone, dirt, water, with edges for auto-tiling), `plant`, `rock`, `ship`.
 - An agent looks at the result with `observe` (or `asset get` with a picture) and changes the script.
+
+**Built (2026-10-11).** `artgen.rs`: creature (Bollinger-style masks, mirrored, idle and walk frames), character (the blank template's shape, a hair style and colours of its own), item (a book of eight shapes), tile (wrapping noise, six materials, four variants), plant, and rock. Each kind is pinned at seed 1. `asset.preview` draws any sprite's frames on a checkerboard, and the `generate` tool answers with it, so an agent over MCP sees the sprite in the answer.
 
 ## 4. The templates on art scripts
 
