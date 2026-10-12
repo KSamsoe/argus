@@ -407,9 +407,15 @@ impl Server<'_> {
         }
     }
 
-    /// `observe` with a PNG: the picture itself, for an agent that can see.
+    /// `observe` with a PNG, or a sprite `generate` made: the picture
+    /// itself, for an agent that can see.
     fn picture(&mut self, tool: &str, r: &Json) -> Option<Json> {
-        if tool != "observe" || r.get("format").and_then(Json::as_str) == Some("semantic") {
+        let shows = match tool {
+            "observe" => r.get("format").and_then(Json::as_str) != Some("semantic"),
+            "generate" => r.get("drawn").is_some(),
+            _ => false,
+        };
+        if !shows {
             return None;
         }
         let path = PathBuf::from(r.get("path")?.as_str()?);

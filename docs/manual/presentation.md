@@ -108,6 +108,14 @@ A script is sandboxed: it cannot read files, the clock, or the network, and `mat
 
 The templates' art is drawn this way: their `assets/*.art.luau` are worked examples of characters, tiles, and panels.
 
+You need not start from an empty canvas. The `generate` tool (or `argus generate`) writes an art script for you to make your own, free and offline:
+
+```sh
+argus generate name=sprites/slime sprite=creature seed=4   # assets/sprites/slime.art.luau
+```
+
+The kinds are `creature` and `character` (rows of text, with idle and walk frames), `item` (a potion, a gem, a coin, a key, a heart, an apple, a sword, or a shield), `tile` (one that repeats with no seam, in four variants), `plant` (a bush or a tree that sways), and `rock`. Another seed is another take. The script's head says the command that made it, and it is an edit like any other, undone with `edit undo=true`. The answer has a picture of the frames, and `argus asset preview name=<sprite>` makes one of any sprite: its frames in a row, scaled up on a checkerboard so you can see what is clear.
+
 ## Animation
 
 ### The animator

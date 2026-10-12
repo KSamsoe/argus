@@ -588,6 +588,7 @@ impl Daemon {
             }
             "asset.move" => self.asset_move(params),
             "asset.generate" => self.asset_generate(params),
+            "asset.preview" => self.asset_preview(params),
             "asset.list" => self.asset_list(params),
             "asset.sidecar" => self.asset_sidecar(params),
             "asset.get" => {
@@ -6600,17 +6601,16 @@ impl Daemon {
         Ok(json!({ "sound": name, "variations": variations }))
     }
 
-    /// `asset.generate`: a new sound asset's text, from a kind and a seed
-    /// or as a variation of a sound there is, with what it is like. It
-    /// writes nothing; the generate tool writes it, as an edit.
-    #[cfg(feature = "audio")]
+    /// `asset.generate`: a new asset's text, a sound or a sprite, from a
+    /// kind and a seed, with what it is like. It writes nothing; the
+    /// generate tool writes it, as an edit.
     fn asset_generate(&mut self, params: &Json) -> Result<Json> {
-        use argus_audio::gen;
         let root = self.require_session()?.root.clone();
         let name = json::str_param(params, "name")?
             .trim()
             .trim_start_matches("assets/")
             .trim_end_matches(".toml")
+            .trim_end_matches(".art.luau")
             .trim_matches('/')
             .to_string();
         if name.is_empty()
@@ -6622,9 +6622,123 @@ impl Daemon {
                 codes::BAD_PARAMS,
                 format!("{name:?} is not an asset name"),
             )
-            .hint("An asset's name is its path under assets/ without the extension: sfx/jump."));
+            .hint("An asset's name is its path under assets/ without the extension: sfx/jump, sprites/slime."));
         }
         let seed = json::u64_param(params, "seed", 1)?;
+        let Some(kind) = json::opt_str(params, "sprite")? else {
+            return self.sound_generate(params, &root, &name, seed);
+        };
+        use argus_assets::artgen;
+        let text = artgen::generate(kind, seed, &name).map_err(|m| {
+            let kinds: Vec<String> = artgen::KINDS
+                .iter()
+                .map(|(k, d)| format!("{k} ({d})"))
+                .collect();
+            ArgusError::new(codes::BAD_PARAMS, m).hint(format!("The kinds: {}.", kinds.join("; ")))
+        })?;
+        let file = format!("assets/{name}.art.luau");
+        let drawn = argus_assets::art::run(&file, &text)?;
+        Ok(json!({
+            "name": name,
+            "file": file,
+            "exists": root.join(&file).exists(),
+            "text": text,
+            "drawn": {
+                "frames": drawn.frames.len(),
+                "sizes": drawn.frames.iter().map(|f| [f.canvas.w, f.canvas.h]).collect::<Vec<_>>(),
+                "clips": drawn.clips.keys().collect::<Vec<_>>(),
+            },
+        }))
+    }
+
+    /// `asset.preview`: a sprite's frames in a row, scaled up on a
+    /// checkerboard (so its clear pixels show), as a PNG to look at.
+    fn asset_preview(&mut self, params: &Json) -> Result<Json> {
+        let name = json::str_param(params, "name")?.to_string();
+        let ses = self.require_session()?;
+        let root = ses.root.clone();
+        let e = ses.assets.get(&name)?;
+        let argus_assets::Asset::Sprite(s) = &e.asset else {
+            return Err(ArgusError::new(
+                codes::BAD_PARAMS,
+                format!("{name} is a {}, not a sprite", e.kind()),
+            ));
+        };
+        let (tw, _, sheet) = argus_assets::decode_png(&s.texture)?;
+        let frames: Vec<[u32; 4]> = s.frames.iter().map(|f| f.rect).collect();
+        let fh = frames.iter().map(|r| r[3]).max().unwrap_or(1);
+        let fw: u32 = frames.iter().map(|r| r[2]).sum::<u32>() + frames.len() as u32;
+        let k = json::u64_param(params, "scale", 0)? as u32;
+        let k = if k > 0 {
+            k.min(16)
+        } else {
+            (384 / fh.max(1)).clamp(1, 8)
+        };
+        let (w, h) = ((fw + 1) * k, (fh + 2) * k);
+        if w as u64 * h as u64 > 16_000_000 {
+            return Err(ArgusError::new(
+                codes::BAD_PARAMS,
+                format!("{name}'s preview at {k}x would be {w} x {h}; ask for a smaller scale"),
+            ));
+        }
+        let mut out = vec![0u8; (w * h * 4) as usize];
+        for y in 0..h {
+            for x in 0..w {
+                let c: u8 = if ((x / 8) + (y / 8)) % 2 == 0 { 58 } else { 74 };
+                let i = ((y * w + x) * 4) as usize;
+                out[i..i + 4].copy_from_slice(&[c, c, c + 8, 255]);
+            }
+        }
+        let mut x0 = 1u32;
+        for r in &frames {
+            for y in 0..r[3] {
+                for x in 0..r[2] {
+                    let si = (((r[1] + y) * tw + r[0] + x) * 4) as usize;
+                    let p = &sheet[si..si + 4];
+                    if p[3] == 0 {
+                        continue;
+                    }
+                    let a = p[3] as u32;
+                    for dy in 0..k {
+                        for dx in 0..k {
+                            let oy = (1 + y + fh - r[3]) * k + dy;
+                            let ox = (x0 + x) * k + dx;
+                            let o = ((oy * w + ox) * 4) as usize;
+                            for ch in 0..3 {
+                                out[o + ch] = ((p[ch] as u32 * a + out[o + ch] as u32 * (255 - a))
+                                    / 255) as u8;
+                            }
+                        }
+                    }
+                }
+            }
+            x0 += r[2] + 1;
+        }
+        let path = root
+            .join(".argus")
+            .join("previews")
+            .join(format!("{}.png", name.replace('/', "_")));
+        argus_assets::encode_png(&path, w, h, &out)?;
+        Ok(json!({
+            "name": name,
+            "path": path.to_string_lossy(),
+            "frames": frames.len(),
+            "scale": k,
+            "clips": s.clips.keys().collect::<Vec<_>>(),
+        }))
+    }
+
+    /// The sound half of `asset.generate`.
+    #[cfg(feature = "audio")]
+    fn sound_generate(
+        &mut self,
+        params: &Json,
+        root: &Path,
+        name: &str,
+        seed: u64,
+    ) -> Result<Json> {
+        use argus_audio::gen;
+        let name = name.to_string();
         let file = format!("assets/{name}.toml");
         let exists = root.join(&file).exists();
         let kinds = || {
@@ -6665,7 +6779,7 @@ impl Daemon {
                     codes::BAD_PARAMS,
                     "asset.generate takes sound=<kind> (a new one) or from=<sound> (a variation of one)",
                 )
-                .hint(format!("The kinds: {}.", kinds())))
+                .hint(format!("The kinds: {}. For a sprite, give sprite=<kind>.", kinds())))
             }
         };
         let rate = 48_000;
@@ -6720,7 +6834,7 @@ impl Daemon {
         Err(ArgusError::new(5103, "this daemon was built without audio"))
     }
     #[cfg(not(feature = "audio"))]
-    fn asset_generate(&mut self, _p: &Json) -> Result<Json> {
+    fn sound_generate(&mut self, _p: &Json, _r: &Path, _n: &str, _s: u64) -> Result<Json> {
         Err(ArgusError::new(5103, "this daemon was built without audio"))
     }
 

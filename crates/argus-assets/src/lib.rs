@@ -22,6 +22,7 @@
 
 pub mod animator;
 pub mod art;
+pub mod artgen;
 pub mod aseprite;
 pub mod bc7;
 mod catalog;

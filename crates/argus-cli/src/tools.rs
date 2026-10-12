@@ -268,7 +268,7 @@ pub fn run(c: &mut dyn Caller, name: &str, args: &Json) -> Result<Json, Json> {
         "generate" => {
             let made = c.call(
                 "asset.generate",
-                pick(args, &["name", "sound", "from", "vary", "seed"]),
+                pick(args, &["name", "sound", "sprite", "from", "vary", "seed"]),
             )?;
             let file = made["file"].as_str().unwrap_or_default().to_string();
             let replace = args.get("replace").and_then(Json::as_bool).unwrap_or(false);
@@ -287,13 +287,12 @@ pub fn run(c: &mut dyn Caller, name: &str, args: &Json) -> Result<Json, Json> {
                 .and_then(Json::as_str)
                 .map(str::to_string)
                 .unwrap_or_else(|| {
-                    match (
-                        args.get("sound").and_then(Json::as_str),
-                        args.get("from").and_then(Json::as_str),
-                    ) {
-                        (Some(k), _) => format!("generated a {k} sound"),
-                        (_, Some(f)) => format!("a variation of {f}"),
-                        _ => "a generated sound".to_string(),
+                    let s = |k: &str| args.get(k).and_then(Json::as_str);
+                    match (s("sprite"), s("sound"), s("from")) {
+                        (Some(k), _, _) => format!("generated a {k} sprite"),
+                        (_, Some(k), _) => format!("generated a {k} sound"),
+                        (_, _, Some(f)) => format!("a variation of {f}"),
+                        _ => "a generated asset".to_string(),
                     }
                 });
             let tx = c.call("edit.begin", json!({ "author": author, "note": note }))?["tx"].clone();
@@ -311,6 +310,20 @@ pub fn run(c: &mut dyn Caller, name: &str, args: &Json) -> Result<Json, Json> {
                 })?;
             let imported = c.call("asset.import", json!({}))?;
             let name = made["name"].clone();
+            if made.get("drawn").is_some() {
+                // A sprite: its picture, to look at.
+                let picture = c.call("asset.preview", json!({ "name": name })).ok();
+                return Ok(json!({
+                    "name": name,
+                    "file": file,
+                    "text": made["text"],
+                    "drawn": made["drawn"],
+                    "path": picture.as_ref().map(|p| p["path"].clone()),
+                    "edit": committed,
+                    "imported": imported["imported"],
+                    "failed": imported["failed"],
+                }));
+            }
             // The mixer's own measure of what it now plays; the generator's
             // when the project has no mixer.
             let heard = c

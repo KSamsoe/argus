@@ -237,3 +237,87 @@ return art.sprite{ frames = { c } }
     assert_eq!(px(&s, 0, 2, 2), [0, 0, 0, 255]);
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// The sprite generators write art scripts that draw: every kind at
+/// several seeds, the same script for the same seed.
+#[test]
+fn every_sprite_kind_writes_a_script_that_draws() {
+    use argus_assets::artgen;
+    let out = std::env::var("ARGUS_GEN_OUT").ok();
+    for (kind, _) in artgen::KINDS {
+        for seed in 1..=4 {
+            let text = artgen::generate(kind, seed, "sprites/x").unwrap();
+            assert_eq!(text, artgen::generate(kind, seed, "sprites/x").unwrap());
+            let s = argus_assets::art::run("sprites/x.art.luau", &text)
+                .unwrap_or_else(|e| panic!("{kind} {seed}: {}\n{text}", e.message));
+            assert!(!s.frames.is_empty(), "{kind} {seed}");
+            for f in &s.frames {
+                assert!(
+                    f.canvas.rgba.chunks(4).any(|p| p[3] > 0),
+                    "{kind} {seed}: an empty frame"
+                );
+            }
+            if let Some(dir) = &out {
+                std::fs::create_dir_all(dir).unwrap();
+                std::fs::write(format!("{dir}/{kind}-{seed}.art.luau"), &text).unwrap();
+                // Its frames in a row, for a person to look at.
+                let (w, h) = (
+                    s.frames.iter().map(|f| f.canvas.w).sum::<u32>() + s.frames.len() as u32,
+                    s.frames.iter().map(|f| f.canvas.h).max().unwrap(),
+                );
+                let mut px = vec![0u8; (w * h * 4) as usize];
+                let mut x0 = 0;
+                for f in &s.frames {
+                    for y in 0..f.canvas.h {
+                        for x in 0..f.canvas.w {
+                            let i = ((y * f.canvas.w + x) * 4) as usize;
+                            let j = ((y * w + x0 + x) * 4) as usize;
+                            px[j..j + 4].copy_from_slice(&f.canvas.rgba[i..i + 4]);
+                        }
+                    }
+                    x0 += f.canvas.w + 1;
+                }
+                argus_assets::encode_png(
+                    std::path::Path::new(&format!("{dir}/{kind}-{seed}.png")),
+                    w,
+                    h,
+                    &px,
+                )
+                .unwrap();
+            }
+        }
+    }
+    assert!(artgen::generate("dragon", 1, "x")
+        .unwrap_err()
+        .contains("creature, character"));
+}
+
+/// What each sprite kind draws at seed 1, pinned: the same seed is the
+/// same sprite, version to version and machine to machine.
+#[test]
+fn generated_sprites_are_pinned_pixels() {
+    use argus_assets::artgen;
+    let got: Vec<(String, u64)> = artgen::KINDS
+        .iter()
+        .map(|(kind, _)| {
+            let text = artgen::generate(kind, 1, "sprites/x").unwrap();
+            let s = argus_assets::art::run("sprites/x.art.luau", &text).unwrap();
+            let h = s.frames.iter().flat_map(|f| f.canvas.rgba.iter()).fold(
+                0xcbf2_9ce4_8422_2325u64,
+                |h, b| (h ^ *b as u64).wrapping_mul(0x0100_0000_01b3),
+            );
+            (kind.to_string(), h)
+        })
+        .collect();
+    let want: Vec<(String, u64)> = PINNED_KINDS.iter().map(|(k, h)| (k.to_string(), *h)).collect();
+    assert_eq!(got, want);
+}
+
+const PINNED_KINDS: [(&str, u64); 6] = [
+    ("creature", 17321467844721375506),
+    ("character", 7657863114222739389),
+    ("item", 8866461461364842317),
+    ("tile", 11962154586346593457),
+    ("plant", 17621447597582241628),
+    ("rock", 4439055114142076959),
+];

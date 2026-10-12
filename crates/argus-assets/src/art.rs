@@ -522,28 +522,31 @@ impl UserData for Canvas {
         // Pixel art as text: each row a string, each character a colour
         // from `key` (a character the key does not have is left as it is,
         // so "." is clear), drawn from (x, y).
-        m.add_method_mut("rows", |_, c, (x, y, rows, key): (f64, f64, Table, Table)| {
-            let mut colours: HashMap<char, [u8; 4]> = HashMap::new();
-            for kv in key.pairs::<String, Value>() {
-                let (k, v) = kv?;
-                let mut chars = k.chars();
-                let (Some(ch), None) = (chars.next(), chars.next()) else {
-                    return Err(bad(format!(
-                        "rows' key maps one character to a colour, not {k:?}"
-                    )));
-                };
-                colours.insert(ch, color(&v)?);
-            }
-            let (x, y) = (int(x), int(y));
-            for (r, row) in rows.sequence_values::<String>().enumerate() {
-                for (i, ch) in row?.chars().enumerate() {
-                    if let Some(col) = colours.get(&ch) {
-                        c.put(x + i as i64, y + r as i64, *col);
+        m.add_method_mut(
+            "rows",
+            |_, c, (x, y, rows, key): (f64, f64, Table, Table)| {
+                let mut colours: HashMap<char, [u8; 4]> = HashMap::new();
+                for kv in key.pairs::<String, Value>() {
+                    let (k, v) = kv?;
+                    let mut chars = k.chars();
+                    let (Some(ch), None) = (chars.next(), chars.next()) else {
+                        return Err(bad(format!(
+                            "rows' key maps one character to a colour, not {k:?}"
+                        )));
+                    };
+                    colours.insert(ch, color(&v)?);
+                }
+                let (x, y) = (int(x), int(y));
+                for (r, row) in rows.sequence_values::<String>().enumerate() {
+                    for (i, ch) in row?.chars().enumerate() {
+                        if let Some(col) = colours.get(&ch) {
+                            c.put(x + i as i64, y + r as i64, *col);
+                        }
                     }
                 }
-            }
-            Ok(())
-        });
+                Ok(())
+            },
+        );
         m.add_method_mut("fill", |_, c, (x, y, col): (f64, f64, Value)| {
             let col = color(&col)?;
             let (x, y) = (int(x), int(y));

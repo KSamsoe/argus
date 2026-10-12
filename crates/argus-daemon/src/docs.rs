@@ -260,10 +260,11 @@ pub const TOOLS: &[ToolDoc] = &[
     },
     ToolDoc {
         name: "generate",
-        doc: "Make a sound effect as an asset, free and offline: from a kind (pickup, laser, explosion, powerup, hit, jump, blip, step, click) and a seed, or as a variation of a sound there is. It writes assets/<name>.toml, a sound whose [tone] is a synthesiser's controls you can read and change, as one edit (in the change feed with its author and note; edit undo=true takes it back), imports it so q:play(\"<name>\") plays it, and answers with what it is like: its length, loudness, and how its pitch and brightness move, in numbers and a sentence. Another seed is another take; change the numbers in the file and reload to shape it. It will not replace a file that is there unless replace=true.",
+        doc: "Make a sound effect or a sprite as an asset, free and offline, from a kind and a seed; another seed is another take. A sound (sound=<kind>: pickup, laser, explosion, powerup, hit, jump, blip, step, click; or from=<sound> for a variation of one) is assets/<name>.toml, a synthesiser's controls you can read and change, and the answer says what it is like (length, loudness, how its pitch and brightness move, in numbers and a sentence). A sprite (sprite=<kind>: creature, character, item, tile, plant, rock) is assets/<name>.art.luau, an art script (rows of text, one character a pixel, or a few lines of drawing, under a palette) you change to make it yours, and the answer has a picture of its frames. It is written as one edit (in the change feed with its author and note; edit undo=true takes it back) and imported, so the game can use it at once (q:play(\"<name>\"), or [Sprite] atlas = \"<name>\"). It will not replace a file that is there unless replace=true.",
         params: &[
             req("name", STRING, "the asset's name: sfx/jump (written to assets/sfx/jump.toml)"),
             opt("sound", STRING, "the kind of sound effect"),
+            opt("sprite", STRING, "the kind of sprite"),
             opt("from", STRING, "instead, a sound there is (made of a tone) to make a variation of"),
             opt("vary", NUMBER, "with from: how far each control moves, a share of itself; default 0.1"),
             opt("seed", INTEGER, "another seed, another take; default 1"),
@@ -271,7 +272,7 @@ pub const TOOLS: &[ToolDoc] = &[
             opt("note", STRING, "why, for the change feed"),
             opt("author", STRING, "default \"agent:claude\" (or $ARGUS_AUTHOR)"),
         ],
-        calls: &["asset.generate", "edit.begin", "edit.file", "edit.commit", "asset.import", "audio.describe"],
+        calls: &["asset.generate", "edit.begin", "edit.file", "edit.commit", "asset.import", "audio.describe", "asset.preview"],
     },
     ToolDoc {
         name: "reload",
@@ -724,15 +725,25 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "asset.generate",
-        doc: "A new sound asset's text, made from a kind and a seed (or as a variation of a sound there is), and what it is like (audio.describe's numbers and sentence). It writes nothing: the generate tool writes it as an edit. The text is a sound sidecar (type = \"sound\") whose [tone] is a sound-effect synthesiser's controls, headed by what made it; the same kind and seed make the same text. Kinds: pickup, laser, explosion, powerup, hit, jump, blip, step, click.",
+        doc: "A new asset's text, made from a kind and a seed, written nowhere (the generate tool writes it as an edit); the same kind and seed make the same text. A sound (sound=<kind>, or from=<sound> for a variation of one) is a sound sidecar (type = \"sound\") whose [tone] is a sound-effect synthesiser's controls, answered with what it is like (audio.describe's numbers and sentence); kinds: pickup, laser, explosion, powerup, hit, jump, blip, step, click. A sprite (sprite=<kind>) is an art script (assets/<name>.art.luau, rows of text or a few lines of drawing under a palette), answered with its frames and clips; kinds: creature, character, item, tile, plant, rock.",
         params: &[
             req("name", STRING, "the asset's name, its path under assets/ without .toml: sfx/jump"),
-            opt("sound", STRING, "the kind: pickup, laser, explosion, powerup, hit, jump, blip, step, click"),
+            opt("sound", STRING, "a sound's kind: pickup, laser, explosion, powerup, hit, jump, blip, step, click"),
+            opt("sprite", STRING, "a sprite's kind: creature, character, item, tile, plant, rock"),
             opt("from", STRING, "instead of a kind, a sound there is (made of a tone) to vary"),
             opt("vary", NUMBER, "with from, how far each control moves, a share of itself; default 0.1"),
             opt("seed", INTEGER, "picks within the kind's ranges; default 1"),
         ],
-        returns: "{name, file, exists, text, heard: {text, seconds, peak_db, ...}}",
+        returns: "{name, file, exists, text, heard: {text, seconds, peak_db, ...}} for a sound; {name, file, exists, text, drawn: {frames, sizes, clips}} for a sprite",
+    },
+    MethodDoc {
+        name: "asset.preview",
+        doc: "A sprite's frames in a row, scaled up on a checkerboard so its clear pixels show, written as a PNG to look at (.argus/previews/<name>.png). Any sprite: a PNG's, an Aseprite file's, an art script's.",
+        params: &[
+            req("name", STRING, "the sprite's asset name: sprites/slime"),
+            opt("scale", INTEGER, "pixels a pixel; default to about 384 tall, at most 8"),
+        ],
+        returns: "{name, path, frames, scale, clips}",
     },
     MethodDoc {
         name: "scene.transition",

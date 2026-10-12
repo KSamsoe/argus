@@ -288,6 +288,21 @@ effects = \"actor:Health.cur = 4\"
     let (is_err, _, got, _) = m.tool("edit", json!({ "undo": true }));
     assert!(!is_err, "{got}");
     assert!(!m.root.join("assets/sfx/zap.toml").exists(), "undone");
+    // A sprite: an art script, imported, and its picture in the answer.
+    let (is_err, _, got, content) = m.tool(
+        "generate",
+        json!({ "name": "sprites/blob", "sprite": "creature", "seed": 3 }),
+    );
+    assert!(!is_err, "{got}");
+    assert!(m.root.join("assets/sprites/blob.art.luau").exists());
+    assert_eq!(got["drawn"]["clips"], json!(["idle", "walk"]));
+    assert_eq!(got["imported"], json!(["sprites/blob"]), "{got}");
+    assert!(
+        content
+            .iter()
+            .any(|c| c["type"] == "image" && c["mimeType"] == "image/png"),
+        "the picture is in the answer"
+    );
     let (is_err, _, got, _) = m.tool("test", json!({ "name": "no scenario is called this" }));
     assert!(!is_err, "{got}");
 
