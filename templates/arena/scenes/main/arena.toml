@@ -3,13 +3,14 @@
 # from its edges (sim.waves). Make it bigger here, and make the wall
 # (wall.toml) and the camera's height (camera.toml) bigger to match; the
 # floor's picture stretches, so redraw it at the new size too (ARENA_W and
-# ARENA_H in tools/art.py).
+# ARENA_H in assets/sprites/room.art.luau).
 #
 # It also holds the wave director: change the waves' numbers here.
 [Transform]
 pos = [0.0, 0.0]
 
-# The floor's picture: frame 0 of sprites/room (tools/art.py draws it).
+# The floor's picture: frame 0 of sprites/room (assets/sprites/room.art.luau
+# draws it).
 [Sprite]
 atlas = "sprites/room"
 frame = 0

@@ -30,7 +30,7 @@ and minus and equals zoom.
   and their priorities, `colony.toml` is the stockpile and its rules, and
   the bushes, trees, and colonists are small files made from `prefabs/`.
 - `prefabs/`: what a colonist, a bush, and a tree are.
-- `assets/`, `ui.toml`, and `tools/art.py`: the art (below).
+- `assets/` and `ui.toml`: the art (below).
 - `tests/`: the scenarios that keep the core loop working. Run them with
   `argus test`.
 
@@ -41,20 +41,38 @@ why=job.idle` says why a colonist has nothing to do.
 
 ## The art
 
-Everything is drawn by `tools/art.py` (standard-library Python): it
-writes the PNGs in `assets/`, with a sidecar `.toml` beside each saying
-how it is cut into frames. Run `python tools/art.py` after changing it and
-a running game picks the new pictures up. The PNGs are kept here too, so
-the game runs without Python, and a release build leaves `tools/` out.
+Four art scripts draw it: Luau files in `assets/` the engine runs to
+make each picture, so changing the art needs nothing but Argus. Change
+one and save it, and the game shows the change while it runs. A release
+build carries the pictures, not the scripts.
 
-- `sprites/ground.png`: the grass, one picture under the whole meadow.
-- `sprites/colonists.png`: a row of 16 poses for each colonist (standing,
-  walking, carrying, picking, chopping, eating, walking away).
-- `sprites/meadow.png`: everything else in one sheet: bushes and trees in
-  each stage of growing back, the goods, the store, the woodpile and
-  baskets, the pond, the yard. Its sidecar names every frame.
-- `ui/panel.png`: the wooden panel behind the HUD and the pause screen
-  (`scenes/main/paused.toml`); `ui.toml` has the words' colours.
+- `assets/sprites/ground.art.luau`: the grass, one picture under the
+  whole meadow, with tufts, flowers, and stones; its `SEED` picks other
+  grass.
+- `assets/sprites/colonists.art.luau`: a row of 16 poses for each
+  colonist (standing, walking, carrying, picking, chopping, eating,
+  walking away), drawn as rows of text, one character a pixel.
+- `assets/sprites/meadow.art.luau`: everything else in one sprite:
+  bushes and trees in each stage of growing back, the goods, the store,
+  the woodpile and baskets, the pond, the yard. The list at its bottom
+  numbers every frame.
+- `assets/ui/panel.art.luau`: the wooden panel behind the HUD and the
+  pause screen (`scenes/main/paused.toml`); `ui.toml` has the words'
+  colours.
+- `assets/shared.lib.luau`: not a picture but a module the scripts take
+  with `require("shared")`: the colours more than one of them draws with
+  (the outline, the shadow, grass, flowers, stone, wood, steel, baskets,
+  berries) and the helpers they draw by. Change it and every script that
+  uses it draws again.
+
+The sprites are 9 pixels to a world unit, and the camera shows 20 units
+top to bottom, so on a 960 x 540 screen each pixel is drawn 3 x 3 (the
+UI draws the panel at twice its pixels). To use art from a paint
+program, put a PNG of the same name (with a `.toml` beside it cutting it
+into the same frames, at the same pixels a unit) in place of a script;
+nothing else needs to change.
+`argus docs presentation section=Art scripts` says what a script can
+draw.
 
 The scenes and prefabs name these pictures; `systems/looks.luau` picks
 each frame from what the colony's systems decided (a bush's growth, a
@@ -63,11 +81,15 @@ how the colony plays. At night it turns up the lantern's `Light` at the
 store (the camera's `Lighting` makes lights count), and when a tree is
 chopped it bursts wood chips (`assets/fx/chips.toml`).
 
-To change first: the palette at the top of `tools/art.py` (every colour
-has a name) and the colonists' clothes and hair (`PEOPLE` there). A new
-colonist with another name gets a row by the length of their name; give
-them their own by adding them to `PEOPLE` and to `ROW` in
-`systems/looks.luau`.
+To change first: the palette (every colour has a name). The colours
+several pictures share are in `assets/shared.lib.luau`, so recolouring
+the grass or the wood is one edit there (the darkest grass also shows
+past the meadow, as the `Background` in `scenes/main/camera.toml`); the
+rest are at the top of the script that draws them. Then the colonists'
+clothes and hair (`PEOPLE` in
+`assets/sprites/colonists.art.luau`). A new colonist with another name
+gets a row by the length of their name; give them their own by adding
+them to `PEOPLE` and to `ROW` in `systems/looks.luau`.
 
 ## Ideas for what to add next
 

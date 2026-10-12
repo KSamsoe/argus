@@ -1,8 +1,0 @@
-# The meadow's grass, one picture of 40 x 24 world units (360 x 216 pixels,
-# 9 a unit, on a sheet padded to 512 x 256): the 32 x 18 the colonists walk
-# on and a border of long grass. Drawn by tools/art.py (SEED picks other
-# grass); scenes/main/ground.toml shows it.
-pixels_per_unit = 9
-
-[[frames]]
-rect = [0, 0, 360, 216]

@@ -1,7 +1,7 @@
 # The sky: one big sprite behind everything (lowest z), the size of the
 # scene's bounds. Its picture is a single column of colours, deep blue at
-# the top to pale at the horizon (frame 0 of assets/backdrop, tools/art.py),
-# stretched across the whole level.
+# the top to pale at the horizon (frame 0 of assets/backdrop, drawn by
+# assets/backdrop.art.luau), stretched across the whole level.
 [Transform]
 pos = [24.5, 4.0]
 

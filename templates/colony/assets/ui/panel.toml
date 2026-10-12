@@ -1,4 +1,0 @@
-# The wooden panel the HUD (scenes/main/hud.toml) and the pause screen
-# (scenes/main/paused.toml) sit on: 16 x 16 pixels, nine-sliced at 4 (their
-# UiPanel's slice), drawn at twice its pixels (scale). Drawn by tools/art.py.
-grid = [1, 1]

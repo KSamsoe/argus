@@ -24,17 +24,16 @@ The engine does the running, jumping, and colliding. Your scripts only say what 
 
 ## The art
 
-Every picture is pixel art drawn by one file, `tools/art.py`, which writes the PNGs into `assets/` with a sidecar `.toml` beside each saying how it is cut into frames. The art is 15 pixels to a world unit, so on a 960 x 540 screen each pixel of it is 3.
+Three art scripts draw every picture: Luau files the engine runs to make each one, so changing the art needs nothing but Argus. Change one and save it, and the game shows the change while it runs. A release build carries the pictures, not the scripts. The art is 15 pixels to a world unit, so on a 960 x 540 screen each pixel of it is 3.
 
-- `assets/sprites.png` is everything in the level, one atlas: the hero's frames, the coin turning, the flag waving, its pole, the spikes, the ground's tiles, and a sparkle. Its sidecar lists the frames by number and names the clips.
-- `assets/backdrop.png` is the sky's colours and three strips behind the level: clouds, far hills, and near hills with trees.
-- `assets/ui/panel.png` is the frame round the HUD and the pause panel.
+- `assets/sprites.art.luau` draws everything in the level, one sprite of 36 frames: the hero's frames, the coin turning, the flag waving, its pole, the spikes, the ground's tiles, and a sparkle. Its first lines list the frames by number (the game picks them by number, so keep them in that order), and it names the clips the animators play.
+- `assets/backdrop.art.luau` draws the sky's colours and three strips behind the level: clouds, far hills, and near hills with trees.
+- `assets/ui/panel.art.luau` draws the frame round the HUD and the pause panel, as rows of text.
+- `assets/shared.lib.luau` is a module, not a picture: what the sprites and backdrop scripts share, which each takes with `require("shared")`. It holds the art's scale (15 pixels a unit) and the helpers that round numbers and mix colours. Change it and both scripts draw again; a release leaves it out.
 - `assets/anim/` holds the animators that pick frames: `hero.toml` (idle, run, jump, fall, land, from how the hero's body moves), `coin.toml`, and `flag.toml`. `assets/fx/` holds the particle effects: dust where the hero jumps and lands, sparkles where a coin is taken and at the flag.
 - `systems/looks.luau` puts it together. It lays grass and earth tiles over every solid block (planks over a one-way one), so a block you add, of any size, is dressed with no art of its own. It slides the backdrop layers (`scenes/level/clouds.toml`, `hills.far.toml`, `hills.near.toml`, each with a `Parallax` from `components/looks.luau`) slower than the level, so they look far away. It turns the hero to face the way it runs, and bursts the dust and the sparkles.
 
-To remake the art, run `python tools/art.py` from this folder (Python 3, nothing to install). It writes the same files every time, so you can change one thing and see only that change.
-
-What to change first: the colours. They are named at the top of `tools/art.py` (`CAP`, `TUNIC`, `GRASS`, `EARTH`, `SKY`, ...); change one and run it. Then the shapes: the hero is drawn as rows of letters, one a pixel (`HEAD`, `BODIES`, `LEGS`), so you can redraw it in a text editor. To use art of your own instead, replace a PNG and keep its frames where the sidecar says, or give `[Sprite]` an `atlas` of your own. A release leaves `tools/` out.
+What to change first: the colours. They are named at the top of each script (`CAP`, `TUNIC`, `GRASS`, `EARTH`, `SKY`, ...); change one and save it. Then the shapes: the hero is drawn as rows of letters, one a pixel (`HEAD`, `BODIES`, `LEGS` in `assets/sprites.art.luau`), so you can redraw it in a text editor. The grass and earth tiles and the trees are laid at random from seeds, so they come out the same every time; change a seed and they come out another way. To use art from a paint program instead, put `sprites.png` (with a `sprites.toml` cutting it into the same frames, in the same order, and naming the same clips) in place of `sprites.art.luau`, and the same for the others, or give `[Sprite]` an `atlas` of your own. `argus docs presentation section=Art scripts` says what a script can draw, and `argus docs files section=art.luau` how scripts share a module.
 
 ## Ideas for what to add next
 

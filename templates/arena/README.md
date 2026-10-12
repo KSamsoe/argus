@@ -34,23 +34,24 @@ A top-down arena shooter start. You walk the hero (the gunner in the yellow helm
 
 ## The art
 
-All the pictures are drawn by one script, `tools/art.py`, as pixel grids and by simple rules, and the PNGs it writes are kept in `assets/`. You only need Python (no extra packages) to change them: edit the script, then run `python tools/art.py` from the project's folder. It writes the same files every time.
+Three art scripts and a module they share draw all the pictures, as pixel grids and by simple rules: Luau files the engine runs to make each picture, so changing the art needs nothing but Argus. Change one and save it, and the game shows the change while it runs. They draw the same every time (what looks random comes from fixed seeds). A release build carries the pictures, not the scripts.
 
-- `assets/sprites/actors.png` holds the hero (three views, two steps each, a hit flash, fallen), the enemy (two steps, and cracked once hit), the bullet, the braziers, and the specks the effects are made of. `actors.toml` beside it lists the frames by number.
-- `assets/sprites/room.png` holds the floor and the walls. `arena.toml` draws the floor, `wall.toml` the walls.
-- `assets/ui/panel.png` is the frame the HUD and the menus sit in.
+- `assets/sprites/actors.art.luau` draws the hero (three views, two steps each, a hit flash, fallen), the enemy (two steps, and cracked once hit), the bullet, the braziers, and the specks the effects are made of, in one sprite. The list at its end numbers the frames.
+- `assets/sprites/room.art.luau` draws the floor and the walls. `arena.toml` draws the floor, `wall.toml` the walls. Its seeds pick another floor and other walls.
+- `assets/ui/panel.art.luau` draws the frame the HUD and the menus sit in, as rows of text.
+- `assets/shared.lib.luau` is not a picture but a module the scripts take with `require("shared")`: the hero's yellow, which the frame's corners are too, and the colour arithmetic the actors and the room both draw by. Save it and every picture that takes it is drawn again.
 - `assets/fx/` holds the effects (`spark`, `puff`, `flame`) and two materials: `glow` (drawn added, for the bullets and fire) and `body` (the hero and enemies at full colour, however dark the room).
 
 The enemies and bullets spawn as plain shapes in their prefabs' colours. `systems/looks.luau` swaps in the pictures, keeping those colours as the tint, so a different colour in `prefabs/enemy.toml` still changes the enemies. It also picks the frames each tick: the hero turns toward what it shoots at, steps while it walks, and flashes when hit. Each enemy walks, faces the hero, and has a shadow. It starts the sparks where a bullet hits and a puff where an enemy dies. It reads the game and writes only how things look, so the game plays the same without it.
 
 What to change first:
 
-- **Colours**: the named colours at the top of `tools/art.py` (floor, walls, the hero's palette), then run it. The UI's colours are in `ui.toml`.
-- **The hero or the enemy**: their pictures in `tools/art.py`, one letter a pixel.
+- **Colours**: the named colours at the top of each script (the floor and walls in `room.art.luau`, the hero's and the enemy's palettes in `actors.art.luau`, the frame's in `panel.art.luau`), and the hero's yellow in `shared.lib.luau`. The UI's colours are in `ui.toml`.
+- **The hero or the enemy**: their pictures in `assets/sprites/actors.art.luau`, one letter a pixel.
 - **The light**: `Lighting` in `camera.toml` (how dark the room is), the hero's `Light` in `player.toml`, and the braziers in `braziers.toml`.
-- **A bigger arena**: change the sizes in `arena.toml`, `wall.toml`, and the camera's height, then set `ARENA_W` and `ARENA_H` in `tools/art.py` to match and run it, so the floor is drawn at the new size.
+- **A bigger arena**: change the sizes in `arena.toml`, `wall.toml`, and the camera's height, then set `ARENA_W` and `ARENA_H` in `assets/sprites/room.art.luau` to match, so the floor is drawn at the new size.
 
-The art is drawn at 12 pixels a world unit, and the camera shows 24 screen pixels a unit at 960 x 540. Each art pixel is two screen pixels, so it stays sharp. Keep the camera's height at 22.5, or another height that keeps that ratio a whole number.
+The art is drawn at 12 pixels a world unit, and the camera shows 24 screen pixels a unit at 960 x 540. Each art pixel is two screen pixels, so it stays sharp. Keep the camera's height at 22.5, or another height that keeps that ratio a whole number. To use art from a paint program, put a PNG in place of a script (`sprites/actors.png`, with an `actors.toml` beside it cutting it into the same frames in the same order); nothing else needs to change. `argus docs presentation section=Art scripts` says what a script can draw.
 
 ## Ideas for what to add next
 

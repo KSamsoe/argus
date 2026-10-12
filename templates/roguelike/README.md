@@ -51,22 +51,30 @@ A turn runs in this order: `sim.dungeon` (only when a run starts), then
 
 ## The art
 
-Everything you see is pixel art drawn by `tools/art.py`, a Python script
-(standard library only) that writes the PNGs in `assets/` and the sidecar
-`.toml` beside each, which cuts it into frames. The PNGs are kept in the
-project, so you need Python only to change them. To remake them after an
-edit, run `python tools/art.py` from the project's folder; it writes the
-same files every time.
+Everything you see is pixel art drawn by four art scripts in `assets/`
+and a module they share: Luau files the engine runs to make each picture,
+so changing the art needs nothing but Argus. Change one and save it, and
+the game shows the change while it runs. A release build carries the
+pictures, not the scripts.
 
-- `assets/tiles/dungeon.png`: the dungeon's tiles, 16 x 16 pixels a cell:
-  flagstones, brick wall faces (some with a torch), the rock beside a room,
-  the shadow a wall casts, and what a fight leaves. Its sidecar lists every
-  frame.
-- `assets/sprites/creatures.png`: a row each for the hero, the rat, the
-  goblin, and a bat (drawn, not in the game yet): two idle frames, a hit
-  flash, and a bite (the hero's fourth is fallen).
-- `assets/ui/panel.png` and `plate.png`: the plates the HUD, the pause
-  screen, and the message line sit on. `ui.toml` holds the text colours.
+- `assets/tiles/dungeon.art.luau`: the dungeon's tiles, 16 x 16 pixels a
+  cell: flagstones, brick wall faces (some with a torch), the rock beside a
+  room, the shadow a wall casts, and what a fight leaves. The list of its
+  frames is at its top, and its `SEED` picks other stones and specks.
+- `assets/sprites/creatures.art.luau`: a row of four frames each for the
+  hero, the rat, the goblin, and a bat (drawn, not in the game yet): two
+  idle frames, a hit flash, and a bite (the hero's fourth is fallen). Each
+  creature is drawn once, as rows of text; its four frames are made from
+  that picture.
+- `assets/ui/panel.art.luau` and `plate.art.luau`: the plates the HUD, the
+  pause screen, and the message line sit on. `ui.toml` holds the text
+  colours.
+- `assets/shared.lib.luau`: not a picture but a module the scripts share,
+  each taking it with `require("shared")`. It holds the colours more than
+  one picture uses (the line round the creatures, the creatures' colours
+  their remains reuse, the plates' dark stone and iron) and the colour
+  mixing the scripts draw with. Change a colour there and save, and every
+  picture that uses it is drawn again. A release build leaves it out.
 
 `systems/look.luau` puts the art on the game. When a run begins it paints
 the map's stone and shade layers from its walls, so a dungeon you redraw
@@ -75,10 +83,14 @@ monsters' frames: the idle frames swap, a creature flashes when hit, and
 monsters face the hero. A monster kind it has no art for stays the plain
 coloured circle `systems/dungeon.luau` gives it.
 
-What to change first: the colours at the top of `tools/art.py`, then the
-creatures' pictures below them, where one character is one pixel. A new
-monster is a new row of pictures in `art.py` and a line in `look.luau`'s
-`ROWS`.
+What to change first: the colours at the top of each script (and the
+shared ones in `shared.lib.luau`), then the creatures' pictures in
+`creatures.art.luau`, where one character is one pixel. A new monster is a
+new picture there, its row of frames added after the bat's, and a line in
+`look.luau`'s `ROWS`. To use art from a paint program, put a PNG in a
+script's place, with a sidecar `.toml` beside it cutting it into the same
+frames in the same order; nothing else needs to change. `argus docs
+presentation section="Art scripts"` says what a script can draw.
 
 ## Ideas for what to add next
 

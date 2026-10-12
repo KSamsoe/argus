@@ -21,10 +21,11 @@ range = 12.0
 cur = 5
 max = 5
 
-# Its picture: a frame of sprites/actors (tools/art.py draws them), which
-# systems/looks.luau picks each tick, drawn at its own colour whatever the
-# light (fx/body). The size is also the hero's body: sim.move keeps it
-# inside the walls by it, so change it only with that in mind.
+# Its picture: a frame of sprites/actors (assets/sprites/actors.art.luau
+# draws them), which systems/looks.luau picks each tick, drawn at its own
+# colour whatever the light (fx/body). The size is also the hero's body:
+# sim.move keeps it inside the walls by it, so change it only with that in
+# mind.
 [Sprite]
 atlas = "sprites/actors"
 frame = 3

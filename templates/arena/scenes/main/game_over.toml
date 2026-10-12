@@ -1,7 +1,8 @@
 # "Game over", in the middle of the screen: hidden until the hero dies
 # (systems/hits.luau shows it, systems/restart.luau hides it again). The
-# canvas dimmed, a panel in the HUD's frame (ui/panel.png), and three
-# lines; the colours are ui.toml's.
+# canvas dimmed, a panel in the HUD's frame (ui/panel, which
+# assets/ui/panel.art.luau draws), and three lines; the colours are
+# ui.toml's.
 [UiRoot]
 interactive = false
 layer = 10

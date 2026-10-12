@@ -1,5 +1,6 @@
 # The pause panel's words, a child of @pause, so it shows and hides with it.
-# On the HUD's panel (assets/ui/panel.png, nine-sliced as hud.toml says).
+# On the HUD's panel (assets/ui/panel.art.luau draws it), nine-sliced as
+# hud.toml says.
 [Parent]
 entity = "@pause"
 

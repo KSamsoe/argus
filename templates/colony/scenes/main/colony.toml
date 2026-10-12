@@ -20,8 +20,8 @@ slot = 1
 pos = [16.0, 9.0]
 
 # The stockpile's yard, trodden earth where goods are set down, a path worn
-# up to the store (a frame of sprites/meadow, drawn by tools/art.py), flat
-# on the ground.
+# up to the store (a frame of sprites/meadow, drawn by
+# assets/sprites/meadow.art.luau), flat on the ground.
 [Sprite]
 atlas = "sprites/meadow"
 frame = 32

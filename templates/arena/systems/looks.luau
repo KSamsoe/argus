@@ -18,9 +18,10 @@
 -- - throws sparks where a bullet hits (fx/spark), and a puff of dust where
 --   an enemy was when it died (fx/puff).
 --
--- The pictures are frames of sprites/actors, numbered as tools/art.py
--- lists them (sprites/actors.toml says which is which). To change a look,
--- change a number below, or a picture in tools/art.py.
+-- The pictures are frames of sprites/actors, numbered as the list at the
+-- end of assets/sprites/actors.art.luau has them (it says which is
+-- which). To change a look, change a number below, or a picture in that
+-- script.
 
 local ATLAS = "sprites/actors"
 local BODY = "fx/body" -- drawn at its own colour, however dark the room

@@ -1,9 +1,9 @@
 -- How the colony looks. Presentation only: the colony's systems decide
--- everything, and this gives what they decided the art tools/art.py draws,
--- each tick, by what everyone is doing. It writes nothing a gameplay system
--- reads (only Sprite, Light, and the pause screen's UiNode), and it spawns
--- nothing: the job system breaks ties by entity id, so the colony's own
--- spawns keep the ids they always had.
+-- everything, and this gives what they decided the art the scripts in
+-- assets/ draw, each tick, by what everyone is doing. It writes nothing a
+-- gameplay system reads (only Sprite, Light, and the pause screen's
+-- UiNode), and it spawns nothing: the job system breaks ties by entity id,
+-- so the colony's own spawns keep the ids they always had.
 --
 -- - Colonists: their row of sprites/colonists by name, walking the way they
 --   go (from behind when it is up the screen), carrying goods over their
@@ -26,13 +26,15 @@
 
 local MEADOW = "sprites/meadow"
 
--- sprites/colonists: a row a colonist, 16 poses a row (its sidecar).
+-- sprites/colonists: a row a colonist, 16 poses a row
+-- (assets/sprites/colonists.art.luau draws them).
 local POSES = 16
 local ROW = { Ada = 0, Bram = 1, Cleo = 2, Dov = 3 }
 local STAND, WALK, CARRY, CARRY_WALK, PICK, CHOP, EAT = 0, 1, 3, 4, 6, 8, 10
 local AWAY, CARRY_AWAY = 12, 14 -- walking up the screen, seen from behind
 
--- Frames of sprites/meadow (its sidecar lists them, in this order).
+-- Frames of sprites/meadow (assets/sprites/meadow.art.luau draws them, in
+-- this order).
 local BUSH = 0 -- picked, in flower, green berries, ripe
 local OAK, FIR = 4, 10 -- grown, shaken, young, sapling, shoot, stump
 local GOODS = { food = 16, wood = 17 } -- 2 more when carried

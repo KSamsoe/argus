@@ -1,3 +1,0 @@
-# The HUD's and the pause panel's frame, 16 x 16 pixels: written by
-# tools/art.py with panel.png. scenes/level/hud.toml nine-slices it at
-# 4 pixels (UiPanel slice), drawn 3 canvas pixels to each of its own.

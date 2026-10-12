@@ -2,7 +2,7 @@
 -- decide everything; this one dresses what they decided, in the late stage
 -- after the turn's rules have run. It never changes a cell the game reads
 -- (the tilemap's floor and walls layers) and draws on no random stream.
--- The pictures are tools/art.py's, in assets/.
+-- The pictures are drawn by the art scripts in assets/.
 --
 -- - The map. When a run begins (sim.dungeon's run.new event) it paints the
 --   two look layers of @dungeon's tilemap from its walls: "stone" gets
@@ -21,8 +21,8 @@
 -- What to change first: ROWS when you draw a new monster, SLABS for more or
 -- fewer cracked and mossy stones, TORCHES for more or fewer torches.
 
--- Tiles of tiles/dungeon (tile n is frame n - 1; the frames are listed in
--- assets/tiles/dungeon.toml).
+-- Tiles of tiles/dungeon (tile n is frame n - 1; the frames are listed at
+-- the top of assets/tiles/dungeon.art.luau).
 local TOP, FACE = 9, 17 -- TOP + mask (0-7), FACE + sides (0-3)
 local FACE_MOSS, TORCH_LIGHT, DEEP, FACE_TORCH = 21, 22, 23, 24
 local SHADE_N, SHADE_W, SHADE_NW, SHADE_C = 25, 26, 27, 28

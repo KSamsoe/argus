@@ -10,7 +10,7 @@ gives = "food"
 yield = 2.0
 regrow_days = 1.0
 # The colours its Sprite is tinted ripe and picked, and its goods'. White
-# draws the art as tools/art.py painted it.
+# draws the art as assets/sprites/meadow.art.luau painted it.
 ripe_color = "#FFFFFF"
 bare_color = "#FFFFFF"
 drop_color = "#FFFFFF"

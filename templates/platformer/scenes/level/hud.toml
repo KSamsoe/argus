@@ -1,6 +1,6 @@
 # The line at the top left of the screen: a UI tree of one node, on the
 # screen rather than in the world. systems/hud.luau writes its words.
-# Its panel is assets/ui/panel.png (tools/art.py), nine-sliced: the 4
+# Its panel is assets/ui/panel (assets/ui/panel.art.luau), nine-sliced: the 4
 # pixels round its edge keep their size while the middle stretches to fit
 # the words, each of its pixels drawn 3 canvas pixels wide, as the level's
 # art is.

@@ -1,6 +1,6 @@
 # A coin turning round and round: one state, playing the coin clip of
 # assets/sprites (prefabs/coin.toml names this machine). The clip's speed
-# is its fps in tools/art.py.
+# is its fps in assets/sprites.art.luau.
 type = "animator"
 
 [states.spin]

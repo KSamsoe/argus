@@ -1,4 +1,0 @@
-# The plate the HUD and the pause screen sit on: dark stone in an iron frame.
-# Nine-sliced at 4 pixels and drawn at twice its size (UiPanel slice and scale).
-# Written by tools/art.py with the picture: to change either, change art.py and run it again.
-grid = [1, 1]

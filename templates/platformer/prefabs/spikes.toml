@@ -1,9 +1,9 @@
 # A row of spikes, about two units wide: touching it sends the hero back to
 # the start (the Hazard; systems/hazards.luau). The Collider is the touch,
 # flat along the ground. The Sprite is the picture: four steel teeth with
-# red tips, a frame of assets/sprites (tools/art.py). That frame's pivot is
-# the middle of its foot (assets/sprites.toml), so the teeth stand on the
-# ground where the Transform is.
+# red tips, a frame of assets/sprites (assets/sprites.art.luau draws it).
+# That frame's pivot is the middle of its foot (the script says so), so the
+# teeth stand on the ground where the Transform is.
 [Sprite]
 atlas = "sprites"
 frame = 22

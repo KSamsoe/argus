@@ -9,7 +9,7 @@ absolute = true
 offset = [10.0, 10.0]
 pad = [14.0, 7.0]
 
-# On an iron-framed plate (assets/ui/panel.png, drawn by tools/art.py):
+# On an iron-framed plate (drawn by assets/ui/panel.art.luau):
 # its outer 4 pixels keep their size and its middle stretches (a
 # nine-slice), at two screen pixels an image pixel.
 [UiPanel]

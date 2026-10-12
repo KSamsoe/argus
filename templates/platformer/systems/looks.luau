@@ -1,8 +1,8 @@
 -- How the level looks. Presentation only: it reads the game (where the
 -- blocks are, how the hero moves, what happened this tick) and writes only
 -- what is drawn, so taking this file out changes how the game looks and
--- nothing about how it plays. The pictures are assets/sprites.png and
--- assets/backdrop.png, drawn by tools/art.py.
+-- nothing about how it plays. The pictures are assets/sprites and
+-- assets/backdrop, drawn by assets/sprites.art.luau and backdrop.art.luau.
 --
 -- - The blocks. Every solid block still drawn as a plain rectangle (a
 --   Sprite with no atlas, as prefabs/platform.toml has) is dressed: tiles
@@ -23,8 +23,8 @@
 -- for the view this tick shows.
 
 local ATLAS = "sprites"
--- Frames of assets/sprites.png, in the order tools/art.py writes them
--- (assets/sprites.toml lists them).
+-- Frames of assets/sprites, in the order assets/sprites.art.luau draws
+-- them (its first lines list them).
 local GRASS, GRASS_KINDS = 23, 3
 local EARTH, EARTH_KINDS = 26, 5
 local EDGE, CORNER, UNDERSIDE, PLANK = 31, 32, 33, 34

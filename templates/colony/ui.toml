@@ -1,5 +1,5 @@
-# The colony's UI theme: cream words on the dark wood of ui/panel.png
-# (drawn by tools/art.py), in the built-in pixel font, on the default
+# The colony's UI theme: cream words on the dark wood of ui/panel (drawn
+# by assets/ui/panel.art.luau), in the built-in pixel font, on the default
 # 960 x 540 canvas. The HUD (scenes/main/hud.toml) and the pause screen
 # (scenes/main/paused.toml) use it.
 #

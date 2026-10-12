@@ -1,9 +1,10 @@
 # Which of the hero's frames shows: a state machine on its Sprite
 # (scenes/level/player.toml names it). Each state plays a clip of
-# assets/sprites (its sidecar names the clips), and leaves by the first
-# transition whose condition holds. The conditions read the engine's
-# KinematicBody: standing on something, and how fast it moves. What to
-# change first: a clip's fps in tools/art.py, or a speed below.
+# assets/sprites (assets/sprites.art.luau draws the frames and names the
+# clips), and leaves by the first transition whose condition holds. The
+# conditions read the engine's KinematicBody: standing on something, and
+# how fast it moves. What to change first: a clip's fps in
+# assets/sprites.art.luau, or a speed below.
 type = "animator"
 initial = "idle"
 

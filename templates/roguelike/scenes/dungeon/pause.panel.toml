@@ -1,6 +1,6 @@
 # The pause screen's plate, a child of @pause: the HUD's iron-framed panel
-# (assets/ui/panel.png, nine-sliced at twice its pixels), its words in a
-# column (pause.title.toml over pause.text.toml).
+# (assets/ui/panel.art.luau, nine-sliced at twice its pixels), its words
+# in a column (pause.title.toml over pause.text.toml).
 [Parent]
 entity = "@pause"
 

@@ -3,8 +3,8 @@
 # the touch. Each coin in the level is a file with prefab = "coin" and a
 # Transform saying where it is.
 #
-# It is drawn turning: frames of assets/sprites (tools/art.py draws them),
-# played round and round by the animator assets/anim/coin.toml.
+# It is drawn turning: frames of assets/sprites (assets/sprites.art.luau
+# draws them), played round and round by the animator assets/anim/coin.toml.
 [Sprite]
 atlas = "sprites"
 frame = 9

@@ -1,8 +1,8 @@
 # The flag at the end, on the ledge: touching it finishes the run
 # (systems/goal.luau). This entity is the pole and the touch; the cloth is
 # goal.flag.toml, a child placed relative to it. The pole is a frame of
-# assets/sprites (tools/art.py): a gold knob, a white pole, a stone foot,
-# three units tall as the Collider is.
+# assets/sprites (assets/sprites.art.luau): a gold knob, a white pole, a
+# stone foot, three units tall as the Collider is.
 [Transform]
 pos = [46.0, 4.0]
 

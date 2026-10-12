@@ -10,8 +10,8 @@ pos = [0.7, 0.95]
 # Where the engine puts it in the world, worked out from the parent's.
 [GlobalTransform]
 
-# Four frames of assets/sprites (tools/art.py), waving: the animator
-# assets/anim/flag.toml plays them round and round.
+# Four frames of assets/sprites (assets/sprites.art.luau draws them),
+# waving: the animator assets/anim/flag.toml plays them round and round.
 [Sprite]
 atlas = "sprites"
 frame = 17

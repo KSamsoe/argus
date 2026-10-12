@@ -18,9 +18,9 @@ atk = 2
 cur = 20
 max = 20
 
-# Drawn from sprites/creatures (tools/art.py draws it): the first row of
-# the sheet. systems/look.luau picks its frame each turn and turns it the
-# way it last stepped.
+# Drawn from sprites/creatures (assets/sprites/creatures.art.luau draws
+# it): its first row of four frames. systems/look.luau picks its frame
+# each turn and turns it the way it last stepped.
 [Sprite]
 atlas = "sprites/creatures"
 size = [1.0, 1.0]

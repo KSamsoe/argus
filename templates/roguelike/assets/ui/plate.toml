@@ -1,4 +1,0 @@
-# The message line's plate: the HUD's dark with a thin cold edge.
-# Nine-sliced at 3 pixels and drawn at twice its size (UiPanel slice and scale).
-# Written by tools/art.py with the picture: to change either, change art.py and run it again.
-grid = [1, 1]

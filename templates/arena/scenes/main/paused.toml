@@ -1,6 +1,7 @@
 # "Paused", in the middle of the screen: hidden until the pause action
 # (systems/pause.luau) shows it. The whole canvas, dimmed, with a panel in
-# its centre in the HUD's frame (ui/panel.png); the colours are ui.toml's.
+# its centre in the HUD's frame (ui/panel, which assets/ui/panel.art.luau
+# draws); the colours are ui.toml's.
 [UiRoot]
 interactive = false
 layer = 10

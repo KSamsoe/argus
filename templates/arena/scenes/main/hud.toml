@@ -1,10 +1,11 @@
 # The HUD: one line of text at the top left of the screen, in the frame
-# the pause and game over screens use too (ui/panel.png, nine-sliced: its
-# corners keep their size, drawn two canvas pixels a pixel, as the art
-# is). The {...} holes are filled from the world every frame
-# ({@arena:Waves.wave} is @arena's Waves.wave), so no script writes it.
-# Add a number to the HUD by adding a hole here. UI sizes are pixels on a
-# 960 x 540 canvas; the colours are ui.toml's.
+# the pause and game over screens use too (ui/panel, which
+# assets/ui/panel.art.luau draws; nine-sliced: its corners keep their
+# size, drawn two canvas pixels a pixel, as the art is). The {...} holes
+# are filled from the world every frame ({@arena:Waves.wave} is @arena's
+# Waves.wave), so no script writes it. Add a number to the HUD by adding a
+# hole here. UI sizes are pixels on a 960 x 540 canvas; the colours are
+# ui.toml's.
 [UiRoot]
 interactive = false
 layer = 1

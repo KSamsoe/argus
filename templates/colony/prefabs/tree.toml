@@ -7,7 +7,7 @@ gives = "wood"
 yield = 2.0
 regrow_days = 2.0
 # The colours its Sprite is tinted standing and felled, and its logs'.
-# White draws the art as tools/art.py painted it.
+# White draws the art as assets/sprites/meadow.art.luau painted it.
 ripe_color = "#FFFFFF"
 bare_color = "#FFFFFF"
 drop_color = "#FFFFFF"

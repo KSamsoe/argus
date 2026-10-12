@@ -2,7 +2,7 @@
 # 29.5, the HUD over the dark above it and the message line below. height
 # is how many cells tall the view is; the view is 16:9, so 16.875 cells
 # tall is 30 wide, 32 screen pixels a cell at 960 x 540: every pixel of
-# the 16-pixel art (tools/art.py) is two, and stays sharp.
+# the 16-pixel art (the art scripts in assets/) is two, and stays sharp.
 #
 # For a dungeon bigger than the screen, make it follow the hero: delete
 # this file and put a [Camera] with a smaller height in player.toml (a
@@ -14,6 +14,7 @@ pos = [14.5, 5.0]
 height = 16.875
 
 # What shows past the map's edge: the colour of the rock far from any room
-# (tools/art.py's VOID), so the edge does not show. Change both together.
+# (VOID in assets/tiles/dungeon.art.luau), so the edge does not show.
+# Change both together.
 [Background]
 color = "#0C0B10"
