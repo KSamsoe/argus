@@ -238,6 +238,17 @@ return art.sprite{ frames = { c } }
     std::fs::remove_dir_all(&dir).ok();
 }
 
+/// get answers #RRGGBB for an opaque pixel and #RRGGBBAA otherwise, and
+/// alpha how drawn a pixel is.
+#[test]
+fn get_and_alpha_read_a_pixel() {
+    let s = argus_assets::art::run(
+        "x.art.luau",
+        "local c = art.canvas(3, 1)\nc:pixel(0, 0, \"#123456\")\nc:pixel(1, 0, \"#12345680\")\nassert(c:get(0, 0) == \"#123456\" and c:get(1, 0) == \"#12345680\" and c:get(2, 0) == \"#00000000\" and c:get(5, 0) == nil)\nassert(c:alpha(0, 0) == 255 and c:alpha(1, 0) == 128 and c:alpha(2, 0) == 0 and c:alpha(-1, 0) == 0)\nreturn art.sprite{ frames = { c } }\n",
+    );
+    assert!(s.is_ok(), "{:?}", s.err().map(|e| e.message));
+}
+
 /// A clip can say its frames as a range, as a sidecar's does.
 #[test]
 fn a_clip_takes_a_range_of_frames() {

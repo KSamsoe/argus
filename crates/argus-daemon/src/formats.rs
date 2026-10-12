@@ -337,7 +337,7 @@ pub const FILES: &[FileDoc] = &[
             k("art.sprite{ pivot }", "{x, y}", "{0.5, 0.5}", "Every frame's pivot, a fraction of the frame, y up from the bottom (`{0.5, 0}` stands it on its feet)."),
             k("art.sprite{ ms }", "integer", "100", "How long a frame shows when its clip gives no fps."),
             k("art.canvas(w, h, fill)", "function", "clear", "A new canvas, filled with `fill`. Its size is `c.w`, `c.h`."),
-            k("c:pixel(x, y, color), c:get(x, y)", "methods", "", "One pixel; `get` answers `\"#RRGGBBAA\"`, or nil outside."),
+            k("c:pixel(x, y, color), c:get(x, y), c:alpha(x, y)", "methods", "", "One pixel. `get` answers its colour, `\"#RRGGBB\"` when it is opaque and `\"#RRGGBBAA\"` when it is not (`\"#00000000\"` clear), or nil outside; `alpha` answers how drawn it is, 0 (clear) to 255."),
             k("c:rect(x, y, w, h, color), c:box(x, y, w, h, color)", "methods", "", "A filled rectangle; its outline, one pixel wide."),
             k("c:line(x0, y0, x1, y1, color)", "method", "", "A line, pixel by pixel."),
             k("c:rows(x, y, rows, key)", "method", "", "Pixel art as text: `rows` a list of strings, each character a colour from `key` (`{ [\"#\"] = \"#1E3A20\", o = \"#4CAF50\" }`), drawn from (x, y); a character the key does not have (`.`) leaves its pixel as it is."),

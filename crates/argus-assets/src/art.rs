@@ -399,6 +399,10 @@ impl UserData for Canvas {
             c.put(int(x), int(y), color(&col)?);
             Ok(())
         });
+        // How drawn a pixel is: 0 clear to 255 opaque (0 outside).
+        m.add_method("alpha", |_, c, (x, y): (f64, f64)| {
+            Ok(c.at(int(x), int(y))[3])
+        });
         m.add_method("get", |_, c, (x, y): (f64, f64)| {
             let (x, y) = (int(x), int(y));
             Ok(c.inside(x, y).then(|| hex(c.at(x, y))))
