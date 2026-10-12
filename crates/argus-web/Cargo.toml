@@ -14,15 +14,15 @@ license.workspace = true
 rigid = ["argus-player/rigid"]
 
 [dependencies]
-argus-player = { path = "../argus-player", version = "0.0.5" }
-argus-os = { path = "../argus-os", version = "0.0.5" }
-argus-ecs = { path = "../argus-ecs", version = "0.0.5" }
-argus-sim = { path = "../argus-sim", version = "0.0.5" }
-argus-render = { path = "../argus-render", version = "0.0.5" }
-argus-ui = { path = "../argus-ui", version = "0.0.5" }
-argus-audio = { path = "../argus-audio", version = "0.0.5" }
-argus-input = { path = "../argus-input", version = "0.0.5" }
-argus-luau = { path = "../argus-luau", version = "0.0.5" }
+argus-player = { path = "../argus-player", version = "0.0.6" }
+argus-os = { path = "../argus-os", version = "0.0.6" }
+argus-ecs = { path = "../argus-ecs", version = "0.0.6" }
+argus-sim = { path = "../argus-sim", version = "0.0.6" }
+argus-render = { path = "../argus-render", version = "0.0.6" }
+argus-ui = { path = "../argus-ui", version = "0.0.6" }
+argus-audio = { path = "../argus-audio", version = "0.0.6" }
+argus-input = { path = "../argus-input", version = "0.0.6" }
+argus-luau = { path = "../argus-luau", version = "0.0.6" }
 serde_json = "1"
 # The determinism spike's reference (phase 5 item 11): musl's math in pure
 # Rust, the same bits on every platform; already in the tree.

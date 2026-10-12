@@ -11,10 +11,10 @@ default = ["device"]
 device = ["dep:cpal"]
 
 [dependencies]
-argus-os = { path = "../argus-os", version = "0.0.5" }
-argus-ecs = { path = "../argus-ecs", version = "0.0.5" }
-argus-sim = { path = "../argus-sim", version = "0.0.5" }
-argus-camera = { path = "../argus-camera", version = "0.0.5" }
+argus-os = { path = "../argus-os", version = "0.0.6" }
+argus-ecs = { path = "../argus-ecs", version = "0.0.6" }
+argus-sim = { path = "../argus-sim", version = "0.0.6" }
+argus-camera = { path = "../argus-camera", version = "0.0.6" }
 toml_edit = "0.22"
 hound = "3"
 cpal = { version = "0.15", optional = true }

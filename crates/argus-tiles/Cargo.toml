@@ -6,8 +6,8 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-argus-os = { path = "../argus-os", version = "0.0.5" }
-argus-ecs = { path = "../argus-ecs", version = "0.0.5" }
-argus-assets = { path = "../argus-assets", version = "0.0.5" }
+argus-os = { path = "../argus-os", version = "0.0.6" }
+argus-ecs = { path = "../argus-ecs", version = "0.0.6" }
+argus-assets = { path = "../argus-assets", version = "0.0.6" }
 toml_edit = "0.22"
 serde_json = "1"
