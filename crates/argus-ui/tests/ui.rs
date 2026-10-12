@@ -8,7 +8,32 @@ use argus_sim::{Scheduler, SchedulerConfig};
 use argus_ui::{Shared, UiButton, UiNode, UiRect, UiRoot, UiText};
 use serde_json::json;
 use std::cell::RefCell;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
+
+/// A temp directory removed on drop, used as its path.
+struct Temp(PathBuf);
+
+impl Drop for Temp {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+impl std::ops::Deref for Temp {
+    type Target = Path;
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+/// An empty `argus-<name>-<pid>` in the temp directory.
+fn temp(name: &str) -> Temp {
+    let dir = std::env::temp_dir().join(format!("argus-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    Temp(dir)
+}
 
 const MAP: &str = r#"
 [actions.ui_move]
@@ -809,8 +834,7 @@ fn a_controls_button_rebinds_an_action_to_the_next_key() {
 fn sans() -> argus_assets::FontAsset {
     static N: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
     let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("argus-ui-font-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
+    let dir = temp(&format!("ui-font-{n}"));
     std::fs::create_dir_all(dir.join("assets/fonts")).unwrap();
     std::fs::copy(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -821,7 +845,7 @@ fn sans() -> argus_assets::FontAsset {
     let mut imp = argus_assets::Importer::new(&dir);
     imp.scan();
     let f = imp.fonts().next().expect("the font imported").1.clone();
-    let _ = std::fs::remove_dir_all(&dir);
+    drop(dir);
     f
 }
 

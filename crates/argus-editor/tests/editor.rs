@@ -16,17 +16,18 @@ use egui_kittest::Harness;
 use serde_json::{json, Value as Json};
 use std::time::{Duration, Instant};
 
-fn daemon(root: &std::path::Path, tag: &str) -> String {
+fn daemon(root: &std::path::Path, tag: &str) -> (common::Served, String) {
     common::project(root);
     let name = format!("{}-{tag}", socket_name_for(root));
     let (r, n) = (root.to_path_buf(), name.clone());
-    std::thread::spawn(move || {
+    let thread = std::thread::spawn(move || {
         let d = common::open(&r);
         let _ = serve(d, Transport::Socket(n), Some(&r));
     });
+    let served = common::Served::new(&name, thread);
     for _ in 0..200 {
         if Client::connect(&name).is_ok() {
-            return name;
+            return (served, name);
         }
         std::thread::sleep(Duration::from_millis(20));
     }
@@ -68,7 +69,7 @@ fn labels(h: &Harness<'_, Editor>, text: &str) -> usize {
 #[test]
 fn the_editor_does_everything_as_commands_the_agent_could_have_issued() {
     let t = common::temp("editor");
-    let socket = daemon(t.path(), "editor");
+    let (_daemon, socket) = daemon(t.path(), "editor");
     // Something already happened before the editor opened.
     let mut agent = Client::connect(&socket).unwrap();
     agent
@@ -237,7 +238,7 @@ fn a_daemon_that_goes_away_says_so_and_can_be_reconnected() {
 #[test]
 fn a_minimized_editor_holds_no_frames() {
     let t = common::temp("editor-minimized");
-    let name = daemon(t.path(), "minimized");
+    let (_daemon, name) = daemon(t.path(), "minimized");
     let mut h = Harness::builder()
         .with_size(egui::vec2(1200.0, 800.0))
         .wgpu()

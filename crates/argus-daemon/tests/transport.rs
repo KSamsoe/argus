@@ -18,10 +18,11 @@ fn a_client_talks_to_the_daemon_over_the_local_socket() {
     let name2 = name.clone();
     // The daemon lives on its own thread (the world and the Luau VM are
     // not Send); the server owns it there.
-    std::thread::spawn(move || {
+    let thread = std::thread::spawn(move || {
         let daemon = open(&root);
         let _ = serve(daemon, Transport::Socket(name2), Some(&root));
     });
+    let _daemon = Served::new(&name, thread);
 
     // Connect (retry while the listener comes up).
     let mut stream = None;

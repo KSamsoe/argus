@@ -28,9 +28,25 @@ fn write(root: &Path, rel: &str, text: &str) {
     std::fs::write(p, text).unwrap();
 }
 
+/// A temp directory removed on drop, used as its path.
+struct Temp(PathBuf);
+
+impl Drop for Temp {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+impl std::ops::Deref for Temp {
+    type Target = Path;
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
 /// A game: a counter a system counts up, a table of items, a string, a
 /// sound, and a scene with one thing in it.
-fn game(tag: &str) -> PathBuf {
+fn game(tag: &str) -> Temp {
     let root = std::env::temp_dir().join(format!("argus-mods-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     write(&root, "argus.toml", "name = \"g\"\ndefault_scene = \"s\"\n");
@@ -62,7 +78,7 @@ fn game(tag: &str) -> PathBuf {
     );
     write(&root, "scenes/s/scene.toml", "seed = 1\n");
     write(&root, "scenes/s/thing.toml", "[Counter]\n");
-    root
+    Temp(root)
 }
 
 fn assemble_with(root: &Path, ids: &[&str]) -> Assembly {

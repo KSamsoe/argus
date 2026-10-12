@@ -25,15 +25,31 @@ fn copy(from: &Path, to: &Path) {
     }
 }
 
+/// A temp directory removed on drop, used as its path.
+struct Temp(PathBuf);
+
+impl Drop for Temp {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+impl std::ops::Deref for Temp {
+    type Target = Path;
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
 /// A copy of Hollow in a temp directory (a build writes the import cache).
-fn hollow(tag: &str) -> PathBuf {
+fn hollow(tag: &str) -> Temp {
     let dir = std::env::temp_dir().join(format!("argus-packs-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     copy(
         &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/hollow"),
         &dir,
     );
-    dir
+    Temp(dir)
 }
 
 /// The world's summary at a checkpoint. The Luau heap's size is left out:
@@ -62,8 +78,9 @@ fn run(p: &mut Player) -> Vec<String> {
 }
 
 /// Write packs as a build's data/ directory, and mount it at a root that
-/// is nowhere on disk.
-fn mount(packs: &[Pack], tag: &str, lang: Option<&str>) -> (PathBuf, serde_json::Value) {
+/// is nowhere on disk. The mount keeps the packs' bytes in memory, so the
+/// data/ directory goes when the returned `Temp` drops.
+fn mount(packs: &[Pack], tag: &str, lang: Option<&str>) -> (Temp, PathBuf, serde_json::Value) {
     let base = std::env::temp_dir().join(format!("argus-packs-data-{tag}-{}", std::process::id()));
     let data = base.join("data");
     let _ = std::fs::remove_dir_all(&base);
@@ -73,7 +90,7 @@ fn mount(packs: &[Pack], tag: &str, lang: Option<&str>) -> (PathBuf, serde_json:
     }
     let root = base.join("game");
     let report = pack::mount_dir(&data, &root, lang).unwrap();
-    (root, report)
+    (Temp(base), root, report)
 }
 
 #[test]
@@ -124,7 +141,7 @@ fn hollow_from_its_packs_plays_as_hollow_from_its_folder() {
     damaged[n - 3] ^= 1;
     assert!(Pack::decode(&damaged).is_err(), "a damaged blob is refused");
 
-    let (root, report) = mount(&built.packs, "same", None);
+    let (_data, root, report) = mount(&built.packs, "same", None);
     // Every language's strings are there, in English or not, to switch to.
     assert!(argus_os::fs::exists(root.join("strings/fr.toml")));
     assert_eq!(
@@ -147,7 +164,6 @@ fn hollow_from_its_packs_plays_as_hollow_from_its_folder() {
         from_packs, from_folder,
         "the same world at every checkpoint"
     );
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -256,12 +272,11 @@ fn a_patch_carries_only_what_changed_and_a_language_lays_over_the_game() {
     assert_eq!(report["language"], "fr");
 
     // Played in French: the sign says so.
-    let (root, _) = mount(&all, "fr", Some("fr"));
+    let (_data, root, _) = mount(&all, "fr", Some("fr"));
     let p = Player::open(&root, None, None).unwrap();
     let e = p.world.entity("@b/sign").unwrap();
     assert_eq!(
         p.world.get_field(e, "Describe.text").unwrap(),
         argus_ecs::Value::Str("Le haut du puits. Rien ici que la vue.".into())
     );
-    let _ = std::fs::remove_dir_all(&dir);
 }

@@ -13,17 +13,18 @@ use serde_json::{json, Value as Json};
 use std::path::Path;
 
 /// A daemon on its own socket over a fresh copy of the fixture project.
-fn daemon(root: &Path, tag: &str) -> String {
+fn daemon(root: &Path, tag: &str) -> (common::Served, String) {
     common::project(root);
     let name = format!("{}-{tag}", socket_name_for(root));
     let (r, n) = (root.to_path_buf(), name.clone());
-    std::thread::spawn(move || {
+    let thread = std::thread::spawn(move || {
         let d = common::open(&r);
         let _ = serve(d, Transport::Socket(n), Some(&r));
     });
+    let served = common::Served::new(&name, thread);
     for _ in 0..200 {
         if Client::connect(&name).is_ok() {
-            return name;
+            return (served, name);
         }
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
@@ -87,7 +88,7 @@ fn a_def_and_an_asset_edit_are_commands_too() {
     common::project(tb.path());
     sprite(ta.path());
     sprite(tb.path());
-    let a = daemon(ta.path(), "feed-da");
+    let (_daemon_a, a) = daemon(ta.path(), "feed-da");
     let mut h = Client::connect(&a).unwrap();
     call(&mut h, "session.identify", json!({ "author": "human" }));
     let tx = call(
@@ -116,7 +117,7 @@ fn a_def_and_an_asset_edit_are_commands_too() {
         line.contains("op: def") && line.contains("op: asset"),
         "{line}"
     );
-    let b = daemon(tb.path(), "feed-db");
+    let (_daemon_b, b) = daemon(tb.path(), "feed-db");
     let mut argv = vec!["--socket".to_string(), b.clone()];
     argv.extend(command::split(&line).unwrap().into_iter().skip(1));
     let (mut out, mut err) = (Vec::new(), Vec::new());
@@ -183,8 +184,8 @@ effects = \"actor:Health.cur = 4\"
 ";
     common::write(ta.path(), "defs/timeline.toml", table);
     common::write(tb.path(), "defs/timeline.toml", table);
-    let a = daemon(ta.path(), "feed-ta");
-    let b = daemon(tb.path(), "feed-tb");
+    let (_daemon_a, a) = daemon(ta.path(), "feed-ta");
+    let (_daemon_b, b) = daemon(tb.path(), "feed-tb");
     let mut h = Client::connect(&a).unwrap();
     call(&mut h, "session.identify", json!({ "author": "human" }));
     let mut cb = Client::connect(&b).unwrap();
@@ -267,7 +268,7 @@ effects = \"actor:Health.cur = 4\"
 #[test]
 fn every_change_is_a_command_the_agent_could_have_issued() {
     let (ta, tb) = (common::temp("feed-a"), common::temp("feed-b"));
-    let a = daemon(ta.path(), "feed-a");
+    let (_daemon_a, a) = daemon(ta.path(), "feed-a");
     let mut h = Client::connect(&a).unwrap();
     assert_eq!(
         call(&mut h, "session.identify", json!({ "author": "human" }))["author"],
@@ -367,7 +368,7 @@ fn every_change_is_a_command_the_agent_could_have_issued() {
     }
 
     // The same commands, typed into the CLI against a fresh copy.
-    let b = daemon(tb.path(), "feed-b");
+    let (_daemon_b, b) = daemon(tb.path(), "feed-b");
     for l in &lines {
         let mut argv = vec!["--socket".to_string(), b.clone()];
         argv.extend(command::split(l).unwrap().into_iter().skip(1));

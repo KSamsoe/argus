@@ -7,7 +7,32 @@ use argus_ecs::{Entity, Event, Transform, Value, Vec2, World};
 use argus_particles::{lut_index, Emitter, ParticleStore, LUT};
 use argus_sim::{Scheduler, SchedulerConfig, Stage, SystemDesc};
 use std::cell::RefCell;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
+
+/// A temp directory removed on drop, used as its path.
+struct Temp(PathBuf);
+
+impl Drop for Temp {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+impl std::ops::Deref for Temp {
+    type Target = Path;
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+/// An empty `argus-<name>-<pid>` in the temp directory.
+fn temp(name: &str) -> Temp {
+    let dir = std::env::temp_dir().join(format!("argus-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    Temp(dir)
+}
 
 type Fire = Rc<RefCell<Vec<(Entity, i64, Option<Vec2>)>>>;
 
@@ -375,8 +400,7 @@ fn curves_bake_into_tables_the_renderer_reads() {
 /// last good effect running.
 #[test]
 fn effects_come_from_the_importer_and_a_broken_file_keeps_the_last_good_one() {
-    let dir = std::env::temp_dir().join(format!("argus-particles-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
+    let dir = temp("particles");
     std::fs::create_dir_all(dir.join("assets/fx")).unwrap();
     std::fs::write(
         dir.join("assets/fx/a.toml"),
@@ -409,7 +433,6 @@ fn effects_come_from_the_importer_and_a_broken_file_keeps_the_last_good_one() {
     store.set_assets(&imp);
     assert_eq!(store.effects["fx/a"].spec.burst, 6);
     assert!(store.generation > g);
-    std::fs::remove_dir_all(&dir).ok();
 }
 
 /// §17: a quarter of a million live particles across fifty emitters,

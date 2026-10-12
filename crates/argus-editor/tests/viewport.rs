@@ -35,16 +35,17 @@ fn copy(from: &Path, to: &Path) {
     }
 }
 
-fn daemon(root: &Path) -> String {
+fn daemon(root: &Path) -> (common::Served, String) {
     let name = format!("{}-viewport", socket_name_for(root));
     let (r, n) = (root.to_path_buf(), name.clone());
-    std::thread::spawn(move || {
+    let thread = std::thread::spawn(move || {
         let d = common::open(&r);
         let _ = serve(d, Transport::Socket(n), Some(&r));
     });
+    let served = common::Served::new(&name, thread);
     for _ in 0..500 {
         if Client::connect(&name).is_ok() {
-            return name;
+            return (served, name);
         }
         std::thread::sleep(Duration::from_millis(20));
     }
@@ -125,7 +126,7 @@ fn a_person_plays_outpost_in_the_viewport() {
         &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/outpost"),
         t.path(),
     );
-    let socket = daemon(t.path());
+    let (_daemon, socket) = daemon(t.path());
     let mut agent = Client::connect(&socket).unwrap();
 
     let mut h = Harness::builder()

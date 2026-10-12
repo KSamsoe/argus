@@ -10,7 +10,32 @@ use argus_sim::{Scheduler, SchedulerConfig};
 use argus_timeline::{Timeline, TimelineCut, Timelines};
 use argus_ui::{Shared, Strings};
 use std::cell::RefCell;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
+
+/// A temp directory removed on drop, used as its path.
+struct Temp(PathBuf);
+
+impl Drop for Temp {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+impl std::ops::Deref for Temp {
+    type Target = Path;
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+/// An empty `argus-<name>-<pid>` in the temp directory.
+fn temp(name: &str) -> Temp {
+    let dir = std::env::temp_dir().join(format!("argus-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    Temp(dir)
+}
 
 const TIMELINES: &str = r#"
 # A short scene: the second camera draws for a second, the hero slides
@@ -105,18 +130,15 @@ struct Game {
 }
 
 fn tables(tag: &str, text: &str) -> (argus_scene::Defs, Vec<argus_ecs::ArgusError>) {
-    let root = std::env::temp_dir().join(format!("argus-timeline-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&root);
+    let root = temp(&format!("timeline-{tag}"));
     std::fs::create_dir_all(root.join("defs")).unwrap();
     std::fs::write(root.join("defs/timeline.toml"), text).unwrap();
     std::fs::write(root.join("defs/dialogue.toml"), DIALOGUE).unwrap();
-    let out = argus_scene::Defs::load(
+    argus_scene::Defs::load(
         &root,
         &[argus_timeline::schema(), argus_dialogue::schema()],
         &[],
-    );
-    let _ = std::fs::remove_dir_all(&root);
-    out
+    )
 }
 
 fn game(tag: &str) -> Game {

@@ -5,7 +5,32 @@ use argus_input::{codes, install, ActionKind, ActionMap, InputState, LogEntry, P
 use argus_sim::{Scheduler, SchedulerConfig};
 use serde_json::json;
 use std::cell::RefCell;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
+
+/// A temp directory removed on drop, used as its path.
+struct Temp(PathBuf);
+
+impl Drop for Temp {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+impl std::ops::Deref for Temp {
+    type Target = Path;
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+/// An empty `argus-<name>-<pid>` in the temp directory.
+fn temp(name: &str) -> Temp {
+    let dir = std::env::temp_dir().join(format!("argus-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    Temp(dir)
+}
 
 const MAP: &str = r#"
 [actions.move]
@@ -113,8 +138,7 @@ fn the_map_parses_and_becomes_a_component() {
     let e = ActionMap::parse("input.toml", "[actions.1up]\n").unwrap_err();
     assert!(e.message.contains("not start with a digit"));
     // No map file: None. No slots: one keyboard slot.
-    let t = std::env::temp_dir().join("argus-input-nomap");
-    let _ = std::fs::create_dir_all(&t);
+    let t = temp("input-nomap");
     assert!(ActionMap::load(&t).unwrap().is_none());
     let m = ActionMap::parse("input.toml", "[actions.jump]\n").unwrap();
     assert_eq!(m.slots[0].index, 1);
@@ -313,8 +337,7 @@ fn discrete_runs_take_commands_by_turn() {
 
 #[test]
 fn a_recorded_log_replays_to_the_same_run() {
-    let dir = std::env::temp_dir().join(format!("argus-input-replay-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
+    let dir = temp("input-replay");
     let path = dir.join("runs").join("one").join("input.log");
 
     let (mut w, mut s, state) = rig(false);
@@ -383,7 +406,6 @@ fn a_recorded_log_replays_to_the_same_run() {
     let _ = p1a;
     let e = LogEntry::parse("x\t1\tfire\ttrue", &map()).unwrap_err();
     assert_eq!(e.code, codes::BAD_LOG);
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 // ----- phase 1 item 2: real devices through the same schedule --------------

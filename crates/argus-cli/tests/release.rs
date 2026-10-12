@@ -5,11 +5,35 @@
 //! version. Ignored: the first build compiles the ship profile when it is
 //! cold. CI runs it on the reference laptop, where it is warm.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant};
 
 const BOUND: Duration = Duration::from_secs(30);
+
+/// A temp directory removed on drop, used as its path.
+struct Temp(PathBuf);
+
+impl Drop for Temp {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+impl std::ops::Deref for Temp {
+    type Target = Path;
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+/// An empty `argus-<name>-<pid>` in the temp directory.
+fn temp(name: &str) -> Temp {
+    let dir = std::env::temp_dir().join(format!("argus-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    Temp(dir)
+}
 
 fn copy(from: &Path, to: &Path) {
     std::fs::create_dir_all(to).unwrap();
@@ -65,8 +89,7 @@ fn build(root: &Path, out: &Path, since: Option<&Path>) -> (serde_json::Value, D
 #[test]
 #[ignore = "a release build; CI runs it (cargo test --release -- --ignored)"]
 fn a_release_build_after_one_script_changed_takes_under_30_s() {
-    let dir = std::env::temp_dir().join(format!("argus-incremental-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
+    let dir = temp("incremental");
     let root = dir.join("hollow");
     copy(
         &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/hollow"),
@@ -102,5 +125,4 @@ fn a_release_build_after_one_script_changed_takes_under_30_s() {
         took < BOUND,
         "the incremental release build took {took:?} (section 17: under {BOUND:?})"
     );
-    let _ = std::fs::remove_dir_all(&dir);
 }

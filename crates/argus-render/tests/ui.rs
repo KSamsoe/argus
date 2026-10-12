@@ -7,7 +7,32 @@ use argus_render::Renderer;
 use argus_sim::{Scheduler, SchedulerConfig};
 use argus_ui::{Shared, UiNode, UiPanel, UiText};
 use std::cell::RefCell;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
+
+/// A temp directory removed on drop, used as its path.
+struct Temp(PathBuf);
+
+impl Drop for Temp {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+impl std::ops::Deref for Temp {
+    type Target = Path;
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+/// An empty `argus-<name>-<pid>` in the temp directory.
+fn temp(name: &str) -> Temp {
+    let dir = std::env::temp_dir().join(format!("argus-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    Temp(dir)
+}
 
 fn renderer(w: u32, h: u32) -> Option<Renderer> {
     match Renderer::offscreen(w, h, false) {
@@ -177,8 +202,7 @@ fn a_font_asset_draws_crisp_from_its_distance_field_at_any_size() {
         return;
     };
     // Delve's font, imported as a project does, its atlas loaded.
-    let dir = std::env::temp_dir().join(format!("argus-render-font-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
+    let dir = temp("render-font");
     std::fs::create_dir_all(dir.join("assets/fonts")).unwrap();
     std::fs::copy(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -256,7 +280,6 @@ fn a_font_asset_draws_crisp_from_its_distance_field_at_any_size() {
         .filter(|&(x, y)| img.pixel(x, y)[0] > 160)
         .count();
     assert!(words > 150, "small words: {words} pixels");
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]

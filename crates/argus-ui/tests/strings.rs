@@ -9,7 +9,32 @@ use argus_sim::{Scheduler, SchedulerConfig};
 use argus_ui::strings::{self, Strings};
 use argus_ui::{Shared, UiNode, UiRoot, UiSettings, UiText};
 use std::cell::RefCell;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
+
+/// A temp directory removed on drop, used as its path.
+struct Temp(PathBuf);
+
+impl Drop for Temp {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+impl std::ops::Deref for Temp {
+    type Target = Path;
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+/// An empty `argus-<name>-<pid>` in the temp directory.
+fn temp(name: &str) -> Temp {
+    let dir = std::env::temp_dir().join(format!("argus-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    Temp(dir)
+}
 
 const EN: &str = r#"
 language.name = "English"
@@ -63,8 +88,7 @@ fn a_language_falls_back_to_the_base_key_by_key() {
 
 #[test]
 fn a_key_is_written_into_its_file_keeping_the_rest() {
-    let root = std::env::temp_dir().join(format!("argus-strings-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&root);
+    let root = temp("strings");
     std::fs::create_dir_all(root.join("strings")).unwrap();
     let file = root.join("strings/fr.toml");
     std::fs::write(
@@ -96,7 +120,6 @@ fn a_key_is_written_into_its_file_keeping_the_rest() {
     assert_eq!(s.languages(), ["en", "de", "fr"]);
     // A key cannot go inside a string.
     assert!(strings::set_in_file(&root, "fr", "menu.resume.x", Some("?")).is_err());
-    let _ = std::fs::remove_dir_all(&root);
 }
 
 const MAP: &str = r#"

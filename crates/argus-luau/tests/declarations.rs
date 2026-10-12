@@ -5,6 +5,31 @@
 use argus_ecs::{ComponentKind, FieldType, Value, World};
 use argus_luau::{codes, ErrorPhase, ScriptConfig, ScriptHost};
 use argus_sim::{Scheduler, SchedulerConfig};
+use std::path::{Path, PathBuf};
+
+/// A temp directory removed on drop, used as its path.
+struct Temp(PathBuf);
+
+impl Drop for Temp {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+impl std::ops::Deref for Temp {
+    type Target = Path;
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+/// An empty `argus-<name>-<pid>` in the temp directory.
+fn temp(name: &str) -> Temp {
+    let dir = std::env::temp_dir().join(format!("argus-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    Temp(dir)
+}
 
 fn host() -> (ScriptHost, World, Scheduler) {
     (
@@ -318,8 +343,7 @@ fn globals_are_frozen_and_the_sandbox_holds() {
 
 #[test]
 fn a_project_directory_loads_in_order() {
-    let root = std::env::temp_dir().join(format!("argus-luau-proj-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&root);
+    let root = temp("luau-proj");
     std::fs::create_dir_all(root.join("components")).unwrap();
     std::fs::create_dir_all(root.join("systems/sub")).unwrap();
     std::fs::create_dir_all(root.join("defs")).unwrap();
@@ -360,5 +384,4 @@ fn a_project_directory_loads_in_order() {
     w.insert_by_name(e, "Hp").unwrap();
     s.step(&mut w, 2).unwrap();
     assert_eq!(w.get_field(e, "Hp.cur").unwrap(), Value::Int(5));
-    let _ = std::fs::remove_dir_all(&root);
 }

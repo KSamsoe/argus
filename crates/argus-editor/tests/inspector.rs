@@ -18,17 +18,18 @@ use egui_kittest::Harness;
 use serde_json::{json, Value as Json};
 use std::time::{Duration, Instant};
 
-fn daemon(root: &std::path::Path) -> String {
+fn daemon(root: &std::path::Path) -> (common::Served, String) {
     common::project(root);
     let name = format!("{}-inspector", socket_name_for(root));
     let (r, n) = (root.to_path_buf(), name.clone());
-    std::thread::spawn(move || {
+    let thread = std::thread::spawn(move || {
         let d = common::open(&r);
         let _ = serve(d, Transport::Socket(n), Some(&r));
     });
+    let served = common::Served::new(&name, thread);
     for _ in 0..200 {
         if Client::connect(&name).is_ok() {
-            return name;
+            return (served, name);
         }
         std::thread::sleep(Duration::from_millis(20));
     }
@@ -91,7 +92,7 @@ fn field(ed: &Editor, comp: &str, f: &str) -> Json {
 #[test]
 fn a_person_finds_inspects_edits_undoes_and_locks() {
     let t = common::temp("inspector");
-    let socket = daemon(t.path());
+    let (_daemon, socket) = daemon(t.path());
     let mut agent = Client::connect(&socket).unwrap();
     call(
         &mut agent,

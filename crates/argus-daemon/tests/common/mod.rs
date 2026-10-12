@@ -27,6 +27,48 @@ pub fn temp(name: &str) -> Temp {
     Temp(dir)
 }
 
+/// A daemon serving from a thread of its own on a local socket. Dropped,
+/// it is told to shut down and waited for (ten seconds at most), so what
+/// it holds open in its project, the index above all, is closed before
+/// the project's `Temp` goes: Windows does not remove an open file.
+pub struct Served {
+    socket: String,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+impl Served {
+    pub fn new(socket: &str, thread: std::thread::JoinHandle<()>) -> Served {
+        Served {
+            socket: socket.to_string(),
+            thread: Some(thread),
+        }
+    }
+}
+
+impl Drop for Served {
+    fn drop(&mut self) {
+        use std::io::Write;
+        use std::time::{Duration, Instant};
+        // No reply is read: a daemon already shut down leaves its listener
+        // taking connections that nothing answers.
+        if let Ok(mut s) = argus_daemon::server::connect(&self.socket) {
+            let call = json!({ "jsonrpc": "2.0", "id": 1, "method": "session.shutdown" });
+            let _ = writeln!(s, "{call}");
+            let _ = s.flush();
+        }
+        let Some(thread) = self.thread.take() else {
+            return;
+        };
+        let until = Instant::now() + Duration::from_secs(10);
+        while !thread.is_finished() && Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        if thread.is_finished() {
+            let _ = thread.join();
+        }
+    }
+}
+
 pub fn write(root: &Path, rel: &str, text: &str) {
     let p = root.join(rel);
     std::fs::create_dir_all(p.parent().unwrap()).unwrap();

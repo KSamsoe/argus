@@ -20,17 +20,18 @@ use serde_json::{json, Value as Json};
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-fn daemon(root: &Path) -> String {
+fn daemon(root: &Path) -> (common::Served, String) {
     common::project(root);
     let name = format!("{}-agent", socket_name_for(root));
     let (r, n) = (root.to_path_buf(), name.clone());
-    std::thread::spawn(move || {
+    let thread = std::thread::spawn(move || {
         let d = common::open(&r);
         let _ = serve(d, Transport::Socket(n), Some(&r));
     });
+    let served = common::Served::new(&name, thread);
     for _ in 0..200 {
         if Client::connect(&name).is_ok() {
-            return name;
+            return (served, name);
         }
         std::thread::sleep(Duration::from_millis(20));
     }
@@ -78,7 +79,7 @@ fn save(h: &mut Harness<'_, Editor>, name: &str) {
 #[test]
 fn a_person_answers_the_agent_tries_its_proposal_and_closes_a_mark() {
     let t = common::temp("editor-agent");
-    let name = daemon(t.path());
+    let (_daemon, name) = daemon(t.path());
     let mut agent = Client::connect(&name).unwrap();
     result(
         &mut agent,

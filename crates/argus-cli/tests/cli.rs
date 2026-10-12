@@ -245,10 +245,11 @@ fn the_cli_talks_to_a_daemon_over_its_socket() {
     let name = format!("{}-cli", socket_name_for(t.path()));
     let root = t.path().to_path_buf();
     let name2 = name.clone();
-    std::thread::spawn(move || {
+    let thread = std::thread::spawn(move || {
         let daemon = common::open(&root);
         let _ = serve(daemon, Transport::Socket(name2), Some(&root));
     });
+    let _daemon = common::Served::new(&name, thread);
     let mut up = false;
     for _ in 0..100 {
         if argus_cli::client::Client::connect(&name).is_ok() {

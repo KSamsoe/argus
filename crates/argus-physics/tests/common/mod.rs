@@ -8,7 +8,7 @@ use argus_physics::{CharacterController, Collider, KinematicBody};
 use argus_sim::{Scheduler, SchedulerConfig};
 use argus_tiles::{LayerDef, MapFile, MapStore, Rect, Tilemap};
 use std::cell::RefCell;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 /// Tiles by character: `#` solid, `-` one-way, `/` and `\` 45-degree
@@ -68,14 +68,32 @@ pub type Ev = (u64, String, Vec<(String, Value)>);
 
 pub const FILE: &str = "scenes/t/room.tilemap.toml";
 
+/// A temp directory removed on drop, used as its path.
+pub struct Temp(pub PathBuf);
+
+impl Drop for Temp {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+impl std::ops::Deref for Temp {
+    type Target = Path;
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
 pub struct Rig {
-    pub dir: PathBuf,
     pub world: World,
     pub sched: Scheduler,
     pub store: Rc<RefCell<MapStore>>,
     pub events: Vec<Ev>,
     pub ts: f32,
     pub rows: usize,
+    /// Last: fields drop in order, so whatever the rest of the rig holds
+    /// open in it is closed before it is removed.
+    pub dir: Temp,
 }
 
 impl Rig {
@@ -84,6 +102,7 @@ impl Rig {
     pub fn new(name: &str, ts: f32, art: &[&str]) -> Rig {
         let dir = std::env::temp_dir().join(format!("argus-physics-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
+        let dir = Temp(dir);
         std::fs::create_dir_all(dir.join("assets/tiles")).unwrap();
         encode_png(
             &dir.join("assets/tiles/set.png"),
@@ -285,10 +304,4 @@ pub fn fnum(ev: &Ev, k: &str) -> f64 {
 
 pub fn fbool(ev: &Ev, k: &str) -> bool {
     matches!(field(ev, k), Some(Value::Bool(true)))
-}
-
-impl Drop for Rig {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.dir);
-    }
 }

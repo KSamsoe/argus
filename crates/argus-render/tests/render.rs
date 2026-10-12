@@ -5,6 +5,31 @@
 
 use argus_ecs::{Transform, Vec2, World};
 use argus_render::{Camera, Renderer, Sprite};
+use std::path::{Path, PathBuf};
+
+/// A temp directory removed on drop, used as its path.
+struct Temp(PathBuf);
+
+impl Drop for Temp {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+impl std::ops::Deref for Temp {
+    type Target = Path;
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+/// An empty `argus-<name>-<pid>` in the temp directory.
+fn temp(name: &str) -> Temp {
+    let dir = std::env::temp_dir().join(format!("argus-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    Temp(dir)
+}
 
 fn world_with_camera(height: f32) -> World {
     let mut w = World::new();
@@ -110,10 +135,10 @@ fn described_shapes_render_where_the_camera_puts_them() {
         [69, 69, 80],
         "clear colour (linear 0.06) in sRGB elsewhere"
     );
-    let path = std::env::temp_dir().join(format!("argus-render-{}.png", std::process::id()));
+    let dir = temp("render");
+    let path = dir.join("frame.png");
     img.save_png(&path).unwrap();
     assert!(std::fs::metadata(&path).unwrap().len() > 100);
-    std::fs::remove_file(&path).ok();
 }
 
 #[test]
@@ -180,7 +205,7 @@ fn a_named_atlas_loads_from_assets_and_a_missing_one_is_reported() {
     let Some(mut r) = renderer(64, 64) else {
         return;
     };
-    let dir = std::env::temp_dir().join(format!("argus-atlas-{}", std::process::id()));
+    let dir = temp("atlas");
     std::fs::create_dir_all(dir.join("assets")).unwrap();
     // A 2x1 PNG: left pixel yellow, right pixel cyan, two frames by grid.
     let png_path = dir.join("assets").join("tiles.png");
@@ -239,7 +264,6 @@ fn a_named_atlas_loads_from_assets_and_a_missing_one_is_reported() {
         [255, 0, 255],
         "a missing atlas draws magenta"
     );
-    std::fs::remove_dir_all(&dir).ok();
 }
 
 /// §17: 200,000 instanced sprites per frame. Release only.
@@ -291,8 +315,7 @@ fn a_placeholder_asset_draws_with_its_pivot_and_the_art_replaces_it() {
     let Some(mut r) = renderer(100, 100) else {
         return;
     };
-    let dir = std::env::temp_dir().join(format!("argus-hero-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
+    let dir = temp("hero");
     std::fs::create_dir_all(dir.join("assets/sprites")).unwrap();
     std::fs::write(
         dir.join("assets/sprites/hero.toml"),
@@ -340,7 +363,6 @@ fn a_placeholder_asset_draws_with_its_pivot_and_the_art_replaces_it() {
         [255, 0, 0],
         "the real art, same reference"
     );
-    std::fs::remove_dir_all(&dir).ok();
 }
 
 /// Item 7: the drawing camera is the active one with the highest priority,
@@ -819,6 +841,7 @@ fn perf_post_stack_five_passes_at_1080p() {
         r.gpu().adapter
     );
     assert!(cost < 1.5, "five passes took {cost:.3} ms");
+
     // Phase 5 item 3: lighting must not break the row. Sixteen lights,
     // each casting shadows from a hundred boxes, with the five passes.
     argus_light::register(&mut w).unwrap();

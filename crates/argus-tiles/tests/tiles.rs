@@ -7,11 +7,27 @@ use argus_tiles::{blob_masks, collision, paint, visible, Collide, LayerDef, MapF
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-fn project(name: &str) -> PathBuf {
+/// A temp directory removed on drop, used as its path.
+struct Temp(PathBuf);
+
+impl Drop for Temp {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+impl std::ops::Deref for Temp {
+    type Target = Path;
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+fn project(name: &str) -> Temp {
     let dir = std::env::temp_dir().join(format!("argus-tiles-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(dir.join("assets/tiles")).unwrap();
-    dir
+    Temp(dir)
 }
 
 fn layer(name: &str, tileset: Option<&str>, collision: bool) -> LayerDef {
@@ -176,7 +192,6 @@ fn chunks_are_sparse_lazy_saved_incrementally_and_checked() {
     std::fs::write(dir.join(rel), wide).unwrap();
     let e = MapFile::open(&dir, rel).unwrap_err();
     assert!(e.message.contains("width = -3"), "{e}");
-    std::fs::remove_dir_all(&dir).ok();
 }
 
 const FOURBIT: &str = r#"
@@ -260,7 +275,6 @@ fn four_bit_auto_tiling_picks_each_tile_from_its_neighbours() {
     let row: String = c.iter().map(|c| c.ch()).collect();
     assert_eq!(row, ".##.--");
     assert_eq!(c[1], Collide::Solid);
-    std::fs::remove_dir_all(&dir).ok();
 }
 
 #[test]
@@ -319,7 +333,6 @@ fn blob47_uses_the_eight_neighbours_with_corners_only_between_edges() {
         r.failed[0].error.r#ref.as_deref(),
         Some("assets/tiles/cave.toml:3")
     );
-    std::fs::remove_dir_all(&dir).ok();
 }
 
 #[test]
@@ -348,7 +361,6 @@ fn visible_tiles_are_the_ones_the_view_covers() {
     assert!(visible(&mut m, [0.0, 0.0], [-50.0, 50.0], [2.0, 2.0])
         .unwrap()
         .is_empty());
-    std::fs::remove_dir_all(&dir).ok();
 }
 
 /// §17: 4,096 x 4,096 tiles, 8 layers: chunked storage, rect edits, and
@@ -400,7 +412,6 @@ fn perf_4096_square_8_layers_without_pauses() {
     );
     assert!(view.as_millis() < 5, "{view:?}");
     assert!(open.as_millis() < 50, "{open:?}");
-    std::fs::remove_dir_all(&dir).ok();
 }
 
 /// The store the daemon and the physics step share (item 6): collision
@@ -465,7 +476,6 @@ fn the_store_reads_slopes_and_notices_a_map_saved_elsewhere() {
     st.open(rel).unwrap();
     let g = st.grid(rel, [0.0, 2.0]).unwrap();
     assert_eq!(st.collide(&g, 3, 0), Collide::Solid);
-    std::fs::remove_dir_all(&dir).ok();
 }
 
 /// A map for a tick (`MapStore::loaded`, what scripts' `q:tiles` reads
@@ -514,5 +524,4 @@ fn a_map_for_a_tick_is_the_one_in_memory() {
     }
     let loaded = t0.elapsed();
     println!("800 cells: {opened:?} through open, {loaded:?} through loaded");
-    std::fs::remove_dir_all(&dir).ok();
 }

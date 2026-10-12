@@ -9,7 +9,32 @@ use argus_input::{ActionMap, InputState};
 use argus_sim::{Scheduler, SchedulerConfig};
 use argus_ui::{Shared, Strings, UiButton, UiSettings, UiText};
 use std::cell::RefCell;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
+
+/// A temp directory removed on drop, used as its path.
+struct Temp(PathBuf);
+
+impl Drop for Temp {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+impl std::ops::Deref for Temp {
+    type Target = Path;
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+/// An empty `argus-<name>-<pid>` in the temp directory.
+fn temp(name: &str) -> Temp {
+    let dir = std::env::temp_dir().join(format!("argus-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    Temp(dir)
+}
 
 const DIALOGUE: &str = r#"
 # Who you meet first is how you are met.
@@ -113,15 +138,14 @@ struct Game {
 }
 
 fn game(tag: &str) -> Game {
-    let root = std::env::temp_dir().join(format!("argus-dialogue-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&root);
+    let root = temp(&format!("dialogue-{tag}"));
     std::fs::create_dir_all(root.join("defs")).unwrap();
     std::fs::write(root.join("defs/dialogue.toml"), DIALOGUE).unwrap();
     let (defs, errors) = argus_scene::Defs::load(&root, &[graph::schema()], &[]);
     assert!(errors.is_empty(), "{errors:?}");
     let g = Graph::from_defs(&defs);
     assert!(g.problems.is_empty(), "{:?}", g.problems);
-    let _ = std::fs::remove_dir_all(&root);
+    drop(root);
 
     let mut w = World::new();
     let mut s = Scheduler::new(SchedulerConfig::default());
@@ -378,8 +402,7 @@ next = "dialogue:nowhere"
 line = "y"
 effects = "Hero.gems *= 2"
 "#;
-    let root = std::env::temp_dir().join(format!("argus-dialogue-bad-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&root);
+    let root = temp("dialogue-bad");
     std::fs::create_dir_all(root.join("defs")).unwrap();
     std::fs::write(root.join("defs/dialogue.toml"), bad).unwrap();
     let (defs, _) = argus_scene::Defs::load(&root, &[graph::schema()], &[]);
@@ -397,7 +420,7 @@ effects = "Hero.gems *= 2"
     );
     assert!(msgs.iter().any(|m| m.contains("b: effects")), "{msgs:?}");
     assert!(msgs.iter().any(|m| m.contains("nowhere")), "{msgs:?}");
-    let _ = std::fs::remove_dir_all(&root);
+    drop(root);
 
     // Conditions and effects as the table writes them.
     let c = graph::parse_cond("Hero.gems >= 1 and not speaker:Npc.met or @hero:Hero.gems == 3")

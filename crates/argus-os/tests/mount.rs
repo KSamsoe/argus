@@ -3,10 +3,35 @@
 //! every other path is still the disk.
 
 use argus_os::fs;
+use std::path::{Path, PathBuf};
+
+/// A temp directory removed on drop, used as its path.
+struct Temp(PathBuf);
+
+impl Drop for Temp {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+impl std::ops::Deref for Temp {
+    type Target = Path;
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+/// An empty `argus-<name>-<pid>` in the temp directory.
+fn temp(name: &str) -> Temp {
+    let dir = std::env::temp_dir().join(format!("argus-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    Temp(dir)
+}
 
 #[test]
 fn a_mounted_pack_is_memory_and_the_rest_is_the_disk() {
-    let base = std::env::temp_dir().join(format!("argus-mount-{}", std::process::id()));
+    let base = temp("mount");
     let root = base.join("game");
     fs::mount(
         &root,
@@ -33,12 +58,10 @@ fn a_mounted_pack_is_memory_and_the_rest_is_the_disk() {
     );
     assert!(!root.exists(), "nothing on disk");
     // Beside the root is the disk.
-    std::fs::create_dir_all(&base).unwrap();
     fs::write(base.join("real.txt"), "disk").unwrap();
     assert_eq!(
         std::fs::read_to_string(base.join("real.txt")).unwrap(),
         "disk"
     );
     assert!(fs::read(root.join("missing")).is_err());
-    std::fs::remove_dir_all(&base).unwrap();
 }

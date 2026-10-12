@@ -18,17 +18,18 @@ use serde_json::{json, Value as Json};
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-fn daemon(root: &Path) -> String {
+fn daemon(root: &Path) -> (common::Served, String) {
     common::project(root);
     let name = format!("{}-scrub", socket_name_for(root));
     let (r, n) = (root.to_path_buf(), name.clone());
-    std::thread::spawn(move || {
+    let thread = std::thread::spawn(move || {
         let d = common::open(&r);
         let _ = serve(d, Transport::Socket(n), Some(&r));
     });
+    let served = common::Served::new(&name, thread);
     for _ in 0..200 {
         if Client::connect(&name).is_ok() {
-            return name;
+            return (served, name);
         }
         std::thread::sleep(Duration::from_millis(20));
     }
@@ -113,7 +114,7 @@ fn near(a: u64, b: u64) -> bool {
 #[test]
 fn a_person_scrubs_the_run_tries_from_a_frame_and_opens_a_replay() {
     let t = common::temp("editor-scrub");
-    let name = daemon(t.path());
+    let (_daemon, name) = daemon(t.path());
     let mut agent = Client::connect(&name).unwrap();
     result(
         &mut agent,

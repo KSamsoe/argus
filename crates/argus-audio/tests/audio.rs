@@ -50,12 +50,28 @@ layers = [ { sound = "music/pad" }, { sound = "music/drums", from = 0.5, to = 0.
 fade_ms = 50
 "#;
 
-fn project(name: &str, toml: &str) -> std::path::PathBuf {
+/// A temp directory removed on drop, used as its path.
+struct Temp(std::path::PathBuf);
+
+impl Drop for Temp {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+impl std::ops::Deref for Temp {
+    type Target = std::path::Path;
+    fn deref(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+fn project(name: &str, toml: &str) -> Temp {
     let dir = std::env::temp_dir().join(format!("argus-audio-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(dir.join("assets").join("sfx")).unwrap();
     std::fs::write(dir.join("audio.toml"), toml).unwrap();
-    dir
+    Temp(dir)
 }
 
 fn peak(buf: &[f32], ch: usize) -> f32 {
@@ -271,7 +287,6 @@ fn variations_replay_from_the_seed_and_every_play_is_an_event() {
         "reported once"
     );
     assert_eq!(e.missing(), vec!["sfx/nope"]);
-    std::fs::remove_dir_all(&dir).ok();
 }
 
 #[test]
@@ -308,7 +323,6 @@ fn spatial_sounds_attenuate_and_pan_from_the_listener_and_follow_their_entity() 
     assert_eq!(e.voices(), 1);
     // Without a listener component the active camera would be used; with none, the origin.
     assert_eq!(AudioEngine::listener(&World::new()), (0.0, 0.0));
-    std::fs::remove_dir_all(&dir).ok();
 }
 
 #[test]
@@ -358,7 +372,6 @@ fn music_layers_follow_intensity_and_are_logged() {
         .unwrap();
     assert_eq!(names(&e.update(&w)), ["music.stopped"]);
     assert!(e.music().is_none());
-    std::fs::remove_dir_all(&dir).ok();
 }
 
 #[test]
@@ -395,7 +408,6 @@ fn a_wav_under_assets_is_a_sound_by_its_path() {
         &[("sound".into(), Value::Str("sfx/hit".into()))],
     );
     assert_eq!(f(&ev[0].1, "bus"), &Value::Str("sfx".into()));
-    std::fs::remove_dir_all(&dir).ok();
 }
 
 #[test]
@@ -463,7 +475,6 @@ fn a_burst_is_limited_not_clipped_and_a_capped_sound_steals_its_oldest_voice() {
         &v1,
         "the oldest voice goes, and the log says so"
     );
-    std::fs::remove_dir_all(&dir).ok();
 }
 
 /// Found after the phase-1 gate: with no device open the daemon mixes as far
@@ -651,7 +662,7 @@ fn a_change_waits_for_the_bar_and_starts_on_it() {
     e.advance_to(3.25);
     assert_eq!(names(&e.update(&w)), ["music.stopped"]);
     assert!(e.music().is_none());
-    std::fs::remove_dir_all(&dir).ok();
+    drop(dir);
 
     // A loop that is not a whole number of bars is said at load.
     let dir = project(
@@ -666,7 +677,6 @@ fn a_change_waits_for_the_bar_and_starts_on_it() {
         "{:?}",
         e.warnings
     );
-    std::fs::remove_dir_all(&dir).ok();
     // And a grid without a tempo is an error.
     let bad = AudioConfig::parse(
         "audio.toml",

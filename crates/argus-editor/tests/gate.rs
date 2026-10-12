@@ -130,16 +130,17 @@ fn gate_project(root: &Path) {
     );
 }
 
-fn daemon(root: &Path, tag: &str) -> String {
+fn daemon(root: &Path, tag: &str) -> (common::Served, String) {
     let name = format!("{}-{tag}", socket_name_for(root));
     let (r, n) = (root.to_path_buf(), name.clone());
-    std::thread::spawn(move || {
+    let thread = std::thread::spawn(move || {
         let d = common::open(&r);
         let _ = serve(d, Transport::Socket(n), Some(&r));
     });
+    let served = common::Served::new(&name, thread);
     for _ in 0..300 {
         if Client::connect(&name).is_ok() {
-            return name;
+            return (served, name);
         }
         std::thread::sleep(Duration::from_millis(20));
     }
@@ -288,7 +289,7 @@ fn every_panels_changes_are_the_feeds_commands_and_make_the_same_world() {
     let (ta, tb) = (common::temp("gate-a"), common::temp("gate-b"));
     gate_project(ta.path());
     gate_project(tb.path());
-    let a = daemon(ta.path(), "gate-a");
+    let (_daemon_a, a) = daemon(ta.path(), "gate-a");
     let mut agent = Client::connect(&a).unwrap();
     result(
         &mut agent,
@@ -751,7 +752,7 @@ fn every_panels_changes_are_the_feeds_commands_and_make_the_same_world() {
     drop(h);
 
     // Typed into the CLI against a fresh daemon on a fresh copy.
-    let b = daemon(tb.path(), "gate-b");
+    let (_daemon_b, b) = daemon(tb.path(), "gate-b");
     for l in &lines {
         let mut argv = vec!["--socket".to_string(), b.clone()];
         argv.extend(command::split(l).unwrap().into_iter().skip(1));

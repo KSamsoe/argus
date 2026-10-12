@@ -6,11 +6,27 @@
 
 use argus_assets::{decode_png, encode_png, Asset, Importer};
 
-fn project(name: &str) -> std::path::PathBuf {
+/// A temp directory removed on drop, used as its path.
+struct Temp(std::path::PathBuf);
+
+impl Drop for Temp {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+impl std::ops::Deref for Temp {
+    type Target = std::path::Path;
+    fn deref(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+fn project(name: &str) -> Temp {
     let dir = std::env::temp_dir().join(format!("argus-assets-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(dir.join("assets")).unwrap();
-    dir
+    Temp(dir)
 }
 
 fn write(root: &std::path::Path, rel: &str, text: &str) {
@@ -124,7 +140,6 @@ fn a_placeholder_is_replaced_by_the_art_under_the_same_name() {
     let r = imp.poll().unwrap();
     assert_eq!(r.removed, vec!["sprites/hero"]);
     assert!(!tex.exists());
-    std::fs::remove_dir_all(&dir).ok();
 }
 
 #[test]
@@ -183,7 +198,6 @@ frames = [2, 9]
     let j = e.to_json();
     assert_eq!(j["clips"]["swing"]["direction"], "pingpong");
     assert_eq!(j["frames"][2]["properties"]["hitbox"], "on");
-    std::fs::remove_dir_all(&dir).ok();
 }
 
 #[test]
@@ -241,7 +255,6 @@ fn bad_sidecars_fail_with_the_line_and_the_rest_still_import() {
     let r = imp.poll().unwrap();
     assert_eq!(r.imported, vec!["a"]);
     assert!(imp.failures().get("a").is_none());
-    std::fs::remove_dir_all(&dir).ok();
 }
 
 fn wav(root: &std::path::Path, rel: &str, rate: u32, channels: u16, amp: f32) {
@@ -314,7 +327,6 @@ fn a_sound_sidecar_names_its_variations_and_the_files_are_checked() {
     let r = imp.poll().unwrap();
     assert_eq!(r.failed[0].name, "sfx/step");
     assert!(r.failed[0].error.message.contains("step9.wav"));
-    std::fs::remove_dir_all(&dir).ok();
 }
 
 /// Item 8: an animator is an asset (a sidecar with type = "animator" or
@@ -483,7 +495,6 @@ fn an_emitter_imports_with_its_curves_and_its_mistakes_have_lines() {
             f.error.message
         );
     }
-    std::fs::remove_dir_all(&dir).ok();
 }
 
 /// Item 11: a material is a .wgsl, with a sidecar for its parameters, or a
@@ -615,7 +626,6 @@ fn a_material_imports_checked_and_its_shader_errors_have_lines() {
         "{}",
         f.error.message
     );
-    std::fs::remove_dir_all(&dir).ok();
 }
 
 // ----- phase 3 item 1: fonts ----------------------------------------------------
@@ -739,5 +749,4 @@ fn a_changed_skeleton_is_imported_again() {
     write(&dir, "puppet/puppet.json", two);
     let rep = imp.scan();
     assert_eq!(rep.imported, vec!["puppet/puppet".to_string()], "{rep:?}");
-    std::fs::remove_dir_all(&dir).ok();
 }

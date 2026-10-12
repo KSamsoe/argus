@@ -5,7 +5,7 @@
 use argus_ecs::{Event, Value, World};
 use argus_luau::{codes, ScriptConfig, ScriptHost};
 use argus_sim::{Scheduler, SchedulerConfig};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 fn faults(w: &World) -> Vec<(String, String)> {
@@ -91,12 +91,28 @@ fn memory_limit_is_enforced() {
     assert!(h.memory_used() < (4 << 20));
 }
 
-fn project(name: &str) -> PathBuf {
+/// A temp directory removed on drop, used as its path.
+struct Temp(PathBuf);
+
+impl Drop for Temp {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+impl std::ops::Deref for Temp {
+    type Target = Path;
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+fn project(name: &str) -> Temp {
     let root = std::env::temp_dir().join(format!("argus-luau-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(root.join("components")).unwrap();
     std::fs::create_dir_all(root.join("systems")).unwrap();
-    root
+    Temp(root)
 }
 
 #[test]
@@ -188,7 +204,6 @@ fn reload_swaps_code_and_keeps_world_state_and_rng_streams() {
     assert!(s.is_enabled("sim.grow").is_err());
     s.step(&mut w, 1).unwrap();
     assert_eq!(w.get_field(e, "Hp.cur").unwrap(), Value::Int(16));
-    let _ = std::fs::remove_dir_all(&root);
 }
 
 #[test]
@@ -219,5 +234,4 @@ fn reload_of_a_changed_component_shape_is_a_reported_conflict() {
     );
     // The registered schema is unchanged, so running code keeps working.
     assert_eq!(w.describe("Hp").unwrap().fields.len(), 1);
-    let _ = std::fs::remove_dir_all(&root);
 }

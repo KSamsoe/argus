@@ -62,10 +62,11 @@ fn a_person_sees_the_tick_over_outposts_target_and_the_system_that_did_it() {
     );
     let name = format!("{}-profile", socket_name_for(t.path()));
     let (r, n) = (t.path().to_path_buf(), name.clone());
-    std::thread::spawn(move || {
+    let thread = std::thread::spawn(move || {
         let d = common::open(&r);
         let _ = serve(d, Transport::Socket(n), Some(&r));
     });
+    let _daemon = common::Served::new(&name, thread);
     let mut agent = loop {
         if let Ok(c) = Client::connect(&name) {
             break c;

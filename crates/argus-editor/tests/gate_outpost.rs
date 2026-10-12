@@ -143,10 +143,11 @@ fn a_person_tunes_outpost_at_10x_and_the_agent_sweeps_the_path() {
     );
     let name = format!("{}-gate", socket_name_for(t.path()));
     let (r, n) = (t.path().to_path_buf(), name.clone());
-    std::thread::spawn(move || {
+    let thread = std::thread::spawn(move || {
         let d = common::open(&r);
         let _ = serve(d, Transport::Socket(n), Some(&r));
     });
+    let _daemon = common::Served::new(&name, thread);
     let mut agent = loop {
         if let Ok(c) = Client::connect(&name) {
             break c;
