@@ -57,6 +57,9 @@ pub fn install(
 ) -> Result<()> {
     let map = state.borrow().map().clone();
     let (slot_id, actions_id) = register(world, &map)?;
+    // The host sends a message once: a system a freeze kept from running on
+    // its tick gets it the next tick it runs (issue 5).
+    sched.hold_when_frozen(MESSAGE_EVENT);
     let desc = SystemDesc::new(SYSTEM, Stage::Input)
         .reads(slot_id)
         .writes(actions_id)

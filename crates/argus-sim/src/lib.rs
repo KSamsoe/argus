@@ -29,8 +29,8 @@ pub use prof::{
 };
 pub use rng::{stream_seed, Pcg32};
 pub use scheduler::{
-    BatchInfo, FrameReport, Observer, RunUntil, Scheduler, SchedulerConfig, SimSnapshot, SimState,
-    SystemInfo,
+    BatchInfo, FrameReport, HeldEvent, Observer, RunUntil, Scheduler, SchedulerConfig, SimSnapshot,
+    SimState, SystemInfo,
 };
 pub use system::{ClockBinding, Stage, SystemCtx, SystemDesc, SystemFn};
 

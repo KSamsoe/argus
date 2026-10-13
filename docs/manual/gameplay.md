@@ -392,6 +392,8 @@ end
 
 A message is input. It is recorded with the run's other input, so a seek, a replay, a mark, a player's report, or a scenario brings it in again at the same tick, and nobody has to send it twice. A run that depends on a model's answers still reproduces exactly. On a discrete clock a message is a turn, as a key press is; a game that shouldn't spend one freezes it (see [Pausing](#pausing)).
 
+A message that arrives on a frozen tick is not lost. The `unfrozen` systems see it on that tick; each system the freeze kept from running sees it the next tick it runs, before that tick's own messages, oldest first. Every system sees a message once. So a model's answer that comes in while the pause is up waits for the game's turn system until the pause ends. On a discrete clock that is the first turn after the pause, since the press that closes a pause menu is usually frozen too. Other events are moments of the sim: a frozen tick drops them for the systems it kept from running.
+
 A script sends text out with `q:send(channel, text)`. It is an event, `host.send`, with `channel` and `text`, so it is in the event log, `argus events name=host.send`, and `t.expect:events` like any other.
 
 | Who sends a message | How |
@@ -485,7 +487,7 @@ run = function(q)
 end,
 ```
 
-`q.time` keeps running through a freeze (a pause stops the game's systems, not the clock). A game that shows its own time keeps it in a component its systems advance, as Hollow's `Run.started` and Outpost's `Colony.clock` do. Systems that must answer during a pause, such as Hollow's lighting under the settings page, are `unfrozen` too.
+A host's message that arrives while the game is frozen waits for the systems the freeze stopped (see [Talking to the host](#talking-to-the-host)). `q.time` keeps running through a freeze (a pause stops the game's systems, not the clock). A game that shows its own time keeps it in a component its systems advance, as Hollow's `Run.started` and Outpost's `Colony.clock` do. Systems that must answer during a pause, such as Hollow's lighting under the settings page, are `unfrozen` too.
 
 Other ways time changes:
 

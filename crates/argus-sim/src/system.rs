@@ -295,6 +295,9 @@ pub struct SystemCtx<'a> {
     pub(crate) freeze: bool,
     /// The system is exclusive ([`SystemDesc::exclusive`]).
     pub(crate) exclusive: bool,
+    /// Events held over for this system from ticks a freeze kept it from
+    /// running ([`crate::Scheduler::hold_when_frozen`]), oldest first.
+    pub(crate) held: &'a [argus_ecs::EventRecord],
 }
 
 impl<'a> SystemCtx<'a> {
@@ -473,7 +476,9 @@ impl<'a> SystemCtx<'a> {
 
     /// Events emitted so far this tick with this name (every event when
     /// `name` is empty), oldest first: how gameplay reacts to a contact or a
-    /// landing the physics step reported earlier in the tick.
+    /// landing the physics step reported earlier in the tick. First come
+    /// any held over for this system from ticks a freeze kept it from
+    /// running (a host's message, [`crate::Scheduler::hold_when_frozen`]).
     pub fn events_now<'b>(
         &'b self,
         name: &'b str,
@@ -486,11 +491,16 @@ impl<'a> SystemCtx<'a> {
         // asks a dozen times a tick).
         let all = self.world.events();
         let start = all.len() - all.iter().rev().take_while(|r| r.frame >= frame).count();
-        all[start..].iter().filter(move |r| {
-            r.frame == frame
-                && (name.is_empty()
-                    || matches!(&r.event, argus_ecs::Event::Game { name: n, .. } if n == name))
-        })
+        let named = move |r: &&argus_ecs::EventRecord| {
+            name.is_empty()
+                || matches!(&r.event, argus_ecs::Event::Game { name: n, .. } if n == name)
+        };
+        self.held.iter().filter(named).chain(
+            all[start..]
+                .iter()
+                .filter(move |r| r.frame == frame)
+                .filter(named),
+        )
     }
 
     /// The nearest live entity to a point that `keep` accepts, within `max_r`.

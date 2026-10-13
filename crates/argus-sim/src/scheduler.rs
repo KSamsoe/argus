@@ -108,6 +108,8 @@ struct Job<'s> {
     access: &'s Access,
     spawns: &'s [ComponentId],
     name: &'s Arc<str>,
+    /// What is held over for it from frozen ticks.
+    held: Vec<argus_ecs::EventRecord>,
     out: Deferred,
     outcome: Option<std::thread::Result<Result<()>>>,
     start: Option<Instant>,
@@ -146,6 +148,7 @@ impl Job<'_> {
             dt: t.dt,
             speed: t.speed,
             frozen: t.frozen,
+            held: &self.held,
         };
         let run = &mut *self.run;
         self.outcome = Some(catch_unwind(AssertUnwindSafe(|| run(&mut ctx))));
@@ -176,6 +179,78 @@ pub struct SimState {
     pub paused: bool,
     /// Systems switched off (by a fault or by request), with the reason.
     pub disabled: Vec<(String, String)>,
+    /// Events held over a frozen tick for the systems it kept from running
+    /// ([`Scheduler::hold_when_frozen`]): input the host will not send
+    /// again, so a replay from a keyframe must still have it.
+    pub held: Vec<HeldEvent>,
+}
+
+/// An event a freeze kept some systems from seeing, held for them until
+/// each next runs (issue 5: a model's answer arrived while a pause froze
+/// the tick, and the game waited for it for ever).
+#[derive(Clone, Debug, PartialEq)]
+pub struct HeldEvent {
+    /// The event as it was emitted, its frame the tick it arrived on.
+    pub record: argus_ecs::EventRecord,
+    /// The systems that have not seen it yet, by name.
+    pub owed: Vec<String>,
+}
+
+fn encode_value(w: &mut Writer, v: &argus_ecs::Value) {
+    use argus_ecs::Value;
+    match v {
+        Value::Bool(b) => {
+            w.u8(0);
+            w.bool(*b);
+        }
+        Value::Int(n) => {
+            w.u8(1);
+            w.i64(*n);
+        }
+        Value::UInt(n) => {
+            w.u8(2);
+            w.u64(*n);
+        }
+        Value::Float(f) => {
+            w.u8(3);
+            w.f64(*f);
+        }
+        Value::Vec2(v) => {
+            w.u8(4);
+            w.f32(v.x);
+            w.f32(v.y);
+        }
+        Value::Str(s) => {
+            w.u8(5);
+            w.str(s);
+        }
+        Value::Entity(e) => {
+            w.u8(6);
+            w.u64(e.to_bits());
+        }
+        Value::Ref(s) => {
+            w.u8(7);
+            w.str(s);
+        }
+    }
+}
+
+fn decode_value(r: &mut Reader) -> Result<argus_ecs::Value> {
+    use argus_ecs::Value;
+    Ok(match r.u8()? {
+        0 => Value::Bool(r.bool()?),
+        1 => Value::Int(r.i64()?),
+        2 => Value::UInt(r.u64()?),
+        3 => Value::Float(r.f64()?),
+        4 => {
+            let x = r.f32()?;
+            Value::Vec2(argus_ecs::Vec2::new(x, r.f32()?))
+        }
+        5 => Value::Str(r.str()?),
+        6 => Value::Entity(argus_ecs::Entity::from_bits(r.u64()?)),
+        7 => Value::Ref(r.str()?),
+        t => return Err(r.bad(format!("a held event's field of kind {t}"))),
+    })
 }
 
 impl SimState {
@@ -197,10 +272,35 @@ impl SimState {
             w.str(name);
             w.str(why);
         }
+        w.count(self.held.len());
+        for h in &self.held {
+            let Event::Game { name, fields } = &h.record.event else {
+                unreachable!("only game events are held");
+            };
+            w.u64(h.record.frame);
+            w.str(name);
+            w.count(fields.len());
+            for (k, v) in fields {
+                w.str(k);
+                encode_value(w, v);
+            }
+            w.opt(h.record.by.as_deref(), |w, by| w.str(by));
+            w.count(h.owed.len());
+            for o in &h.owed {
+                w.str(o);
+            }
+        }
     }
 
     /// Read what [`SimState::encode`] wrote.
     pub fn decode(r: &mut Reader) -> Result<SimState> {
+        SimState::decode_as(r, true)
+    }
+
+    /// Read a sim state from a file that may be older: `held`, whether it
+    /// has the events held over a freeze (replay files from version 8,
+    /// saves from version 4).
+    pub fn decode_as(r: &mut Reader, held: bool) -> Result<SimState> {
         let continuous = Clock::decode(r)?;
         let discrete = Clock::decode(r)?;
         let seed = r.u64()?;
@@ -216,6 +316,31 @@ impl SimState {
             let name = r.str()?;
             disabled.push((name, r.str()?));
         }
+        let mut kept = Vec::new();
+        if held {
+            for _ in 0..r.count()? {
+                let frame = r.u64()?;
+                let name = r.str()?;
+                let mut fields = Vec::new();
+                for _ in 0..r.count()? {
+                    let k = r.str()?;
+                    fields.push((k, decode_value(r)?));
+                }
+                let by = r.opt(|r| r.str())?.map(Arc::from);
+                let mut owed = Vec::new();
+                for _ in 0..r.count()? {
+                    owed.push(r.str()?);
+                }
+                kept.push(HeldEvent {
+                    record: argus_ecs::EventRecord {
+                        frame,
+                        event: Event::Game { name, fields },
+                        by,
+                    },
+                    owed,
+                });
+            }
+        }
         Ok(SimState {
             continuous,
             discrete,
@@ -224,6 +349,7 @@ impl SimState {
             playing,
             paused,
             disabled,
+            held: kept,
         })
     }
 }
@@ -327,6 +453,12 @@ pub struct Scheduler {
     tolerate_missing: bool,
     /// The `after` names no system had at the last ordering: (system, name).
     dangling: Vec<(String, String)>,
+    /// Event names held over a frozen tick ([`Scheduler::hold_when_frozen`]).
+    hold: Vec<String>,
+    /// Events held over now, each with the systems still to see it.
+    held: Vec<HeldEvent>,
+    /// The systems a freeze kept from running this tick.
+    skipped: Vec<usize>,
 }
 
 /// Something that reads the world at the end of every tick and cannot
@@ -383,6 +515,75 @@ impl Scheduler {
             threaded: Vec::new(),
             tolerate_missing: false,
             dangling: Vec::new(),
+            hold: Vec::new(),
+            held: Vec::new(),
+            skipped: Vec::new(),
+        }
+    }
+
+    /// Hold events of this name over a frozen tick for the systems the
+    /// freeze kept from running: each sees the event the next tick it
+    /// runs, before that tick's own, and the systems that ran see it once.
+    /// For input the host will not send again, a `host.message` above all
+    /// (issue 5: a pause froze the tick a model's answer arrived on, and
+    /// the turn system never saw it). Other events are a moment of the
+    /// sim, and a frozen tick drops them for the frozen systems.
+    pub fn hold_when_frozen(&mut self, name: &str) {
+        if !self.hold.iter().any(|h| h == name) {
+            self.hold.push(name.to_string());
+        }
+    }
+
+    /// The events held over now, each with the systems still to see it.
+    pub fn held(&self) -> &[HeldEvent] {
+        &self.held
+    }
+
+    /// What is held over for one system, as its context shows it.
+    fn owed_to(&self, i: usize) -> Vec<argus_ecs::EventRecord> {
+        if self.held.is_empty() {
+            return Vec::new();
+        }
+        let name = &*self.systems[i].name;
+        self.held
+            .iter()
+            .filter(|h| h.owed.iter().any(|o| o == name))
+            .map(|h| h.record.clone())
+            .collect()
+    }
+
+    /// A system has run, and seen what was held over for it.
+    fn delivered(&mut self, i: usize) {
+        if self.held.is_empty() {
+            return;
+        }
+        let name = self.systems[i].name.clone();
+        for h in &mut self.held {
+            h.owed.retain(|o| *o != *name);
+        }
+        self.held.retain(|h| !h.owed.is_empty());
+    }
+
+    /// At the end of a frozen tick: this tick's events of a held name, for
+    /// the systems the freeze kept from running.
+    fn hold_over(&mut self, world: &World, events_before: usize) {
+        let mut owed: Vec<String> = self
+            .skipped
+            .iter()
+            .map(|&i| self.systems[i].desc.name.clone())
+            .collect();
+        owed.sort();
+        owed.dedup();
+        if owed.is_empty() {
+            return;
+        }
+        for r in &world.events()[events_before.min(world.events().len())..] {
+            if matches!(&r.event, Event::Game { name, .. } if self.hold.iter().any(|h| h == name)) {
+                self.held.push(HeldEvent {
+                    record: r.clone(),
+                    owed: owed.clone(),
+                });
+            }
         }
     }
 
@@ -1098,9 +1299,13 @@ impl Scheduler {
             spans: Vec::new(),
         };
         self.frozen = false;
+        self.skipped.clear();
         let events_before = world.events().len();
         for stage in [Stage::Input, Stage::Sim, Stage::Late] {
             self.run_stage(world, stage, kind, tick, time, dt, &mut samples);
+        }
+        if self.frozen && !self.hold.is_empty() {
+            self.hold_over(world, events_before);
         }
         self.apply_speed_requests(world, events_before);
         {
@@ -1287,12 +1492,22 @@ impl Scheduler {
         let keep = |s: &Scheduler, i: usize| {
             s.systems[i].enabled && s.binds(i, kind) && (!s.frozen || s.systems[i].desc.unfrozen)
         };
+        // Would have run but for a freeze: what is held over is for these.
+        let frozen_out = |s: &Scheduler, i: usize| {
+            s.frozen && s.systems[i].enabled && s.binds(i, kind) && !s.systems[i].desc.unfrozen
+        };
         let mut at = 0;
         while at < order.len() {
             let i = order[at];
             let batch = self.systems[i].batch;
             if batch != NO_BATCH {
                 let end = batch_end(&self.systems, &order, at);
+                let out: Vec<usize> = order[at..end]
+                    .iter()
+                    .copied()
+                    .filter(|&j| frozen_out(self, j))
+                    .collect();
+                self.skipped.extend(out);
                 let members: Vec<usize> = order[at..end]
                     .iter()
                     .copied()
@@ -1305,6 +1520,9 @@ impl Scheduler {
             }
             at += 1;
             if !keep(self, i) {
+                if frozen_out(self, i) {
+                    self.skipped.push(i);
+                }
                 continue;
             }
             let t = Instant::now();
@@ -1355,6 +1573,9 @@ impl Scheduler {
         if let Some(slot) = self.threaded.get_mut(batch as usize) {
             *slot = threaded;
         }
+        // What is held over for each, before the slots are borrowed.
+        let mut owed: Vec<(usize, Vec<argus_ecs::EventRecord>)> =
+            members.iter().map(|&i| (i, self.owed_to(i))).collect();
         // Each member's body, stream, and declaration, borrowed apart.
         let mut jobs: Vec<Job<'_>> = Vec::with_capacity(members.len());
         for (i, slot) in self.systems.iter_mut().enumerate() {
@@ -1371,6 +1592,11 @@ impl Scheduler {
             let Body::Parallel(run) = run else {
                 unreachable!("a batch holds parallel systems");
             };
+            let held = owed
+                .iter_mut()
+                .find(|(m, _)| *m == i)
+                .map(|(_, h)| std::mem::take(h))
+                .unwrap_or_default();
             jobs.push(Job {
                 slot: i,
                 run,
@@ -1378,6 +1604,7 @@ impl Scheduler {
                 access: &desc.access,
                 spawns: &desc.spawns,
                 name,
+                held,
                 out: Deferred::default(),
                 outcome: None,
                 start: None,
@@ -1442,6 +1669,7 @@ impl Scheduler {
                 self.sample_span(s, name.clone(), start, elapsed, allocs, bytes, lane);
             }
             out.apply(world, name);
+            self.delivered(i);
             if let Some(outcome) = outcome {
                 self.settle(i, world, outcome);
             }
@@ -1550,6 +1778,7 @@ impl Scheduler {
         let froze;
         let frozen = self.frozen;
         let speed = self.continuous.speed;
+        let held = self.owed_to(i);
         let slot = &mut self.systems[i];
         let Body::Serial(run) = &mut slot.run else {
             // A parallel system outside a batch runs as a batch of one.
@@ -1573,6 +1802,7 @@ impl Scheduler {
                 frozen,
                 freeze: false,
                 exclusive: slot.desc.exclusive,
+                held: &held,
             };
             // What the system emits says it did (obs.why).
             ctx.world.set_emitter(Some(slot.name.clone()));
@@ -1597,6 +1827,7 @@ impl Scheduler {
         if froze {
             self.frozen = true;
         }
+        self.delivered(i);
         self.settle(i, world, outcome);
     }
 
@@ -1658,6 +1889,7 @@ impl Scheduler {
                     )
                 })
                 .collect(),
+            held: self.held.clone(),
         }
     }
 
@@ -1674,6 +1906,7 @@ impl Scheduler {
         }
         self.playing = state.playing;
         self.paused = state.paused;
+        self.held = state.held.clone();
         // A system a fault switched off at frame 300 was on at frame 200.
         for s in &mut self.systems {
             match state.disabled.iter().find(|(n, _)| *n == s.desc.name) {

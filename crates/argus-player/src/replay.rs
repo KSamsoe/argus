@@ -16,7 +16,9 @@
 //! 4 the input state has no bindings, toggles, or key awaited, so a replay
 //! keeps the map it has (phase 5 item 2); from version 5 the keyframe
 //! holds the runtime maps' cells, which the game's scripts wrote, and the
-//! file ends with them as they were at `to` (phase 5 item 4).
+//! file ends with them as they were at `to` (phase 5 item 4); from
+//! version 8 the sim state holds the events held over a frozen tick for
+//! the systems it kept from running (issue 5).
 
 use crate::keyframe::Keyframe;
 use argus_ecs::codec::{Reader, Writer};
@@ -29,7 +31,7 @@ use serde_json::Value as Json;
 use std::path::Path;
 
 const TAG: &[u8; 4] = b"ARGR";
-const VERSION: u32 = 7;
+const VERSION: u32 = 8;
 
 /// A replay file, read back. The two worlds stay bytes until a live world
 /// (with the components registered) reads them.
@@ -147,7 +149,7 @@ pub fn decode(bytes: &[u8]) -> Result<ReplayFile> {
     let from = r.u64()?;
     let time = r.f64()?;
     let world = r.bytes()?.to_vec();
-    let sim = SimState::decode(&mut r)?;
+    let sim = SimState::decode_as(&mut r, version >= 8)?;
     let input = r.opt(|r| InputSnapshot::decode_as(r, version >= 4, version >= 7))?;
     let pools = r.bytes()?.to_vec();
     let rooms = r.opt(|r| StreamState::decode_as(r, version >= 3))?;

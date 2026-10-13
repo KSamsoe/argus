@@ -107,6 +107,9 @@ pub struct ParCtx<'a> {
     pub speed: f64,
     /// The tick is frozen (a hit-stop): only `unfrozen` systems run.
     pub frozen: bool,
+    /// Events held over for this system from ticks a freeze kept it from
+    /// running, oldest first (as [`crate::SystemCtx`] has them).
+    pub(crate) held: &'a [EventRecord],
 }
 
 impl<'a> ParCtx<'a> {
@@ -264,10 +267,15 @@ impl<'a> ParCtx<'a> {
         let frame = self.world.frame();
         let all = self.world.events();
         let start = all.len() - all.iter().rev().take_while(|r| r.frame >= frame).count();
-        all[start..].iter().filter(move |r| {
-            r.frame == frame
-                && (name.is_empty() || matches!(&r.event, Event::Game { name: n, .. } if n == name))
-        })
+        let named = move |r: &&EventRecord| {
+            name.is_empty() || matches!(&r.event, Event::Game { name: n, .. } if n == name)
+        };
+        self.held.iter().filter(named).chain(
+            all[start..]
+                .iter()
+                .filter(move |r| r.frame == frame)
+                .filter(named),
+        )
     }
 
     /// Emit a gameplay event (§8 L2), after the batch.

@@ -8,7 +8,8 @@
 //! scene, seed, code, clock, tick, time, name, saved_at); then the keyframe
 //! as a replay file holds one (the world as `World::encode_state` writes
 //! it, with each component's schema version; the sim state; the particle
-//! pools; the rooms; from version 3 the runtime maps' cells), without the
+//! pools; the rooms; from version 3 the runtime maps' cells; from version
+//! 4 the events held over a frozen tick, in the sim state), without the
 //! input state: a loaded game hears the player's hands now, not the ones
 //! that saved it.
 //!
@@ -27,7 +28,7 @@ use argus_sim::{SimSnapshot, SimState};
 use serde_json::Value as Json;
 
 const TAG: &[u8; 4] = b"ARGS";
-const VERSION: u32 = 3;
+const VERSION: u32 = 4;
 
 /// A save file's bytes: `meta` (the identity) and the keyframe `k`.
 pub fn encode(meta: &Json, k: &Keyframe) -> Vec<u8> {
@@ -82,7 +83,7 @@ pub fn decode(bytes: &[u8]) -> Result<SaveFile> {
     let tick = r.u64()?;
     let time = r.f64()?;
     let world = r.bytes()?.to_vec();
-    let sim = SimState::decode(&mut r)?;
+    let sim = SimState::decode_as(&mut r, version >= 4)?;
     let pools = r.bytes()?.to_vec();
     // Rooms remember what happened in them from version 2 (phase 3 item 6).
     let rooms = r.opt(|r| StreamState::decode_as(r, version >= 2))?;
