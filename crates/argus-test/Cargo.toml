@@ -10,5 +10,5 @@ mlua = { version = "0.10", features = ["luau", "serialize"] }
 serde_json = "1"
 
 [dev-dependencies]
-argus-daemon = { path = "../argus-daemon", version = "0.0.6" }
-argus-ecs = { path = "../argus-ecs", version = "0.0.6" }
+argus-daemon = { path = "../argus-daemon", version = "0.0.7" }
+argus-ecs = { path = "../argus-ecs", version = "0.0.7" }

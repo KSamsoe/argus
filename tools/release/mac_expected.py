@@ -41,7 +41,7 @@ def main():
     sprite = json.load(open(os.path.join(runs, "gen-sprite.json"), encoding="utf-8"))
     out = {
         "made_on": f"{platform.system()} {platform.machine()}",
-        "note": "Each digest is a run's world when it ended: game, scenario, seed. Puppet's differ between machines (its skeletons use the platform's sin and cos).",
+        "note": "Each digest is a run's world when it ended: game, scenario, seed. Every game's are expected to match, Puppet's included (from 0.0.7 its skeletons' trig is libm's, not the platform's).",
         "digests": digests,
         "generate": {
             "sound_toml_sha256": sha(os.path.join(game, "assets", "sfx", "zap.toml")),

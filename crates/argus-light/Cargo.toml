@@ -6,6 +6,6 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-argus-ecs = { path = "../argus-ecs", version = "0.0.6" }
-argus-camera = { path = "../argus-camera", version = "0.0.6" }
-argus-tiles = { path = "../argus-tiles", version = "0.0.6" }
+argus-ecs = { path = "../argus-ecs", version = "0.0.7" }
+argus-camera = { path = "../argus-camera", version = "0.0.7" }
+argus-tiles = { path = "../argus-tiles", version = "0.0.7" }
