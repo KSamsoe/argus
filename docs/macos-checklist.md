@@ -101,3 +101,22 @@ Left for later: a game released for the Mac is a bare executable beside its `dat
 ## The gate
 
 - Todd's AI works through the whole packet on Todd's Mac, and every check passes or its failure is fixed and checked again.
+
+**Met (2026-10-12), but for two checks that Todd will do later.** The report is GitHub issue 2: Argus 0.0.6 on an Apple M4 Max, macOS 27.0.1, arm64, with Apple's developer tools and no Rosetta.
+
+- **The 0.0.5 blocker is fixed.** 0.0.5 crashed at launch because each program named some system libraries more than once. 0.0.6 installs and runs, from a download marked by a browser too.
+- **Every automated check passes:** the templates, the daemon started a second time, frames with Metal, the art and sound recipes against Windows' (every hash and every field the same), a release for the Mac and from it for the other platforms, the MCP server, updating and removing, and Swarm with its Rust plugin built on the Mac.
+- **Digests:** 338 of 338 runs end on Windows' digest, across Hollow, Delve, Outpost, Toybox, and Swarm. So the games play the same on Apple Silicon as on x86-64 Windows and Linux and in Chrome. Puppet differs, as expected (its skeletons use the platform's sin and cos).
+- **Hollow's two picture goldens differ by 0.40 to 0.61% of pixels,** at text and sprite edges, against 0.10% allowed. That is a GPU against Windows' software rasteriser, about Linux's size.
+- **Todd's look and listen:**
+  - sharp on a 4K screen, with music and sound;
+  - keys, the menu, and VoiceOver work, and a gamepad works;
+  - the green button's full screen stays;
+  - the F8 report works with fn;
+  - the editor works;
+  - a released game opens.
+- **Still to do:** 10.2 (the agent's own host connected over MCP) and the Claude Desktop bundle's install (10.3), which Todd will do later.
+- **The report also noticed, none of it blocking:**
+  - released Steam games print Steam's three warning lines to stderr when Steam isn't running;
+  - `argus mcp` run in a game's folder leaves that game's daemon running after the pipe closes;
+  - the packet's 6.1 promised a flag that is off the screen, 8.2 didn't say `argus editor` returns at once, and 9 stopped a daemon that a build doesn't leave. These three are fixed in the packet.

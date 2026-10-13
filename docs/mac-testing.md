@@ -174,7 +174,7 @@ done
 cd ~/argus-mac-test
 ```
 
-Outpost is the longest, about a quarter of an hour. Swarm is in section 12; it needs Rust.
+Outpost is the longest: about six minutes on an M4 Max, a quarter of an hour on a slower machine. Swarm is in section 12; it needs Rust.
 
 **5.1** Every scenario passes, except:
 - Hollow's two picture scenarios ("the lit hollow looks as it did", "the cave and the hall look as they did") may fail. They compare a frame with a picture drawn on Windows by Windows' software rasteriser. Linux differs from it at text and sprite edges by about 0.5% of pixels, and a Mac (which draws with its GPU) may too. Record each one's percentage from its message, and copy the pictures it names (under `examples/hollow/.argus/test-images/`) into `~/argus-mac-test/frames/`.
@@ -212,7 +212,7 @@ argus daemon stop
 cd ~/argus-mac-test
 ```
 
-**6.1** A PNG is written, with `sprites` above 0 and an `adapter` naming the Mac's GPU and Metal. Look at the picture if you can read images, and say what you see: a small level with a hero, platforms, and a flag.
+**6.1** A PNG is written, with `sprites` above 0 and an `adapter` naming the Mac's GPU and Metal. Look at the picture if you can read images, and say what you see: the hero on grass platforms, a pit, a coin, and the HUD counting coins and falls. (The flag at the level's end is off the screen at the start.)
 
 **6.2** The grey one is the same scene without colour.
 
@@ -275,7 +275,7 @@ Ask the person:
 - Do the panels on the right (the inspector, the tuning panel) show the selected thing's values?
 - When they click the hero in the viewport, is it selected?
 
-Close the editor, then `argus daemon stop`.
+`argus editor` returns at once and the editor keeps running; close its window first, then `argus daemon stop` (stopping the daemon while the editor is open disconnects it, and its Reconnect button brings it back).
 
 **8.3** The report key. In a released game, F8 pauses it and asks for a note on the window's bottom line; Enter saves a report under the game's save folder. Mac keyboards send F8 as a media key (play or pause) unless fn is held. Start Hollow again as in 8.1, then:
 - Does F8 alone pause the game, or play and pause the person's music?
@@ -298,7 +298,6 @@ cd ~/argus-mac-test/games/release-me
 argus build --json > ~/argus-mac-test/log/9.1.json; echo "exit $?"
 ls -R dist | head -20
 for t in web windows linux; do argus build --target $t --json > ~/argus-mac-test/log/9.2-$t.json; echo "$t: exit $?"; done
-argus daemon stop
 cd ~/argus-mac-test
 ```
 
