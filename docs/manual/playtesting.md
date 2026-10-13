@@ -112,7 +112,7 @@ In the editor's Agent tab your open marks show with their pictures and notes, to
 
 ## Reports from players
 
-A player's build has no daemon, but it keeps the last thirty to sixty seconds of play. When a player presses F8 (or the game's `[marks] key`) and types a note, or when the game crashes, it saves a report: a replay file in the save folder's `reports/`, named `<time>-report.argr` or `<time>-crash.argr`.
+A player's build has no daemon, but it keeps the last thirty to sixty seconds of play: a keyframe every thirty seconds of sim time, the newest two kept, and the input since the older. On a discrete clock it is turns, not seconds: the last thirty to sixty turns, however long the player or an outside service took over each. When a player presses F8 (or the game's `[marks] key`) and types a note, or when the game crashes, it saves a report: a replay file in the save folder's `reports/`, named `<time>-report.argr` or `<time>-crash.argr`.
 
 Turn a report into a mark and open it like any other. The path is relative to the project, or absolute:
 

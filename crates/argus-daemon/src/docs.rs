@@ -755,7 +755,7 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "scene.tiles.get",
-        doc: "A rectangle of cells from a tilemap (*.tilemap.toml, or a Tiled map .tmx or .tmj) or a phase-0 bulk index (*.map.toml), without reading the chunks yourself. Tile ids: 0 is empty, n is frame n - 1 of the layer's tileset.",
+        doc: "A rectangle of cells from a tilemap (*.tilemap.toml, or a Tiled map .tmx or .tmj) or a phase-0 bulk index (*.map.toml), without reading the chunks yourself. Tile ids: 0 is empty, n is frame n - 1 of the layer's tileset. A runtime map (runtime = true: no chunks, a script paints it with q:tiles) has the live run's cells, as the scripts have left them now, not the file's.",
         params: &[
             req("file", STRING, "project-relative *.map.toml"),
             opt("layer", STRING, ""),
@@ -1001,7 +1001,7 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "input.message",
-        doc: "Send the game text from the host, as a page or a model's answer would: the next tick's scripts get it as a host.message event {channel, text, slot}. Recorded with the run's input, so a seek, a replay, a mark, or a report brings it in again. On a discrete clock it is a turn, as a key press is (a game that shouldn't spend one freezes it).",
+        doc: "Send the game text from the host, as a page or a model's answer would: queued, as an inject is, for the next tick, whose scripts get it as a host.message event {channel, text, slot}. It runs no tick itself. On a continuous clock that is the next tick played or stepped; on a discrete clock the next turn (a key in the window, sim.advance, argus run turns=1), so messages sent before it all arrive in that one tick, oldest first, an event each. Recorded with the run's input, so a seek, a replay, a mark, or a report brings it in again. A web build's player.message is a turn of its own on a discrete clock.",
         params: &[
             req("channel", STRING, "a short name the game chose: letters, digits, . _ -, up to 64"),
             req("text", STRING, "up to 64 KiB"),
@@ -1267,11 +1267,11 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "mark.open",
-        doc: "Reproduce a mark: load its scene with its seed, restore its keyframe, and play the five seconds before it, so obs.events and obs.trace hold them, stopping at the mark's frame. Then compare the world with the one the mark saved, field by field: after a fix, the difference is the fix's effect at that frame. A web mark (mark.import) replays its input from the load instead. The sim is paused at the mark; sim.seek moves within the lead-in. A mark with no clip gets one.",
+        doc: "Reproduce a mark: load its scene with its seed, restore its keyframe, and play the five seconds before it, so obs.events and obs.trace hold them, stopping at the mark's frame. Then compare the world with the one the mark saved, field by field: after a fix, the difference is the fix's effect at that frame. A JSON mark from the web player's old mark() (mark.import) replays its input from the load instead; a report from the page is a replay file like any mark's. The sim is paused at the mark; sim.seek moves within the lead-in. A mark with no clip gets one.",
         params: &[
             req("id", INTEGER, ""),
         ],
-        returns: "{id, frame, from, replayed, against_mark: {same, appeared, vanished, changed, first: [{entity, fields: [[path, then, now]]}]} (null for a web mark), digest: {mark, now, same}, code: {mark, now, same: false when the code changed since, null when either is unknown; said: a sentence when false}, remapped, dropped: components changed or gone since, missing_effects, mark, note, ms}",
+        returns: "{id, frame, from, replayed, against_mark: {same, appeared, vanished, changed, first: [{entity, fields: [[path, then, now]]}]} (null for a JSON mark from the web player's old mark(), which keeps no world to compare; a report from the page, pulled or imported, is a replay file and gets the full check), digest: {mark, now, same}, code: {mark, now, same: false when the code changed since, null when either is unknown; said: a sentence when false}, remapped, dropped: components changed or gone since, missing_effects, mark, note, ms}",
     },
     MethodDoc {
         name: "mark.note",

@@ -370,9 +370,11 @@ impl WebPlayer {
     }
 
     /// Text for the game's scripts, as a `host.message` event
-    /// `{channel, text}` on the next tick (host channel item 0): recorded
-    /// with the run's input, so a report carries it. Returns the turns a
-    /// discrete game took (one).
+    /// `{channel, text, slot}` (host channel item 0): recorded with the
+    /// run's input, so a report carries it. On a discrete clock it is a
+    /// turn, run inside this call: it returns 1, and `take_sent` has what
+    /// the game answered straight after. On a continuous clock it returns
+    /// 0, and the next tick the page runs has it.
     pub fn message(&mut self, channel: &str, text: &str) -> Result<u32, JsValue> {
         self.p.message(channel, text).map(|n| n as u32).map_err(js)
     }

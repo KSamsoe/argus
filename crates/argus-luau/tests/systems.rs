@@ -299,6 +299,73 @@ return system "sim.spawner" {
     assert!(fault_messages(&w).is_empty());
 }
 
+/// What the scripting chapter's sandbox section says a script has (issue
+/// 9: it named the libraries and not the base functions, which work), and
+/// what it lacks: `require` says what to do instead.
+#[test]
+fn the_sandbox_has_what_the_manual_lists() {
+    let (mut h, mut w, mut s) = host(7);
+    let sys = r#"
+return system "sim.sandbox" {
+  stage = "sim",
+  run = function(q)
+    for _, n in ipairs({ "assert", "error", "pcall", "xpcall", "select", "type", "typeof",
+        "tostring", "tonumber", "ipairs", "pairs", "next", "unpack", "rawget", "rawset",
+        "rawequal", "rawlen", "setmetatable", "getmetatable", "print" }) do
+      assert(type(_G[n]) == "function", n)
+    end
+    for _, n in ipairs({ "math", "string", "table", "vector", "coroutine", "bit32", "utf8", "buffer" }) do
+      assert(type(_G[n]) == "table", n)
+    end
+    for _, n in ipairs({ "os", "io", "load", "loadstring", "dofile" }) do
+      assert(_G[n] == nil, n)
+    end
+    local ok, err = pcall(require, "./helper")
+    assert(not ok and string.find(tostring(err), "read no other files"), tostring(err))
+  end,
+}"#;
+    assert!(
+        h.load_source(&mut w, &mut s, "systems/sandbox.luau", sys),
+        "{:?}",
+        h.errors()
+    );
+    s.step(&mut w, 1).unwrap();
+    assert!(fault_messages(&w).is_empty(), "{:?}", fault_messages(&w));
+}
+
+/// Issue 9: `q:spawn("id")` gives the id, a taken id is an error that
+/// names it, and `q:find` asks without one.
+#[test]
+fn find_returns_nil_where_entity_errs_and_spawn_by_id_names_a_taken_one() {
+    let (mut h, mut w, mut s) = host(7);
+    h.load_source(&mut w, &mut s, "components/all.luau", COMPONENTS);
+    let sys = r#"
+return system "sim.finder" {
+  stage = "sim", writes = {"Enemy"},
+  run = function(q)
+    assert(q:find("@boss") == nil, "none yet")
+    local boss = q:spawn("boss")
+    assert(q:find("@boss") == boss and q:entity("@boss") == boss)
+    local ok, err = pcall(q.spawn, q, "boss")
+    assert(not ok and string.find(tostring(err), "already used by"), tostring(err))
+    local gone = q:spawn()
+    local ref = tostring(gone)
+    gone:despawn()
+    assert(q:find(ref) == nil, "a dead ref is nil")
+    local bad = pcall(q.find, q, "e:nope")
+    assert(not bad, "a ref that is not one is still an error")
+  end,
+}"#;
+    assert!(
+        h.load_source(&mut w, &mut s, "systems/finder.luau", sys),
+        "{:?}",
+        h.errors()
+    );
+    s.step(&mut w, 1).unwrap();
+    assert!(fault_messages(&w).is_empty(), "{:?}", fault_messages(&w));
+    assert!(w.find("@boss").unwrap().is_some());
+}
+
 #[test]
 fn script_systems_are_deterministic_under_the_same_seed() {
     let sys = r#"

@@ -407,7 +407,7 @@ The engine's tokens are `text`, `muted`, `panel`, `border`, `focus`, `accent`, a
 |---|---|
 | `UiRoot` | The top of a tree: its `layer`, which player slot drives it, whether it is `interactive`, and `follow` to hang it from a world entity |
 | `UiNode` | Layout, flexbox style: `direction`, `justify`, `align`, `gap`, `pad`, `size`, `fill`, `absolute` with `anchor` and `pivot`, `order`, `visible` |
-| `UiText` | Words: `text`, or a string table's `key`; `size`, `color`, `font`, `align`, `wrap` |
+| `UiText` | Words: `text`, or a string table's `key`; `size`, `color`, `font`, `align`, `wrap`. A newline (`\n` in a script's string, a line break in a TOML multi-line string) always starts a new line; `wrap` also breaks at spaces to fit the node's width |
 | `UiPanel` | What a node draws behind it: a `color`, an `image` (nine-sliced with `slice`; `frame` picks one frame of a sheet), a `border` |
 | `UiButton` | Takes focus and is pressed; emits `ui.pressed` and its own `event` |
 | `UiRect` | Where the node landed (written by the layout) |

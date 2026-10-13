@@ -334,6 +334,27 @@ impl World {
         }
     }
 
+    /// [`World::entity`], with `None` where there is none: an `e:` ref no
+    /// longer alive, or an id no entity has (Luau's `q:find`, so a script
+    /// asks without catching an error). A ref that is not one, and a short
+    /// id several rooms' entities share, are still errors.
+    pub fn find(&self, r: &str) -> Result<Option<Entity>> {
+        match self.entity(r) {
+            Ok(e) => Ok(Some(e)),
+            Err(e) if e.code == codes::ENTITY_NOT_ALIVE => Ok(None),
+            Err(e) if e.code == codes::UNKNOWN_ID => {
+                let id = r.strip_prefix('@').unwrap_or(r);
+                let shared = !id.contains('/') && self.short.get(id).is_some_and(|m| m.len() > 1);
+                if shared {
+                    Err(e)
+                } else {
+                    Ok(None)
+                }
+            }
+            Err(e) => Err(e),
+        }
+    }
+
     /// The authored string id of an entity, if it has one.
     pub fn string_id(&self, e: Entity) -> Option<&str> {
         if !self.is_alive(e) {

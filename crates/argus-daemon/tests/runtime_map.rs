@@ -68,6 +68,19 @@ fn a_runtime_map_is_the_runs_and_a_seek_a_replay_and_a_save_keep_it() {
         "{at3} {at10}"
     );
     assert_eq!(at10[1], "........", "only the top row");
+    // scene.tiles.get reads the run's cells too, as the docs say (issue 9).
+    let got = ok(
+        &mut d,
+        "scene.tiles.get",
+        json!({ "file": "maps/floor.tilemap.toml", "layer": "walls", "rect": { "x": 0, "y": 0, "w": 8, "h": 1 } }),
+    );
+    let set = got["cells"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|c| c.as_u64() == Some(1))
+        .count();
+    assert_eq!(set, walls(&at10), "{got}");
 
     // The semantic frame reads it as the world's map.
     let f = ok(

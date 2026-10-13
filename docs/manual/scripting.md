@@ -243,7 +243,7 @@ return system "sim.sparks" {
 }
 ```
 
-For many at once, `q:spawn_many(n, {"Transform", "Enemy"}, function(e, i) ... end)` makes all of them in one call, handing each to the function through one reused handle; `examples/swarm/systems/waves.luau` spawns whole waves with it. Spawned entities are runtime entities: they have no string id and are never written to a scene file.
+For many at once, `q:spawn_many(n, {"Transform", "Enemy"}, function(e, i) ... end)` makes all of them in one call, handing each to the function through one reused handle; `examples/swarm/systems/waves.luau` spawns whole waves with it. Spawned entities are runtime entities: they are never written to a scene file, and only `q:spawn("id")` gives one a string id. An id another entity has is an error that names it; `q:find("@id")` returns the entity, or nil when there is none, so a script can ask first.
 
 ### Spawning from a prefab
 
@@ -382,8 +382,9 @@ A press that should not cost a turn (opening a menu) freezes the rest of that tu
 Scripts run inside the daemon, sandboxed, so a mistake cannot take the game down and every run can be replayed. What that means for you:
 
 - **Globals are read-only** once a file has loaded. `counter = 1` inside `run` fails with "attempt to modify a readonly table".
-- **Each run has an instruction budget.** A loop that never ends is stopped ("instruction budget exceeded") and its system switched off.
-- **`math`, `string`, `table`, and `vector` are there**, and there is no `io` and no `os`.
+- **Each run has an instruction budget**: 5,000,000 of the VM's checks, which it makes at each function call and each turn of a loop. A loop that never ends is stopped ("instruction budget exceeded") and its system switched off. The profiler (`argus profile`) shows a system's time in milliseconds, not its checks. The Luau heap may hold 256 MB.
+- **What a script has**: Luau's base functions (`assert`, `error`, `pcall`, `xpcall`, `select`, `type`, `typeof`, `tostring`, `tonumber`, `ipairs`, `pairs`, `next`, `unpack`, `setmetatable`, `getmetatable`, and the `raw` ones), and the libraries `math`, `string`, `table`, `vector`, `coroutine`, `bit32`, `utf8`, and `buffer`. `print` writes to the daemon's log, `.argus/daemon.log`; to see a value, emit it (`q:emit`) and read it with `argus events`.
+- **What it does not have**: `io`, `os`, `load`, `loadstring`, and `dofile`. `require` is an error that says what to use instead: a game's scripts read no other files, because a release build has no folder to read them from. Keep a helper in the file that uses it, and values several systems share in a def table (`q:def`).
 - **Keep all state in components.** A `local` at the top of a file is shared by every run of the system, but it is not part of the world: a seek, a replay, a save, or a test does not put it back. In a test of this, a counter kept in a file-level local read 30 after seeking back to frame 10 of a 20-tick run. Use file-level locals only for constants and helper functions.
 - **Read time from `q`, and random numbers from `q:rng()`.** There is no clock and no date to read, and `math.random` fails with an error that says what to use: give the system a stream (`rng = "loot"`) and call `q:rng():next()`, `q:rng():range(lo, hi)`, or `q:rng():chance(p)`. A number that differed between a run and its replay would break every seek, replay, mark, and test. (The first builds let `math.random` and `os` through; the manual's writers found it.)
 

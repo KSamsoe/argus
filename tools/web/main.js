@@ -293,7 +293,9 @@ try {
   canvas.focus();
 
   // What the headless checks reach for.
-  window.argus = { player, setRunning: (r) => (run = r), report: (n) => player.report(n), send, store, savesAndLoads };
+  // openReport is F8's form, for a page script whose own text box has the
+  // keys (the game hears them only while the canvas has focus).
+  window.argus = { player, setRunning: (r) => (run = r), report: (n) => player.report(n), openReport, send, store, savesAndLoads };
   // The sound's queue: how deep it is now, and the render quanta (128
   // frames each) the worklet could not fill since it started.
   window.argus.sound = () => ({ ...sound, queued_ms: sound.rate ? Math.round(((sound.sent - sound.played) * 1000) / sound.rate) : 0 });

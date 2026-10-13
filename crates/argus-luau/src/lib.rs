@@ -1043,6 +1043,8 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
 /// unseeded `math.random`: a script could read them, and a seek or a
 /// replay then gave another result. Found writing the manual; no example
 /// used them. `math.random` and `math.randomseed` now say what to use.
+/// So does `require`, which looks for a module file on disk, where a
+/// release build has none (found probing the sandbox, issue 9).
 fn deterministic_globals(lua: &Lua) -> mlua::Result<()> {
     lua.load(
         r#"
@@ -1052,6 +1054,9 @@ fn deterministic_globals(lua: &Lua) -> mlua::Result<()> {
         end
         math.random = no_random
         math.randomseed = no_random
+        require = function(name)
+          error("require(" .. tostring(name) .. "): a game's scripts read no other files, since a release build has no folder to read them from; keep a helper in the file that uses it, and shared values in a def table (q:def)", 2)
+        end
         "#,
     )
     .set_name("=argus")

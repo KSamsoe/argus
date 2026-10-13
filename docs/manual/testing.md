@@ -333,7 +333,6 @@ CI runs each example's suite with `argus test --software`. Your own CI can run t
 ## Limits
 
 - Picture goldens hold on one operating system only.
-- `t:run_until` ignores keys it does not know, so a misspelled key is silently ignored.
 - Only files directly in `tests/` are scenarios.
 - A scenario runs headless. It cannot judge feel; for that, ask a person (see [Playtesting](playtesting.md)).
 

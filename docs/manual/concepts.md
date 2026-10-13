@@ -63,7 +63,7 @@ argus daemon status
 argus daemon stop
 ```
 
-The daemon keeps running after a command ends, so the next one is fast and the world is where you left it. Stop it when you are done with `argus daemon stop`. `argus daemon start --window` starts it with a game window you can play in.
+The daemon keeps running after a command ends, so the next one is fast and the world is where you left it. `argus daemon status` exits 0 when a daemon runs and 3 when none does, so a script can ask. Stop it when you are done with `argus daemon stop`. `argus daemon start --window` starts it with a game window you can play in.
 
 A script error never takes the daemon down. A system that fails is switched off and the failure is reported, and the rest of the world stays there for you to look at. See [Scripting](scripting.md#how-errors-show-up).
 

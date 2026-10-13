@@ -870,6 +870,18 @@ impl UserData for QueryHandle {
                 link: this.link.clone(),
             })
         });
+        // find(ref): entity(ref), or nil when there is none (issue 9: a
+        // script asked with pcall(q.entity, ...)).
+        m.add_method("find", |lua, this, r: String| {
+            let c = ctx(&this.link)?;
+            match c.world().find(&r).map_err(argus_err)? {
+                Some(e) => Ok(LuaValue::UserData(lua.create_userdata(EntityRef {
+                    entity: e,
+                    link: this.link.clone(),
+                })?)),
+                None => Ok(LuaValue::Nil),
+            }
+        });
         m.add_method("get", |lua, this, (e, name): (AnyUserData, String)| {
             let e = e.borrow::<EntityRef>()?.entity;
             component_ref(lua, &this.link, e, &name)

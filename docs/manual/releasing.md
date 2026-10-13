@@ -126,7 +126,22 @@ setInterval(async () => {
 }, 100);
 ```
 
-`player.take_sent()` is what the game sent since the last call (`q:send`), as JSON `[{tick, channel, text}]`; `player.message(channel, text)` sends it a message, which its scripts get on the next tick. A player's report keeps the messages with the rest of the input, so a report replays without the outside world.
+`player.take_sent()` is what the game sent since the last call (`q:send`), as JSON `[{tick, channel, text}]`. `player.message(channel, text)` sends the game a message and returns the turns it took. On a discrete clock that is 1: the turn runs inside the call, so what the game answered is in `take_sent()` straight after. On a continuous clock it is 0, and the scripts get the message on the next tick the page runs, within a frame. A player's report keeps the messages with the rest of the input, so a report replays without the outside world.
+
+What else a page script has:
+
+| On `window.argus` | What it is |
+|---|---|
+| `player.semantic()` | What is on screen now, as JSON: the semantic frame an agent reads with `argus observe` and a screen reader is given (the UI's text and buttons in reading order, and the entities in view with a `Describe`). The page's way to read the world. |
+| `player.status()` | JSON: the tick, entity and event counts, the world's digest, frames drawn. |
+| `openReport()` | Opens the F8 report form, as F8 does. |
+| `setRunning(false)`, `setRunning(true)` | Stops and restarts the game's frame loop (what the report form does while it is open). |
+
+`player.digest_rows()` is the engine's own debug text for the digest checks, not for games to read.
+
+The page's own elements are the canvas (`#game`), the report form (`#report`, `#note`, `#cancel`), the status lines (`#said`, `#status`, `#controls`, `#f8`), and the screen reader's (`#reader-buttons`, `#reader-said`, `#reader-hud`). A script's own elements go in `#page`, an empty `<div>` below the canvas; style them with the script's own `<style>` element, and give them ids of the game's own.
+
+The game hears keys only while the canvas has focus. A key pressed in a script's text box goes to the text box, F8 included, so a script with a text box opens the report form itself (`window.argus.openReport()`), and gives the canvas back its focus (`document.getElementById("game").focus()`) when the player is done typing.
 
 ## A release for the other platform
 
