@@ -54,6 +54,16 @@ impl SteamPlatform {
     /// Start Steam for `app_id`. Steam must be running and logged in, and
     /// the account must own the app.
     pub fn init(app_id: u32) -> Result<SteamPlatform> {
+        // With no Steam client running, Steam's library prints its own
+        // failure on stderr (three `[S_API FAIL]` lines, which a player
+        // running the game from a terminal sees) before it fails. Asked
+        // first, the game says it once, in its own words.
+        // SAFETY: callable before SteamAPI_Init; it only looks for the client.
+        if !unsafe { sys::SteamAPI_IsSteamRunning() } {
+            return Err(failed(format!("Steam is not running, so app {app_id} plays without it")).hint(
+                "Start Steam and log in, then start the game again. The game runs on the null platform without it.",
+            ));
+        }
         let client = Client::init_app(app_id).map_err(|e| {
             failed(format!("Steam did not start for app {app_id}: {e}")).hint(
                 "Steam must be running and logged in, and the account must own the app (480, Spacewar, is every account's). The game runs on the null platform without it.",
