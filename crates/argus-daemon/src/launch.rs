@@ -5,7 +5,8 @@
 use crate::daemon::daemon_info_path;
 use crate::{socket_name_for, Daemon, Transport};
 use serde_json::json;
-use std::path::PathBuf;
+use std::io::{IsTerminal, Write};
+use std::path::{Path, PathBuf};
 
 /// How to start.
 #[derive(Clone, Debug, Default)]
@@ -41,6 +42,9 @@ pub fn launch(l: Launch) -> i32 {
         .project
         .as_ref()
         .map(|p| p.canonicalize().unwrap_or(p.clone()));
+    if let Some(root) = &root {
+        log_panics(root);
+    }
     if let Some(root) = &root {
         let mut params = json!({ "project": root.to_string_lossy() });
         if let Some(s) = &l.scene {
@@ -116,7 +120,11 @@ pub fn launch(l: Launch) -> i32 {
         );
     }
     let code = match crate::server::serve_with(daemon, transport, root.as_deref(), l.web) {
-        Ok(()) => 0,
+        Ok(()) => {
+            // So a log that ends without this line is a daemon that died.
+            eprintln!("argusd: stopped");
+            0
+        }
         Err(e) => {
             eprintln!("argusd: {e}");
             1
@@ -136,4 +144,39 @@ pub fn launch(l: Launch) -> i32 {
         }
     }
     code
+}
+
+/// A panic anywhere in the daemon, on any thread, goes to the project's
+/// `.argus/daemon.log` with its thread, the time, and a backtrace before
+/// the process ends. Once a daemon left mid-test with nothing in its log
+/// after "listening" (issue 10). It writes the file itself, since the CLI
+/// holds stderr's lock while `argus daemon run` serves, and a hook that
+/// printed from another thread would wait on it for ever. When stderr is
+/// a terminal (`argus daemon run` by hand), the usual message goes there
+/// too.
+pub fn log_panics(root: &Path) {
+    let log = root.join(".argus").join("daemon.log");
+    let default = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let thread = std::thread::current();
+        let name = thread.name().unwrap_or("unnamed").to_string();
+        let when = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let backtrace = std::backtrace::Backtrace::force_capture();
+        let written = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&log)
+            .and_then(|mut f| {
+                writeln!(
+                    f,
+                    "argusd: panicked (thread {name}, unix time {when}): {info}\nbacktrace:\n{backtrace}"
+                )
+            });
+        if written.is_err() || std::io::stderr().is_terminal() {
+            default(info);
+        }
+    }));
 }
