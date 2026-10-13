@@ -22,6 +22,7 @@ pub mod mods;
 pub mod pack;
 #[cfg(all(feature = "render", feature = "audio"))]
 mod player;
+pub mod read;
 pub mod recorder;
 pub mod replay;
 pub mod reports;

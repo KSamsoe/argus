@@ -168,8 +168,26 @@ impl WebPlayer {
         Ok(Json::Array(out).to_string())
     }
 
+    /// The world for a page script, as JSON: an entity (`@player`, `e:12`)
+    /// as `{entity, components}`, one component (`path` "Health"), or one
+    /// field ("Health.cur"); `path` "" for the whole entity (issue 26).
+    pub fn get(&self, entity: &str, path: &str) -> Result<String, JsValue> {
+        argus_player::read::get(&self.p.world, entity, path)
+            .map(|j| j.to_string())
+            .map_err(js)
+    }
+
+    /// Every entity with all these components (comma-separated, "Monster,
+    /// Health"), oldest first, each with those components, as JSON.
+    pub fn query(&self, components: &str) -> Result<String, JsValue> {
+        argus_player::read::query(&self.p.world, components)
+            .map(|j| j.to_string())
+            .map_err(js)
+    }
+
     /// What the world's digest reads, a line a field (see
-    /// `Player::digest_rows`).
+    /// `Player::digest_rows`): the digest checks' own debug text, not for a
+    /// game's page to read (`get` and `query` are).
     pub fn digest_rows(&self) -> String {
         self.p.digest_rows().join("\n")
     }

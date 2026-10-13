@@ -232,3 +232,29 @@ fn a_report_with_messages_in_it_replays_to_the_same_world_without_the_host() {
         "the last ruling, replayed from the report, not sent again"
     );
 }
+
+/// Issue 26: a page script reads the world as JSON, entities as the
+/// protocol spells them, not the digest checks' debug text.
+#[test]
+fn a_page_reads_the_world_as_json() {
+    let dir = project("read");
+    let p = Player::open(&dir, None, None).unwrap();
+    let hp = argus_player::read::get(&p.world, "@player", "Health.cur").unwrap();
+    assert!(hp.as_i64().unwrap() > 0, "{hp}");
+    let health = argus_player::read::get(&p.world, "@player", "Health").unwrap();
+    assert_eq!(health["cur"], hp, "{health}");
+    let whole = argus_player::read::get(&p.world, "@player", "").unwrap();
+    assert_eq!(whole["entity"], "@player");
+    assert!(whole["components"]["Health"].is_object(), "{whole}");
+    let monsters = argus_player::read::query(&p.world, "Monster, Health").unwrap();
+    let rows = monsters.as_array().unwrap();
+    assert!(!rows.is_empty(), "the template places monsters");
+    for m in rows {
+        let e = m["entity"].as_str().unwrap();
+        assert!(e.starts_with('@') || e.starts_with("e:"), "{e}");
+        let comps = m["components"].as_object().unwrap();
+        assert_eq!(comps.len(), 2, "only the two asked for: {m}");
+    }
+    assert!(argus_player::read::query(&p.world, "Nope").is_err());
+    assert!(argus_player::read::get(&p.world, "@player", "Health.nope").is_err());
+}
