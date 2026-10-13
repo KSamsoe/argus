@@ -135,6 +135,34 @@ fn bad_mark(id: u64, e: impl std::fmt::Display) -> ArgusError {
     ArgusError::new(codes::BAD_MARK, format!("mark {id}: {e}"))
 }
 
+/// The code a mark or a replay was made with beside the code now (`key`
+/// names the first: `mark`, `saved`), and whether they are the same: a
+/// replay is faithful only with the same code. Uncommitted changes are in
+/// it as a hash (`+dirty.<hash>`, issue 7), so a script changed since the
+/// report shows here. `same` is null when either is unknown (`none`:
+/// outside a repository, or no git).
+fn code_beside(key: &str, then: &Json, now: String) -> Json {
+    let known = |c: Option<&str>| {
+        c.filter(|c| !c.is_empty() && *c != "none")
+            .map(str::to_string)
+    };
+    let same = match (known(then.as_str()), known(Some(&now))) {
+        (Some(a), Some(b)) => Some(a == b),
+        _ => None,
+    };
+    let mut out = serde_json::Map::new();
+    out.insert(key.to_string(), then.clone());
+    out.insert("now".to_string(), json!(now));
+    out.insert("same".to_string(), json!(same));
+    if same == Some(false) {
+        out.insert(
+            "said".to_string(),
+            json!("the code has changed since this was recorded, so the replay may differ from what the player saw for that reason alone"),
+        );
+    }
+    Json::Object(out)
+}
+
 fn read_mark(root: &Path, id: u64) -> Result<Json> {
     let path = mark_dir(root, id).join("mark.json");
     let text = std::fs::read_to_string(&path).map_err(|_| no_mark(id))?;
@@ -893,7 +921,7 @@ impl Daemon {
         let digest = format!("{:016x}", self.run_digest());
         let same = mark["digest"].as_str() == Some(digest.as_str());
         out["digest"] = json!({ "mark": mark["digest"], "now": digest, "same": same });
-        out["code"] = json!({ "mark": mark["code"], "now": code_version(&root) });
+        out["code"] = code_beside("mark", &mark["code"], code_version(&root));
         // A mark without its clip (a web mark, or dropped with no GPU) gets
         // one now, from the lead-in just played.
         let dir = mark_dir(&root, id);
@@ -1304,7 +1332,7 @@ impl Daemon {
         let digest = format!("{:016x}", self.run_digest());
         let same = info["digest"].as_str().map(|d| d == digest);
         out["digest"] = json!({ "saved": info["digest"], "now": digest, "same": same });
-        out["code"] = json!({ "saved": code, "now": code_version(&root) });
+        out["code"] = code_beside("saved", &code, code_version(&root));
         out["replay"] = replay_summary(&dir, &info);
         out["ms"] = json!((started.elapsed().as_secs_f64() * 1e4).round() / 10.0);
         Ok(out)

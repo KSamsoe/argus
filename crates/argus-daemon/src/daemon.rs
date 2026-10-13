@@ -7559,9 +7559,12 @@ pub fn git_usable() -> bool {
 }
 
 /// The code a run was made with (§6 run identity): `git:<revision>`, with
-/// `+dirty` when files under the project differ from it, or `none` outside
-/// a repository (or with no git to ask). No console window opens for git
-/// on Windows.
+/// `+dirty.<hash>` when files under the project differ from it, or `none`
+/// outside a repository (or with no git to ask). The hash is of the changed
+/// files as they are now (`changes_hash`), so two builds with different
+/// uncommitted changes say different things, and a mark from one opened
+/// against the other says the code changed (issue 7: both said
+/// `git:8940ef6+dirty`). No console window opens for git on Windows.
 pub fn code_version(root: &Path) -> String {
     if !git_usable() {
         return "none".to_string();
@@ -7582,10 +7585,76 @@ pub fn code_version(root: &Path) -> String {
     match git(&["rev-parse", "--short", "HEAD"]) {
         Some(rev) if !rev.is_empty() => {
             let dirty = git(&["status", "--porcelain", "--", "."]).is_some_and(|s| !s.is_empty());
-            format!("git:{rev}{}", if dirty { "+dirty" } else { "" })
+            if !dirty {
+                return format!("git:{rev}");
+            }
+            // Paths from the project's folder: changed since the commit
+            // (staged or not, deleted too), and new and not ignored.
+            let mut changed: Vec<String> = [
+                git(&["diff", "--name-only", "--relative", "-z", "HEAD", "--", "."]),
+                git(&[
+                    "ls-files",
+                    "-z",
+                    "--others",
+                    "--exclude-standard",
+                    "--",
+                    ".",
+                ]),
+            ]
+            .into_iter()
+            .flatten()
+            .flat_map(|s| {
+                s.split('\0')
+                    .filter(|p| !p.is_empty())
+                    .map(str::to_string)
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+            changed.sort();
+            changed.dedup();
+            format!("git:{rev}+dirty.{}", changes_hash(root, &changed))
         }
         _ => "none".to_string(),
     }
+}
+
+/// Eight hex digits naming what the changed files hold now, by their paths
+/// from the project's folder. Left out are the files no run reads, so the
+/// hash moves when the game does: anything under a dot-named folder
+/// (`.argus/`, where marks and saves go), the builds (`dist/`) and dev
+/// tools (`tools/`), the notes for people and agents at the top (README.md,
+/// ARGUS.md, ...), and what `[build] exclude` names. A deleted file counts
+/// as deleted.
+pub fn changes_hash(root: &Path, changed: &[String]) -> String {
+    let patterns = argus_scene::ProjectConfig::load(root)
+        .ok()
+        .and_then(|c| argus_player::pack::exclude_patterns(&c).ok())
+        .unwrap_or_default();
+    let read = |rel: &str| -> bool {
+        let parts: Vec<&str> = rel.split('/').collect();
+        if parts.iter().any(|p| p.starts_with('.')) {
+            return false;
+        }
+        if parts.len() > 1 && matches!(parts[0], "dist" | "tools") {
+            return false;
+        }
+        if parts.len() == 1 && argus_player::pack::LEFT_OUT_FILES.contains(&parts[0]) {
+            return false;
+        }
+        !argus_player::pack::excluded_by_patterns(rel, &patterns)
+    };
+    let mut all = Vec::new();
+    for rel in changed.iter().filter(|r| read(r)) {
+        all.extend_from_slice(rel.as_bytes());
+        all.push(0);
+        match std::fs::read(root.join(rel)) {
+            Ok(bytes) => all.extend_from_slice(&argus_player::sha256::sha256(&bytes)),
+            Err(_) => all.extend_from_slice(b"deleted"),
+        }
+        all.push(0);
+    }
+    let h = argus_player::sha256::sha256(&all);
+    h[..4].iter().map(|b| format!("{b:02x}")).collect()
 }
 
 /// Where a project's daemon writes its connection info.

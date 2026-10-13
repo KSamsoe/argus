@@ -106,7 +106,7 @@ argus mark note id=1 note="the jump, not the fall"  # reword the note
 argus marks action=close id=1 note="fixed: jump gravity"
 ```
 
-Opening a mark loads its scene with its seed, restores its keyframe, plays the five seconds before it, and stops paused at the mark's frame. It then compares the world with the one the mark saved, field by field. Before a fix they should match (`digest.same` is true); after a fix, the difference is the fix's effect at that frame. A mark records the code version it was made with (the git revision), and replays faithfully only with the same code.
+Opening a mark loads its scene with its seed, restores its keyframe, plays the five seconds before it, and stops paused at the mark's frame. It then compares the world with the one the mark saved, field by field. Before a fix they should match (`digest.same` is true); after a fix, the difference is the fix's effect at that frame. A mark records the code version it was made with: the git revision, and when there were uncommitted changes, `+dirty.` and eight hex digits naming what the changed files held (`git:8940ef6+dirty.3fa2c1d0`). Changes to files no run reads leave it as it was: anything under a folder whose name starts with a dot, `dist/`, `tools/`, the notes at the top (`README.md`, `ARGUS.md`, ...), and what `[build] exclude` names. A mark replays faithfully only with the same code, so `mark.open` returns `code.mark` and `code.now`, and `code.same`: false, with a sentence in `code.said`, when a script or data file has changed since the mark was made, committed or not.
 
 In the editor's Agent tab your open marks show with their pictures and notes, to reword, Reproduce, Close, or Take back.
 

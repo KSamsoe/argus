@@ -1271,7 +1271,7 @@ pub const METHODS: &[MethodDoc] = &[
         params: &[
             req("id", INTEGER, ""),
         ],
-        returns: "{id, frame, from, replayed, against_mark: {same, appeared, vanished, changed, first: [{entity, fields: [[path, then, now]]}]} (null for a web mark), digest: {mark, now, same}, code: {mark, now}, remapped, dropped: components changed or gone since, missing_effects, mark, note, ms}",
+        returns: "{id, frame, from, replayed, against_mark: {same, appeared, vanished, changed, first: [{entity, fields: [[path, then, now]]}]} (null for a web mark), digest: {mark, now, same}, code: {mark, now, same: false when the code changed since, null when either is unknown; said: a sentence when false}, remapped, dropped: components changed or gone since, missing_effects, mark, note, ms}",
     },
     MethodDoc {
         name: "mark.note",
@@ -1493,7 +1493,7 @@ pub const METHODS: &[MethodDoc] = &[
         params: &[
             req("path", STRING, "relative to the project"),
         ],
-        returns: "{frame, from, replayed, against_mark: {same, appeared, vanished, changed, first}, digest: {saved, now, same}, code: {saved, now}, remapped, dropped, missing_effects, replay: replay.save's summary, ms}",
+        returns: "{frame, from, replayed, against_mark: {same, appeared, vanished, changed, first}, digest: {saved, now, same}, code: {saved, now, same, said}, remapped, dropped, missing_effects, replay: replay.save's summary, ms}",
     },
     MethodDoc {
         name: "sim.set",
