@@ -1035,7 +1035,7 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "input.log.get",
-        doc: "The input log: every action value change by tick (continuous) or turn (discrete).",
+        doc: "The input log: every action value change by tick (continuous) or turn (discrete), and the host's messages (action host.message, value {channel, text}) at the tick they reach.",
         params: &[
             opt("since", INTEGER, "tick"),
             opt("slot", INTEGER, ""),
@@ -1300,12 +1300,12 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "mark.import",
-        doc: "Put a player's report into the queue as a mark: a replay file (.argr) a release build saves when its report key is pressed or it crashes, or the web page posts, with the player's note in it (phase 2 item 7); mark.open reproduces it like any mark. Also takes a web spike mark (the JSON WebPlayer.mark gives), which has no keyframe: mark.open replays its input from the load.",
+        doc: "Put a player's report into the queue as a mark: a replay file (.argr) a release build saves when its report key is pressed or it crashes, or the web page posts, with the player's note in it (phase 2 item 7); mark.open reproduces it like any mark. The same report imported again answers with the mark it made the first time (already: true). Also takes a web spike mark (the JSON WebPlayer.mark gives), which has no keyframe: mark.open replays its input from the load.",
         params: &[
             req("path", STRING, "the report or mark; relative to the project"),
             opt("author", STRING, "default player"),
         ],
-        returns: "mark.drop's summary",
+        returns: "mark.drop's summary, with already: true when the report was imported before",
     },
     MethodDoc {
         name: "mark.pull",
@@ -1489,9 +1489,9 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "replay.open",
-        doc: "Reproduce a saved replay (the directory replay.save or a failing test wrote, or its replay.bin): load its scene with its seed, restore its keyframe, and play the seconds before it so obs.events and obs.trace hold them, stopping at its frame. Then compare the world with the one it saved, field by field. Paused there; sim.seek moves within the lead-in, and an open window shows it (the editor opens these in phase 4).",
+        doc: "Reproduce a saved replay (the directory replay.save or a failing test wrote, its replay.bin, or a player's report by its own name, a .argr file): load its scene with its seed, restore its keyframe, and play the seconds before it so obs.events and obs.trace hold them, stopping at its frame. Then compare the world with the one it saved, field by field. Paused there; sim.seek moves within the lead-in, and an open window shows it (the editor opens these in phase 4).",
         params: &[
-            req("path", STRING, "relative to the project"),
+            req("path", STRING, "a folder holding replay.bin, or a replay file; relative to the project or absolute"),
         ],
         returns: "{frame, from, replayed, against_mark: {same, appeared, vanished, changed, first}, digest: {saved, now, same}, code: {saved, now, same, said}, remapped, dropped, missing_effects, replay: replay.save's summary, ms}",
     },

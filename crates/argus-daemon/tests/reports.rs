@@ -108,6 +108,17 @@ fn a_report_is_a_mark_that_reproduces_and_pull_fetches_each_once() {
     let o = ok(&mut d, "mark.open", json!({ "id": 1 }));
     assert_eq!(o["digest"]["same"], true, "{o}");
     assert_eq!(o["digest"]["now"], digest.as_str());
+    // Issue 15: the same report again is the same mark, and replay.open
+    // takes the report by its own name and compares its digest.
+    let again = ok(&mut d, "mark.import", json!({ "path": "report.argr" }));
+    assert_eq!(
+        (again["id"].clone(), again["already"].clone()),
+        (json!(1), json!(true)),
+        "{again}"
+    );
+    let r = ok(&mut d, "replay.open", json!({ "path": "report.argr" }));
+    assert_eq!(r["digest"]["saved"], digest.as_str(), "{}", r["digest"]);
+    assert_eq!(r["digest"]["same"], true, "{}", r["digest"]);
 
     // Two reports on a playtest server: pulled once each. The server answers
     // the first pull's list and two files, then the second pull's list.

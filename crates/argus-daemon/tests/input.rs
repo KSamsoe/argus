@@ -105,6 +105,20 @@ fn injected_actions_reach_gameplay_and_never_name_keys() {
         json!({ "action": "fire", "since": 4 }),
     );
     assert_eq!(log["total"], 1);
+    // The host's messages are input, and in the log at the tick they reach
+    // (issue 15).
+    let now = ok(&mut d, "sim.status", json!({}))["tick"].clone();
+    ok(
+        &mut d,
+        "input.message",
+        json!({ "channel": "gm.ruling", "text": "the door holds" }),
+    );
+    let log = ok(&mut d, "input.log.get", json!({ "action": "host.message" }));
+    assert_eq!(
+        log["rows"],
+        json!([[now, 1, "host.message", { "channel": "gm.ruling", "text": "the door holds" }]]),
+        "{log}"
+    );
     let st = ok(&mut d, "input.state", json!({ "slot": 1 }));
     assert_eq!(st["actions"]["move"], json!([0.0, 0.0]));
 

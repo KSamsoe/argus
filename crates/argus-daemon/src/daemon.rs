@@ -4183,14 +4183,38 @@ impl Daemon {
         let action = json::opt_str(params, "action")?;
         let st = self.input()?;
         let st = st.borrow();
-        let rows: Vec<Json> = st
+        let mut rows: Vec<(u64, Json)> = st
             .log()
             .iter()
             .filter(|e| e.tick >= since)
             .filter(|e| slot.is_none_or(|s| s == e.slot))
             .filter(|e| action.is_none_or(|a| a == e.action))
-            .map(|e| e.to_json())
+            .map(|e| (e.tick, e.to_json()))
             .collect();
+        // The host's messages are input too, journaled for the tick they
+        // reach: action `host.message`, value {channel, text} (issue 15).
+        for j in st.journal() {
+            let argus_input::Command::Message {
+                slot: s,
+                channel,
+                text,
+            } = &j.command
+            else {
+                continue;
+            };
+            if j.now < since
+                || slot.is_some_and(|x| x != *s)
+                || action.is_some_and(|a| a != "host.message")
+            {
+                continue;
+            }
+            rows.push((
+                j.now,
+                json!([j.now, s, "host.message", { "channel": channel, "text": text }]),
+            ));
+        }
+        rows.sort_by_key(|r| r.0);
+        let rows: Vec<Json> = rows.into_iter().map(|r| r.1).collect();
         let (limit, offset) = query::page(params)?;
         let mut out = query::paged(rows, limit, offset);
         out["columns"] = json!(["tick", "slot", "action", "value"]);

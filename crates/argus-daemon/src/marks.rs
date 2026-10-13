@@ -791,6 +791,32 @@ impl Daemon {
             )
         })?;
         let meta = &file.meta;
+        // The same report imported again is the mark it made the first time,
+        // as mark.pull remembers what it pulled (issue 15: each import made
+        // a new mark). Marks imported before the hash was kept are known by
+        // their replay's bytes.
+        let hash: String = argus_player::sha256::sha256(bytes)
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        for old in ids(root) {
+            let Ok(m) = read_mark(root, old) else {
+                continue;
+            };
+            let same = match m["sha256"].as_str() {
+                Some(h) => h == hash,
+                None => {
+                    matches!(m["source"].as_str(), Some("report" | "crash"))
+                        && std::fs::read(mark_dir(root, old).join("replay.bin"))
+                            .is_ok_and(|b| b == bytes)
+                }
+            };
+            if same {
+                let mut out = self.mark_summary(root, &m);
+                out["already"] = json!(true);
+                return Ok(out);
+            }
+        }
         let id = ids(root).last().map_or(1, |i| i + 1);
         let dir = mark_dir(root, id);
         std::fs::create_dir_all(&dir)
@@ -815,6 +841,7 @@ impl Daemon {
             "digest": meta["digest"],
             "replay": { "file": "replay.bin", "from": file.from, "to": file.to, "bytes": bytes.len() },
             "imported_from": params.get("from").cloned().unwrap_or(json!(path.to_string_lossy())),
+            "sha256": hash,
         });
         let mut mark = mark;
         if meta["mods"].is_array() {
@@ -1305,17 +1332,33 @@ impl Daemon {
         } else {
             root.join(path)
         };
-        let dir = if path.is_file() {
-            path.parent().map(Path::to_path_buf).unwrap_or_default()
+        // A replay file by its own name (a player's `<time>-report.argr`), or
+        // a folder holding `replay.bin` (a failed scenario's). It once took
+        // the folder of whatever file it was given and looked for a
+        // `replay.bin` there (issue 15).
+        let (dir, bin) = if path.is_file() {
+            (
+                path.parent().map(Path::to_path_buf).unwrap_or_default(),
+                path.clone(),
+            )
         } else {
-            path
+            (path.clone(), path.join("replay.bin"))
         };
         let started = std::time::Instant::now();
-        let file = replay::read(&dir.join("replay.bin"))?;
-        let info: Json = std::fs::read_to_string(dir.join("replay.json"))
-            .ok()
+        let file = replay::read(&bin)?;
+        // A scenario's failure keeps its digest beside it in replay.json; a
+        // report keeps it in its own identity.
+        let mut info: Json = (bin.file_name() == Some("replay.bin".as_ref()))
+            .then(|| std::fs::read_to_string(dir.join("replay.json")).ok())
+            .flatten()
             .and_then(|t| serde_json::from_str(&t).ok())
             .unwrap_or(Json::Null);
+        if info["digest"].is_null() && file.meta["digest"].is_string() {
+            if !info.is_object() {
+                info = json!({});
+            }
+            info["digest"] = file.meta["digest"].clone();
+        }
         let scene = file.meta["scene"].as_str().unwrap_or_default().to_string();
         let seed = file.meta["seed"].as_u64();
         let code = file.meta["code"].clone();
