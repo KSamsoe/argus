@@ -220,7 +220,7 @@ pub fn install_help() -> String {
 pub fn test() -> String {
     let m = docs::find("test.run").expect("test.run is a method");
     format!(
-        "usage: argus test [name] [--seeds 1..50] [--file tests/x.luau] [--update] [--software] [--no-replays] [--json]\n\n{}\n\nname: exact or substring of a scenario name; none runs every scenario.\n--seeds: override the scenario's seed or range: 7, 1..50, or 1,2,9.\n--file: only that file's scenarios. --update: rewrite state goldens under tests/goldens/.\n--software: draw failing runs' clips with the software rasteriser, as CI does. --no-replays: save none.\nA failing run's replay opens with `argus replay open path=<its dir>`.\n--json: the test.run report as one line. Exit 0 when every run passed, 1 otherwise.\n\nsame as: test.run {{{}}}\n",
+        "usage: argus test [name] [--seeds 1..50] [--file tests/x.luau] [--update] [--software] [--no-replays] [--json]\n\n{}\n\nname: exact or substring of a scenario name; none runs every scenario.\n--seeds: override the scenario's seed or range: 7, 1..50, or 1,2,9.\n--file: only that file's scenarios (a .luau directly in tests/; any other, or a name no scenario has, is an error). --update: rewrite state goldens under tests/goldens/.\n--software: draw failing runs' clips with the software rasteriser, as CI does. --no-replays: save none.\nA failing run's replay opens with `argus replay open path=<its dir>`.\n--json: the test.run report as one line. Exit 0 when every run passed, 1 otherwise.\n\nsame as: test.run {{{}}}\n",
         m.doc, docs::params_text(m.params)
     )
 }

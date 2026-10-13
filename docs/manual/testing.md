@@ -251,7 +251,7 @@ argus test --json                         # the whole report as JSON
 argus test list                           # what there is, without running it
 ```
 
-A name matches when it is the scenario's whole name or part of it, ignoring case. Two more flags: `--software` draws failure clips with the software rasteriser (as CI does), and `--no-replays` saves no replays. `set` and `sweep` try other values for tune fields; they are in [Tuning and performance](tuning-and-performance.md).
+A name matches when it is the scenario's whole name or part of it, ignoring case. A name no scenario has, or a `--file` that is not a `.luau` file directly in `tests/`, is an error that says what there is: it selects nothing, and a pass of nothing would tell a script that a scenario passed. Two more flags: `--software` draws failure clips with the software rasteriser (as CI does), and `--no-replays` saves no replays. `set` and `sweep` try other values for tune fields; they are in [Tuning and performance](tuning-and-performance.md).
 
 The command starts the project's daemon if none is running. It exits with 0 when every run passed and 1 otherwise, so a script or CI can use it. An agent runs the same thing with the `test` tool.
 

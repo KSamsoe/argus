@@ -303,8 +303,11 @@ effects = \"actor:Health.cur = 4\"
             .any(|c| c["type"] == "image" && c["mimeType"] == "image/png"),
         "the picture is in the answer"
     );
+    // A name no scenario has runs nothing, which is an error, not a pass
+    // (issue 29).
     let (is_err, _, got, _) = m.tool("test", json!({ "name": "no scenario is called this" }));
-    assert!(!is_err, "{got}");
+    assert!(is_err, "{got}");
+    assert!(got.to_string().contains("nothing ran"), "{got}");
 
     // A proposal waits for the human.
     let (is_err, _, got, _) = m.tool(

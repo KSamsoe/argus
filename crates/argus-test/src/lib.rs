@@ -103,6 +103,37 @@ fn scenario_files(root: &Path) -> Vec<(String, PathBuf)> {
     out
 }
 
+/// `--file`'s scenario file as the runner names it (`tests/x.luau`), from
+/// that, `x.luau`, `./tests/x.luau`, or a path under the project; an error
+/// naming the files there are when it is not one of them.
+fn scenario_file_named(root: &Path, given: &str) -> Result<String, String> {
+    let files = scenario_files(root);
+    let slashes = |s: &str| s.replace('\\', "/");
+    let clean = slashes(given);
+    let clean = clean.trim_start_matches("./");
+    let root_s = slashes(&root.to_string_lossy());
+    let root_s = root_s.trim_start_matches("//?/");
+    let rel = match clean.strip_prefix(root_s) {
+        Some(r) => r.trim_start_matches('/').to_string(),
+        None => clean.to_string(),
+    };
+    let rel = if rel.contains('/') {
+        rel
+    } else {
+        format!("tests/{rel}")
+    };
+    if files.iter().any(|(f, _)| *f == rel) {
+        return Ok(rel);
+    }
+    let there: Vec<&str> = files.iter().map(|(f, _)| f.as_str()).collect();
+    Err(format!(
+        "--file {given}: the runner reads only .luau files directly in tests/, and {} {}; the files it reads are {}",
+        rel,
+        if root.join(&rel).is_file() { "is not one" } else { "does not exist" },
+        if there.is_empty() { "none".to_string() } else { there.join(", ") },
+    ))
+}
+
 fn to_lua(lua: &Lua, v: &Json) -> mlua::Result<Value> {
     lua.to_value_with(
         v,
@@ -281,6 +312,14 @@ pub fn list(root: &Path, day_seconds: Option<f64>) -> Result<Json, String> {
 /// `test.run`: run the selected scenarios over their seeds and report.
 pub fn run(driver: &mut dyn Driver, opts: &Options) -> Result<Json, String> {
     let root = driver.root();
+    // A file the runner does not read is an error, not a pass of nothing:
+    // a CI step that ran one believed its scenario passed (issue 29).
+    let file = opts
+        .file
+        .as_deref()
+        .filter(|f| !f.is_empty())
+        .map(|f| scenario_file_named(&root, f))
+        .transpose()?;
     let (lua, harness, load_errors) = prepare(&root, opts.day_seconds)?;
     let seeds = match &opts.seeds {
         Some(s) => Some(parse_seeds(s)?),
@@ -290,7 +329,7 @@ pub fn run(driver: &mut dyn Driver, opts: &Options) -> Result<Json, String> {
         &lua,
         &json!({
             "name": opts.name,
-            "file": opts.file,
+            "file": file,
             "seeds": seeds,
             "replays": opts.replays,
             "software": opts.software,
@@ -317,6 +356,19 @@ pub fn run(driver: &mut dyn Driver, opts: &Options) -> Result<Json, String> {
         })
         .map_err(|e| e.to_string())?;
     let mut report = report;
+    // A filter that selected nothing ran nothing: an error, not a pass.
+    let named = opts.name.as_deref().filter(|n| !n.is_empty());
+    if report["total_runs"].as_u64() == Some(0) && (named.is_some() || file.is_some()) {
+        let what = match (named, &file) {
+            (Some(n), Some(f)) => format!("no scenario in {f} has {n:?} in its name"),
+            (Some(n), None) => format!("no scenario has {n:?} in its name"),
+            (None, Some(f)) => format!("{f} has no scenarios"),
+            (None, None) => unreachable!(),
+        };
+        return Err(format!(
+            "{what}, so nothing ran; argus test list lists them"
+        ));
+    }
     if let Some(o) = report.as_object_mut() {
         o.insert(
             "ms".to_string(),

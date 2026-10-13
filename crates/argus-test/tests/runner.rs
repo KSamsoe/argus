@@ -869,3 +869,43 @@ fn events_have_last_and_all_and_a_scenario_starts_from_a_replay() {
     assert_eq!(s["ok"], true, "{s}");
     assert_eq!(s["seed"], 7, "the replay's seed: {s}");
 }
+
+/// Issue 29: a --file the runner does not read, or a name no scenario has,
+/// is an error naming what there is; it reported a pass of nothing.
+#[test]
+fn a_file_or_name_that_selects_nothing_is_an_error() {
+    let (t, mut d) = fixture("runner-select");
+    common::write(
+        t.path(),
+        "tests/walk.luau",
+        "return scenario \"walks\" { scene = \"arena\", seed = 7, run = function(t) t:step(1) end }",
+    );
+    common::write(
+        t.path(),
+        "docs/slow.luau",
+        "return scenario \"slow\" { scene = \"arena\", seed = 7, run = function(t) t:step(1) end }",
+    );
+    let pick = |file: Option<&str>, name: Option<&str>| Options {
+        file: file.map(str::to_string),
+        name: name.map(str::to_string),
+        ..Default::default()
+    };
+    let e = run(&mut d, &pick(Some("docs/slow.luau"), None)).unwrap_err();
+    assert!(
+        e.contains("only .luau files directly in tests/") && e.contains("is not one"),
+        "{e}"
+    );
+    assert!(e.contains("tests/walk.luau"), "it names what there is: {e}");
+    let e = run(&mut d, &pick(Some("tests/gone.luau"), None)).unwrap_err();
+    assert!(e.contains("does not exist"), "{e}");
+    let e = run(&mut d, &pick(None, Some("nothing like it"))).unwrap_err();
+    assert!(e.contains("no scenario has \"nothing like it\""), "{e}");
+    // The file by its short name, or as a path under the project, runs.
+    for f in ["walk.luau", "./tests/walk.luau"] {
+        let r = run(&mut d, &pick(Some(f), None)).unwrap();
+        assert_eq!(r["total_runs"], 1, "{f}: {r}");
+    }
+    let abs = t.path().join("tests").join("walk.luau");
+    let r = run(&mut d, &pick(Some(&abs.to_string_lossy()), None)).unwrap();
+    assert_eq!(r["total_runs"], 1, "{abs:?}: {r}");
+}
