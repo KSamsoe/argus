@@ -63,6 +63,7 @@ return {
 | `seeds` | Several: `range(1, 20)` (both ends included) or a list `{1, 2, 7}`. |
 | `mods` | Mod ids to load, in order: `mods = { "lanterns", "brighter" }`. |
 | `perf_margin` | How far over a `perf` bound still passes. 1.5 by default. |
+| `faults` | `"fail"` (the default): a game system that faults and is switched off fails the run, which names the system, the error, and its file and line. `"allow"`: a scenario that expects a fault, and checks it with `t.expect:events("system.fault")`. |
 
 With neither `seed` nor `seeds`, the scene's own seed is used (`seed` in its `scene.toml`; `"random"` there means the runner picks one and the report says which).
 

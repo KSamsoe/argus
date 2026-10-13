@@ -29,6 +29,8 @@ function scenario(name)
     assert(type(spec) == "table", "scenario " .. name .. " needs a table")
     assert(type(spec.run) == "function", "scenario " .. name .. " needs run = function(t) ... end")
     assert(type(spec.scene) == "string", "scenario " .. name .. " needs scene = \"name\"")
+    assert(spec.faults == nil or spec.faults == "fail" or spec.faults == "allow",
+      "scenario " .. name .. ": faults is \"fail\" (the default: a system fault fails the run) or \"allow\"")
     spec.name = name
     spec.file = __current_file
     table.insert(registry, spec)
@@ -826,6 +828,25 @@ local function run_seed(spec, seed, opts, series)
     ctx.result.ok = false
     ctx.result.error = tostring(err)
     save_failure(ctx, ctx.result.error)
+  end
+  -- A game system a fault switched off fails the run, unless the scenario
+  -- says it expects one (faults = "allow"): a game played on with its turn
+  -- system off, and 70 scenarios passed through 14 faults (issue 12).
+  if ok and ctx.loaded and spec.faults ~= "allow" then
+    local r = callm("obs.events", { name = "system.fault", since = ctx.start_seq, limit = 10 })
+    local first = r.rows and r.rows[1]
+    if first ~= nil then
+      local f = first.fields or {}
+      local at = f.ref and (" (" .. tostring(f.ref) .. ")") or ""
+      ctx.result.ok = false
+      ctx.result.error = string.format(
+        "%s faulted and was switched off at frame %s%s: %s%s",
+        tostring(f.system), tostring(first.frame), at, tostring(f.message),
+        #r.rows > 1 and string.format(" (and %d more faults)", #r.rows - 1) or ""
+      )
+      ctx.result.faults = r.rows
+      save_failure(ctx, ctx.result.error)
+    end
   end
   -- A seed that passes now drops its old failure's replay.
   if ctx.result.ok and opts.replays and ctx.result.seed ~= nil then

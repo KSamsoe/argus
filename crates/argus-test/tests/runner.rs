@@ -731,3 +731,53 @@ fn a_scenario_sends_a_message_and_checks_the_scripts_answer() {
         serde_json::to_string_pretty(&r).unwrap()
     );
 }
+/// Issue 12: a game system a fault switched off fails the run, naming it,
+/// unless the scenario says it expects one (`faults = "allow"`). Before, a
+/// run passed while the game played on with its turn system off.
+#[test]
+fn a_fault_fails_the_run_unless_the_scenario_allows_it() {
+    let (t, mut d) = fixture("runner-faults");
+    common::write(
+        t.path(),
+        "systems/boom.luau",
+        r#"return system "sim.boom" {
+  stage = "sim",
+  doc = "Fails on its third tick.",
+  run = function(q)
+    if q.tick == 3 then error("the third tick") end
+  end,
+}"#,
+    );
+    for (file, allow) in [("fails.luau", ""), ("allows.luau", "faults = \"allow\",")] {
+        common::write(
+            t.path(),
+            &format!("tests/{file}"),
+            &format!(
+                "return scenario \"{file}\" {{\n  scene = \"arena\", seed = 7, {allow}\n  run = function(t)\n    t:step(10)\n  end,\n}}"
+            ),
+        );
+    }
+    let r = run(&mut d, &Options::default()).unwrap();
+    let by = |file: &str| {
+        r["scenarios"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|s| s["name"] == file)
+            .unwrap_or_else(|| panic!("{file}: {r}"))["seeds"][0]
+            .clone()
+    };
+    let failed = by("fails.luau");
+    assert_eq!(failed["ok"], false, "{failed}");
+    let said = failed["error"].as_str().unwrap();
+    assert!(
+        said.contains("sim.boom faulted and was switched off") && said.contains("the third tick"),
+        "{said}"
+    );
+    assert!(
+        said.contains("systems/boom.luau"),
+        "it names the file: {said}"
+    );
+    assert_eq!(by("allows.luau")["ok"], true, "{r}");
+}
+
