@@ -290,7 +290,7 @@ When a run fails, the harness saves a replay of that moment in `.argus/replays/<
 | `frame.png` | The frame at the failure. |
 | `clip.png`, `clip-sheet.png`, `clip.wav` | The last two seconds as pictures and sound. |
 
-Only the first five failures of a run get a clip, so a sweep of fifty failing seeds stays quick. When a seed passes again, its old replay is removed.
+Only the first five failures of a run get a clip, so a sweep of fifty failing seeds stays quick. Drawing a clip takes about two and a half seconds, so a scenario that fails on its first check is slower than one that passes. `argus test --no-replays` saves none. When a seed passes again, its old replay is removed.
 
 Open one to stand at the moment it failed:
 

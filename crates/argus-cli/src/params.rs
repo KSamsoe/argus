@@ -21,6 +21,31 @@ pub fn tool_names(tool: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// The parameters a method or a tool declares as strings: a word given to
+/// one stays the word, so `text=4242` is the text "4242", not a number
+/// the method refuses (issue 16).
+fn string_params(method: &str) -> Vec<String> {
+    let of = |ps: &[docs::Param]| -> Vec<String> {
+        ps.iter()
+            .filter(|p| p.ty == docs::STRING)
+            .map(|p| p.name.to_string())
+            .collect()
+    };
+    docs::find(method)
+        .map(|m| of(m.params))
+        .or_else(|| docs::tool(method).map(|t| of(t.params)))
+        .unwrap_or_default()
+}
+
+/// A word for a string parameter: a quoted JSON string read as one, any
+/// other word as it is.
+fn as_string(word: &str) -> Result<Json, String> {
+    Ok(match value(word)? {
+        Json::String(s) => Json::String(s),
+        _ => Json::String(word.to_string()),
+    })
+}
+
 /// Build the params object: `--params` JSON first, then `key=value`
 /// words, then bare words assigned to the method's leading parameters.
 pub fn build(method: &str, args: &[String], params_json: &[String]) -> Result<Json, String> {
@@ -57,9 +82,17 @@ fn build_with(
     }
     let mut next_bare = 0usize;
     let mut by_word: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let strings = string_params(method);
+    let read = |k: &str, v: &str| {
+        if strings.iter().any(|s| s == k) {
+            as_string(v)
+        } else {
+            value(v)
+        }
+    };
     for a in args {
         if let Some((k, v)) = split_kv(a) {
-            insert(&mut obj, k, value(v)?, &mut by_word)?;
+            insert(&mut obj, k, read(k, v)?, &mut by_word)?;
         } else {
             let Some(name) = declared.get(next_bare) else {
                 return Err(format!(
@@ -71,7 +104,7 @@ fn build_with(
             if obj.contains_key(name) {
                 return Err(format!("{name} given twice (bare {a:?} and {name}=...)"));
             }
-            obj.insert(name.to_string(), value(a)?);
+            obj.insert(name.to_string(), read(name, a)?);
         }
     }
     Ok(Json::Object(obj))

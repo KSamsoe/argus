@@ -184,11 +184,18 @@ writes), and every file a project is made of are at the end of this file.\n\n",
     let current = scenes["current"].as_str().unwrap_or("");
     for s in scenes["scenes"].as_array().cloned().unwrap_or_default() {
         let name = s.as_str().unwrap_or_default();
-        let sum = if name == current {
-            Ok(summary.clone())
-        } else {
-            c.call("world.summary", json!({ "scene": name, "source": "index" }))
-        };
+        // What the scene's files hold, the loaded one's too: its live world
+        // has what the game spawned, and with a generated floor alive that
+        // was a hundred runtime entities counted as the scene's (issue 16).
+        let sum = c
+            .call("world.summary", json!({ "scene": name, "source": "index" }))
+            .or_else(|e| {
+                if name == current {
+                    Ok(summary.clone())
+                } else {
+                    Err(e)
+                }
+            });
         let _ = writeln!(
             o,
             "### {name}{}\n",

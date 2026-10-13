@@ -1281,7 +1281,7 @@ impl Daemon {
                     s.frames += 1;
                     s.error = None;
                     let n = json!({
-                        "path": s.writer.path().to_string_lossy(),
+                        "path": shown_path(s.writer.path()),
                         "slot": slot, "seq": seq, "tick": tick, "frame": frame,
                         "width": w, "height": h,
                         // What the frame shows, in world units: for a
@@ -4118,7 +4118,7 @@ impl Daemon {
             let dir = self.session.as_mut().and_then(|s| s.run_dir.take());
             return Ok(json!({
                 "recording": false,
-                "path": path.map(|p| p.to_string_lossy().into_owned()),
+                "path": path.map(|p| shown_path(&p)),
                 "run": dir.map(|d| d.to_string_lossy().into_owned()),
                 "entries": n,
             }));
@@ -4153,7 +4153,7 @@ impl Daemon {
         self.session.as_mut().expect("session").run_dir = Some(dir.clone());
         Ok(json!({
             "recording": true,
-            "path": log_path.to_string_lossy(),
+            "path": shown_path(&log_path),
             "run": dir.to_string_lossy(),
         }))
     }
@@ -4171,7 +4171,7 @@ impl Daemon {
         let now = self.sched.tick();
         let n = st.borrow_mut().replay(now, &entries)?;
         Ok(json!({
-            "path": p.to_string_lossy(),
+            "path": shown_path(&p),
             "entries": n,
             "last_tick": entries.iter().map(|e| e.tick).max(),
         }))
@@ -5964,7 +5964,7 @@ impl Daemon {
         };
         img.save_png(&path)?;
         let mut out = json!({
-            "path": path.to_string_lossy(),
+            "path": shown_path(&path),
             "width": width,
             "height": height,
             "tick": tick,
@@ -6237,7 +6237,7 @@ impl Daemon {
         json!({
             "window": window,
             "stream": self.render.stream.as_ref().map(|s| json!({
-                "path": s.writer.path().to_string_lossy(),
+                "path": shown_path(s.writer.path()),
                 "size": [s.writer.size().0, s.writer.size().1],
                 "fps": s.fps,
                 "frames": s.frames,
