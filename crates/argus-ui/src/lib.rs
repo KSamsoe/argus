@@ -26,7 +26,7 @@ pub mod theme;
 
 pub use components::{UiButton, UiNode, UiPanel, UiRect, UiRoot, UiText};
 pub use input::INPUT;
-pub use layout::{world_to_canvas, LAYOUT};
+pub use layout::{canvas_to_world, world_to_canvas, LAYOUT};
 pub use strings::Strings;
 
 /// Error codes this crate adds (57xx).

@@ -132,6 +132,19 @@ pub trait Texts {
 /// The string tables a host was given.
 pub(crate) struct TextsData(pub Rc<dyn Texts>);
 
+/// The screen as scripts see it: the UI canvas the pointer is on, and the
+/// world through the drawing camera (`q:screen_to_world`, issue 21).
+pub trait Screen {
+    /// A canvas point (the pointer's pixels) in the world; `None` with no
+    /// camera.
+    fn to_world(&self, world: &argus_ecs::World, p: [f32; 2]) -> Option<[f32; 2]>;
+    /// A world point on the canvas; `None` with no camera.
+    fn to_canvas(&self, world: &argus_ecs::World, p: [f32; 2]) -> Option<[f32; 2]>;
+}
+
+/// The screen a host was given.
+pub(crate) struct ScreenData(pub Rc<dyn Screen>);
+
 /// A game's maps as scripts read and write them (phase 5 item 4):
 /// `q:tiles(map)`, `map` a `Tilemap` entity. A runtime map's cells are the
 /// run's and a script writes them (Delve's floors from the seed); any
@@ -403,6 +416,12 @@ impl ScriptHost {
     /// them again when a prefab changes.
     pub fn set_prefabs(&self, prefabs: Rc<dyn Prefabs>) {
         self.lua.set_app_data(PrefabsData(prefabs));
+    }
+
+    /// Give scripts the screen: the UI canvas and the drawing camera
+    /// (`q:screen_to_world`, `q:world_to_screen`).
+    pub fn set_screen(&self, screen: Rc<dyn Screen>) {
+        self.lua.set_app_data(ScreenData(screen));
     }
 
     /// Give scripts the game's string tables (`q:text`, `q:languages`;

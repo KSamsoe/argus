@@ -1515,6 +1515,33 @@ impl UserData for QueryHandle {
                 link: this.link.clone(),
             })
         });
+        // screen_to_world(p): a point on the UI canvas (the pointer's
+        // pixels, Actions.pointer) in the world, through the drawing camera;
+        // world_to_screen(p): a world point (or an entity) on the canvas.
+        // Nil with no camera. Issue 21: a game worked a click out by hand
+        // from the camera's view and the canvas's size.
+        m.add_method("screen_to_world", |lua, this, p: LuaValue| {
+            let c = ctx(&this.link)?;
+            let (x, y) = lua_point(p)?;
+            let Some(s) = lua.app_data_ref::<crate::ScreenData>().map(|s| s.0.clone()) else {
+                return Ok(LuaValue::Nil);
+            };
+            Ok(match s.to_world(c.world(), [x, y]) {
+                Some([wx, wy]) => LuaValue::Vector(mlua::Vector::new(wx, wy, 0.0)),
+                None => LuaValue::Nil,
+            })
+        });
+        m.add_method("world_to_screen", |lua, this, p: LuaValue| {
+            let c = ctx(&this.link)?;
+            let at = place(c, p)?;
+            let Some(s) = lua.app_data_ref::<crate::ScreenData>().map(|s| s.0.clone()) else {
+                return Ok(LuaValue::Nil);
+            };
+            Ok(match s.to_canvas(c.world(), at) {
+                Some([cx, cy]) => LuaValue::Vector(mlua::Vector::new(cx, cy, 0.0)),
+                None => LuaValue::Nil,
+            })
+        });
         // rng_from(a, b, ...): a generator of its own from these whole
         // numbers, needing no `rng` key: q:rng_from(run.seed, floor, room).
         m.add_method("rng_from", |lua, _, nums: mlua::Variadic<f64>| {

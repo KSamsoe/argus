@@ -460,6 +460,7 @@ fn assemble_layers(
     host.set_paths(Rc::new(NavPaths(nav.clone())));
     host.set_tiles(Rc::new(ScriptTiles(tiles.clone())));
     host.set_texts(Rc::new(UiTexts(ui.clone())));
+    host.set_screen(Rc::new(UiScreen(ui.clone())));
     host.load_layers(&mut world, &mut sched, layers)?;
     let defs: Vec<DefSchema> = host
         .defs()
@@ -840,6 +841,21 @@ pub fn read_timelines(defs: &argus_scene::Defs, world: &World) -> argus_timeline
 /// Scripts' player-facing strings (`q:text`, `q:languages`, phase 3 item 4):
 /// the UI's string tables, in the world's language.
 pub struct UiTexts(pub Rc<RefCell<argus_ui::Shared>>);
+
+/// Scripts' screen (issue 21): the UI canvas, ui.toml's size, and the
+/// world through the drawing camera, as the layout and the renderer use.
+pub struct UiScreen(pub Rc<RefCell<argus_ui::Shared>>);
+
+impl argus_luau::Screen for UiScreen {
+    fn to_world(&self, world: &World, p: [f32; 2]) -> Option<[f32; 2]> {
+        let t = &self.0.borrow().theme;
+        argus_ui::canvas_to_world(world, p, [t.width, t.height])
+    }
+    fn to_canvas(&self, world: &World, p: [f32; 2]) -> Option<[f32; 2]> {
+        let t = &self.0.borrow().theme;
+        argus_ui::world_to_canvas(world, p, [t.width, t.height])
+    }
+}
 
 impl argus_luau::Texts for UiTexts {
     fn text(&self, world: &World, key: &str) -> Option<String> {

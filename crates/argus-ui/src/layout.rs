@@ -363,6 +363,17 @@ pub fn world_to_canvas(world: &World, p: [f32; 2], canvas: [f32; 2]) -> Option<[
     ])
 }
 
+/// Where a canvas point (the pointer's pixels) is in the world, through
+/// the drawing camera: [`world_to_canvas`] the other way. `None` with no
+/// camera.
+pub fn canvas_to_world(world: &World, p: [f32; 2], canvas: [f32; 2]) -> Option<[f32; 2]> {
+    let v = argus_camera::view(world, canvas[0] / canvas[1])?;
+    Some([
+        v.center[0] + (p[0] / canvas[0] - 0.5) * 2.0 * v.half[0],
+        v.center[1] + (0.5 - p[1] / canvas[1]) * 2.0 * v.half[1],
+    ])
+}
+
 fn position(world: &World, e: Entity) -> Option<[f32; 2]> {
     if let Ok(g) = world.get::<GlobalTransform>(e) {
         return Some([g.pos.x, g.pos.y]);

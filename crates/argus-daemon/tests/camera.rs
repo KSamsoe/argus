@@ -196,3 +196,48 @@ fn a_camera_follows_the_player_through_two_rooms_and_keeps_to_each() {
         assert!((f(&rect[3]) - f(&c["Camera"]["view_max"][1])).abs() < 1e-3);
     }
 }
+
+/// Issue 21: a script maps a point on the UI canvas (the pointer's pixels)
+/// into the world through the drawing camera, and back. With a camera 10
+/// high at (40, 20) and ui.toml's 960 by 540 canvas, the canvas's middle is
+/// the camera's place and its top-left corner half a view up and left.
+#[test]
+fn a_script_maps_the_pointer_into_the_world_and_back() {
+    let t = temp("screen-to-world");
+    project(t.path());
+    write(
+        t.path(),
+        "scenes/arena/eye.toml",
+        "[Transform]\npos = [40.0, 20.0]\n\n[Camera]\nheight = 10.0\n",
+    );
+    write(
+        t.path(),
+        "systems/where.luau",
+        r#"return system "sim.where" {
+  stage = "sim",
+  doc = "Says where two canvas points are in the world, and one world point on the canvas.",
+  run = function(q)
+    if q.tick ~= 0 then return end
+    local mid = q:screen_to_world(vector.create(480, 270, 0))
+    local corner = q:screen_to_world({ 0, 0 })
+    local back = q:world_to_screen(corner)
+    q:emit("where", { mid_x = mid.x, mid_y = mid.y, corner_x = corner.x, corner_y = corner.y, back_x = back.x, back_y = back.y })
+  end,
+}
+"#,
+    );
+    let mut d = open(t.path());
+    ok(&mut d, "sim.step", json!({ "n": 1 }));
+    let ev = ok(&mut d, "obs.events", json!({ "name": "where" }));
+    let w = &ev["rows"][0]["fields"];
+    let at = |k: &str| w[k].as_f64().unwrap_or_else(|| panic!("{k}: {ev}"));
+    assert_eq!((at("mid_x"), at("mid_y")), (40.0, 20.0), "{ev}");
+    // Half the view: 5 high, and 5 * 960 / 540 wide.
+    let half_w = 5.0 * 960.0 / 540.0;
+    assert!((at("corner_x") - (40.0 - half_w)).abs() < 1e-3, "{ev}");
+    assert!((at("corner_y") - 25.0).abs() < 1e-3, "y goes up: {ev}");
+    assert!(
+        at("back_x").abs() < 1e-2 && at("back_y").abs() < 1e-2,
+        "{ev}"
+    );
+}

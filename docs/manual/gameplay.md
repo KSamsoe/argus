@@ -17,7 +17,7 @@ Each action is a table under `[actions.<name>]`. Its type decides what a script 
 | `button` (the default) | three bools: `jump` (held), `jump_pressed` (went down this tick), `jump_released` (went up this tick) | jump, pause, talk |
 | `axis` | one number from -1 to 1 | zoom |
 | `axis2` | a vector no longer than 1 | move, pan |
-| `pointer` | a vector: the mouse's place on the UI canvas, in its pixels | pointer |
+| `pointer` | a vector: the mouse's place on the UI canvas, in its pixels; `q:screen_to_world(p)` gives it in the world | pointer |
 
 From `examples/hollow/input.toml` (its jump's `type` and `doc` left out; a table with no `type` is a button):
 
