@@ -63,6 +63,7 @@ pub const CHANGES: &[&str] = &[
     "token.revoke",
     "sim.load",
     "sim.set",
+    "sim.tiles",
     "mark.drop",
     "mark.open",
     "mark.note",

@@ -810,6 +810,7 @@ impl Daemon {
                 Ok(s)
             }
             "sim.set" => self.sim_set(params),
+            "sim.tiles" => self.sim_tiles(params),
             "script.reload" => {
                 self.mutations += 1;
                 self.script_reload()
@@ -2627,6 +2628,55 @@ impl Daemon {
         let tiles = self.require_session()?.tiles.clone();
         let rep = tiles.borrow_mut().save(file);
         rep
+    }
+
+    /// `sim.tiles {file, layer, rect, tile | cells}`: a runtime map's cells
+    /// set in the run now, as `sim.set` sets a field: what a scenario needs
+    /// to put fire on an oiled tile without rebuilding the room (issue 25).
+    /// `edit.tiles` refuses a runtime map, whose cells are the run's; this
+    /// changes the run and no file.
+    fn sim_tiles(&mut self, params: &Json) -> Result<Json> {
+        self.require_session()?;
+        let file = json::str_param(params, "file")?.to_string();
+        let layer = json::str_param(params, "layer")?.to_string();
+        let rect = rect_param(params)?;
+        let n = rect.w as usize * rect.h as usize;
+        let cells: Vec<u32> = match (params.get("tile"), params.get("cells")) {
+            (Some(t), None) => vec![json::u64_param(&json!({ "t": t }), "t", 0)? as u32; n],
+            (None, Some(Json::Array(a))) if a.len() == n => a
+                .iter()
+                .map(|v| v.as_u64().map(|x| x as u32))
+                .collect::<Option<Vec<u32>>>()
+                .ok_or_else(|| bad_params("cells are whole numbers, 0 or more"))?,
+            (None, Some(_)) => {
+                return Err(bad_params(format!(
+                    "cells is a list of the rect's {n} cells, row by row"
+                )))
+            }
+            _ => {
+                return Err(bad_params(
+                    "give tile (one for the whole rect) or cells, not both",
+                ))
+            }
+        };
+        self.with_map(&file, |m| {
+            if !m.index.runtime {
+                return Err(ArgusError::new(
+                    codes::BAD_PARAMS,
+                    format!("{file} is the project's map: sim.tiles sets a runtime map's cells, the run's"),
+                )
+                .hint("Change a project map's tiles with edit.tiles."));
+            }
+            let li = m.layer(&layer)?;
+            m.set(li, rect, &cells)
+        })?;
+        self.mutations += 1;
+        Ok(json!({
+            "file": file,
+            "layer": layer,
+            "rect": { "x": rect.x, "y": rect.y, "w": rect.w, "h": rect.h },
+            "cells": n,
+        }))
     }
 
     fn tiles_create(&mut self, params: &Json) -> Result<Json> {

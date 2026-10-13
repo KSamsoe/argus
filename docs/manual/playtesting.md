@@ -275,7 +275,7 @@ A call's own `author` parameter wins over the connection's. Some calls have an a
 
 ## Where to go next
 
-- [Testing](testing.md): turning a mark into a scenario that keeps it fixed.
+- [Testing](testing.md#a-scenario-from-a-mark-or-a-report): turning a mark into a scenario that keeps it fixed.
 - [Tuning and performance](tuning-and-performance.md): the Tuning and Profile tabs, and sweeps.
 - [Working with AI agents](agents.md): how an agent reads marks, proposes, and asks.
 - [Releasing](releasing.md): builds that send reports, and the web page.

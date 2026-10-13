@@ -276,3 +276,29 @@ fn map_copy_moves_a_block_of_cells_between_maps() {
         "the block at column 2, and the empty pair over the 5"
     );
 }
+
+/// Issue 25: a scenario's setup sets a runtime map's cells in the run, which
+/// edit.tiles refuses, and says what it wants when the cells do not fit.
+#[test]
+fn sim_tiles_sets_a_runtime_maps_cells_and_names_a_wrong_count() {
+    let t = temp("runtime-map-sim-tiles");
+    project_with_floor(t.path());
+    let mut d = open(t.path());
+    ok(
+        &mut d,
+        "sim.tiles",
+        json!({ "file": "maps/floor.tilemap.toml", "layer": "walls", "rect": { "x": 5, "y": 1, "w": 2, "h": 1 }, "tile": 1 }),
+    );
+    ok(
+        &mut d,
+        "sim.tiles",
+        json!({ "file": "maps/floor.tilemap.toml", "layer": "walls", "rect": { "x": 0, "y": 1, "w": 2, "h": 1 }, "cells": [1, 0] }),
+    );
+    assert_eq!(rows(&mut d)[1], "#....##.");
+    let e = err(
+        &mut d,
+        "sim.tiles",
+        json!({ "file": "maps/floor.tilemap.toml", "layer": "walls", "rect": { "x": 0, "y": 0, "w": 2, "h": 1 }, "cells": [1] }),
+    );
+    assert!(e.message.contains("2 cells"), "{}", e.message);
+}

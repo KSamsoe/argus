@@ -731,6 +731,7 @@ fn a_scenario_sends_a_message_and_checks_the_scripts_answer() {
         serde_json::to_string_pretty(&r).unwrap()
     );
 }
+
 /// Issue 12: a game system a fault switched off fails the run, naming it,
 /// unless the scenario says it expects one (`faults = "allow"`). Before, a
 /// run passed while the game played on with its turn system off.
@@ -781,3 +782,90 @@ fn a_fault_fails_the_run_unless_the_scenario_allows_it() {
     assert_eq!(by("allows.luau")["ok"], true, "{r}");
 }
 
+/// Issue 25: `:last()` and `:all()` on a run's events, and a scenario that
+/// starts from a replay (here the one a failing scenario saved) where
+/// `run` takes over, at its frame with its seed.
+#[test]
+fn events_have_last_and_all_and_a_scenario_starts_from_a_replay() {
+    let (t, mut d) = fixture("runner-replay");
+    common::write(
+        t.path(),
+        "systems/beat.luau",
+        r#"return system "sim.beat" {
+  stage = "sim",
+  doc = "A beat each tick, with its number.",
+  run = function(q) q:emit("beat", { n = q.tick }) end,
+}"#,
+    );
+    common::write(
+        t.path(),
+        "tests/beats.luau",
+        r#"return {
+  scenario "beats are counted" {
+    scene = "arena", seed = 7,
+    run = function(t)
+      t:step(5)
+      local ev = t.expect:events("beat")
+      assert(#ev:all() == 5, "all: " .. #ev:all())
+      assert(ev:last().fields.n == 4, "last: " .. tostring(ev:last().fields.n))
+      assert(ev:first().fields.n == 0)
+    end,
+  },
+  scenario "stops on beat nine" {
+    scene = "arena", seed = 7,
+    run = function(t)
+      t:step(10)
+      assert(false, "stops here") -- fails, so a replay is saved here
+    end,
+  },
+}"#,
+    );
+    let r = run(
+        &mut d,
+        &Options {
+            replays: true,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let by = |r: &Json, name: &str| {
+        r["scenarios"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|s| s["name"] == name)
+            .unwrap()["seeds"][0]
+            .clone()
+    };
+    assert_eq!(by(&r, "beats are counted")["ok"], true, "{r}");
+    assert_eq!(by(&r, "stops on beat nine")["ok"], false);
+    let saved = t
+        .path()
+        .join(".argus/replays/stops_on_beat_nine/seed7/replay.bin");
+    assert!(saved.exists(), "{saved:?}");
+
+    common::write(
+        t.path(),
+        "tests/from_replay.luau",
+        r#"return scenario "from the replay" {
+  replay = ".argus/replays/stops_on_beat_nine/seed7",
+  run = function(t)
+    assert(t:status().tick == 10, "at the replay's frame: " .. t:status().tick)
+    t:step(2)
+    local n = t.expect:events("beat"):last().fields.n
+    assert(n == 11, "two more beats: " .. tostring(n))
+  end,
+}"#,
+    );
+    let r = run(
+        &mut d,
+        &Options {
+            name: Some("from the replay".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let s = by(&r, "from the replay");
+    assert_eq!(s["ok"], true, "{s}");
+    assert_eq!(s["seed"], 7, "the replay's seed: {s}");
+}

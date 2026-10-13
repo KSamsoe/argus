@@ -57,12 +57,13 @@ return {
 
 | Key | What it is |
 |---|---|
-| `scene` | Required. The scene to load, a folder name under `scenes/`. |
+| `scene` | Required, unless `replay` is given. The scene to load, a folder name under `scenes/`. |
 | `run` | Required. `function(t) ... end`, the scenario itself. |
 | `seed` | One seed: `seed = 3`. |
 | `seeds` | Several: `range(1, 20)` (both ends included) or a list `{1, 2, 7}`. |
 | `mods` | Mod ids to load, in order: `mods = { "lanterns", "brighter" }`. |
 | `perf_margin` | How far over a `perf` bound still passes. 1.5 by default. |
+| `replay` | A player's report (an `.argr` file) or a replay folder, to start from instead of a scene: its scene with its seed, played to its frame, where `run` takes over. No `seed` or `seeds`. See [A scenario from a mark or a report](#a-scenario-from-a-mark-or-a-report). |
 | `faults` | `"fail"` (the default): a game system that faults and is switched off fails the run, which names the system, the error, and its file and line. `"allow"`: a scenario that expects a fault, and checks it with `t.expect:events("system.fault")`. |
 
 With neither `seed` nor `seeds`, the scene's own seed is used (`seed` in its `scene.toml`; `"random"` there means the runner picks one and the report says which).
@@ -143,7 +144,7 @@ t:run_until { event = "player.fell", max_frames = 120 }
 | `t.expect:field("@player", "Health.cur")` | A field's value now. `Transform.pos.x` reads one axis of a vec2. |
 | `t.expect:count({ has = {"Enemy"}, within = { of = "@player", r = 3 } })` | How many entities match a query's `where`. |
 | `t.expect:sum("Stockpile.food", where)` | A field added up over the matching entities. |
-| `t.expect:events("damage", { by = "@player" })` | This run's events with that name (and those fields). Then `:count()`, `:exists()`, or `:first()` (the first event's row, its data under `.fields`). |
+| `t.expect:events("damage", { by = "@player" })` | This run's events with that name (and those fields). Then `:count()`, `:exists()`, `:first()` (the first event's row, its data under `.fields`), `:last()` (the newest's), or `:all()` (every row, oldest first). |
 | `t.expect:path("@player", { has = {"Stairs"} })` | `:exists()`: a way from the entity to one that matches, over the navigation grid when there is one. |
 | `t.expect:perf("sim")` | `:p95_ms()`: the stage's 95th percentile milliseconds over the last 600 ticks. `"tick"` is the whole tick. |
 | `t.expect:series("Stockpile.food", { every = days(1) })` | Samples a field from now on. Then `:samples()`, `:last()`, `:min()`, `:max()`, `:trend()` (the slope per sample). |
@@ -300,6 +301,30 @@ argus replay open path=.argus/replays/walks_too_far/seed1
 ```
 
 Opening loads the scene with the run's seed, restores the keyframe, and plays the seconds before the failure, so the event log and entity traces (`argus events`, and its `trace`) hold them. It stops paused at the failing frame and compares the world with the one the replay saved (`digest.same` says whether they match). From there, look around with `query`, `observe`, and `events`, or `seek` within the lead-in. An agent does the same with the `seek` tool (`replays=true` to list, `replay=<path>` to open). In the editor, the scrubber's Replays menu lists them with their failures, and Open opens one (see [Playtesting](playtesting.md)).
+
+## A scenario from a mark or a report
+
+A mark or a player's report reproduces a moment. Once it is fixed, a scenario keeps it fixed: copy the report (or the mark's `replay.bin`, from `.argus/marks/<id>/`) into `tests/`, and start the scenario from it with `replay`:
+
+```lua
+return scenario "the ruling on turn 12 is applied" {
+  replay = "tests/reports/turn12.argr",
+  run = function(t)
+    -- The world is the report's at its last frame, with its seed.
+    t.input:message("gm.ruling", '{"intent": "tie the door shut"}')
+    t:advance()
+    t.expect:events("door.tied"):exists()
+  end,
+}
+```
+
+The scenario does not compare the world with the one the report saved: after the fix it differs there, and that is what the scenario checks. To start earlier in the report's lead-in, `t:call("sim.seek", { frame = n })` first; input after it branches the run from there.
+
+A scenario can set a runtime map's cells, which `edit.tiles` refuses (they are the run's), with `sim.tiles`, as `sim.set` sets a field:
+
+```lua
+t:call("sim.tiles", { file = "maps/room.tilemap.toml", layer = "oiled", rect = { x = 4, y = 2, w = 1, h = 1 }, tile = 1 })
+```
 
 ## Determinism: why the same seed gives the same run
 

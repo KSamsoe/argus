@@ -1507,6 +1507,18 @@ pub const METHODS: &[MethodDoc] = &[
         returns: "{entity | def, path, from, to}",
     },
     MethodDoc {
+        name: "sim.tiles",
+        doc: "Set a runtime map's cells in the live run now, as sim.set sets a field: a scenario's setup (fire on an oiled tile) without rebuilding a room. edit.tiles refuses a runtime map, whose cells are the run's; this changes the run and no file. A project map is refused here.",
+        params: &[
+            req("file", STRING, "the runtime map, *.tilemap.toml"),
+            req("layer", STRING, ""),
+            req("rect", OBJECT, "{x, y, w, h}"),
+            opt("tile", INTEGER, "one tile for the whole rect; give this or cells"),
+            opt("cells", ARRAY, "the rect's cells, row by row"),
+        ],
+        returns: "{file, layer, rect, cells}",
+    },
+    MethodDoc {
         name: "sim.status",
         doc: "Clock state. With digest, the world's digest as a mark records it: every field of every live entity, so two worlds with the same digest are the same world.",
         params: &[opt("digest", BOOLEAN, "also the world's digest (16 hex digits)")],

@@ -28,7 +28,12 @@ function scenario(name)
   return function(spec)
     assert(type(spec) == "table", "scenario " .. name .. " needs a table")
     assert(type(spec.run) == "function", "scenario " .. name .. " needs run = function(t) ... end")
-    assert(type(spec.scene) == "string", "scenario " .. name .. " needs scene = \"name\"")
+    -- A scenario starts from a scene, or from a replay: a player's report or
+    -- a mark's replay, at its frame with its own seed (issue 25).
+    assert(type(spec.scene) == "string" or type(spec.replay) == "string",
+      "scenario " .. name .. " needs scene = \"name\", or replay = \"path\" (a report or a replay folder)")
+    assert(spec.replay == nil or (spec.seed == nil and spec.seeds == nil),
+      "scenario " .. name .. ": a replay runs with its own seed; leave seed and seeds out")
     assert(spec.faults == nil or spec.faults == "fail" or spec.faults == "allow",
       "scenario " .. name .. ": faults is \"fail\" (the default: a system fault fails the run) or \"allow\"")
     spec.name = name
@@ -56,6 +61,7 @@ local function slug(s)
 end
 
 local function seeds_of(spec, override)
+  if spec.replay then return { false } end -- the replay's own seed
   if override then return override end
   if spec.seeds then
     local s = spec.seeds
@@ -526,6 +532,10 @@ local function make_t(ctx, spec, seed)
         message = string.format("%s: %d seen%s", d, #rows, ok and "" or ", expected at least one") })
     end
     function ev:first() return rows[1] end
+    -- The newest, and every one oldest first (issue 25: a scenario wanting
+    -- the latest request paged through obs.events by hand).
+    function ev:last() return rows[#rows] end
+    function ev:all() return rows end
     return ev
   end
   function expect:perf(stage)
@@ -790,7 +800,16 @@ local function run_seed(spec, seed, opts, series)
     -- names them, whatever the scenario before it loaded.
     local p = { scene = spec.scene, mods = spec.mods or {} }
     if seed ~= nil then p.seed = seed end
-    local loaded = callm("scene.load", p)
+    local loaded
+    if spec.replay then
+      -- Its scene with its seed, played to its frame, as replay.open does.
+      -- After a fix the world there differs from the one it saved: that is
+      -- the fix, which the scenario checks, so the digests are not.
+      callm("replay.open", { path = spec.replay })
+      loaded = {}
+    else
+      loaded = callm("scene.load", p)
+    end
     if loaded.issues ~= nil then
       error(string.format("scene %s has %d issue(s); the first: %s", spec.scene, #loaded.issues, show(loaded.issues[1])), 0)
     end
