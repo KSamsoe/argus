@@ -256,7 +256,35 @@ pub(crate) const FIELD_TYPES: [&str; 15] = [
     "entity", "ref",
 ];
 
+/// `field.list { of = "ref", default = { ... }, doc = ... }` (issue 22): a
+/// list of any scalar but an entity.
+fn make_list(lua: &Lua, spec: Option<Table>) -> LuaResult<Table> {
+    let of: Option<String> = match &spec {
+        Some(t) => t.get("of")?,
+        None => None,
+    };
+    let Some(of) = of else {
+        return Err(bad(
+            "field.list: it needs of, the type of its elements".to_string(),
+            "Example: pool = field.list { of = \"ref\", doc = \"...\" }.",
+            Some(here(lua)),
+        ));
+    };
+    let Some(list) = FieldType::parse(&of)
+        .and_then(argus_ecs::ListOf::of)
+        .map(FieldType::List)
+    else {
+        return Err(bad(
+            format!("field.list: of = {of:?} is not a type a list holds"),
+            "A list holds bool, u8 to u64, i8 to i64, f32, f64, vec2, str, or ref; not entity.",
+            Some(here(lua)),
+        ));
+    };
+    make_field(lua, list.name(), spec)
+}
+
 fn make_field(lua: &Lua, ty: &'static str, spec: Option<Table>) -> LuaResult<Table> {
+    let list = ty.starts_with("list of ");
     let t = lua.create_table()?;
     t.set("__argus_field", ty)?;
     let order = {
@@ -269,6 +297,14 @@ fn make_field(lua: &Lua, ty: &'static str, spec: Option<Table>) -> LuaResult<Tab
         for pair in spec.pairs::<String, LuaValue>() {
             let (k, v) = pair?;
             match k.as_str() {
+                "of" if list => {}
+                "range" | "tune" if list => {
+                    return Err(bad(
+                        format!("field.list: a list takes no {k}"),
+                        "A list's attributes are of, default, and doc.",
+                        Some(here(lua)),
+                    ))
+                }
                 "default" | "range" | "doc" | "tune" => t.set(k, v)?,
                 other => {
                     return Err(bad(
@@ -418,6 +454,7 @@ pub(crate) fn install_globals(lua: &Lua) -> LuaResult<()> {
             lua.create_function(move |lua, spec: Option<Table>| make_field(lua, ty, spec))?,
         )?;
     }
+    field.set("list", lua.create_function(make_list)?)?;
     g.set("field", field)?;
 
     g.set(

@@ -194,7 +194,7 @@ requires = ["lanterns"]
 doc = "Bigger lanterns, and a keeper proud of them."
 ```
 
-A mod's `components/`, `systems/`, `defs/`, `prefabs/`, `scenes/`, `assets/`, `strings/`, and `audio.toml` are laid over the game's. Everything it adds is named with its id first (`lanterns.keeper`, `lanterns_Lantern`, `lanterns/lantern`). A name the game already has is replaced instead: a def row field by field, a prefab, an entity file, an asset, a sound, or a string. A mod cannot redeclare components, systems, or def tables, change a `scene.toml` or `room.toml`, or touch `argus.toml`, `input.toml`, `ui.toml`, `platform.toml`, or plugins. A mod with any problem is left out whole, with every reason, and so is a mod that requires it. The [Reference](reference.md) has every key and rule (`mods/<id>/mod.toml` in `argus docs`).
+A mod's `components/`, `systems/`, `defs/`, `lib/`, `prefabs/`, `scenes/`, `assets/`, `strings/`, and `audio.toml` are laid over the game's. Everything it adds is named with its id first (`lanterns.keeper`, `lanterns_Lantern`, `lanterns/lantern`). A name the game already has is replaced instead: a def row field by field (a list it can add to with `"+field"` and take from with `-field`), a prefab, an entity file, an asset, a sound, or a string. A mod cannot redeclare components, systems, or def tables, change a `scene.toml` or `room.toml`, or touch `argus.toml`, `input.toml`, `ui.toml`, `platform.toml`, or plugins. A mod with any problem is left out whole, with every reason, and so is a mod that requires it. The [Reference](reference.md) has every key and rule (`mods/<id>/mod.toml` in `argus docs`).
 
 ### Mods while you work
 

@@ -50,7 +50,7 @@ input_count = 2
 work = 3.0
 ```
 
-A field left out takes its default. A `ref` field must name a row that exists (`item:crop`), or the project reports it at its file and line and no scene spawns until it is fixed. Quote a header with dots in it (`["hermit.start"]`): an unquoted `[hermit.start]` is the row `hermit` with a table inside. A row cannot hold an entity.
+A field left out takes its default. A `ref` field must name a row that exists (`item:crop`), or the project reports it at its file and line and no scene spawns until it is fixed. So must every element of a list of refs: a pool written `pool = ["monster:rat", "monster:rta"]` is refused when the project loads, naming the element (`rooms.cellar.pool, element 2`), not when some seed draws it. A list field (`field.list { of = "ref" }`, see [Scripting](scripting.md#list-fields)) is a TOML array. Quote a header with dots in it (`["hermit.start"]`): an unquoted `[hermit.start]` is the row `hermit` with a table inside. A row cannot hold an entity.
 
 ### Reading rows from a script
 
@@ -80,7 +80,7 @@ end
 - `argus world defs` lists the tables; `argus world defs table=items` shows one as rows.
 - An edit changes one field of a row, kept in the file with a note: `argus edit note='meals feed more' ops='[{op: def, def: item:meal, path: food, value: 1.2}]'`. `def_row` ops add, replace, or remove a whole row. `argus edit undo=true` takes it back.
 - Fields with `tune = true` are in the tuning panel, and `argus test sweep=...` can run the scenarios once per candidate value of a row's field (see [tuning and performance](tuning-and-performance.md)).
-- A mod changes a game's row field by field by writing a row with the same key (see [releasing](releasing.md)).
+- A mod changes a game's row field by field by writing a row with the same key (see [releasing](releasing.md)). A list it gives replaces the game's; to change one without writing it all out, a mod's row adds to it with `"+tags" = ["cursed"]` (quoted: `+` is not allowed in a bare TOML key) and takes from it with `-tags = ["damp"]`, every element equal to one given taken out, then the added ones put at the end. In the game's own rows the two change the field's default.
 
 The engine declares two tables of its own, `dialogue` and `timeline`, below.
 

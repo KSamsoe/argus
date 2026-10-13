@@ -119,7 +119,8 @@ fn def_problems_are_located_and_the_rest_loads() {
         "{}",
         missing[0]
     );
-    assert_eq!(missing[0].r#ref.as_deref(), Some("defs/recipes.toml:1"));
+    // At the field's own line, not the row's header (issue 22).
+    assert_eq!(missing[0].r#ref.as_deref(), Some("defs/recipes.toml:2"));
     // The good row is there.
     assert_eq!(p.defs.table("items").unwrap().rows.len(), 1);
     assert_eq!(p.defs.table("items").unwrap().rows[0].key, "ok");

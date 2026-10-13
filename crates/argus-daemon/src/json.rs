@@ -35,6 +35,7 @@ pub fn to_json(world: &World, v: &Value) -> Json {
         Value::Vec2(p) => json!([p.x, p.y]),
         Value::Str(s) | Value::Ref(s) => json!(s),
         Value::Entity(e) => entity_ref(world, *e),
+        Value::List(items) => Json::Array(items.iter().map(|x| to_json(world, x)).collect()),
     }
 }
 
@@ -48,6 +49,28 @@ pub fn from_json(world: &World, j: &Json, ty: FieldType) -> Result<Value> {
         )
     };
     Ok(match (ty, j) {
+        (FieldType::List(of), Json::Array(a)) => {
+            if a.len() > argus_ecs::value::MAX_LIST {
+                return Err(ArgusError::new(
+                    argus_ecs::codes::OUT_OF_RANGE,
+                    format!(
+                        "a list holds at most {} elements; this one has {}",
+                        argus_ecs::value::MAX_LIST,
+                        a.len()
+                    ),
+                ));
+            }
+            let items = a
+                .iter()
+                .enumerate()
+                .map(|(i, x)| {
+                    from_json(world, x, of.ty()).map_err(|e| {
+                        ArgusError::new(e.code, format!("element {}: {}", i + 1, e.message))
+                    })
+                })
+                .collect::<Result<Vec<Value>>>()?;
+            Value::List(items)
+        }
         (FieldType::Bool, Json::Bool(b)) => Value::Bool(*b),
         (FieldType::Vec2, Json::Array(a)) if a.len() == 2 => {
             let x = a[0].as_f64().ok_or_else(|| mismatch("a non-number"))?;

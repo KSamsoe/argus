@@ -219,21 +219,19 @@ pub fn answer(
 
 /// An answer as JSON: `{event, fields}`.
 pub fn answer_json((name, fields): &Answer) -> Json {
-    let f: serde_json::Map<String, Json> = fields
-        .iter()
-        .map(|(k, v)| {
-            let j = match v {
-                Value::Bool(b) => json!(b),
-                Value::Int(i) => json!(i),
-                Value::UInt(u) => json!(u),
-                Value::Float(x) => json!(x),
-                Value::Str(s) | Value::Ref(s) => json!(s),
-                Value::Vec2(p) => json!([p.x, p.y]),
-                Value::Entity(_) => Json::Null,
-            };
-            (k.clone(), j)
-        })
-        .collect();
+    fn j(v: &Value) -> Json {
+        match v {
+            Value::Bool(b) => json!(b),
+            Value::Int(i) => json!(i),
+            Value::UInt(u) => json!(u),
+            Value::Float(x) => json!(x),
+            Value::Str(s) | Value::Ref(s) => json!(s),
+            Value::Vec2(p) => json!([p.x, p.y]),
+            Value::Entity(_) => Json::Null,
+            Value::List(items) => Json::Array(items.iter().map(j).collect()),
+        }
+    }
+    let f: serde_json::Map<String, Json> = fields.iter().map(|(k, v)| (k.clone(), j(v))).collect();
     json!({ "event": name, "fields": f })
 }
 

@@ -571,6 +571,13 @@ fn read_row(saved: &Saved, src: &[u8], table: &[StrId], strings: &Interner) -> R
                         Value::Ref(text)
                     }
                 }
+                // A list is a string handle too: read it at the live id.
+                FieldType::List(_) => {
+                    let i = u32::from_le_bytes([b[0], b[1], b[2], b[3]]) as usize;
+                    let live = table.get(i).copied().unwrap_or(StrId::EMPTY);
+                    // SAFETY: a list field is a StrId, 4 bytes, read unaligned.
+                    unsafe { ty.read(live.0.to_le_bytes().as_ptr(), strings) }
+                }
                 // SAFETY: `b` holds exactly `ty.size()` bytes, and `read`
                 // reads them unaligned.
                 _ => unsafe { ty.read(b.as_ptr(), strings) },
@@ -617,11 +624,12 @@ fn in_migration(e: ArgusError, component: &str, from: u32, to: u32, entity: Enti
     .at(e.r#ref.clone())
 }
 
-/// Point a row's string fields at the reading world's ids. (Rows are
-/// native-endian; every target Argus builds for is little-endian.)
+/// Point a row's string fields (and lists, which are strings) at the
+/// reading world's ids. (Rows are native-endian; every target Argus builds
+/// for is little-endian.)
 fn translate(row: &mut [u8], schema: &ComponentSchema, table: &[StrId]) {
     for f in &schema.fields {
-        if matches!(f.ty, FieldType::Str | FieldType::Ref) {
+        if matches!(f.ty, FieldType::Str | FieldType::Ref | FieldType::List(_)) {
             let b = &mut row[f.offset..f.offset + 4];
             let saved = u32::from_le_bytes([b[0], b[1], b[2], b[3]]) as usize;
             let live = table.get(saved).copied().unwrap_or(StrId::EMPTY);

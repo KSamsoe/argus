@@ -88,6 +88,26 @@ pub fn to_value(v: &TValue, ty: FieldType, at: &str) -> Result<Value> {
         .at(Some(at.to_string()))
     };
     let out = match (ty, v) {
+        (FieldType::List(of), TValue::Array(a)) => {
+            if a.len() > argus_ecs::value::MAX_LIST {
+                return Err(mismatch(&format!(
+                    "{} elements (a list holds at most {})",
+                    a.len(),
+                    argus_ecs::value::MAX_LIST
+                )));
+            }
+            let items = a
+                .iter()
+                .enumerate()
+                .map(|(i, x)| {
+                    to_value(x, of.ty(), at).map_err(|e| {
+                        ArgusError::new(e.code, format!("element {}: {}", i + 1, e.message))
+                            .at(e.r#ref.clone())
+                    })
+                })
+                .collect::<Result<Vec<Value>>>()?;
+            return Ok(Value::List(items));
+        }
         (FieldType::Bool, TValue::Boolean(b)) => Value::Bool(*b.value()),
         (FieldType::Vec2, TValue::Array(a)) => {
             let xs: Vec<f64> = a
@@ -144,6 +164,9 @@ pub fn short_f32(ty: FieldType, v: Value) -> Value {
         (FieldType::F32, Value::Float(f)) => {
             Value::Float(argus_ecs::schema::shortest_f64(f as f32))
         }
+        (FieldType::List(of), Value::List(items)) => {
+            Value::List(items.into_iter().map(|x| short_f32(of.ty(), x)).collect())
+        }
         (_, v) => v,
     }
 }
@@ -174,6 +197,13 @@ pub fn from_value(v: &Value) -> Result<TValue> {
             TValue::Array(a)
         }
         Value::Str(s) | Value::Ref(s) => TValue::from(s.as_str()),
+        Value::List(items) => {
+            let mut a = Array::new();
+            for x in items {
+                a.push(from_value(x)?);
+            }
+            TValue::Array(a)
+        }
         Value::Entity(e) => {
             if e.is_null() {
                 TValue::from("")

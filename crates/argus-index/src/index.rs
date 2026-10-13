@@ -308,12 +308,25 @@ impl Index {
                 .map_err(sql_err)?
                 .execute(params![t.name, r.key, r.at, Json::Array(row).to_string()])
                 .map_err(sql_err)?;
-                for (f, v) in t.schema.fields.iter().zip(&r.values) {
-                    if let (FieldType::Ref, Value::Ref(s)) = (f.ty, v) {
+                for (i, (f, v)) in t.schema.fields.iter().zip(&r.values).enumerate() {
+                    let at = r.field_at.get(i).unwrap_or(&r.at);
+                    // A ref, or each of a list of refs (issue 22).
+                    let targets: Vec<&str> = match (f.ty, v) {
+                        (FieldType::Ref, Value::Ref(s)) => vec![s.as_str()],
+                        (FieldType::List(argus_ecs::ListOf::Ref), Value::List(items)) => items
+                            .iter()
+                            .filter_map(|x| match x {
+                                Value::Ref(s) => Some(s.as_str()),
+                                _ => None,
+                            })
+                            .collect(),
+                        _ => Vec::new(),
+                    };
+                    for s in targets {
                         if let Some(kind) = ref_kind(s) {
                             tx.prepare_cached("INSERT INTO refs(scene, from_kind, from_id, root, path, kind, target, at) VALUES (NULL, 'def', ?1, NULL, ?2, ?3, ?4, ?5)")
             .map_err(sql_err)?
-            .execute(params![format!("{}:{}", t.prefix, r.key), f.name, kind, s, r.at])
+            .execute(params![format!("{}:{}", t.prefix, r.key), f.name, kind, s, at])
             .map_err(sql_err)?;
                         }
                     }
@@ -1458,14 +1471,25 @@ fn write_entity(tx: &Transaction<'_>, scene: &Scene, re: &ResolvedEntity) -> Res
                     text(&f.at),
                 ]);
                 ord += 1;
-                let r = match (&f.ty, &f.value) {
+                let r: Vec<(&str, String)> = match (&f.ty, &f.value) {
                     (FieldType::Entity, Value::Str(s)) if !s.is_empty() && s != "e:null" => value
                         .as_str()
-                        .map(|t| ("entity", t.trim_start_matches('@').to_string())),
-                    (FieldType::Ref, Value::Ref(s)) => ref_kind(s).map(|k| (k, s.clone())),
-                    _ => None,
+                        .map(|t| ("entity", t.trim_start_matches('@').to_string()))
+                        .into_iter()
+                        .collect(),
+                    (FieldType::Ref, Value::Ref(s)) => {
+                        ref_kind(s).map(|k| (k, s.clone())).into_iter().collect()
+                    }
+                    (FieldType::List(argus_ecs::ListOf::Ref), Value::List(items)) => items
+                        .iter()
+                        .filter_map(|x| match x {
+                            Value::Ref(s) => ref_kind(s).map(|k| (k, s.clone())),
+                            _ => None,
+                        })
+                        .collect(),
+                    _ => Vec::new(),
                 };
-                if let Some((kind, target)) = r {
+                for (kind, target) in r {
                     refs.extend([
                         text(sname),
                         text("entity"),

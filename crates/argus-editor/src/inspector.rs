@@ -574,6 +574,26 @@ impl Inspector {
                     self.typing.remove(path);
                 }
             }
+            // A list (issue 22), typed as its JSON: ["oiled", "burning"].
+            t if t.starts_with("list of ") => {
+                let text = self
+                    .typing
+                    .entry(path.to_string())
+                    .or_insert_with(|| now.to_string());
+                let r = ui
+                    .add(egui::TextEdit::singleline(text).desired_width(200.0))
+                    .on_hover_text(format!("A {t}, as JSON: [a, b, c]"));
+                if r.lost_focus() {
+                    let t = self.typing.remove(path).unwrap_or_default();
+                    if let Ok(v @ Json::Array(_)) = serde_json::from_str::<Json>(&t) {
+                        if &v != value {
+                            return Some(v);
+                        }
+                    }
+                } else if !r.has_focus() {
+                    self.typing.remove(path);
+                }
+            }
             _ => {
                 ui.label(value.to_string());
             }

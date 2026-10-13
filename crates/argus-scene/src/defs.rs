@@ -68,6 +68,53 @@ pub struct DefRow {
     pub given: Vec<bool>,
     /// `file:line` of the row.
     pub at: String,
+    /// `file:line` of each value as written, in schema field order (the
+    /// row's own for a value it left out), so a bad value is reported at
+    /// its line.
+    pub field_at: Vec<String>,
+    /// What the row adds to list fields (`"+tags" = [...]`) and takes out
+    /// of them (`-tags = [...]`), over what they would otherwise hold: the
+    /// field's default, or, for a mod's row over the game's, the game's
+    /// row's (issue 22).
+    pub list_edits: Vec<ListEdit>,
+}
+
+/// A row's change to one list field: every element equal to one in
+/// `remove` taken out, then `add` put on the end.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ListEdit {
+    /// The field, by its index in the schema.
+    pub field: usize,
+    /// Elements added at the end.
+    pub add: Vec<Value>,
+    /// Elements taken out, every one equal to one of these.
+    pub remove: Vec<Value>,
+}
+
+impl ListEdit {
+    /// `list` with the edit made.
+    pub fn apply(&self, list: &Value) -> Result<Value> {
+        let Value::List(items) = list else {
+            return Ok(list.clone());
+        };
+        let mut out: Vec<Value> = items
+            .iter()
+            .filter(|x| !self.remove.contains(x))
+            .cloned()
+            .collect();
+        out.extend(self.add.iter().cloned());
+        if out.len() > argus_ecs::value::MAX_LIST {
+            return Err(ArgusError::new(
+                argus_ecs::codes::OUT_OF_RANGE,
+                format!(
+                    "a list holds at most {} elements; this one would have {}",
+                    argus_ecs::value::MAX_LIST,
+                    out.len()
+                ),
+            ));
+        }
+        Ok(Value::List(out))
+    }
 }
 
 /// One loaded table.
@@ -269,11 +316,36 @@ impl Defs {
         let mut ref_errors = Vec::new();
         for t in defs.tables.values() {
             for r in &t.rows {
-                for (f, v) in t.schema.fields.iter().zip(&r.values) {
-                    if let (FieldType::Ref, Value::Ref(s)) = (f.ty, v) {
-                        if let Err(e) = defs.check_ref(s, &r.at, moves_log) {
-                            ref_errors.push(e);
+                for (i, (f, v)) in t.schema.fields.iter().zip(&r.values).enumerate() {
+                    let at = r.field_at.get(i).unwrap_or(&r.at);
+                    match (f.ty, v) {
+                        (FieldType::Ref, Value::Ref(s)) => {
+                            if let Err(e) = defs.check_ref(s, at, moves_log) {
+                                ref_errors.push(e);
+                            }
                         }
+                        // Every element of a list of refs (issue 22): a
+                        // misspelt key in a pool is a load error, not a
+                        // script's in whichever seed draws it.
+                        (FieldType::List(argus_ecs::ListOf::Ref), Value::List(items)) => {
+                            for (n, x) in items.iter().enumerate() {
+                                let Value::Ref(s) = x else { continue };
+                                if let Err(e) = defs.check_ref(s, at, moves_log) {
+                                    ref_errors.push(ArgusError {
+                                        message: format!(
+                                            "{}.{}.{}, element {}: {}",
+                                            t.name,
+                                            r.key,
+                                            f.name,
+                                            n + 1,
+                                            e.message
+                                        ),
+                                        ..e
+                                    });
+                                }
+                            }
+                        }
+                        _ => {}
                     }
                 }
             }
@@ -375,9 +447,19 @@ fn lay_over(
                 r.at.clone(),
             ));
             for (i, g) in r.given.iter().enumerate() {
-                if *g {
+                // A list the row adds to or takes from is the game's row's,
+                // changed; any other field it gives replaces the old.
+                if let Some(edit) = r.list_edits.iter().find(|e| e.field == i) {
+                    match edit.apply(&old.values[i]) {
+                        Ok(v) => old.values[i] = v,
+                        Err(e) => errors.push(e.at(Some(r.field_at[i].clone()))),
+                    }
+                    old.given[i] = true;
+                    old.field_at[i] = r.field_at[i].clone();
+                } else if *g {
                     old.values[i] = r.values[i].clone();
                     old.given[i] = true;
+                    old.field_at[i] = r.field_at[i].clone();
                 }
             }
             old.at = r.at;
@@ -591,8 +673,70 @@ fn parse_row(table: &DefTable, row: &RowDoc) -> Result<DefRow> {
     let (key, at) = (row.key.as_str(), row.at.as_str());
     let schema = &table.schema;
     let mut values: Vec<Option<Value>> = vec![None; schema.fields.len()];
+    let mut field_at: Vec<String> = vec![at.to_string(); schema.fields.len()];
+    let mut list_edits: Vec<ListEdit> = Vec::new();
     for (fname, raw, fat) in &row.fields {
         let fat = fat.clone();
+        // "+tags" and -tags: a change to a list field (issue 22).
+        if let Some((sign, name)) = fname
+            .strip_prefix('+')
+            .map(|n| ('+', n))
+            .or_else(|| fname.strip_prefix('-').map(|n| ('-', n)))
+        {
+            let Some((i, fs)) = schema
+                .fields
+                .iter()
+                .enumerate()
+                .find(|(_, f)| f.name == name)
+            else {
+                return Err(ArgusError::new(
+                    argus_ecs::codes::UNKNOWN_FIELD,
+                    format!("{}.{key} has no field {name:?} (for {fname:?})", table.name),
+                )
+                .hint(format!("Fields: {}", table.columns().join(", ")))
+                .at(Some(fat)));
+            };
+            if !matches!(fs.ty, FieldType::List(_)) {
+                return Err(ArgusError::new(
+                    codes::BAD_DEF,
+                    format!(
+                        "{}.{key}: {fname:?} adds to or takes from a list, and {name} is a {}",
+                        table.name, fs.ty
+                    ),
+                )
+                .hint(format!("Write {name} = ... to set it."))
+                .at(Some(fat)));
+            }
+            let raw = raw.as_ref().ok_or_else(|| {
+                ArgusError::new(
+                    codes::BAD_DEF,
+                    format!("{}.{key}.{fname} must be a value", table.name),
+                )
+                .at(Some(fat.clone()))
+            })?;
+            let v = tomlv::to_value(raw, fs.ty, &fat)?;
+            let Value::List(items) = schema.check(fs, v).map_err(|e| locate(e, &fat))? else {
+                continue;
+            };
+            let edit = match list_edits.iter_mut().find(|e| e.field == i) {
+                Some(e) => e,
+                None => {
+                    list_edits.push(ListEdit {
+                        field: i,
+                        add: Vec::new(),
+                        remove: Vec::new(),
+                    });
+                    list_edits.last_mut().unwrap()
+                }
+            };
+            if sign == '+' {
+                edit.add = items;
+            } else {
+                edit.remove = items;
+            }
+            field_at[i] = fat;
+            continue;
+        }
         let (i, fs) = schema
             .fields
             .iter()
@@ -627,6 +771,21 @@ fn parse_row(table: &DefTable, row: &RowDoc) -> Result<DefRow> {
         let v = tomlv::to_value(raw, fs.ty, &fat)?;
         let v = schema.check(fs, v).map_err(|e| locate(e, &fat))?;
         values[i] = Some(v);
+        field_at[i] = fat;
+    }
+    if let Some(e) = list_edits.iter().find(|e| values[e.field].is_some()) {
+        let name = &schema.fields[e.field].name;
+        return Err(ArgusError::new(
+            codes::BAD_DEF,
+            format!(
+                "{}.{key} sets {name} and adds to or takes from it too",
+                table.name
+            ),
+        )
+        .hint(format!(
+            "Give {name} = [...] for the whole list, or \"+{name}\" and -{name} to change the one it would have."
+        ))
+        .at(Some(field_at[e.field].clone())));
     }
     // The key field, if declared, is the header.
     if let Some(i) = table.field_index(&table.key) {
@@ -645,17 +804,27 @@ fn parse_row(table: &DefTable, row: &RowDoc) -> Result<DefRow> {
             _ => values[i] = Some(Value::Str(key.to_string())),
         }
     }
-    let given = values.iter().map(Option::is_some).collect();
-    let values = values
+    let mut given: Vec<bool> = values.iter().map(Option::is_some).collect();
+    let mut values: Vec<Value> = values
         .into_iter()
         .zip(&schema.fields)
         .map(|(v, f)| v.unwrap_or_else(|| f.default.clone()))
         .collect();
+    // Over the default here; a mod's row over the game's makes its change
+    // to the game's row's instead (lay_over).
+    for e in &list_edits {
+        values[e.field] = e
+            .apply(&values[e.field])
+            .map_err(|x| x.at(Some(field_at[e.field].clone())))?;
+        given[e.field] = true;
+    }
     Ok(DefRow {
         key: key.to_string(),
         values,
         given,
         at: at.to_string(),
+        field_at,
+        list_edits,
     })
 }
 

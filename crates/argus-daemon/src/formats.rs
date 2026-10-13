@@ -55,7 +55,7 @@ const fn k(name: &'static str, ty: &'static str, default: &'static str, doc: &'s
 pub const INTRO: &str = "A project is a directory with an `argus.toml`. Everything in it is a file the engine reads: TOML for data, Luau for code (`components/`, `systems/`, `defs/*.luau`, `lib/` for the modules they `require`, and `tests/`: the scripting and scenario references), and the assets' own formats. `.argus/` is the engine's (the index, keyframes, marks, saves, logs): never edit it, and keep it out of version control. Every problem with a file is reported with a code, a message, a hint, and the file and line (`ref`): a scene's in `argus scene issues`, a script's in `argus script errors`, an asset's in `argus asset list`, and `argus.toml`'s when the project opens. A scene with any issue does not spawn, so a run is always of files that read.";
 
 /// How a component field's value is written in an entity or prefab file.
-pub const VALUES: &str = "A component table's keys are its fields, and each value is written as its field's type wants: `bool` as true or false; an integer type (`u8` to `u64`, `i8` to `i64`) as an integer, or a float with no fraction (0.5 is refused, not cut); `f32` and `f64` as a number; `vec2` as `[x, y]`, two numbers; `str` as a string; `ref` as a string naming a def row (`\"item:bread\"`) or a project path (a prefab, `\"door/locked\"`, or a file, `\"assets/tiles.png\"`), `\"\"` for none; `entity` as `\"@id\"`, the id of another entity of the scene (`\"@room/id\"` for one in another room, `\"@id/child\"` for a child), `\"\"` for none. A field left out keeps its default (`argus describe <Component>` lists them), and a field with a range must be inside it. A component's whole table is flat: a field's value is never a table.";
+pub const VALUES: &str = "A component table's keys are its fields, and each value is written as its field's type wants: `bool` as true or false; an integer type (`u8` to `u64`, `i8` to `i64`) as an integer, or a float with no fraction (0.5 is refused, not cut); `f32` and `f64` as a number; `vec2` as `[x, y]`, two numbers; `str` as a string; `ref` as a string naming a def row (`\"item:bread\"`) or a project path (a prefab, `\"door/locked\"`, or a file, `\"assets/tiles.png\"`), `\"\"` for none; `entity` as `\"@id\"`, the id of another entity of the scene (`\"@room/id\"` for one in another room, `\"@id/child\"` for a child), `\"\"` for none; a list (`list of str`, `list of ref`, ...) as an array of its elements, each written as its type is (`[\"oiled\", \"burning\"]`, `[[1, 2], [3, 4]]` for vec2s), every ref in it naming something that exists. A field left out keeps its default (`argus describe <Component>` lists them), and a field with a range must be inside it. A component's whole table is flat: a field's value is never a table.";
 
 /// Every kind of file, in the order a project is read.
 pub const FILES: &[FileDoc] = &[
@@ -841,6 +841,14 @@ fn toml_value(v: &Value, ty: FieldType) -> String {
         ),
         Value::Str(s) | Value::Ref(s) => format!("{s:?}"),
         Value::Entity(_) => "\"\"".to_string(),
+        Value::List(items) => {
+            let of = match ty {
+                FieldType::List(of) => of.ty(),
+                other => other,
+            };
+            let each: Vec<String> = items.iter().map(|x| toml_value(x, of)).collect();
+            format!("[{}]", each.join(", "))
+        }
     }
 }
 

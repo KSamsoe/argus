@@ -56,10 +56,7 @@ fn resolve(world: &World, path: &str) -> std::result::Result<Target, String> {
         .registry()
         .resolve_path(&base)
         .map_err(|e| format!("path {path:?}: {}", e.message))?;
-    let numeric = !matches!(
-        field.ty,
-        FieldType::Str | FieldType::Ref | FieldType::Entity | FieldType::Bool | FieldType::Vec2
-    );
+    let numeric = field.ty.is_numeric();
     match (field.ty, axis) {
         (FieldType::Vec2, _) => {}
         (_, Some(_)) => return Err(format!("path {path:?}: only a vec2 has .x and .y")),

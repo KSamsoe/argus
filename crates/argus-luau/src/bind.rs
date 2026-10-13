@@ -76,7 +76,60 @@ pub(crate) fn value_to_lua(lua: &Lua, v: Value, link: &Link) -> LuaResult<LuaVal
                 })?)
             }
         }
+        // A list is one value (issue 22): read-only, so writing into it,
+        // which would change nothing in the world, is an error instead.
+        Value::List(items) => {
+            let t = lua.create_table_with_capacity(items.len(), 0)?;
+            for (i, x) in items.into_iter().enumerate() {
+                t.raw_set(i + 1, value_to_lua(lua, x, link)?)?;
+            }
+            t.set_readonly(true);
+            LuaValue::Table(t)
+        }
     })
+}
+
+/// A Lua array for a list of `of`: `{1, 2, 3}`, each element as the
+/// element's type takes it. A table with other keys is refused, not read
+/// as the array part of it.
+fn lua_to_list(t: &LuaTable, of: argus_ecs::ListOf, link: &Link) -> LuaResult<Value> {
+    let n = t.raw_len();
+    let keys = t.clone().pairs::<LuaValue, LuaValue>().count();
+    if keys != n {
+        return Err(argus_err(ArgusError::new(
+            codes::TYPE_MISMATCH,
+            format!(
+                "a list of {} is an array, {{ a, b, c }}; this table has keys that are not 1 to {n}",
+                of.ty().name()
+            ),
+        )));
+    }
+    if n > argus_ecs::value::MAX_LIST {
+        return Err(argus_err(ArgusError::new(
+            codes::OUT_OF_RANGE,
+            format!(
+                "a list holds at most {} elements; this one has {n}",
+                argus_ecs::value::MAX_LIST
+            ),
+        )));
+    }
+    let mut items = Vec::with_capacity(n);
+    for i in 1..=n {
+        let x: LuaValue = t.raw_get(i)?;
+        let v = lua_to_value(x, of.ty(), link)
+            .map_err(|e| mlua::Error::runtime(format!("element {i}: {}", plain(&e))))?;
+        items.push(v);
+    }
+    Ok(Value::List(items))
+}
+
+/// An error's own words, without mlua's wrapping.
+fn plain(e: &mlua::Error) -> String {
+    match e {
+        mlua::Error::ExternalError(x) => x.to_string(),
+        mlua::Error::RuntimeError(m) => m.clone(),
+        other => other.to_string(),
+    }
 }
 
 /// Convert a Lua value for a field of type `ty`. Numbers become the integer
@@ -90,6 +143,7 @@ pub(crate) fn lua_to_value(v: LuaValue, ty: FieldType, link: &Link) -> LuaResult
         ))
     };
     Ok(match (ty, v) {
+        (FieldType::List(of), LuaValue::Table(t)) => lua_to_list(&t, of, link)?,
         (FieldType::Bool, LuaValue::Boolean(b)) => Value::Bool(b),
         (t, LuaValue::Integer(i)) if t.is_numeric() => number_for(t, i as f64),
         (t, LuaValue::Number(n)) if t.is_numeric() => number_for(t, n),
@@ -161,23 +215,47 @@ fn event_fields(fields: Option<mlua::Table>) -> LuaResult<Vec<(String, Value)>> 
         for pair in t.pairs::<String, LuaValue>() {
             let (k, v) = pair?;
             let v = match v {
-                LuaValue::Boolean(b) => Value::Bool(b),
-                LuaValue::Integer(i) => Value::Int(i as i64),
-                LuaValue::Number(n) if n.fract() == 0.0 && n.abs() < 9.0e15 => Value::Int(n as i64),
-                LuaValue::Number(n) => Value::Float(n),
-                LuaValue::String(s) => Value::Str(s.to_string_lossy()),
-                LuaValue::Vector(v) => Value::Vec2(Vec2::new(v.x(), v.y())),
-                LuaValue::UserData(ud) => match ud.borrow::<EntityRef>() {
-                    Ok(e) => Value::Entity(e.entity),
-                    Err(_) => Value::Str(format!("{ud:?}")),
-                },
-                other => Value::Str(format!("{other:?}")),
+                // An array is a list (issue 22): `{ tags = { "a", "b" } }`.
+                LuaValue::Table(t)
+                    if t.raw_len() == t.clone().pairs::<LuaValue, LuaValue>().count() =>
+                {
+                    let n = t.raw_len();
+                    if n > argus_ecs::value::MAX_LIST {
+                        return Err(mlua::Error::runtime(format!(
+                            "q:emit: {k} has {n} elements; a list holds at most {}",
+                            argus_ecs::value::MAX_LIST
+                        )));
+                    }
+                    let mut items = Vec::with_capacity(n);
+                    for i in 1..=n {
+                        items.push(event_value(t.raw_get(i)?));
+                    }
+                    Value::List(items)
+                }
+                other => event_value(other),
             };
             out.push((k, v));
         }
         out.sort_by(|a, b| a.0.cmp(&b.0));
     }
     Ok(out)
+}
+
+/// One of an event's values, as its Lua type says.
+fn event_value(v: LuaValue) -> Value {
+    match v {
+        LuaValue::Boolean(b) => Value::Bool(b),
+        LuaValue::Integer(i) => Value::Int(i as i64),
+        LuaValue::Number(n) if n.fract() == 0.0 && n.abs() < 9.0e15 => Value::Int(n as i64),
+        LuaValue::Number(n) => Value::Float(n),
+        LuaValue::String(s) => Value::Str(s.to_string_lossy()),
+        LuaValue::Vector(v) => Value::Vec2(Vec2::new(v.x(), v.y())),
+        LuaValue::UserData(ud) => match ud.borrow::<EntityRef>() {
+            Ok(e) => Value::Entity(e.entity),
+            Err(_) => Value::Str(format!("{ud:?}")),
+        },
+        other => Value::Str(format!("{other:?}")),
+    }
 }
 
 /// A list of component names to ids.
@@ -1625,6 +1703,14 @@ fn def_value(lua: &Lua, v: Value) -> LuaResult<LuaValue> {
         Value::Vec2(v) => LuaValue::Vector(mlua::Vector::new(v.x, v.y, 0.0)),
         Value::Str(s) | Value::Ref(s) => LuaValue::String(lua.create_string(&s)?),
         Value::Entity(_) => LuaValue::Nil,
+        Value::List(items) => {
+            let t = lua.create_table_with_capacity(items.len(), 0)?;
+            for (i, x) in items.into_iter().enumerate() {
+                t.raw_set(i + 1, def_value(lua, x)?)?;
+            }
+            t.set_readonly(true);
+            LuaValue::Table(t)
+        }
     })
 }
 

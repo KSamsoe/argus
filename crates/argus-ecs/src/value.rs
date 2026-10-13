@@ -2,7 +2,9 @@
 //! optional range, and a doc string"). Every field type is plain old data of
 //! fixed size, which is what makes a column a memcpy-able byte array and a
 //! snapshot a memcpy (§2, §6). Strings are interned handles; entity references
-//! are the 8-byte [`Entity`] itself.
+//! are the 8-byte [`Entity`] itself. A list (issue 22) is one value, as a
+//! string is: its elements are written as one string in the interner, and
+//! the row holds that string's handle.
 
 use crate::entity::Entity;
 use crate::error::{codes, ArgusError, Result};
@@ -67,6 +69,184 @@ pub enum FieldType {
     /// Reference to a def, asset, or prefab by path, e.g. `item:key.brass` (§4).
     /// Stored like `Str`; typed separately so `describe` can say it is a reference.
     Ref,
+    /// A list of scalars (issue 22), held as an interned handle (4 bytes),
+    /// so a list is one value: changing one is writing a new one.
+    List(ListOf),
+}
+
+/// What a list field holds: any scalar but an entity (a dead entity in a
+/// list would have to be found and taken out at every frame's end).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ListOf {
+    /// `bool`.
+    Bool,
+    /// `u8`.
+    U8,
+    /// `u16`.
+    U16,
+    /// `u32`.
+    U32,
+    /// `u64`.
+    U64,
+    /// `i8`.
+    I8,
+    /// `i16`.
+    I16,
+    /// `i32`.
+    I32,
+    /// `i64`.
+    I64,
+    /// `f32`.
+    F32,
+    /// `f64`.
+    F64,
+    /// `vec2`.
+    Vec2,
+    /// `str`.
+    Str,
+    /// `ref`: every element must name a row that exists.
+    Ref,
+}
+
+/// The most elements a list field holds.
+pub const MAX_LIST: usize = 1024;
+
+impl ListOf {
+    /// The element's type.
+    pub const fn ty(self) -> FieldType {
+        match self {
+            ListOf::Bool => FieldType::Bool,
+            ListOf::U8 => FieldType::U8,
+            ListOf::U16 => FieldType::U16,
+            ListOf::U32 => FieldType::U32,
+            ListOf::U64 => FieldType::U64,
+            ListOf::I8 => FieldType::I8,
+            ListOf::I16 => FieldType::I16,
+            ListOf::I32 => FieldType::I32,
+            ListOf::I64 => FieldType::I64,
+            ListOf::F32 => FieldType::F32,
+            ListOf::F64 => FieldType::F64,
+            ListOf::Vec2 => FieldType::Vec2,
+            ListOf::Str => FieldType::Str,
+            ListOf::Ref => FieldType::Ref,
+        }
+    }
+
+    /// A list of `t`, if a list can hold it.
+    pub const fn of(t: FieldType) -> Option<ListOf> {
+        Some(match t {
+            FieldType::Bool => ListOf::Bool,
+            FieldType::U8 => ListOf::U8,
+            FieldType::U16 => ListOf::U16,
+            FieldType::U32 => ListOf::U32,
+            FieldType::U64 => ListOf::U64,
+            FieldType::I8 => ListOf::I8,
+            FieldType::I16 => ListOf::I16,
+            FieldType::I32 => ListOf::I32,
+            FieldType::I64 => ListOf::I64,
+            FieldType::F32 => ListOf::F32,
+            FieldType::F64 => ListOf::F64,
+            FieldType::Vec2 => ListOf::Vec2,
+            FieldType::Str => ListOf::Str,
+            FieldType::Ref => ListOf::Ref,
+            FieldType::Entity | FieldType::List(_) => return None,
+        })
+    }
+}
+
+/// A list's elements (coerced to `of`) as the one string its handle names:
+/// each element in turn, a string or a ref as its length in bytes, `:`,
+/// and its bytes; anything else as text and `;`, a float as its bits in
+/// hex so it reads back exactly.
+fn encode_list(of: ListOf, items: &[Value]) -> Result<String> {
+    use std::fmt::Write as _;
+    if items.len() > MAX_LIST {
+        return Err(too_long(items.len()));
+    }
+    let mut out = String::new();
+    for v in items {
+        let _ = match (of, v) {
+            (ListOf::Bool, Value::Bool(b)) => write!(out, "{};", *b as u8),
+            (ListOf::U8 | ListOf::U16 | ListOf::U32 | ListOf::U64, Value::UInt(u)) => {
+                write!(out, "{u};")
+            }
+            (ListOf::I8 | ListOf::I16 | ListOf::I32 | ListOf::I64, Value::Int(i)) => {
+                write!(out, "{i};")
+            }
+            (ListOf::F32, Value::Float(f)) => write!(out, "{:x};", (*f as f32).to_bits()),
+            (ListOf::F64, Value::Float(f)) => write!(out, "{:x};", f.to_bits()),
+            (ListOf::Vec2, Value::Vec2(p)) => {
+                write!(out, "{:x},{:x};", p.x.to_bits(), p.y.to_bits())
+            }
+            (ListOf::Str, Value::Str(t)) | (ListOf::Ref, Value::Ref(t)) => {
+                write!(out, "{}:{t}", t.len())
+            }
+            _ => {
+                return Err(ArgusError::new(
+                    codes::TYPE_MISMATCH,
+                    format!(
+                        "a list of {} holds no {} ({v})",
+                        of.ty().name(),
+                        v.type_name()
+                    ),
+                ))
+            }
+        };
+    }
+    Ok(out)
+}
+
+/// The elements [`encode_list`] wrote.
+fn decode_list(of: ListOf, s: &str) -> Vec<Value> {
+    let mut out = Vec::new();
+    let mut rest = s;
+    while !rest.is_empty() {
+        if matches!(of, ListOf::Str | ListOf::Ref) {
+            let Some((n, after)) = rest.split_once(':') else {
+                break;
+            };
+            let n: usize = n.parse().unwrap_or(0);
+            let Some(t) = after.get(..n) else {
+                break;
+            };
+            out.push(if of == ListOf::Ref {
+                Value::Ref(t.to_string())
+            } else {
+                Value::Str(t.to_string())
+            });
+            rest = &after[n..];
+            continue;
+        }
+        let Some((t, after)) = rest.split_once(';') else {
+            break;
+        };
+        rest = after;
+        let bits32 = |h: &str| f32::from_bits(u32::from_str_radix(h, 16).unwrap_or(0));
+        out.push(match of {
+            ListOf::Bool => Value::Bool(t == "1"),
+            ListOf::U8 | ListOf::U16 | ListOf::U32 | ListOf::U64 => {
+                Value::UInt(t.parse().unwrap_or(0))
+            }
+            ListOf::I8 | ListOf::I16 | ListOf::I32 | ListOf::I64 => {
+                Value::Int(t.parse().unwrap_or(0))
+            }
+            ListOf::F32 => Value::Float(bits32(t) as f64),
+            ListOf::F64 => Value::Float(f64::from_bits(u64::from_str_radix(t, 16).unwrap_or(0))),
+            ListOf::Vec2 => {
+                let (x, y) = t.split_once(',').unwrap_or(("0", "0"));
+                Value::Vec2(Vec2::new(bits32(x), bits32(y)))
+            }
+            ListOf::Str | ListOf::Ref => unreachable!(),
+        });
+    }
+    out
+}
+
+fn too_long(n: usize) -> ArgusError {
+    ArgusError::new(
+        codes::OUT_OF_RANGE,
+        format!("a list holds at most {MAX_LIST} elements; this one has {n}"),
+    )
 }
 
 impl FieldType {
@@ -75,7 +255,12 @@ impl FieldType {
         match self {
             FieldType::Bool | FieldType::U8 | FieldType::I8 => 1,
             FieldType::U16 | FieldType::I16 => 2,
-            FieldType::U32 | FieldType::I32 | FieldType::F32 | FieldType::Str | FieldType::Ref => 4,
+            FieldType::U32
+            | FieldType::I32
+            | FieldType::F32
+            | FieldType::Str
+            | FieldType::Ref
+            | FieldType::List(_) => 4,
             FieldType::U64
             | FieldType::I64
             | FieldType::F64
@@ -108,10 +293,29 @@ impl FieldType {
             FieldType::Str => "str",
             FieldType::Entity => "entity",
             FieldType::Ref => "ref",
+            FieldType::List(of) => match of {
+                ListOf::Bool => "list of bool",
+                ListOf::U8 => "list of u8",
+                ListOf::U16 => "list of u16",
+                ListOf::U32 => "list of u32",
+                ListOf::U64 => "list of u64",
+                ListOf::I8 => "list of i8",
+                ListOf::I16 => "list of i16",
+                ListOf::I32 => "list of i32",
+                ListOf::I64 => "list of i64",
+                ListOf::F32 => "list of f32",
+                ListOf::F64 => "list of f64",
+                ListOf::Vec2 => "list of vec2",
+                ListOf::Str => "list of str",
+                ListOf::Ref => "list of ref",
+            },
         }
     }
-    /// Parse a schema type name.
+    /// Parse a schema type name (`list of ref` for a list).
     pub fn parse(s: &str) -> Option<FieldType> {
+        if let Some(e) = s.strip_prefix("list of ") {
+            return ListOf::of(FieldType::parse(e)?).map(FieldType::List);
+        }
         Some(match s {
             "bool" => FieldType::Bool,
             "u8" => FieldType::U8,
@@ -135,7 +339,12 @@ impl FieldType {
     pub const fn is_numeric(self) -> bool {
         !matches!(
             self,
-            FieldType::Bool | FieldType::Str | FieldType::Entity | FieldType::Ref | FieldType::Vec2
+            FieldType::Bool
+                | FieldType::Str
+                | FieldType::Entity
+                | FieldType::Ref
+                | FieldType::Vec2
+                | FieldType::List(_)
         )
     }
     /// The zero value of this type.
@@ -149,6 +358,7 @@ impl FieldType {
             FieldType::Str => Value::Str(String::new()),
             FieldType::Entity => Value::Entity(Entity::NULL),
             FieldType::Ref => Value::Ref(String::new()),
+            FieldType::List(_) => Value::List(Vec::new()),
         }
     }
 
@@ -179,6 +389,7 @@ impl FieldType {
             FieldType::Str => Value::Str(strings.get(rd!(StrId)).to_string()),
             FieldType::Ref => Value::Ref(strings.get(rd!(StrId)).to_string()),
             FieldType::Entity => Value::Entity(rd!(Entity)),
+            FieldType::List(of) => Value::List(decode_list(of, &strings.get(rd!(StrId)))),
         }
     }
 
@@ -219,6 +430,9 @@ impl FieldType {
                 wr!(StrId, strings.try_intern(s)?)
             }
             (FieldType::Entity, Value::Entity(e)) => wr!(Entity, *e),
+            (FieldType::List(of), Value::List(items)) => {
+                wr!(StrId, strings.try_intern(&encode_list(of, items)?)?)
+            }
             _ => return Err(mismatch()),
         }
         Ok(())
@@ -251,6 +465,8 @@ pub enum Value {
     Entity(Entity),
     /// Def/asset/prefab reference by path.
     Ref(String),
+    /// A list field's elements (issue 22).
+    List(Vec<Value>),
 }
 
 impl Value {
@@ -265,6 +481,7 @@ impl Value {
             Value::Str(_) => "str",
             Value::Entity(_) => "entity",
             Value::Ref(_) => "ref",
+            Value::List(_) => "list",
         }
     }
 
@@ -299,6 +516,21 @@ impl Value {
             (T::Ref, v @ Value::Ref(_)) => v,
             (T::Ref, Value::Str(s)) => Value::Ref(s),
             (T::Entity, v @ Value::Entity(_)) => v,
+            (T::List(of), Value::List(items)) => {
+                if items.len() > MAX_LIST {
+                    return Err(too_long(items.len()));
+                }
+                let items = items
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, v)| {
+                        v.coerce(of.ty()).map_err(|e| {
+                            ArgusError::new(e.code, format!("element {}: {}", i + 1, e.message))
+                        })
+                    })
+                    .collect::<Result<Vec<Value>>>()?;
+                Value::List(items)
+            }
             (ty, other) => {
                 return Err(ArgusError::new(
                     codes::TYPE_MISMATCH,
@@ -348,6 +580,16 @@ impl fmt::Display for Value {
             Value::Str(s) => write!(f, "{s:?}"),
             Value::Entity(e) => write!(f, "{e}"),
             Value::Ref(s) => write!(f, "{s}"),
+            Value::List(items) => {
+                f.write_str("[")?;
+                for (i, v) in items.iter().enumerate() {
+                    if i > 0 {
+                        f.write_str(", ")?;
+                    }
+                    write!(f, "{v}")?;
+                }
+                f.write_str("]")
+            }
         }
     }
 }

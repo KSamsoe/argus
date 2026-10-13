@@ -138,10 +138,8 @@ fn resolve(
             names.join(", ")
         )
     })?;
-    let numeric = !matches!(
-        field.ty,
-        FieldType::Str | FieldType::Ref | FieldType::Entity | FieldType::Vec2
-    );
+    // A number or a bool; not text, an entity, a vector, or a list.
+    let numeric = field.ty.is_numeric() || field.ty == FieldType::Bool;
     match (field.ty, axis) {
         (FieldType::Vec2, None) => return Err(format!("{path} is a vec2; compare .x or .y")),
         (FieldType::Vec2, Some(_)) => {}

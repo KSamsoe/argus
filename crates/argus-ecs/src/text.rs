@@ -14,7 +14,7 @@ pub fn entity_id(world: &World, e: Entity) -> String {
 }
 
 /// A value as text: whole numbers bare, others to two places, vectors as
-/// `(x, y)`, entities by id.
+/// `(x, y)`, entities by id, a list's elements with commas between.
 pub fn show(world: &World, v: &Value) -> String {
     let num = |f: f64| {
         if f.fract() == 0.0 && f.abs() < 1e15 {
@@ -32,6 +32,11 @@ pub fn show(world: &World, v: &Value) -> String {
         Value::Vec2(p) => format!("({}, {})", num(p.x as f64), num(p.y as f64)),
         Value::Str(s) | Value::Ref(s) => s.clone(),
         Value::Entity(e) => entity_id(world, *e),
+        Value::List(items) => items
+            .iter()
+            .map(|x| show(world, x))
+            .collect::<Vec<_>>()
+            .join(", "),
     }
 }
 

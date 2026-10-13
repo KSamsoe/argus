@@ -23,6 +23,7 @@ pub fn value_json(v: &Value) -> Json {
                 json!(e.to_string())
             }
         }
+        Value::List(items) => Json::Array(items.iter().map(value_json).collect()),
     }
 }
 

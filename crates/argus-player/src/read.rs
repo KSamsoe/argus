@@ -29,6 +29,7 @@ pub fn value(world: &World, v: &Value) -> Json {
         Value::Vec2(p) => json!([p.x, p.y]),
         Value::Str(s) | Value::Ref(s) => json!(s),
         Value::Entity(e) => entity_ref(world, *e),
+        Value::List(items) => Json::Array(items.iter().map(|x| value(world, x)).collect()),
     }
 }
 

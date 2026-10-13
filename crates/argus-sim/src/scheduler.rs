@@ -235,6 +235,13 @@ fn encode_value(w: &mut Writer, v: &argus_ecs::Value) {
             w.u8(7);
             w.str(s);
         }
+        Value::List(items) => {
+            w.u8(8);
+            w.count(items.len());
+            for x in items {
+                encode_value(w, x);
+            }
+        }
     }
 }
 
@@ -252,6 +259,14 @@ fn decode_value(r: &mut Reader) -> Result<argus_ecs::Value> {
         5 => Value::Str(r.str()?),
         6 => Value::Entity(argus_ecs::Entity::from_bits(r.u64()?)),
         7 => Value::Ref(r.str()?),
+        8 => {
+            let n = r.count()?;
+            let mut items = Vec::with_capacity(n.min(argus_ecs::value::MAX_LIST));
+            for _ in 0..n {
+                items.push(decode_value(r)?);
+            }
+            Value::List(items)
+        }
         t => return Err(r.bad(format!("a held event's field of kind {t}"))),
     })
 }

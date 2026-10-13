@@ -59,7 +59,7 @@ pub use schema::{
 };
 pub use snapshot::Snapshot;
 pub use spatial::SpatialHash;
-pub use value::{FieldType, Value, Vec2};
+pub use value::{FieldType, ListOf, Value, Vec2};
 pub use world::{World, WorldSummary};
 
 /// Re-export of the derive macro so users only depend on `argus-ecs`.

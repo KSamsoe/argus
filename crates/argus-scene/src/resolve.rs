@@ -256,6 +256,18 @@ fn resolve_layers(
                         issues.push(e);
                     }
                 }
+                // Each element of a list of refs (issue 22).
+                if let (FieldType::List(argus_ecs::ListOf::Ref), Value::List(items)) = (fs.ty, &v) {
+                    for (n, x) in items.iter().enumerate() {
+                        let Value::Ref(s) = x else { continue };
+                        if let Err(e) = check_ref(ctx, s, &f.at) {
+                            issues.push(argus_ecs::ArgusError {
+                                message: format!("{}, element {}: {}", f.name, n + 1, e.message),
+                                ..e
+                            });
+                        }
+                    }
+                }
                 let rf = ResolvedField {
                     name: f.name.clone(),
                     ty: fs.ty,

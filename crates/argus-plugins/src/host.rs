@@ -188,6 +188,9 @@ pub(crate) fn ty_code(t: argus_ecs::FieldType) -> u32 {
         F::Str => abi::ty::STR,
         F::Entity => abi::ty::ENTITY,
         F::Ref => abi::ty::REF,
+        // A list (issue 22) has no field type in the SDK: a component with
+        // one never matches a plugin's layout, and the refusal names it.
+        F::List(_) => u32::MAX,
     }
 }
 

@@ -39,6 +39,7 @@ That is from `examples/swarm/components/swarm.luau`. Each field is `name = field
 | `str` | text | string | `"hello"` |
 | `entity` | a reference to another entity | an entity handle | `"@door.east"` |
 | `ref` | a data table row or a project path | string | `"item:bread"`, `"door/locked"` |
+| `list` | a list of any of these but `entity` | a read-only array | `["oiled", "burning"]` |
 
 A field takes four options, all optional:
 
@@ -50,6 +51,28 @@ A field takes four options, all optional:
 | `doc` | What the field is. Agents read it in `ARGUS.md` and `argus describe`; write it for them. |
 
 A component itself takes `doc`, and `version` and `migrate` for save games made before its fields changed (see [Gameplay](gameplay.md) on saves).
+
+### List fields
+
+A list field holds any number of values of one type, in order: what is on a tile in the order it came, a room's monster pool, an item's loot floors. `of` says the type of its elements:
+
+```lua
+component "Tile" {
+  on = field.list { of = "str", doc = "What is on it, in the order it came" },
+}
+```
+
+`of` is any type above but `entity`; a list takes `default` (`default = { "dry" }`) and `doc`, not `range` or `tune`, and holds at most 1,024 elements. In an entity file it is an array, `on = ["oiled", "burning"]`, a `vec2` element as `[x, y]`.
+
+A list is one value, like a string. Reading it gives a read-only array: `#t.on`, `t.on[1]`, `ipairs(t.on)`, and `table.find(t.on, "oiled")` work. Changing it is assigning a new one:
+
+```lua
+local on = table.clone(t.on)
+table.insert(on, "burning")
+t.on = on
+```
+
+Writing into the array read (`t.on[1] = "wet"`) fails with "attempt to modify a readonly table", since it would change nothing in the world. A table that is not an array, or an element of the wrong type, is refused, naming the element. A `{Tile.on}` hole in a text reads the elements with commas between ("oiled, burning"), and an event can carry a list: `q:emit("ruled", { tags = { "fire", "oil" } })`.
 
 A component with no fields is a **tag**. Most tags need no declaration at all: `tags = ["enemy"]` in an entity file makes one by using it, and `q:each("enemy")` finds them.
 
