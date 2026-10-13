@@ -287,6 +287,16 @@ fn build(inv: &Invocation, err: &mut dyn Write) -> Result<Json, String> {
         Some(_) => None,
         None => Some(engine_dir()?),
     };
+    // From source the runtime is compiled, so cargo is found now, before any
+    // pack is written, and in ~/.cargo/bin too, where rustup puts it and
+    // Git Bash's PATH does not look (issue 8: the build wrote a 46 MB pack,
+    // then said "could not start: program not found").
+    let cargo = match &engine {
+        Some(_) => Some(argus_plugins::find_cargo().ok_or_else(|| {
+            "a build from the engine's source compiles its runtime with cargo, and there is none on the PATH, in $CARGO, or in ~/.cargo/bin: install Rust (https://rustup.rs), or put the folder cargo is in on the PATH, or set CARGO to it. An install of Argus builds games with no Rust".to_string()
+        })?),
+        None => None,
+    };
     let game = argus_player::save::folder_name(&cfg.name);
     let out_dir = inv
         .out
@@ -399,6 +409,7 @@ fn build(inv: &Invocation, err: &mut dyn Write) -> Result<Json, String> {
         (Target::Web, None, Some(engine)) => {
             web(
                 engine,
+                cargo.as_deref().expect("found with the engine"),
                 &out_dir,
                 &built.packs,
                 &code,
@@ -414,6 +425,7 @@ fn build(inv: &Invocation, err: &mut dyn Write) -> Result<Json, String> {
                 (Some(rt), _) => crate::runtime::place_desktop(rt, &out_dir, &game, target.name())?,
                 (None, Some(engine)) => desktop(
                     engine,
+                    cargo.as_deref().expect("found with the engine"),
                     &out_dir,
                     &game,
                     &code,
@@ -657,6 +669,7 @@ fn plugins(root: &Path, names: &[String], dir: &Path) -> Result<Vec<Json>, Strin
 #[allow(clippy::too_many_arguments)]
 fn desktop(
     engine: &Path,
+    cargo: &Path,
     out: &Path,
     game: &str,
     code: &str,
@@ -664,7 +677,7 @@ fn desktop(
     modules: &[String],
     err: &mut dyn Write,
 ) -> Result<PathBuf, String> {
-    let mut c = Command::new("cargo");
+    let mut c = Command::new(cargo);
     c.current_dir(engine)
         .args(["build", "-q", "-p", "argus-game"])
         .env("ARGUS_CODE", code);
@@ -779,6 +792,7 @@ fn wasm_env(c: &mut Command) -> Result<(), String> {
 #[allow(clippy::too_many_arguments)]
 fn web(
     engine: &Path,
+    cargo: &Path,
     out: &Path,
     packs: &[Pack],
     code: &str,
@@ -787,7 +801,15 @@ fn web(
     err: &mut dyn Write,
 ) -> Result<(), String> {
     let tdir = engine.join("target-web");
-    let mut c = Command::new("cargo");
+    if !release {
+        // A page's module from source is a debug build unless asked: about
+        // three times the bytes every player's browser downloads.
+        let _ = writeln!(
+            err,
+            "argus build: the web runtime from source without --release is a debug build (about 41 MB of WebAssembly, against 14 MB with --release)"
+        );
+    }
+    let mut c = Command::new(cargo);
     c.current_dir(engine)
         .args([
             "rustc",
