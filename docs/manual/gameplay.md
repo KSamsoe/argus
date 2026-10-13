@@ -502,7 +502,7 @@ q:emit("day.turned", { day = day, food = food, growth = rules.growth })
 q:save("auto")
 ```
 
-Where saves go: the daemon keeps them in `.argus/saves/<name>.save`, a shipped game in the player's save folder, and the web build in the browser's storage. A save emits `game.saved {name, path, bytes, tick}` and a load `game.loaded {name, tick, migrated}`. From outside, `argus run save=week1` and `argus run load=week1` do the same.
+Where saves go: the daemon keeps them in `.argus/saves/<name>.save`, a shipped game in the player's save folder, and the web build in the browser's storage. A save emits `game.saved {save, path, bytes, tick}` and a load `game.loaded {save, tick, migrated}`, `save` being the save's name. From outside, `argus run save=week1` and `argus run load=week1` do the same.
 
 What a save does not hold: anything a script keeps in Luau variables (keep game state in components), and the input state (a loaded game hears the player's hands as they are now).
 

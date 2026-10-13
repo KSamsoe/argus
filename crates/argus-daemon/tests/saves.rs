@@ -110,7 +110,7 @@ fn a_save_loads_back_to_the_same_world_and_it_plays_on_the_same() {
     ok(&mut d, "sim.step", json!({ "n": 40 }));
     let saved = events(&mut d, "game.saved");
     assert_eq!(saved.len(), 1, "{saved:?}");
-    assert_eq!(saved[0]["fields"]["name"], "auto");
+    assert_eq!(saved[0]["fields"]["save"], "auto");
     assert_eq!(saved[0]["fields"]["tick"], 31);
     assert!(t.path().join(".argus/saves/auto.save").exists());
 

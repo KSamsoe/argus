@@ -231,7 +231,7 @@ outro.actor = hero
 
 Setting `skip = true` jumps to its end: tweens finish, states are entered, events and edits are made, lines are not said. Hollow skips the outro when the player restarts. A Timeline also has `speed`, `paused`, and `looping`. A room scene can name a timeline to play at every room change (`[rooms] transition = "timeline:rooms.fade"`, see [scenes](scenes.md)).
 
-Its events are `timeline.started`, `timeline.cue`, `timeline.held`, `timeline.resumed`, and `timeline.ended {skipped}`. A cue that cannot work (a tween without a path, a `who` that is no one) is a `script.errors` row (phase timeline), and that cue is left out.
+Its events are `timeline.started`, `timeline.cue`, `timeline.held`, `timeline.resumed`, and `timeline.ended {skipped}`, each with `timeline` (the entity playing it) and `row` (which timeline: its row of the table, such as `outro`). A cue that cannot work (a tween without a path, a `who` that is no one) is a `script.errors` row (phase timeline), and that cue is left out.
 
 From outside the game:
 

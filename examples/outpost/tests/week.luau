@@ -10,6 +10,6 @@ return scenario "a week without starving, saved every day" {
     t.expect:events("colonist.died"):count():eq(0)
     t.expect:field("@colony", "Stockpile.food"):gte(6)
     t.expect:events("day.turned"):count():eq(7)
-    t.expect:events("game.saved", { name = "auto" }):count():eq(7)
+    t.expect:events("game.saved", { save = "auto" }):count():eq(7)
   end,
 }

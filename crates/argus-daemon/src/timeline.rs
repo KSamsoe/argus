@@ -194,7 +194,7 @@ impl Daemon {
             };
             let ok = match (e, name) {
                 (Some(e), _) => *t == e,
-                (None, Some(want)) => get("name") == Some(&Value::Str(want.to_string())),
+                (None, Some(want)) => get("row") == Some(&Value::Str(want.to_string())),
                 _ => false,
             };
             ok.then_some((*t, r.frame))

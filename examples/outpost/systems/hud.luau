@@ -26,7 +26,7 @@ return system "late.colony.hud" {
       notice = q:text("notice.day", { day = ev.day, food = string.format("%.1f", ev.food) })
     end
     for _, ev in ipairs(q:events("colonist.died")) do
-      notice = q:text("notice.starved", { name = ev.name })
+      notice = q:text("notice.starved", { name = ev.who })
     end
     local line
     if q.tick % 30 == 0 then

@@ -45,7 +45,7 @@ scenario "the way out plays the outro: the hall from above, a farewell, home" {
   run = function(t)
     finish(t)
     t:step(1)
-    t.expect:events("timeline.started", { name = "outro" }):count():eq(1)
+    t.expect:events("timeline.started", { row = "outro" }):count():eq(1)
     -- The wide camera draws, gliding in from the hero's view.
     t:step(10)
     t.expect:field("@wide", "Camera.active"):eq(true)
@@ -74,11 +74,11 @@ scenario "the way out plays the outro: the hall from above, a farewell, home" {
     t.input:tap("ui_confirm")
     t:step(2)
     t.expect:count({ has = { "Talk" } }):eq(0)
-    t.expect:events("timeline.resumed", { name = "outro" }):count():eq(1)
+    t.expect:events("timeline.resumed", { row = "outro" }):count():eq(1)
     -- Five seconds in it is over, and the hero's camera glides back.
     t:run_until { event = "timeline.ended", max_frames = 180 }
     t:step(1)
-    t.expect:events("timeline.ended", { name = "outro", skipped = false }):count():eq(1)
+    t.expect:events("timeline.ended", { row = "outro", skipped = false }):count():eq(1)
     t.expect:field("@wide", "Camera.active"):eq(false)
     t.expect:field("@camera", "Camera.drew"):eq(true)
     t.expect:field("@camera", "Camera.blend_left"):gt(0)
@@ -112,7 +112,7 @@ return scenario "R skips the outro, and the farewell knows about the gem" {
     t.expect:field("@wide", "Camera.active"):eq(true)
     t.input:hold("restart", true, 2)
     t:step(3)
-    t.expect:events("timeline.ended", { name = "outro", skipped = true }):count():eq(1)
+    t.expect:events("timeline.ended", { row = "outro", skipped = true }):count():eq(1)
     t.expect:field("@wide", "Camera.active"):eq(false)
     -- (Back in the cave, the room change's fade plays; the outro is over.)
     t.expect:count({ has = { "Timeline" }, ["Timeline.name"] = "timeline:outro" }):eq(0)

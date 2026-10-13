@@ -12,7 +12,7 @@ return system "sim.colony.needs" {
   after = { "sim.colony.work" },
   reads = { "Colony", "Stockpile", "Transform" },
   writes = { "Colonist", "Job" },
-  doc = "Lowers Colonist.fed by Colony.hunger_per_day; below Colony.eat_below, while the stockpile has food, posts an eat job at @colony for that colonist only. One at zero dies: colonist.died {colonist, name, cause: starvation, at}.",
+  doc = "Lowers Colonist.fed by Colony.hunger_per_day; below Colony.eat_below, while the stockpile has food, posts an eat job at @colony for that colonist only. One at zero dies: colonist.died {colonist, who, cause: starvation, at}.",
   run = function(q)
     local colony = q:entity("@colony")
     local rules = colony:get("Colony")
@@ -32,7 +32,7 @@ return system "sim.colony.needs" {
       end
       if c.fed <= 0 then
         table.insert(dead, e:id())
-        q:emit("colonist.died", { colonist = e, name = c.name, cause = "starvation", at = e:get("Transform").pos })
+        q:emit("colonist.died", { colonist = e, who = c.name, cause = "starvation", at = e:get("Transform").pos })
       end
     end
     -- Despawned after the loop, never inside it, with their meal.

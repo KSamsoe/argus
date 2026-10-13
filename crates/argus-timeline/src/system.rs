@@ -132,7 +132,7 @@ fn problem(ctx: &mut SystemCtx<'_>, e: Entity, name: &str, cue: &str, why: &str)
         "timeline.problem",
         vec![
             ("timeline".into(), Value::Entity(e)),
-            ("name".into(), Value::Str(name.to_string())),
+            ("row".into(), Value::Str(name.to_string())),
             ("cue".into(), Value::Str(cue.to_string())),
             ("why".into(), Value::Str(why.to_string())),
         ],
@@ -164,7 +164,7 @@ fn play(ctx: &mut SystemCtx<'_>, lines: &Timelines, e: Entity, ids: Ids) -> Resu
             "timeline.started",
             vec![
                 ("timeline".into(), Value::Entity(e)),
-                ("name".into(), Value::Str(key.clone())),
+                ("row".into(), Value::Str(key.clone())),
                 ("actor".into(), Value::Entity(t.actor)),
                 ("other".into(), Value::Entity(t.other)),
                 ("length".into(), Value::Float(line.length as f64)),
@@ -193,7 +193,7 @@ fn play(ctx: &mut SystemCtx<'_>, lines: &Timelines, e: Entity, ids: Ids) -> Resu
             "timeline.resumed",
             vec![
                 ("timeline".into(), Value::Entity(e)),
-                ("name".into(), Value::Str(key.clone())),
+                ("row".into(), Value::Str(key.clone())),
                 ("cue".into(), Value::Str(cue)),
                 ("time".into(), Value::Float(t.time as f64)),
             ],
@@ -238,7 +238,7 @@ fn play(ctx: &mut SystemCtx<'_>, lines: &Timelines, e: Entity, ids: Ids) -> Resu
                 "timeline.looped",
                 vec![
                     ("timeline".into(), Value::Entity(e)),
-                    ("name".into(), Value::Str(key)),
+                    ("row".into(), Value::Str(key)),
                     ("plays".into(), Value::UInt(t.plays as u64)),
                 ],
             );
@@ -256,7 +256,7 @@ fn hold(ctx: &mut SystemCtx<'_>, e: Entity, name: &str, c: &Cue, t: &mut Timelin
         "timeline.held",
         vec![
             ("timeline".into(), Value::Entity(e)),
-            ("name".into(), Value::Str(name.to_string())),
+            ("row".into(), Value::Str(name.to_string())),
             ("cue".into(), Value::Str(c.key.clone())),
             ("on".into(), Value::Entity(on)),
             ("time".into(), Value::Float(t.time as f64)),
@@ -312,7 +312,7 @@ fn fire(
             "timeline.cue",
             vec![
                 ("timeline".into(), Value::Entity(e)),
-                ("name".into(), Value::Str(line.key.clone())),
+                ("row".into(), Value::Str(line.key.clone())),
                 ("cue".into(), Value::Str(c.key.clone())),
                 ("kind".into(), Value::Str(c.kind.name().to_string())),
                 ("track".into(), Value::Str(c.track.clone())),
@@ -450,7 +450,7 @@ fn edits(ctx: &mut SystemCtx<'_>, line: &Line, e: Entity, t: &Timeline, c: &Cue,
     }
     let fields = [
         ("timeline".to_string(), Value::Entity(e)),
-        ("name".to_string(), Value::Str(line.key.clone())),
+        ("row".to_string(), Value::Str(line.key.clone())),
         ("cue".to_string(), Value::Str(c.key.clone())),
         ("actor".to_string(), Value::Entity(t.actor)),
         ("other".to_string(), Value::Entity(t.other)),
@@ -538,7 +538,7 @@ fn finish(
         "timeline.ended",
         vec![
             ("timeline".into(), Value::Entity(e)),
-            ("name".into(), Value::Str(name.to_string())),
+            ("row".into(), Value::Str(name.to_string())),
             ("skipped".into(), Value::Bool(skipped)),
             ("time".into(), Value::Float(t.time as f64)),
         ],

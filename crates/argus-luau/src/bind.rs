@@ -1180,6 +1180,14 @@ impl UserData for QueryHandle {
             "emit",
             |_, this, (name, fields): (String, Option<mlua::Table>)| {
                 let out = event_fields(fields)?;
+                // An event's `name` is its name, in q:events and everywhere:
+                // a field of that name replaced it there, without a word, so
+                // a system looking for the event never found it (issue 4).
+                if out.iter().any(|(k, _)| k == "name") {
+                    return Err(mlua::Error::runtime(format!(
+                        "q:emit({name:?}): a field called name would hide the event's name (ev.name is the event's name in q:events); call it something else, such as who, title, or what"
+                    )));
+                }
                 ctx(&this.link)?.emit(name, out);
                 Ok(())
             },
@@ -1366,7 +1374,7 @@ impl UserData for QueryHandle {
         for (method, event) in [("save", "save.requested"), ("load", "load.requested")] {
             m.add_method(method, move |_, this, name: Option<String>| {
                 let name = name.unwrap_or_else(|| "auto".to_string());
-                ctx(&this.link)?.emit(event, vec![("name".to_string(), Value::Str(name))]);
+                ctx(&this.link)?.emit(event, vec![("save".to_string(), Value::Str(name))]);
                 Ok(())
             });
         }

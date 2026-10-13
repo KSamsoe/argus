@@ -326,7 +326,7 @@ return system "sim.pickups" {
 }
 ```
 
-An entity field in an event is an entity handle, so `ev.entity == hero` compares entities. To see what fields an engine event carries, run the game and ask: `argus events name=overlap.begin limit=1`.
+An entity field in an event is an entity handle, so `ev.entity == hero` compares entities. `ev.name` is the event's own name, so a loop over every event (`q:events()`) can tell them apart; no field may be called `name`, and `q:emit` refuses one with an error that says so (call it `who`, `title`, or `what`). To see what fields an engine event carries, run the game and ask: `argus events name=overlap.begin limit=1`.
 
 ### A pause
 

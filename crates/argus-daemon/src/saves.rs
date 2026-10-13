@@ -92,7 +92,7 @@ impl Daemon {
         self.world.emit(Event::Game {
             name: "game.saved".to_string(),
             fields: vec![
-                ("name".into(), Value::Str(name.to_string())),
+                ("save".into(), Value::Str(name.to_string())),
                 ("path".into(), Value::Str(shown.clone())),
                 ("tick".into(), Value::UInt(k.tick)),
                 ("bytes".into(), Value::UInt(bytes.len() as u64)),
@@ -233,7 +233,7 @@ impl Daemon {
         self.world.emit(Event::Game {
             name: "game.loaded".to_string(),
             fields: vec![
-                ("name".into(), Value::Str(name.clone())),
+                ("save".into(), Value::Str(name.clone())),
                 ("tick".into(), Value::UInt(k.tick)),
                 (
                     "migrated".into(),
@@ -286,7 +286,7 @@ impl Daemon {
         self.world.emit(Event::Game {
             name: event.to_string(),
             fields: vec![
-                ("name".into(), Value::Str(name.to_string())),
+                ("save".into(), Value::Str(name.to_string())),
                 ("message".into(), Value::Str(e.message.clone())),
             ],
         });

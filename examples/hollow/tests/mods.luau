@@ -121,7 +121,7 @@ scenario "the lanterns mod and brighter over it: what they add and change" {
     -- The kindling: the lanterns burn, the timeline plays, the bell comes in.
     t:step(5)
     t.expect:field("@lanterns-vigil/lantern.1", "lanterns_Lantern.lit"):eq(true)
-    t.expect:events("timeline.started", { name = "lanterns.kindle" }):count():eq(1)
+    t.expect:events("timeline.started", { row = "lanterns.kindle" }):count():eq(1)
     t.expect:events("sound.played", { sound = "lanterns/kindle" }):exists()
     t.expect:field("@music", "Music.intensity"):eq(1)
     t.expect:field("@lanterns-vigil/lantern.1", "Sprite.color"):eq("#FFC060")

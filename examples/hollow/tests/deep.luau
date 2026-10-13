@@ -56,7 +56,7 @@ return scenario "rooms stream around the hero, remember, and the index knows the
     -- Into the deep through the cave's left wall: a room change, the fade.
     into(t, 0, 0)
     t.expect:events("room.transition", { from = "a", to = "deep-0-0" }):count():eq(1)
-    t.expect:events("timeline.started", { name = "rooms.fade" }):count():eq(1)
+    t.expect:events("timeline.started", { row = "rooms.fade" }):count():eq(1)
 
     -- Far down the maze: the cave, the shaft, and the hall stream out.
     into(t, 10, 6)

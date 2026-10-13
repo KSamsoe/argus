@@ -16,12 +16,12 @@ return system "late.colony.vignette" {
       local g = q:spawn({ "Grave", "Transform", "Describe" })
       g:get("Transform").pos = ev.at
       local grave = g:get("Grave")
-      grave.name = ev.name
+      grave.name = ev.who
       grave.day = rules.day
       g:insert("Sprite", { kind = "rect", size = vector.create(0.5, 0.8, 0), color = "#9A968C", z = 3 })
       local d = g:get("Describe")
       d.name = "grave"
-      d.text = ev.name .. " lies here, starved on day " .. rules.day .. "."
+      d.text = ev.who .. " lies here, starved on day " .. rules.day .. "."
       if not playing then
         playing = true
         local cam = nil

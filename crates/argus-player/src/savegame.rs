@@ -195,12 +195,13 @@ pub fn requested(
     }
 }
 
-/// The name a `save.requested` or `load.requested` event carries ("auto"
-/// when it says none).
+/// The save a `save.requested` or `load.requested` event names, in its
+/// `save` field ("auto" when it says none). Not `name`, which is the
+/// event's own (issue 4).
 pub fn request_name(fields: &[(String, argus_ecs::Value)]) -> String {
     fields
         .iter()
-        .find(|(k, _)| k == "name")
+        .find(|(k, _)| k == "save")
         .and_then(|(_, v)| match v {
             argus_ecs::Value::Str(s) if !s.is_empty() => Some(s.clone()),
             _ => None,

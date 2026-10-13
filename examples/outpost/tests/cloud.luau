@@ -6,7 +6,7 @@ return scenario "the day's autosave goes to the cloud and friends see the day" {
   run = function(t)
     t:call("platform.reset", { cloud = true })
     t:run_until { sim_time = 61 }
-    t.expect:events("game.saved", { name = "auto", cloud = true }):count():eq(1)
+    t.expect:events("game.saved", { save = "auto", cloud = true }):count():eq(1)
     local s = t:call("platform.status", {})
     local found = false
     for _, f in ipairs(s.state.cloud.files) do

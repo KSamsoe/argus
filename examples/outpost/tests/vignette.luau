@@ -24,7 +24,7 @@ return scenario "a colonist lost: a grave, and the view goes there and back" {
     t:run_until { event = "colonist.died", max_ticks = 10 }
     t:step(1)
     t.expect:events("system.fault"):count():eq(0)
-    t.expect:events("timeline.started", { name = "lost" }):count():eq(1)
+    t.expect:events("timeline.started", { row = "lost" }):count():eq(1)
     local g = one(t, { "Grave.name", "Describe.text", "Transform.pos" }, { has = { "Grave" } })
     if g[1] ~= "Ada" or not string.find(g[2], "Ada lies here, starved on day 0", 1, true) then
       error("Ada's grave: " .. tostring(g[1]) .. ", " .. tostring(g[2]), 0)
