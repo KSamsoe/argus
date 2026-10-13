@@ -667,6 +667,7 @@ dependencies = [
  "argus-ecs",
  "argus-render",
  "argus-sim",
+ "libm",
 ]
 
 [[package]]

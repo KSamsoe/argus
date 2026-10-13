@@ -8,6 +8,38 @@ use argus_assets::spine::{
     Animation, BoneProp, Curve, EventKey, Inherit, Key, SkeletonAsset, SlotTimeline,
 };
 
+/// The trig a pose is made of, from `libm` (a pure-Rust port of musl's)
+/// rather than the platform's, whose last bits differ between systems:
+/// Puppet's skeletons ended on another world on Linux and on a Mac than on
+/// Windows (the determinism spike, phase 5 item 11; Todd's Mac test,
+/// issue 2), every other game the same. `sqrt` and the degree conversions
+/// are exact everywhere already.
+trait Det {
+    fn det_sin(self) -> f32;
+    fn det_cos(self) -> f32;
+    fn det_sin_cos(self) -> (f32, f32);
+    fn det_atan2(self, x: f32) -> f32;
+    fn det_acos(self) -> f32;
+}
+
+impl Det for f32 {
+    fn det_sin(self) -> f32 {
+        libm::sinf(self)
+    }
+    fn det_cos(self) -> f32 {
+        libm::cosf(self)
+    }
+    fn det_sin_cos(self) -> (f32, f32) {
+        (libm::sinf(self), libm::cosf(self))
+    }
+    fn det_atan2(self, x: f32) -> f32 {
+        libm::atan2f(self, x)
+    }
+    fn det_acos(self) -> f32 {
+        libm::acosf(self)
+    }
+}
+
 /// A bone's local transform: Spine's x, y, rotation (degrees), scale, and
 /// shear (degrees).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -298,10 +330,10 @@ fn place(inherit: Inherit, l: &Local, parent: Option<&Mat>, sx: f32, sy: f32) ->
     let ry = (l.rot + 90.0 + l.shy).to_radians();
     let Some(p) = parent else {
         return Mat {
-            a: rx.cos() * l.sx * sx,
-            b: ry.cos() * l.sy * sx,
-            c: rx.sin() * l.sx * sy,
-            d: ry.sin() * l.sy * sy,
+            a: rx.det_cos() * l.sx * sx,
+            b: ry.det_cos() * l.sy * sx,
+            c: rx.det_sin() * l.sx * sy,
+            d: ry.det_sin() * l.sy * sy,
             tx: l.x * sx,
             ty: l.y * sy,
         };
@@ -311,8 +343,8 @@ fn place(inherit: Inherit, l: &Local, parent: Option<&Mat>, sx: f32, sy: f32) ->
     let ty = pc * l.x + pd * l.y + p.ty;
     let (a, b, c, d) = match inherit {
         Inherit::Normal => {
-            let (la, lb) = (rx.cos() * l.sx, ry.cos() * l.sy);
-            let (lc, ld) = (rx.sin() * l.sx, ry.sin() * l.sy);
+            let (la, lb) = (rx.det_cos() * l.sx, ry.det_cos() * l.sy);
+            let (lc, ld) = (rx.det_sin() * l.sx, ry.det_sin() * l.sy);
             return Mat {
                 a: pa * la + pb * lc,
                 b: pa * lb + pb * ld,
@@ -323,10 +355,10 @@ fn place(inherit: Inherit, l: &Local, parent: Option<&Mat>, sx: f32, sy: f32) ->
             };
         }
         Inherit::OnlyTranslation => (
-            rx.cos() * l.sx,
-            ry.cos() * l.sy,
-            rx.sin() * l.sx,
-            ry.sin() * l.sy,
+            rx.det_cos() * l.sx,
+            ry.det_cos() * l.sy,
+            rx.det_sin() * l.sx,
+            ry.det_sin() * l.sy,
         ),
         Inherit::NoRotationOrReflection => {
             let mut s = pa * pa + pc * pc;
@@ -337,16 +369,16 @@ fn place(inherit: Inherit, l: &Local, parent: Option<&Mat>, sx: f32, sy: f32) ->
                 pc /= sy;
                 pb = pc * s;
                 pd = pa * s;
-                prx = pc.atan2(pa).to_degrees();
+                prx = pc.det_atan2(pa).to_degrees();
             } else {
                 pa = 0.0;
                 pc = 0.0;
-                prx = 90.0 - pd.atan2(pb).to_degrees();
+                prx = 90.0 - pd.det_atan2(pb).to_degrees();
             }
             let rx = (l.rot + l.shx - prx).to_radians();
             let ry = (l.rot + l.shy - prx + 90.0).to_radians();
-            let (la, lb) = (rx.cos() * l.sx, ry.cos() * l.sy);
-            let (lc, ld) = (rx.sin() * l.sx, ry.sin() * l.sy);
+            let (la, lb) = (rx.det_cos() * l.sx, ry.det_cos() * l.sy);
+            let (lc, ld) = (rx.det_sin() * l.sx, ry.det_sin() * l.sy);
             (
                 pa * la - pb * lc,
                 pa * lb - pb * ld,
@@ -356,7 +388,7 @@ fn place(inherit: Inherit, l: &Local, parent: Option<&Mat>, sx: f32, sy: f32) ->
         }
         Inherit::NoScale | Inherit::NoScaleOrReflection => {
             let r = l.rot.to_radians();
-            let (sin, cos) = r.sin_cos();
+            let (sin, cos) = r.det_sin_cos();
             let mut za = (pa * cos + pb * sin) / sx;
             let mut zc = (pc * cos + pd * sin) / sy;
             let mut s = (za * za + zc * zc).sqrt();
@@ -371,12 +403,12 @@ fn place(inherit: Inherit, l: &Local, parent: Option<&Mat>, sx: f32, sy: f32) ->
             {
                 s = -s;
             }
-            let r = std::f32::consts::FRAC_PI_2 + zc.atan2(za);
-            let (zb, zd) = (r.cos() * s, r.sin() * s);
+            let r = std::f32::consts::FRAC_PI_2 + zc.det_atan2(za);
+            let (zb, zd) = (r.det_cos() * s, r.det_sin() * s);
             let shx = l.shx.to_radians();
             let shy = (90.0 + l.shy).to_radians();
-            let (la, lb) = (shx.cos() * l.sx, shy.cos() * l.sy);
-            let (lc, ld) = (shx.sin() * l.sx, shy.sin() * l.sy);
+            let (la, lb) = (shx.det_cos() * l.sx, shy.det_cos() * l.sy);
+            let (lc, ld) = (shx.det_sin() * l.sx, shy.det_sin() * l.sy);
             (
                 za * la + zb * lc,
                 za * lb + zb * ld,
@@ -480,7 +512,7 @@ fn ik1(
             let sc = pc / sy;
             pb = -sc * s * sx;
             pd = sa * s * sy;
-            rot += sc.atan2(sa).to_degrees();
+            rot += sc.det_atan2(sa).to_degrees();
         }
         let (x, y) = (target_x - p.tx, target_y - p.ty);
         let d = pa * pd - pb * pc;
@@ -492,7 +524,7 @@ fn ik1(
             ty = (y * pa - x * pc) / d - l.y;
         }
     }
-    rot += ty.atan2(tx).to_degrees();
+    rot += ty.det_atan2(tx).to_degrees();
     if l.sx < 0.0 {
         rot += 180.0;
     }
@@ -590,17 +622,17 @@ fn ik2(
             cos = 1.0;
             ang = 0.0;
         } else {
-            ang = cos.acos() * bend;
+            ang = cos.det_acos() * bend;
         }
         a2 = ang;
         let aa = l1 + l2 * cos;
-        let bb = l2 * a2.sin();
-        a1 = (ty * aa - tx * bb).atan2(tx * aa + ty * bb);
+        let bb = l2 * a2.det_sin();
+        a1 = (ty * aa - tx * bb).det_atan2(tx * aa + ty * bb);
     } else {
         let a = psx * l2;
         let b = psy * l2;
         let (aa, bb) = (a * a, b * b);
-        let ta = ty.atan2(tx);
+        let ta = ty.det_atan2(tx);
         let c = bb * l1 * l1 + aa * dd - aa * bb;
         let c1 = -2.0 * bb * l1;
         let c2 = bb - aa;
@@ -617,7 +649,7 @@ fn ik2(
             let rest = dd - r * r;
             if rest >= 0.0 {
                 let y = rest.sqrt() * bend;
-                solved = Some((ta - y.atan2(r), (y / psy).atan2((r - l1) / psx)));
+                solved = Some((ta - y.det_atan2(r), (y / psy).det_atan2((r - l1) / psx)));
             }
         }
         (a1, a2) = solved.unwrap_or_else(|| {
@@ -627,9 +659,9 @@ fn ik2(
             let mut max_d = max_x * max_x;
             let cc = -a * l1 / (aa - bb);
             if (-1.0..=1.0).contains(&cc) {
-                let cc = cc.acos();
-                let x = a * cc.cos() + l1;
-                let y = b * cc.sin();
+                let cc = cc.det_acos();
+                let x = a * cc.det_cos() + l1;
+                let y = b * cc.det_sin();
                 let dist = x * x + y * y;
                 if dist < min_d {
                     (min_a, min_d, min_x, min_y) = (cc, dist, x, y);
@@ -639,13 +671,13 @@ fn ik2(
                 }
             }
             if dd <= (min_d + max_d) * 0.5 {
-                (ta - (min_y * bend).atan2(min_x), min_a * bend)
+                (ta - (min_y * bend).det_atan2(min_x), min_a * bend)
             } else {
-                (ta - (max_y * bend).atan2(max_x), max_a * bend)
+                (ta - (max_y * bend).det_atan2(max_x), max_a * bend)
             }
         });
     }
-    let os = cy.atan2(cx) * s2;
+    let os = cy.det_atan2(cx) * s2;
     let r1 = wrap180((a1 - os).to_degrees() + os1 - pl.rot);
     local[parent] = Local {
         rot: pl.rot + r1 * alpha,
@@ -718,7 +750,7 @@ pub fn place_slots<'a>(
             };
             let m = &mats[slot.bone];
             let r = att.rotation.to_radians();
-            let (sin, cos) = r.sin_cos();
+            let (sin, cos) = r.det_sin_cos();
             let (oa, ob) = (cos * att.scale_x, -sin * att.scale_y);
             let (oc, od) = (sin * att.scale_x, cos * att.scale_y);
             let a = m.a * oa + m.b * oc;
@@ -735,7 +767,7 @@ pub fn place_slots<'a>(
                 order: rank[si],
                 image: Some(att.image.as_str()),
                 pos: [x, y],
-                rot: c.atan2(a),
+                rot: c.det_atan2(a),
                 scale: [sxx, if sxx > 1e-6 { det / sxx } else { 0.0 }],
                 size: [att.width, att.height],
                 color: [

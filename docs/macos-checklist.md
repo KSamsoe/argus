@@ -120,3 +120,10 @@ Left for later: a game released for the Mac is a bare executable beside its `dat
   - released Steam games print Steam's three warning lines to stderr when Steam isn't running;
   - `argus mcp` run in a game's folder leaves that game's daemon running after the pipe closes;
   - the packet's 6.1 promised a flag that is off the screen, 8.2 didn't say `argus editor` returns at once, and 9 stopped a daemon that a build doesn't leave. These three are fixed in the packet.
+
+**What the report led to (2026-10-12, Kevin: fix all four):**
+
+- **Steam's stderr warnings.** A Steam game asks `SteamAPI_IsSteamRunning` before it starts Steam. Without a client it plays on the null platform and says so in its own words, and Steam's library prints nothing: on klab, which has no Steam client, `steam_absent.rs` passes with no `S_API` line in its output.
+- **`argus mcp` leaving a daemon.** A daemon counts its connections (`session.status`'s `clients`). An MCP session that started its project's daemon stops it when the host closes the pipe, or when it opens another project, unless another client (the editor, a shell) is still connected. A daemon that was already running is left alone. `mcp_daemon.rs` tests all three cases.
+- **Hollow's picture goldens.** Each system keeps its own (`<name>.seed<n>.<system>.png`). Against another system's, a picture is held to `other_max` (1%), which the rasterisers' edge differences fit (0.40 to 0.61%). Hollow's four were renamed `.windows.png`. They match to the pixel on Windows and pass on klab now.
+- **Puppet's digests.** A pose's trig is `libm`'s, so Puppet ends on the same digests on Windows and klab (it differed on both klab and the Mac). The next release's `mac-expected.json` has Puppet's new digests. The packet now expects every game's runs to match and Hollow's pictures to pass.

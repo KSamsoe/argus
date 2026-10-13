@@ -81,6 +81,8 @@ Every scenario of six suites over their seeds, on this PC and klab, each run's w
 
 Puppet's three scenarios still pass on klab: what they check (the hero stands, walks, lands its feet, waves once) holds, but each ends on another world's digest, as the long run does.
 
+**Since fixed (2026-10-12).** A pose's trig (`argus-skeletal`'s pose.rs: sin, cos, atan2, acos) is `libm`'s now, not the platform's. Puppet's three scenarios end on the same digests on Windows and on klab. A Mac also differed in Todd's test of 0.0.6, issue 2, and will be checked with the next release. Hollow's picture goldens are now kept per system and held to 1% against another system's (testing.md), so they pass on klab too.
+
 Two of Hollow's runs fail on klab, and not because of the world: see "Pictures" below.
 
 ## Pictures

@@ -176,13 +176,9 @@ cd ~/argus-mac-test
 
 Outpost is the longest: about six minutes on an M4 Max, a quarter of an hour on a slower machine. Swarm is in section 12; it needs Rust.
 
-**5.1** Every scenario passes, except:
-- Hollow's two picture scenarios ("the lit hollow looks as it did", "the cave and the hall look as they did") may fail. They compare a frame with a picture drawn on Windows by Windows' software rasteriser. Linux differs from it at text and sprite edges by about 0.5% of pixels, and a Mac (which draws with its GPU) may too. Record each one's percentage from its message, and copy the pictures it names (under `examples/hollow/.argus/test-images/`) into `~/argus-mac-test/frames/`.
-- Puppet's scenarios pass, but their digests are expected to differ between machines.
+**5.1** Every scenario passes. Hollow's two picture scenarios ("the lit hollow looks as it did", "the cave and the hall look as they did") compare a frame with pictures drawn on Windows. A Mac draws with its GPU, which differs at text and sprite edges by about 0.5% of pixels, so each picture's message says it was recorded on Windows and how much differs, inside the 1% allowed between systems. Record those four percentages. Record any failure in full.
 
-Record any other failure in full.
-
-**5.2** The digests. `mac-expected.json` has, for each game, scenario, and seed, the digest Windows ended on. Each row in `runs/<game>.json` has the same three and the digest the Mac ended on. Compare them. For each game, record how many runs match and list the ones that do not (game, scenario, seed, both digests). Hollow, Delve, Outpost, and Toybox are expected to match; Puppet is not.
+**5.2** The digests. `mac-expected.json` has, for each game, scenario, and seed, the digest Windows ended on. Each row in `runs/<game>.json` has the same three and the digest the Mac ended on. Compare them. For each game, record how many runs match and list the ones that do not (game, scenario, seed, both digests). Every game's runs are expected to match, Puppet's included (before 0.0.7 its skeletons used the system's own sin and cos, which differ in their last bits between systems).
 
 A Mac has no Python until Apple's developer tools are installed, and `jq` only from macOS 15. If you have neither, `osascript -l JavaScript` runs JavaScript and can read the files (`ObjC.import('Foundation')`, then `$.NSString.stringWithContentsOfFileEncodingError`), or write a few lines of shell. Or read them yourself. Say which way you compared.
 
