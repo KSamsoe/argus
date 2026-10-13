@@ -7,6 +7,9 @@
   canvas { display: block; margin: 12px auto 0; width: 960px; height: 540px; max-width: 100%; outline: none; background: #000; }
   p, form { max-width: 960px; margin: 8px auto; padding: 0 12px; }
   form { display: flex; gap: 8px; }
+  /* An author's display beats the hidden attribute's own (the browser's
+     display: none), so the report form showed from the start (issue 3). */
+  [hidden] { display: none !important; }
   form input { flex: 1; font: inherit; padding: 6px 8px; background: #22202b; color: #f0ecf8; border: 1px solid #ffc440; }
   form button { font: inherit; padding: 6px 10px; background: #2d2a38; color: #f0ecf8; border: 1px solid #5a5570; cursor: pointer; }
   #said { color: #8fdca0; min-height: 1.4em; }

@@ -166,8 +166,12 @@ try {
   report.page = await evaluate("window.hostCheck ?? null");
   report.line = await evaluate("argus.player.semantic()").then((s) => JSON.parse(s)).then((s) => JSON.stringify(s).includes("from the page")).catch((e) => String(e));
   report.console = logs.slice(-10);
+  // The report form waits for F8: shown from the start, it was the page's
+  // own style beating its hidden attribute (issue 3).
+  report.report_form_shown = await evaluate("getComputedStyle(document.getElementById('report')).display !== 'none'").catch((e) => String(e));
   const sent = report.page?.sent ?? [];
   const failures = [];
+  if (report.report_form_shown !== false) failures.push(`the report form shows before F8 (${report.report_form_shown})`);
   if (!report.page) failures.push("web/game.js did not run");
   else {
     if (report.page.turns !== 1) failures.push(`the message took ${report.page.turns} turns, not 1`);
