@@ -188,6 +188,9 @@ pub struct Daemon {
     /// Who each connection said it is (`session.identify`, phase 4): the
     /// author of its calls in the change feed.
     identities: BTreeMap<ConnId, String>,
+    /// The connections open now (the server's), so a client can tell
+    /// whether it is the last before it stops a daemon it started.
+    conns: std::collections::BTreeSet<ConnId>,
     /// The call a client is making, while it runs: its `argus` line and
     /// author, for the feed row it makes (phase 4).
     calling: Option<(String, String)>,
@@ -291,6 +294,7 @@ impl Daemon {
             session: None,
             edits: Editing::default(),
             identities: BTreeMap::new(),
+            conns: std::collections::BTreeSet::new(),
             calling: None,
             feed_rows: 0,
             events: EventLog {
@@ -1014,8 +1018,15 @@ impl Daemon {
         1.0 / self.sched.config().hz.max(1.0)
     }
 
-    /// Forget a connection's subscriptions.
+    /// A connection opened (the server's).
+    pub fn open_conn(&mut self, conn: ConnId) {
+        self.conns.insert(conn);
+    }
+
+    /// Forget a connection: its subscriptions, who it said it is, and its
+    /// count among those open.
     pub fn drop_conn(&mut self, conn: ConnId) {
+        self.conns.remove(&conn);
         self.subs.remove(&conn);
         self.identities.remove(&conn);
         self.close_stream(conn);
@@ -1630,7 +1641,7 @@ impl Daemon {
     fn session_status(&self) -> Json {
         match &self.session {
             None => {
-                json!({ "project": null, "scene": null, "playing": false, "engine": version_json() })
+                json!({ "project": null, "scene": null, "playing": false, "engine": version_json(), "clients": self.conns.len() })
             }
             Some(s) => {
                 let mut st = self.sim_status();
@@ -1647,6 +1658,8 @@ impl Daemon {
                 // The queue an agent works through (section 10).
                 st["marks_open"] = json!(marks::open_count(&s.root));
                 st["engine"] = version_json();
+                // How many are connected, this one included.
+                st["clients"] = json!(self.conns.len());
                 st
             }
         }

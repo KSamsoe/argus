@@ -204,6 +204,7 @@ fn run_loop(
         match rx.recv_timeout(timeout) {
             Ok(Msg::Open(id, out)) => {
                 outs.insert(id, out);
+                daemon.open_conn(id);
             }
             Ok(Msg::Line(id, line)) => {
                 if let Some(resp) = daemon.handle_line(id, &line) {

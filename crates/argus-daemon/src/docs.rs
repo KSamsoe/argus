@@ -364,9 +364,9 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "session.status",
-        doc: "What is open: project, scene, seed, clock, and whether the sim is playing.",
+        doc: "What is open: project, scene, seed, clock, and whether the sim is playing; and how many clients are connected (this one included), so one that started the daemon can leave it for the others.",
         params: &[],
-        returns: "{project, scene, seed, clock, playing, paused, tick, time, frame, engine: {version, revision, os, arch}}",
+        returns: "{project, scene, seed, clock, playing, paused, tick, time, frame, clients, engine: {version, revision, os, arch}}",
     },
     MethodDoc {
         name: "session.identify",

@@ -236,6 +236,8 @@ struct Server<'a> {
     inv: Invocation,
     root: Option<PathBuf>,
     client: Option<Client>,
+    /// Whether this server started the daemon it is connected to.
+    started: bool,
     err: &'a mut dyn Write,
 }
 
@@ -246,13 +248,22 @@ impl Server<'_> {
             return Err(no_project());
         }
         if self.client.is_none() {
-            self.client = Some(project::connect_as(
-                &self.inv,
-                self.err,
-                Some("agent:claude"),
-            )?);
+            let (c, started) =
+                project::connect_as_started(&self.inv, self.err, Some("agent:claude"))?;
+            self.client = Some(c);
+            self.started = started;
         }
         Ok(self.client.as_mut().expect("connected"))
+    }
+
+    /// Leave the project's daemon: stopped if this server started it and
+    /// nothing else is connected to it, else kept for whoever is.
+    fn release(&mut self) {
+        let client = self.client.take();
+        if let (true, Some(c), Some(root)) = (self.started, client, self.root.clone()) {
+            project::stop_if_alone(c, &root);
+        }
+        self.started = false;
     }
 
     /// Point the tools at a project; its summary.
@@ -260,7 +271,7 @@ impl Server<'_> {
         let root =
             project::find_project(Some(Path::new(path))).map_err(|e| json!({ "message": e }))?;
         let root = root.canonicalize().unwrap_or(root);
-        self.client = None;
+        self.release();
         self.root = Some(root.clone());
         self.inv.project = Some(root.clone());
         self.inv.socket = None;
@@ -440,6 +451,7 @@ pub fn serve(inv: &Invocation, err: &mut dyn Write) -> i32 {
         inv,
         root,
         client: None,
+        started: false,
         err,
     };
     let stdin = std::io::stdin();
@@ -483,6 +495,8 @@ pub fn serve(inv: &Invocation, err: &mut dyn Write) -> i32 {
             }
         }
     }
+    // The host closed the pipe: a daemon this session started goes with it.
+    server.release();
     crate::EXIT_OK
 }
 

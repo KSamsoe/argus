@@ -86,24 +86,57 @@ pub fn connect_as(
     err: &mut dyn Write,
     author: Option<&str>,
 ) -> Result<Client, String> {
-    let mut c = connect_quiet(inv, err)?;
+    connect_as_started(inv, err, author).map(|(c, _)| c)
+}
+
+/// [`connect_as`], and whether it started the daemon (none answered).
+pub fn connect_as_started(
+    inv: &Invocation,
+    err: &mut dyn Write,
+    author: Option<&str>,
+) -> Result<(Client, bool), String> {
+    let (mut c, started) = connect_quiet(inv, err)?;
     let env = std::env::var("ARGUS_AUTHOR").ok().filter(|a| !a.is_empty());
     if let Some(a) = env.as_deref().or(author) {
         // A daemon from before phase 4 does not know the method; its calls
         // are then simply unattributed.
         let _ = c.call("session.identify", serde_json::json!({ "author": a }));
     }
-    Ok(c)
+    Ok((c, started))
 }
 
-fn connect_quiet(inv: &Invocation, err: &mut dyn Write) -> Result<Client, String> {
+/// Stop the daemon of `root` that this program started, unless another
+/// client (the editor, a shell, another agent) is connected to it too: a
+/// daemon outlives a command on purpose, for the next one, but an agent's
+/// session that started one should not leave it behind (Todd's Mac test,
+/// issue 2). A daemon too old to say how many are connected is left.
+pub fn stop_if_alone(mut client: Client, root: &Path) {
+    let alone = client
+        .call("session.status", json!({}))
+        .ok()
+        .and_then(|r| r["result"]["clients"].as_u64())
+        .is_some_and(|n| n <= 1);
+    if !alone {
+        return;
+    }
+    let info = daemon_info(root);
+    let _ = client.call("session.shutdown", json!({}));
+    drop(client);
+    if let Some(info) = info {
+        wait_gone(root, &info);
+    }
+}
+
+fn connect_quiet(inv: &Invocation, err: &mut dyn Write) -> Result<(Client, bool), String> {
     if let Some(s) = &inv.socket {
-        return Client::connect(s).map_err(|e| format!("cannot connect to socket {s}: {e}"));
+        return Client::connect(s)
+            .map(|c| (c, false))
+            .map_err(|e| format!("cannot connect to socket {s}: {e}"));
     }
     let root = find_project(inv.project.as_deref())?;
     crate::projects::remember(&root);
     if let Some((c, _)) = try_connect(&root) {
-        return Ok(c);
+        return Ok((c, false));
     }
     if inv.no_start {
         return Err(format!(
@@ -113,7 +146,9 @@ fn connect_quiet(inv: &Invocation, err: &mut dyn Write) -> Result<Client, String
     }
     let info = start(&root, inv, err)?;
     let socket = info["socket"].as_str().unwrap_or_default();
-    Client::connect(socket).map_err(|e| format!("started a daemon but cannot connect: {e}"))
+    Client::connect(socket)
+        .map(|c| (c, true))
+        .map_err(|e| format!("started a daemon but cannot connect: {e}"))
 }
 
 /// Start a daemon for the project in the background and wait until it
