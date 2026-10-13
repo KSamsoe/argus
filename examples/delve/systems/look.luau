@@ -158,7 +158,10 @@ return system "sim.look" {
       level = CONTRAST
     end
     local hp = pe:get("Health")
-    local missing = 1 - hp.cur / math.max(1, hp.max)
+    -- Clamped: health above its maximum (a scenario's invincible hero, at
+    -- 1000) made the amount -28.6, out of its range, which switched this
+    -- system off unseen until a fault failed the scenario (Argus issue 12).
+    local missing = math.clamp(1 - hp.cur / math.max(1, hp.max), 0, 1)
     for _, lit, vig in q:each("Lighting", "PostVignette") do
       near(lit, "level", level)
       near(vig, "amount", 0.13 + 0.29 * missing)
