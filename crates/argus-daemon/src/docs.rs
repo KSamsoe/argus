@@ -738,12 +738,14 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "asset.preview",
-        doc: "A sprite's frames in a row, scaled up on a checkerboard so its clear pixels show, written as a PNG to look at (.argus/previews/<name>.png). Any sprite: a PNG's, an Aseprite file's, an art script's.",
+        doc: "A sprite's frames in rows, scaled up on a checkerboard so its clear pixels show, each numbered under it as look tables index frames, written as a PNG to look at (.argus/previews/<name>.png). Any sprite: a PNG's, an Aseprite file's, an art script's.",
         params: &[
             req("name", STRING, "the sprite's asset name: sprites/slime"),
+            opt("frames", STRING, "one frame, 40, or a range, 37..51; default all"),
+            opt("columns", INTEGER, "frames to a row; default 12"),
             opt("scale", INTEGER, "pixels a pixel; default to about 384 tall, at most 8"),
         ],
-        returns: "{name, path, frames, scale, clips}",
+        returns: "{name, path, frames, shown: [from, to], of, columns, scale, clips}",
     },
     MethodDoc {
         name: "scene.transition",

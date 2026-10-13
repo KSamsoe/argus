@@ -133,3 +133,53 @@ fn assets_import_on_open_report_as_events_and_hot_swap() {
     assert_eq!(r["removed"], json!(["broken"]));
     assert_eq!(events(&mut d, "asset.removed")[0]["asset"], "broken");
 }
+
+/// Issue 27: a preview shows a range of a sheet's frames in rows, each
+/// numbered under it: 52 frames in one row at 8x were a 7,080-pixel sliver.
+#[test]
+fn a_preview_shows_a_range_of_frames_in_rows_with_their_numbers() {
+    let t = temp("asset-preview");
+    project(t.path());
+    // Eight frames of 4 by 4 in a row, each its own colour.
+    let mut rgba = Vec::new();
+    for _y in 0..4 {
+        for f in 0..8u8 {
+            for _x in 0..4 {
+                rgba.extend_from_slice(&[30 * f, 200, 100, 255]);
+            }
+        }
+    }
+    argus_assets::encode_png(&t.path().join("assets/sheet.png"), 32, 4, &rgba).unwrap();
+    write(t.path(), "assets/sheet.toml", "grid = [8, 1]\n");
+    let mut d = open(t.path());
+    let p = ok(
+        &mut d,
+        "asset.preview",
+        json!({ "name": "sheet", "frames": "2..6", "columns": 3, "scale": 4 }),
+    );
+    assert_eq!(p["shown"], json!([2, 6]), "{p}");
+    assert_eq!(
+        (p["frames"].clone(), p["of"].clone(), p["columns"].clone()),
+        (json!(5), json!(8), json!(3))
+    );
+    let (w, h, px) =
+        argus_assets::decode_png(std::path::Path::new(p["path"].as_str().unwrap())).unwrap();
+    // Three across and two down: a cell is the frame and a pixel round it
+    // at 4x, 24 by 24, and a 12-pixel strip under it for its number.
+    assert_eq!((w, h), (72, 72), "{p}");
+    // The numbers are drawn: light pixels in the first cell's strip.
+    let light = (24..36u32)
+        .flat_map(|y| (0..24u32).map(move |x| (x, y)))
+        .filter(|(x, y)| px[((y * w + x) * 4) as usize] > 200)
+        .count();
+    assert!(
+        light > 4,
+        "{light} light pixels where frame 2's number goes"
+    );
+    let e = err(
+        &mut d,
+        "asset.preview",
+        json!({ "name": "sheet", "frames": "6..9" }),
+    );
+    assert!(e.message.contains("frames 0 to 7"), "{}", e.message);
+}

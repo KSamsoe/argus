@@ -6780,20 +6780,61 @@ impl Daemon {
             ));
         };
         let (tw, _, sheet) = argus_assets::decode_png(&s.texture)?;
-        let frames: Vec<[u32; 4]> = s.frames.iter().map(|f| f.rect).collect();
-        let fh = frames.iter().map(|r| r[3]).max().unwrap_or(1);
-        let fw: u32 = frames.iter().map(|r| r[2]).sum::<u32>() + frames.len() as u32;
+        let all: Vec<[u32; 4]> = s.frames.iter().map(|f| f.rect).collect();
+        // Which frames, and how many to a row (issue 27: 52 frames in one row
+        // at 8x were 7,080 by 144 pixels, a sliver in any viewer). Each is
+        // numbered under it, as look tables index frames.
+        let (from, to) = match params.get("frames") {
+            None | Some(Json::Null) => (0, all.len().saturating_sub(1)),
+            Some(Json::Number(n)) => {
+                let n = n.as_u64().unwrap_or(0) as usize;
+                (n, n)
+            }
+            Some(Json::String(r)) => {
+                let (a, b) = r.split_once("..").unwrap_or((r, r));
+                let a: usize = a.trim().parse().map_err(|_| {
+                    bad_params(format!("frames {r:?}: a number or a range, 37..51"))
+                })?;
+                let b: usize = b.trim().parse().map_err(|_| {
+                    bad_params(format!("frames {r:?}: a number or a range, 37..51"))
+                })?;
+                (a, b)
+            }
+            Some(_) => return Err(bad_params("frames is a number or a range, \"37..51\"")),
+        };
+        if all.is_empty() || from > to || to >= all.len() {
+            return Err(ArgusError::new(
+                codes::BAD_PARAMS,
+                format!(
+                    "{name} has frames 0 to {}; asked for {from} to {to}",
+                    all.len().saturating_sub(1)
+                ),
+            ));
+        }
+        let frames: Vec<(usize, [u32; 4])> = (from..=to).map(|i| (i, all[i])).collect();
+        let cols = (json::u64_param(params, "columns", 12)? as usize)
+            .clamp(1, 64)
+            .min(frames.len());
+        let rows = frames.len().div_ceil(cols);
+        let fh = frames.iter().map(|r| r.1[3]).max().unwrap_or(1);
+        let fw = frames.iter().map(|r| r.1[2]).max().unwrap_or(1);
         let k = json::u64_param(params, "scale", 0)? as u32;
         let k = if k > 0 {
             k.min(16)
         } else {
-            (384 / fh.max(1)).clamp(1, 8)
+            (384 / (fh.max(1) * rows as u32)).clamp(1, 8)
         };
-        let (w, h) = ((fw + 1) * k, (fh + 2) * k);
+        // A cell is the widest frame and a pixel round it, scaled, and a
+        // strip under it for its number.
+        let label_scale = (k / 3).clamp(1, 3);
+        let label_h = 8 * label_scale + 4;
+        let label_w = 6 * label_scale * (to.max(1).ilog10() + 1) + 4;
+        let (cw, ch) = (((fw + 2) * k).max(label_w), (fh + 2) * k + label_h);
+        let (w, h) = (cw * cols as u32, ch * rows as u32);
         if w as u64 * h as u64 > 16_000_000 {
             return Err(ArgusError::new(
                 codes::BAD_PARAMS,
-                format!("{name}'s preview at {k}x would be {w} x {h}; ask for a smaller scale"),
+                format!("{name}'s preview at {k}x would be {w} x {h}; ask for a smaller scale, fewer frames, or fewer columns"),
             ));
         }
         let mut out = vec![0u8; (w * h * 4) as usize];
@@ -6804,8 +6845,11 @@ impl Daemon {
                 out[i..i + 4].copy_from_slice(&[c, c, c + 8, 255]);
             }
         }
-        let mut x0 = 1u32;
-        for r in &frames {
+        for (n, (_, r)) in frames.iter().enumerate() {
+            let (cx, cy) = ((n % cols) as u32 * cw, (n / cols) as u32 * ch);
+            // Centred in its cell, standing on the cell's floor.
+            let x0 = cx + (cw - r[2] * k) / 2;
+            let y0 = cy + (1 + fh - r[3]) * k;
             for y in 0..r[3] {
                 for x in 0..r[2] {
                     let si = (((r[1] + y) * tw + r[0] + x) * 4) as usize;
@@ -6816,18 +6860,37 @@ impl Daemon {
                     let a = p[3] as u32;
                     for dy in 0..k {
                         for dx in 0..k {
-                            let oy = (1 + y + fh - r[3]) * k + dy;
-                            let ox = (x0 + x) * k + dx;
-                            let o = ((oy * w + ox) * 4) as usize;
-                            for ch in 0..3 {
-                                out[o + ch] = ((p[ch] as u32 * a + out[o + ch] as u32 * (255 - a))
-                                    / 255) as u8;
+                            let o = (((y0 + y * k + dy) * w + x0 + x * k + dx) * 4) as usize;
+                            for c in 0..3 {
+                                out[o + c] =
+                                    ((p[c] as u32 * a + out[o + c] as u32 * (255 - a)) / 255) as u8;
                             }
                         }
                     }
                 }
             }
-            x0 += r[2] + 1;
+        }
+        // Each frame's number under it, in the frame annotations' pixel font.
+        #[cfg(feature = "render")]
+        {
+            let mut img = argus_render::Image {
+                width: w,
+                height: h,
+                rgba: out,
+            };
+            for (n, (i, _)) in frames.iter().enumerate() {
+                let label = i.to_string();
+                let (lw, _) = argus_render::annotate::text_size(&label, label_scale);
+                let (cx, cy) = ((n % cols) as u32 * cw, (n / cols) as u32 * ch);
+                img.text(
+                    (cx + (cw - lw) / 2) as i64,
+                    (cy + ch - label_h + 2) as i64,
+                    &label,
+                    label_scale,
+                    [235, 235, 220, 255],
+                );
+            }
+            out = img.rgba;
         }
         let path = root
             .join(".argus")
@@ -6836,8 +6899,11 @@ impl Daemon {
         argus_assets::encode_png(&path, w, h, &out)?;
         Ok(json!({
             "name": name,
-            "path": path.to_string_lossy(),
+            "path": shown_path(&path),
             "frames": frames.len(),
+            "shown": [from, to],
+            "of": all.len(),
+            "columns": cols,
             "scale": k,
             "clips": s.clips.keys().collect::<Vec<_>>(),
         }))

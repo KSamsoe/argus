@@ -116,7 +116,7 @@ You need not start from an empty canvas. The `generate` tool (or `argus generate
 argus generate name=sprites/slime sprite=creature seed=4   # assets/sprites/slime.art.luau
 ```
 
-The kinds are `creature` and `character` (rows of text, with idle and walk frames), `item` (a potion, a gem, a coin, a key, a heart, an apple, a sword, or a shield), `tile` (one that repeats with no seam, in four variants), `plant` (a bush or a tree that sways), and `rock`. Another seed is another take. The script's head says the command that made it, and it is an edit like any other, undone with `edit undo=true`. The answer has a picture of the frames, and `argus asset preview name=<sprite>` makes one of any sprite: its frames in a row, scaled up on a checkerboard so you can see what is clear.
+The kinds are `creature` and `character` (rows of text, with idle and walk frames), `item` (a potion, a gem, a coin, a key, a heart, an apple, a sword, or a shield), `tile` (one that repeats with no seam, in four variants), `plant` (a bush or a tree that sways), and `rock`. Another seed is another take. The script's head says the command that made it, and it is an edit like any other, undone with `edit undo=true`. The answer has a picture of the frames, and `argus asset preview name=<sprite>` makes one of any sprite: its frames in rows of 12, each numbered under it, scaled up on a checkerboard so you can see what is clear. `frames=37..51` shows only those, and `columns=` sets how many to a row.
 
 ## Animation
 
