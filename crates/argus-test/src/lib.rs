@@ -148,6 +148,10 @@ fn prepare(root: &Path, day_seconds: Option<f64>) -> Result<(Lua, Table, Vec<Jso
             .map_err(|e| e.to_string())?;
     }
     let harness_fns = lua.create_table().map_err(|e| e.to_string())?;
+    // The system a picture golden is drawn on, each keeping its own.
+    harness_fns
+        .set("system", std::env::consts::OS)
+        .map_err(|e| e.to_string())?;
     let goldens = root.join("tests").join("goldens");
     let g1 = goldens.clone();
     harness_fns

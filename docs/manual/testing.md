@@ -211,7 +211,7 @@ Rows are matched by entity id. Added and removed entities are listed with `+` an
 
 ### Picture goldens
 
-`t.expect:image(name)` draws the frame with the software rasteriser at 640 x 360 and compares it with `tests/goldens/<scenario>/<name>.seed<n>.png`. Options: `width`, `height`, `threshold` (how different a pixel must be to count, 0.1) and `max` (the share of pixels that may differ, 0.001). From `examples/hollow/tests/looks.luau`:
+`t.expect:image(name)` draws the frame with the software rasteriser at 640 x 360 and compares it with a recorded picture. Options: `width`, `height`, `threshold` (how different a pixel must be to count, 0.1), `max` (the share of pixels that may differ, 0.001), and `other_max` (the share against another system's picture, 0.01). From `examples/hollow/tests/looks.luau`:
 
 ```lua
 t:step(1)
@@ -220,7 +220,9 @@ t.expect:image("cave")
 
 On a failure the picture drawn and a difference image are written under `.argus/test-images/`, and the message names both.
 
-Use picture goldens rarely, for rendering work. A picture golden holds on machines of one system only: Windows and Linux rasterise text and sprite edges differently, so a golden recorded on Windows fails on Linux. State goldens hold everywhere.
+Each system keeps its own picture, because systems draw text and sprite edges a little differently: Windows' software rasteriser, Linux's, and a Mac's GPU (a Mac has no software rasteriser) differ at about 0.5% of pixels. The picture is `tests/goldens/<scenario>/<name>.seed<n>.<system>.png`, the system being `windows`, `linux`, or `macos`. A run on a system with its own picture holds to `max`. A run on a system without one holds to another system's picture at `other_max`, which those edges fit and a changed look does not, and says whose picture it compared with. An older unlabelled picture (`.seed<n>.png`) is held to `max`, as it always was. To give a system its own picture, run `argus test --update` there.
+
+Use picture goldens rarely, for rendering work. State goldens hold everywhere, to the bit.
 
 ### Updating goldens
 

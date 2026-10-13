@@ -544,9 +544,10 @@ return scenario "the lamp looks as it did" {
     drop(d);
     let mut d = Local(common::open(t.path()), t.path().to_path_buf());
     let image = |r: &Json| r["scenarios"][0]["seeds"][0]["expectations"][0].clone();
-    let golden = t
-        .path()
-        .join("tests/goldens/the_lamp_looks_as_it_did/lamp.seed7.png");
+    let golden = t.path().join(format!(
+        "tests/goldens/the_lamp_looks_as_it_did/lamp.seed7.{}.png",
+        std::env::consts::OS
+    ));
     let r = run(&mut d, &Options::default()).unwrap();
     assert!(image(&r)["recorded"] == true, "{}", image(&r));
     assert!(golden.is_file());
@@ -589,6 +590,74 @@ return scenario "the lamp looks as it did" {
     )
     .unwrap();
     assert!(image(&r)["recorded"] == true, "{}", image(&r));
+}
+
+/// Each system keeps its own picture golden: with only another system's,
+/// the picture is held to the share rasterisers differ by at edges
+/// (`other_max`, 1%) and says whose it was, and an update records this
+/// system's own (Todd's Mac test: a Mac's GPU against Windows' WARP).
+#[test]
+fn an_image_golden_from_another_system_is_held_to_the_share_between_systems() {
+    let (t, d) = fixture("runner-image-system");
+    common::write(
+        t.path(),
+        "scenes/arena/lamp.toml",
+        "[Transform]\npos = [0.0, 0.0]\n\n[Sprite]\nkind = \"rect\"\nsize = [3.0, 3.0]\ncolor = \"#E8703F\"\n",
+    );
+    common::write(
+        t.path(),
+        "tests/look.luau",
+        r#"
+return scenario "the lamp looks as it did" {
+  scene = "arena", seed = 7,
+  run = function(t)
+    t:run_until { frames = 2 }
+    t.expect:image("lamp", { width = 160, height = 90 })
+  end,
+}
+"#,
+    );
+    drop(d);
+    let mut d = Local(common::open(t.path()), t.path().to_path_buf());
+    let image = |r: &Json| r["scenarios"][0]["seeds"][0]["expectations"][0].clone();
+    let dir = t.path().join("tests/goldens/the_lamp_looks_as_it_did");
+    let own = dir.join(format!("lamp.seed7.{}.png", std::env::consts::OS));
+    let other = if std::env::consts::OS == "linux" {
+        "macos"
+    } else {
+        "linux"
+    };
+    // This system's picture, moved to look like another system's.
+    let r = run(&mut d, &Options::default()).unwrap();
+    assert!(image(&r)["recorded"] == true, "{}", image(&r));
+    std::fs::rename(&own, dir.join(format!("lamp.seed7.{other}.png"))).unwrap();
+    let r = run(&mut d, &Options::default()).unwrap();
+    let e = image(&r);
+    assert_eq!(e["ok"], true, "{e}");
+    assert_eq!(e["system"], other, "{e}");
+    let msg = e["message"].as_str().unwrap();
+    assert!(
+        msg.contains(&format!(
+            "recorded on {other}, 1.00% allowed between systems"
+        )),
+        "{msg}"
+    );
+    assert!(!own.exists(), "a run without update writes no golden");
+    // Update records this system's own, and the next run holds to it.
+    let r = run(
+        &mut d,
+        &Options {
+            update_goldens: true,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert!(image(&r)["recorded"] == true, "{}", image(&r));
+    assert!(own.is_file());
+    let r = run(&mut d, &Options::default()).unwrap();
+    let e = image(&r);
+    assert_eq!(e["ok"], true, "{e}");
+    assert!(e["system"].is_null(), "{e}");
 }
 
 /// A key `t:run_until` does not take is an error that names it: a misspelt

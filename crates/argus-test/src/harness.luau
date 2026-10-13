@@ -559,41 +559,69 @@ local function make_t(ctx, spec, seed)
   -- An image golden (section 9: "an opt-in for rendering work, with a
   -- perceptual threshold, and expected to be rare"). The frame is drawn
   -- with the software rasteriser, so it is the same picture on any machine
-  -- of one system: WARP on Windows and lavapipe on Linux are two
-  -- rasterisers, and Hollow's goldens differ between them at text and
-  -- sprite edges by 0.4 to 0.6% of pixels (phase 5 item 11). A Mac has no
-  -- software rasteriser and draws it with Metal. It is compared with
-  -- tests/goldens/<scenario>/<name>.seed<n>.png by obs.frame's golden.
+  -- of one system; but systems rasterise differently: WARP on Windows,
+  -- lavapipe on Linux, and a Mac (which has no software rasteriser) its
+  -- GPU, and Hollow's goldens differ between them at text and sprite edges
+  -- by 0.4 to 0.6% of pixels (phase 5 item 11, Todd's Mac test). So each
+  -- system keeps its own picture, tests/goldens/<scenario>/<name>.seed<n>.
+  -- <system>.png (windows, linux, macos), held to `max`; with none of its
+  -- own, an older unlabelled picture (.seed<n>.png) is held to `max` as it
+  -- always was; with neither, another system's is held to `other_max`
+  -- (1%), which the edges' difference fits and a changed look does not.
+  -- A run with none at all records this system's; `update` writes this
+  -- system's when it has none, or its own no longer matches.
   -- opts: width, height (640 x 360), threshold (how different a pixel must
-  -- be, 0.1), max (the share of pixels that may differ, 0.001).
+  -- be, 0.1), max (the share of pixels that may differ, 0.001), other_max
+  -- (the share against another system's picture, 0.01).
   function expect:image(name, opts)
     opts = opts or {}
-    local rel = slug(spec.name) .. "/" .. slug(name) .. ".seed" .. tostring(seed) .. ".png"
-    local golden = "tests/goldens/" .. rel
+    local base = slug(spec.name) .. "/" .. slug(name) .. ".seed" .. tostring(seed)
+    local own = base .. "." .. H.system .. ".png"
+    local rel, from = nil, nil
+    if H.golden_exists(own) then
+      rel = own
+    elseif H.golden_exists(base .. ".png") then
+      rel = base .. ".png"
+    else
+      for _, other in ipairs({ "windows", "linux", "macos" }) do
+        if other ~= H.system and H.golden_exists(base .. "." .. other .. ".png") then
+          rel, from = base .. "." .. other .. ".png", other
+          break
+        end
+      end
+    end
     local params = { format = "png", width = opts.width or 640, height = opts.height or 360, software = true }
-    local e = { kind = "image", desc = "image " .. name, golden = golden }
-    if not H.golden_exists(rel) then
-      params.path = golden
+    local mine = "tests/goldens/" .. own
+    if rel == nil then
+      local e = { kind = "image", desc = "image " .. name, golden = mine }
+      params.path = mine
       callm("obs.frame", params)
       e.ok = true
       e.recorded = true
-      e.message = string.format("image %s: recorded %s", name, golden)
+      e.message = string.format("image %s: recorded %s", name, mine)
       return record(ctx, e)
     end
-    params.path = ".argus/test-images/" .. rel
+    local golden = "tests/goldens/" .. rel
+    local e = { kind = "image", desc = "image " .. name, golden = golden }
+    params.path = ".argus/test-images/" .. own
     params.golden = golden
     params.threshold = opts.threshold or 0.1
     local r = callm("obs.frame", params)
     local c = r.compare
     local max = opts.max or 0.001
+    if from ~= nil then max = math.max(max, opts.other_max or 0.01) end
     -- With update, only a picture that no longer matches is drawn again:
     -- one that still does keeps its file, byte for byte (found at the
-    -- phase 5 gate: an update rewrote every golden of the scenario).
-    if ctx.opts.update and c.fraction > max then
-      callm("obs.frame", { format = "png", width = params.width, height = params.height, software = true, path = golden })
+    -- phase 5 gate: an update rewrote every golden of the scenario). This
+    -- system's is drawn when it has none yet.
+    if ctx.opts.update and (from ~= nil or c.fraction > max) then
+      callm("obs.frame", { format = "png", width = params.width, height = params.height, software = true, path = mine })
+      e.golden = mine
       e.ok = true
       e.recorded = true
-      e.message = string.format("image %s: updated %s (%.2f%% of its pixels had changed)", name, golden, c.fraction * 100)
+      e.message = if from ~= nil
+        then string.format("image %s: recorded %s (%s's differed by %.2f%%)", name, mine, from, c.fraction * 100)
+        else string.format("image %s: updated %s (%.2f%% of its pixels had changed)", name, mine, c.fraction * 100)
       return record(ctx, e)
     end
     e.ok = c.fraction <= max
@@ -601,12 +629,15 @@ local function make_t(ctx, spec, seed)
     e.diff = c.diff
     e.differing = c.differing
     e.fraction = c.fraction
+    e.system = from
+    local whose = if from ~= nil then string.format(", recorded on %s, %.2f%% allowed between systems", from, max * 100)
+      else string.format(", %.2f%% allowed", max * 100)
     if e.ok then
-      e.message = string.format("image %s: matches %s (%d of %d pixels differ, %.2f%% allowed)",
-        name, golden, c.differing, c.pixels, max * 100)
+      e.message = string.format("image %s: matches %s (%d of %d pixels differ%s)",
+        name, golden, c.differing, c.pixels, whose)
     else
-      e.message = string.format("image %s: %.2f%% of its pixels differ from %s (%.2f%% allowed): the picture %s, where they differ %s",
-        name, c.fraction * 100, golden, max * 100, r.path, c.diff)
+      e.message = string.format("image %s: %.2f%% of its pixels differ from %s (%s): the picture %s, where they differ %s",
+        name, c.fraction * 100, golden, string.sub(whose, 3), r.path, c.diff)
     end
     return record(ctx, e)
   end
