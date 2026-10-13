@@ -26,7 +26,7 @@ use argus_sim::{ClockBinding, Scheduler, Stage, SystemDesc, SystemFn};
 use bind::{Link, QueryHandle};
 use decl::Pending;
 use mlua::{Function, Lua, VmState};
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -292,6 +292,10 @@ pub struct ScriptHost {
     /// from the files' errors, since the fix may be in another file.
     order: Option<ScriptError>,
     budget: Rc<Cell<i64>>,
+    /// Each script system's checks of the budget: its last run's and its
+    /// most, by name (issue 13: the profile showed milliseconds only, so
+    /// nothing said how near a system ran to the budget).
+    checks: Rc<RefCell<BTreeMap<String, (u64, u64)>>>,
 }
 
 fn fnv(bytes: &[u8]) -> u64 {
@@ -454,7 +458,15 @@ impl ScriptHost {
             errors: BTreeMap::new(),
             order: None,
             budget,
+            checks: Rc::new(RefCell::new(BTreeMap::new())),
         })
+    }
+
+    /// A script system's checks of the instruction budget, `(last run,
+    /// most in a run)`; `None` for a system that is not a script's or has
+    /// not run. The budget is [`ScriptConfig::interrupt_budget`].
+    pub fn checks(&self, system: &str) -> Option<(u64, u64)> {
+        self.checks.borrow().get(system).copied()
     }
 
     /// The configuration.
@@ -817,6 +829,8 @@ impl ScriptHost {
         let budget = self.budget.clone();
         let limit = self.config.interrupt_budget as i64;
         let spawns: Rc<[String]> = s.spawns.clone().into();
+        let checks = self.checks.clone();
+        let name = s.name.clone();
         let f: SystemFn = Box::new(move |ctx| {
             // The 'static is a lie the proxies never get to exploit: the
             // link is nulled before this closure returns.
@@ -831,6 +845,11 @@ impl ScriptHost {
                 .map_err(to_argus)?;
             let r = run.call::<()>(q);
             link.set(std::ptr::null_mut());
+            let used = (limit - budget.get()).clamp(0, limit) as u64;
+            let mut c = checks.borrow_mut();
+            let row = c.entry(name.clone()).or_insert((0, 0));
+            *row = (used, row.1.max(used));
+            drop(c);
             r.map_err(to_argus)
         });
         Ok((desc, f))

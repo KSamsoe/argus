@@ -382,7 +382,8 @@ A press that should not cost a turn (opening a menu) freezes the rest of that tu
 Scripts run inside the daemon, sandboxed, so a mistake cannot take the game down and every run can be replayed. What that means for you:
 
 - **Globals are read-only** once a file has loaded. `counter = 1` inside `run` fails with "attempt to modify a readonly table".
-- **Each run has an instruction budget**: 5,000,000 of the VM's checks, which it makes at each function call and each turn of a loop. A loop that never ends is stopped ("instruction budget exceeded") and its system switched off. The profiler (`argus profile`) shows a system's time in milliseconds, not its checks. The Luau heap may hold 256 MB.
+- **Each run has an instruction budget**: 5,000,000 of the VM's checks, which it makes at each function call and each turn of a loop. A loop that never ends is stopped ("instruction budget exceeded") and its system switched off. Work inside the string library counts too: a pattern that backtracks (the usual trim, `string.match(s, "^%s*(.-)%s*$")`, on a long run of spaces) can spend the budget on one call. `pcall` cannot catch running out: the call it wraps stops, and the next check outside it stops the run. `argus profile systems=true` gives each script system's checks, its last run's and its most (`checks`, `checks_max`, against `checks_budget`), beside its milliseconds. The Luau heap may hold 256 MB.
+- **Strings are bytes.** `#s` and `string.sub` count bytes, so a cut at a byte count can fall inside a character such as "é". Text written from a script (a `str` field, an event's field, `q:send`) keeps such a cut character as U+FFFD. To cut whole characters, count with the `utf8` library: `string.sub(s, 1, (utf8.offset(s, 1001) or #s + 1) - 1)` keeps the first 1,000.
 - **What a script has**: Luau's base functions (`assert`, `error`, `pcall`, `xpcall`, `select`, `type`, `typeof`, `tostring`, `tonumber`, `ipairs`, `pairs`, `next`, `unpack`, `setmetatable`, `getmetatable`, and the `raw` ones), and the libraries `math`, `string`, `table`, `vector`, `coroutine`, `bit32`, `utf8`, and `buffer`. `print` writes to the daemon's log, `.argus/daemon.log`; to see a value, emit it (`q:emit`) and read it with `argus events`.
 - **What it does not have**: `io`, `os`, `load`, `loadstring`, and `dofile`. `require` is an error that says what to use instead: a game's scripts read no other files, because a release build has no folder to read them from. Keep a helper in the file that uses it, and values several systems share in a def table (`q:def`).
 - **Keep all state in components.** A `local` at the top of a file is shared by every run of the system, but it is not part of the world: a seek, a replay, a save, or a test does not put it back. In a test of this, a counter kept in a file-level local read 30 after seeking back to frame 10 of a 20-tick run. Use file-level locals only for constants and helper functions.
@@ -415,7 +416,7 @@ file               frame  line  message                                         
 systems/gems.luau  0      10    [4301] system sim.gems reads Score without declaring it Hint: Add "Score" to the system's reads list. (systems/gems.luau:10)  run    systems/gems.luau:10  sim.gems
 ```
 
-Fix the file and run `argus reload`: the system runs again from the current frame. `argus events name=system.fault` shows when each fault happened.
+Fix the file and run `argus reload`: the system runs again from the current frame. A reload switches every faulted system on again, its file changed or not, since a fault can come from the run's data (an outside service's answer) rather than the code; the reload's `switched_on` names them. `argus events name=system.fault` shows when each fault happened.
 
 ## How reload picks changes up
 

@@ -109,7 +109,10 @@ pub(crate) fn lua_to_value(v: LuaValue, ty: FieldType, link: &Link) -> LuaResult
                 }
             }
         }
-        (FieldType::Str, LuaValue::String(s)) => Value::Str(s.to_str()?.to_string()),
+        // Text is kept whatever its bytes: a script's string is bytes, and a
+        // cut through a character (string.sub at a byte count) wrote half of
+        // it and switched the system off (issue 13). The half is U+FFFD.
+        (FieldType::Str, LuaValue::String(s)) => Value::Str(s.to_string_lossy()),
         (FieldType::Ref, LuaValue::String(s)) => Value::Ref(s.to_str()?.to_string()),
         (FieldType::Entity, LuaValue::Nil) => Value::Entity(Entity::NULL),
         (FieldType::Entity, LuaValue::UserData(ud)) => {
@@ -162,7 +165,7 @@ fn event_fields(fields: Option<mlua::Table>) -> LuaResult<Vec<(String, Value)>> 
                 LuaValue::Integer(i) => Value::Int(i as i64),
                 LuaValue::Number(n) if n.fract() == 0.0 && n.abs() < 9.0e15 => Value::Int(n as i64),
                 LuaValue::Number(n) => Value::Float(n),
-                LuaValue::String(s) => Value::Str(s.to_str()?.to_string()),
+                LuaValue::String(s) => Value::Str(s.to_string_lossy()),
                 LuaValue::Vector(v) => Value::Vec2(Vec2::new(v.x(), v.y())),
                 LuaValue::UserData(ud) => match ud.borrow::<EntityRef>() {
                     Ok(e) => Value::Entity(e.entity),
@@ -1208,7 +1211,9 @@ impl UserData for QueryHandle {
         // page, the daemon's subscribers), as a host.send event {channel,
         // text}. A release build keeps it for the page's take_sent (host
         // channel item 1). The reply, if any, comes back as a message.
-        m.add_method("send", |_, this, (channel, text): (String, String)| {
+        m.add_method("send", |_, this, (channel, text): (String, mlua::String)| {
+            // The text whatever its bytes, as a str field takes it.
+            let text = text.to_string_lossy();
             let ok = !channel.is_empty()
                 && channel.len() <= 64
                 && channel

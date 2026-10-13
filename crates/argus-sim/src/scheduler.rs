@@ -78,6 +78,9 @@ struct SystemSlot {
     run: Body,
     enabled: bool,
     disabled_reason: Option<String>,
+    /// Switched off by a fault, not by a scene's settings: what a reload
+    /// switches on again ([`Scheduler::enable_faulted`]).
+    faulted: bool,
     rng: Option<Pcg32>,
     /// The batch it runs in ([`NO_BATCH`] for a serial system).
     batch: u32,
@@ -748,6 +751,7 @@ impl Scheduler {
             run,
             enabled: true,
             disabled_reason: None,
+            faulted: false,
             rng,
             batch: NO_BATCH,
             cost: Duration::ZERO,
@@ -817,6 +821,7 @@ impl Scheduler {
         slot.rng = rng;
         slot.enabled = true;
         slot.disabled_reason = None;
+        slot.faulted = false;
         self.order_dirty = true;
         Ok(())
     }
@@ -850,7 +855,23 @@ impl Scheduler {
         let i = self.slot_index(name)?;
         self.systems[i].enabled = true;
         self.systems[i].disabled_reason = None;
+        self.systems[i].faulted = false;
         Ok(())
+    }
+
+    /// Switch on again every system a fault switched off, not one a scene's
+    /// settings did: what a reload does, so a system faulted by the run's
+    /// data (a model's answer) runs again with no file changed (issue 13).
+    /// Returns their names.
+    pub fn enable_faulted(&mut self) -> Vec<String> {
+        let mut on = Vec::new();
+        for s in self.systems.iter_mut().filter(|s| s.faulted) {
+            s.enabled = true;
+            s.disabled_reason = None;
+            s.faulted = false;
+            on.push(s.desc.name.clone());
+        }
+        on
     }
 
     /// Disable a system.
@@ -858,6 +879,7 @@ impl Scheduler {
         let i = self.slot_index(name)?;
         self.systems[i].enabled = false;
         self.systems[i].disabled_reason = Some(reason.to_string());
+        self.systems[i].faulted = false;
         Ok(())
     }
 
@@ -1851,6 +1873,7 @@ impl Scheduler {
         };
         slot.enabled = false;
         slot.disabled_reason = Some(message.clone());
+        slot.faulted = true;
         let name = slot.desc.name.clone();
         world.emit(Event::SystemFault {
             system: name.clone(),
@@ -1911,12 +1934,15 @@ impl Scheduler {
         for s in &mut self.systems {
             match state.disabled.iter().find(|(n, _)| *n == s.desc.name) {
                 Some((_, why)) => {
+                    // Off by the scene's settings now, it was then too.
+                    s.faulted = s.faulted || s.enabled;
                     s.enabled = false;
                     s.disabled_reason = Some(why.clone());
                 }
                 None => {
                     s.enabled = true;
                     s.disabled_reason = None;
+                    s.faulted = false;
                 }
             }
         }

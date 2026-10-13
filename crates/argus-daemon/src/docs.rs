@@ -1514,9 +1514,9 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "script.reload",
-        doc: "Recompile changed Luau files, rebind their systems in place, keep world state, tick, and RNG streams, and re-read def tables. Then build each Rust plugin argus.toml lists (plugins/<name>/, with cargo) and, when its library changed, swap it in: snapshot, unload the old library, load the new one, restore, continue. A plugin that does not build keeps its old library running; its errors are in script.errors with file and line. reload_ms is from the build's end to the new code running.",
+        doc: "Recompile changed Luau files, rebind their systems in place, keep world state, tick, and RNG streams, and re-read def tables. Every system a fault switched off runs again, its file changed or not (switched_on names them); one a scene's settings switched off stays off. Then build each Rust plugin argus.toml lists (plugins/<name>/, with cargo) and, when its library changed, swap it in: snapshot, unload the old library, load the new one, restore, continue. A plugin that does not build keeps its old library running; its errors are in script.errors with file and line. reload_ms is from the build's end to the new code running.",
         params: &[],
-        returns: "{reloaded: [file], removed: [file], errors: integer, plugins: [{plugin, swapped, build_ms, reload_ms}]}",
+        returns: "{reloaded: [file], removed: [file], errors: integer, switched_on: [system], plugins: [{plugin, swapped, build_ms, reload_ms}]}",
     },
     MethodDoc {
         name: "script.systems",
@@ -1750,12 +1750,12 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "prof.systems",
-        doc: "Per-system mean and p95 over the last n ticks, in stage order. series: each tick's whole time too, for drawing against a budget.",
+        doc: "Per-system mean and p95 over the last n ticks, in stage order; a script system also has its checks of the instruction budget, its last run's and its most (checks_budget is the budget; a run past it is a fault). series: each tick's whole time too, for drawing against a budget.",
         params: &[
             opt("last", INTEGER, "default 600"),
             opt("series", BOOLEAN, "default false: also ticks, [[tick, ms]] oldest first"),
         ],
-        returns: "{last, tick_p95_ms, rows: [[name, stage, mean_ms, p95_ms, max_ms, samples]], ticks?}",
+        returns: "{last, tick_p95_ms, columns, checks_budget, rows: [[name, stage, mean_ms, p95_ms, max_ms, samples, checks, checks_max]], ticks?}",
     },
     MethodDoc {
         name: "prof.archetypes",

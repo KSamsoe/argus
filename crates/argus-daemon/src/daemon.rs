@@ -4744,6 +4744,9 @@ impl Daemon {
             .as_mut()
             .ok_or_else(|| ArgusError::new(codes::NO_PROJECT, "no project is open"))?;
         let report = ses.host.reload(&mut self.world, &mut self.sched)?;
+        // A system a fault switched off runs again, its file changed or not:
+        // the fault may have been the run's data, not its code (issue 13).
+        let switched_on = self.sched.enable_faulted();
         // Rust plugins after the scripts, whose components they read: each
         // built again, and swapped in (snapshot, swap, restore) when its
         // library changed (§7).
@@ -4793,6 +4796,7 @@ impl Daemon {
             "reloaded": report.reloaded,
             "removed": report.removed,
             "errors": report.errors + plugin_errors,
+            "switched_on": switched_on,
             "plugins": plugins
                 .iter()
                 .map(|r| json!({
@@ -6940,25 +6944,32 @@ impl Daemon {
 
     fn prof_systems(&mut self, params: &Json) -> Result<Json> {
         let last = json::u64_param(params, "last", 600)? as usize;
+        let host = self.session.as_ref().map(|s| &s.host);
         let rows: Vec<Json> = self
             .sched
             .prof_systems(last)?
             .iter()
             .map(|p| {
+                // A script system's checks of the instruction budget, last
+                // run and most (issue 13); null for the engine's own.
+                let checks = host.and_then(|h| h.checks(&p.name));
                 json!([
                     p.name,
                     p.stage.name(),
                     p.mean_ms,
                     p.p95_ms,
                     p.max_ms,
-                    p.samples
+                    p.samples,
+                    checks.map(|c| c.0),
+                    checks.map(|c| c.1)
                 ])
             })
             .collect();
         let mut out = json!({
             "last": last,
             "tick_p95_ms": self.sched.prof_tick_p95_ms(last),
-            "columns": ["name", "stage", "mean_ms", "p95_ms", "max_ms", "samples"],
+            "columns": ["name", "stage", "mean_ms", "p95_ms", "max_ms", "samples", "checks", "checks_max"],
+            "checks_budget": host.map(|h| h.config().interrupt_budget),
             "rows": rows,
         });
         if json::bool_param(params, "series", false)? {

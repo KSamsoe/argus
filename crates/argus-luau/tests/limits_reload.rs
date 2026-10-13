@@ -69,6 +69,53 @@ fn an_unbounded_loop_hits_the_budget_and_is_disabled() {
     );
 }
 
+/// Issue 13: running out of the budget inside a `pcall` still stops the run
+/// (the next check outside it runs out again), as the scripting chapter
+/// says; and each script system's checks are counted, last run and most,
+/// for the profile.
+#[test]
+fn pcall_cannot_catch_the_budget_and_each_run_s_checks_are_counted() {
+    let mut h = ScriptHost::new(ScriptConfig {
+        interrupt_budget: 10_000,
+        ..Default::default()
+    })
+    .unwrap();
+    let mut w = World::new();
+    let mut s = Scheduler::new(SchedulerConfig::default());
+    let caught = "return system \"sim.caught\" {\n stage = \"sim\",\n run = function(q)\n  local ok = pcall(function() while true do end end)\n  q:emit(\"after\", { ok = ok })\n end }";
+    assert!(
+        h.load_source(&mut w, &mut s, "systems/caught.luau", caught),
+        "{:?}",
+        h.errors()
+    );
+    let busy = "return system \"sim.busy\" {\n stage = \"sim\",\n run = function(q)\n  local n = 0\n  for i = 1, 100 * (q.tick + 1) do n += i end\n end }";
+    assert!(
+        h.load_source(&mut w, &mut s, "systems/busy.luau", busy),
+        "{:?}",
+        h.errors()
+    );
+    s.step(&mut w, 2).unwrap();
+    let f = faults(&w);
+    assert_eq!(f.len(), 1, "{f:?}");
+    assert_eq!(f[0].0, "sim.caught");
+    assert!(f[0].1.contains("instruction budget"), "{}", f[0].1);
+    assert!(
+        !w.events()
+            .iter()
+            .any(|r| matches!(&r.event, Event::Game { name, .. } if name == "after")),
+        "the run stopped at the pcall"
+    );
+    let (last, most) = h.checks("sim.busy").expect("counted");
+    assert!((200..10_000).contains(&last), "{last}");
+    assert_eq!(most, last, "the second run did the most");
+    assert_eq!(
+        h.checks("sim.caught").map(|c| c.0),
+        Some(10_000),
+        "all of it"
+    );
+    assert_eq!(h.checks("no.such"), None);
+}
+
 #[test]
 fn memory_limit_is_enforced() {
     let mut h = ScriptHost::new(ScriptConfig {

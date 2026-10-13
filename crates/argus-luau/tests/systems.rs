@@ -783,3 +783,53 @@ return system "sim.words" {
     assert_eq!(get("none"), Value::Str("[menu.nope]".into()));
     assert_eq!(get("langs"), Value::Str("en,fr".into()));
 }
+
+/// Issue 13: a script's strings are bytes, and text cut through a character
+/// (`string.sub` at a byte count, through an "é") switched the system off
+/// when it was written. Text is kept now, the cut character as U+FFFD, in a
+/// field, an event, and what the game sends its host.
+#[test]
+fn text_cut_through_a_character_is_kept_with_a_replacement() {
+    let (mut h, mut w, mut s) = host(7);
+    h.load_source(
+        &mut w,
+        &mut s,
+        "components/note.luau",
+        "component \"Note\" { text = field.str {} }",
+    );
+    let sys = r#"
+return system "sim.cut" {
+  stage = "sim", writes = { "Note" },
+  run = function(q)
+    local cut = string.sub("caf" .. "\u{e9}", 1, 4)
+    q:entity("@n"):get("Note").text = cut
+    q:emit("cut", { text = cut })
+    q:send("gm.request", cut)
+  end,
+}"#;
+    assert!(
+        h.load_source(&mut w, &mut s, "systems/cut.luau", sys),
+        "{:?}",
+        h.errors()
+    );
+    let n = w.spawn_authored("n").unwrap();
+    w.insert_by_name(n, "Note").unwrap();
+    s.step(&mut w, 1).unwrap();
+    assert!(fault_messages(&w).is_empty(), "{:?}", fault_messages(&w));
+    let kept = "caf\u{fffd}".to_string();
+    assert_eq!(
+        w.get_field(n, "Note.text").unwrap(),
+        Value::Str(kept.clone())
+    );
+    let text_of = |name: &str| {
+        w.events().iter().find_map(|r| match &r.event {
+            Event::Game { name: n, fields } if n == name => {
+                fields.iter().find(|f| f.0 == "text").map(|f| f.1.clone())
+            }
+            _ => None,
+        })
+    };
+    assert_eq!(text_of("cut"), Some(Value::Str(kept.clone())));
+    assert_eq!(text_of("host.send"), Some(Value::Str(kept)));
+}
+
