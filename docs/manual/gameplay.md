@@ -112,7 +112,7 @@ Rebinding is a UI over the same table. A controls menu has buttons with an `Inpu
 
 On a **continuous** clock (`continuous@60`, the default) the sim ticks 60 times a second whether or not anyone presses anything, and a script sees the actions as they are on each tick.
 
-On a **discrete** clock (`clock = "discrete"`, as in Delve) the sim stands still until something asks for a turn. While the game is playing, each press of a bound key passes one turn, and that turn's systems see the press. A release passes no turn, and neither does a key that is bound to nothing. A scenario's `t:advance`, `argus run turns=1`, and `sim.advance` also pass turns. `argus input inject` on a discrete clock only queues the action for the next turn; it does not pass one by itself.
+On a **discrete** clock (`clock = "discrete"`, as in Delve) the sim stands still until something asks for a turn. While the game is playing, each press of a bound key passes one turn, and that turn's systems see the press. A release passes no turn, and neither does a key that is bound to nothing. A mouse move passes no turn either: the `pointer` holds its place, and the next turn (a click's, or a key's) reads it there. The page and the window take the mouse's moves over the game whatever has the keyboard's focus. A scenario's `t:advance`, `argus run turns=1`, and `sim.advance` also pass turns. `argus input inject` on a discrete clock only queues the action for the next turn; it does not pass one by itself.
 
 On a discrete clock `q.dt` is 1 and `q.time` counts turns. Anything measured in seconds (a tween's duration, a post effect's decay) moves one second per turn.
 

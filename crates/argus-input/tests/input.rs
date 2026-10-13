@@ -571,6 +571,74 @@ fn in_a_discrete_scene_a_press_is_one_command_for_the_next_turn() {
     assert_eq!(st.borrow_mut().apply_devices(s.tick(), &d), 1);
 }
 
+/// Issue 11: in a discrete game the pointer was a press. Its first move took
+/// a turn and went back to 0, 0 a tick later, later moves changed nothing,
+/// and every click's turn read the pointer at 0, 0, so no button under it
+/// was ever pressed from the browser or the window.
+#[test]
+fn in_a_discrete_scene_the_pointer_holds_its_place_and_takes_no_turn() {
+    const MOUSE: &str = r#"
+[actions.click]
+type = "button"
+[actions.click.bindings]
+mouse = ["left"]
+
+[actions.pointer]
+type = "pointer"
+[actions.pointer.bindings]
+mouse = ["position"]
+
+[slots.1]
+devices = ["keyboard", "mouse"]
+"#;
+    let mut w = World::new();
+    let mut s = Scheduler::new(SchedulerConfig::discrete());
+    let map = ActionMap::parse("input.toml", MOUSE).unwrap();
+    let st = Rc::new(RefCell::new(InputState::new(map, true)));
+    install(&mut w, &mut s, st.clone()).unwrap();
+    let p = w.spawn_authored("p1").unwrap();
+    w.insert(p, PlayerSlot { slot: 1 }).unwrap();
+    w.insert_by_name(p, "Actions").unwrap();
+    let mut d = Devices::default();
+    let at = |x: f32, y: f32| DeviceInput::Pointer { x, y };
+
+    d.apply(&at(120.0, 80.0));
+    assert_eq!(
+        st.borrow_mut().apply_devices(s.tick(), &d),
+        0,
+        "a move is no turn"
+    );
+    d.apply(&at(300.0, 200.0));
+    assert_eq!(st.borrow_mut().apply_devices(s.tick(), &d), 0);
+    d.apply(&DeviceInput::Mouse {
+        button: "left".into(),
+        pressed: true,
+    });
+    assert_eq!(
+        st.borrow_mut().apply_devices(s.tick(), &d),
+        1,
+        "the click is the turn"
+    );
+    s.advance(&mut w, 1).unwrap();
+    assert_eq!(w.get_field(p, "Actions.click").unwrap(), Value::Bool(true));
+    assert_eq!(
+        w.get_field(p, "Actions.pointer").unwrap(),
+        Value::Vec2(Vec2::new(300.0, 200.0)),
+        "the click's turn reads where the mouse is"
+    );
+    // The next turn, the pointer is still there.
+    d.apply(&DeviceInput::Mouse {
+        button: "left".into(),
+        pressed: false,
+    });
+    st.borrow_mut().apply_devices(s.tick(), &d);
+    s.advance(&mut w, 1).unwrap();
+    assert_eq!(
+        w.get_field(p, "Actions.pointer").unwrap(),
+        Value::Vec2(Vec2::new(300.0, 200.0))
+    );
+}
+
 #[test]
 fn unknown_gamepad_and_mouse_names_are_refused_at_load() {
     let e = ActionMap::parse(

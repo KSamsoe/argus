@@ -459,7 +459,14 @@ impl InputState {
                     continue;
                 }
                 self.device_last.insert(key, v);
-                if self.discrete {
+                if self.discrete && kind == ActionKind::Pointer {
+                    // A place, not a press: it holds where it was left and
+                    // takes no turn, so a click's turn reads where the mouse
+                    // is. As a press it lasted one tick and went back to
+                    // 0, 0, and later moves changed nothing, so every click
+                    // in a discrete game landed at 0, 0 (issue 11).
+                    self.schedule(now, slot, &action, v);
+                } else if self.discrete {
                     if v.is_active() && !before.is_active() {
                         self.schedule(now, slot, &action, v);
                         if !toggle {
