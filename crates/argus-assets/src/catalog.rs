@@ -243,6 +243,13 @@ impl Importer {
     /// The sprites as a pack carries them (`argus build`): every imported
     /// sprite's cached texture and what the importer made of it.
     pub fn packed_sprites(&self) -> PackedSprites {
+        self.packed_sprites_except(&|_| false)
+    }
+
+    /// The sprites as a pack carries them, less each one whose source image
+    /// or sidecar the build leaves out (`[build] exclude`, .gitignore): `left_out`
+    /// is asked of each such file, by its path from the project's folder.
+    pub fn packed_sprites_except(&self, left_out: &dyn Fn(&str) -> bool) -> PackedSprites {
         let mut sprites = Vec::new();
         let mut textures = Vec::new();
         let mut sources = Vec::new();
@@ -250,6 +257,15 @@ impl Importer {
             let Asset::Sprite(s) = &e.asset else {
                 continue;
             };
+            let from: Vec<String> = s
+                .source
+                .iter()
+                .chain(e.sidecar.iter())
+                .map(|p| format!("assets/{p}"))
+                .collect();
+            if from.iter().any(|p| left_out(p)) {
+                continue;
+            }
             let rel = format!("{TEXTURES}/{name}.png");
             let normal = s
                 .normal
@@ -265,8 +281,7 @@ impl Importer {
             if let Some((rel, path)) = normal {
                 textures.push((rel, path.clone()));
             }
-            sources.extend(s.source.iter().map(|p| format!("assets/{p}")));
-            sources.extend(e.sidecar.iter().map(|p| format!("assets/{p}")));
+            sources.extend(from);
         }
         PackedSprites {
             catalog: json!({ "importer": crate::IMPORTER_VERSION, "sprites": sprites }),

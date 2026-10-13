@@ -74,6 +74,11 @@ pub struct ProjectConfig {
     /// own), an `http://` address (phase 5 item 1). `None`: they stay in
     /// the player's save location.
     pub reports_url: Option<String>,
+    /// `[build] exclude`: paths a build leaves out of the packs, as globs on
+    /// the project-relative path (`m0/**`, `**/*.psd`); a pattern that names
+    /// a folder leaves out what is in it. Beside the folders every build
+    /// leaves out, and what git ignores (issue 6).
+    pub build_exclude: Vec<String>,
 }
 
 /// A day, when a project does not say how long its days are.
@@ -235,6 +240,14 @@ impl ProjectConfig {
                 }
             },
         };
+        let build_exclude = match t
+            .get("build")
+            .and_then(|i| i.as_table_like())
+            .and_then(|b| b.get("exclude"))
+        {
+            None => Vec::new(),
+            Some(i) => tomlv::string_list(i, "argus.toml [build] exclude", &at("build"))?,
+        };
         Ok(ProjectConfig {
             name,
             clock,
@@ -248,6 +261,7 @@ impl ProjectConfig {
             strings_base,
             mods_enabled,
             reports_url,
+            build_exclude,
         })
     }
 
@@ -372,6 +386,7 @@ impl Project {
                 strings_base: "en".to_string(),
                 mods_enabled: true,
                 reports_url: None,
+                build_exclude: Vec::new(),
             };
             argus_os::fs::write(&cfg, c.to_toml()).map_err(|e| {
                 ArgusError::new(codes::MISSING_FILE, format!("cannot write argus.toml: {e}"))

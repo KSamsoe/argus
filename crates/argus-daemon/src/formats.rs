@@ -75,10 +75,11 @@ pub const FILES: &[FileDoc] = &[
             k("[strings] base", "string", "\"en\"", "The language the game is written in: its string table (`strings/<base>.toml`) is the one every other language falls back to."),
             k("[mods] enabled", "boolean", "true", "Whether the game takes mods (`mods/` below). false: a session asked for mods is refused, and `argus build --mod` too."),
             k("[reports] url", "string", "none", "The playtest server a desktop build sends its players' reports to (its `http://` address; the build speaks plain HTTP, so a LAN or tailnet address). Without it reports stay in the player's save folder."),
+            k("[build] exclude", "array of strings", "[]", "Paths a build leaves out of the packs, as globs on the path from the project's folder: `m0/**` leaves out a folder and all in it, `**/*.psd` every Photoshop file, `notes.md` one file. Beside these, a build leaves out `tests/`, `tools/`, `dist/`, `mods/`, `plugins/`, the notes at the root, anything whose name starts with a dot, and what git ignores in a repository. The build's report lists what it left out, and why."),
         ],
         example_from: "examples/outpost/argus.toml",
         example: "name = \"outpost\"\nclock = \"continuous@60\"\ndefault_scene = \"valley\"\nplugins = []\nmodules = [\"steam\"]\n\n[time]\nday = 60",
-        errors: "With no `name`: \"argus.toml needs `name`\" (4605). A clock that is neither `discrete` nor `continuous@<hz>`: \"bad clock spec\" (4407). A module the engine does not have, or a `[ring]`, `[marks]`, `[time]`, `[strings]`, `[mods]`, or `[reports]` value of the wrong kind: 4605 naming the key and what it must be. Bad TOML: 4601 with its line. The project does not open until it is fixed.",
+        errors: "With no `name`: \"argus.toml needs `name`\" (4605). A clock that is neither `discrete` nor `continuous@<hz>`: \"bad clock spec\" (4407). A module the engine does not have, or a `[ring]`, `[marks]`, `[time]`, `[strings]`, `[mods]`, `[reports]`, or `[build]` value of the wrong kind: 4605 naming the key and what it must be. Bad TOML: 4601 with its line. The project does not open until it is fixed.",
     },
     FileDoc {
         title: "scenes/<scene>/scene.toml: a scene",

@@ -101,6 +101,7 @@ fn hollow_from_its_packs_plays_as_hollow_from_its_folder() {
         &BuildOptions {
             code: "test".into(),
             since: vec![],
+            ..Default::default()
         },
     )
     .unwrap();
@@ -166,6 +167,83 @@ fn hollow_from_its_packs_plays_as_hollow_from_its_folder() {
     );
 }
 
+/// Issue 6: a web page shipped a prototype's folder, its node_modules, and
+/// the author's play sessions. `[build] exclude` and what git ignores keep
+/// them out, a sprite made from an excluded image included, and the report
+/// says what was left out and why.
+#[test]
+fn excluded_and_git_ignored_files_stay_out_of_the_packs() {
+    let dir = hollow("exclude");
+    let mut toml = std::fs::read_to_string(dir.join("argus.toml")).unwrap();
+    toml.push_str("\n[build]\nexclude = [\"m0\", \"**/*.psd\", \"assets/wip*\"]\n");
+    std::fs::write(dir.join("argus.toml"), toml).unwrap();
+    let put = |rel: &str, bytes: &[u8]| {
+        let p = dir.join(rel);
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(p, bytes).unwrap();
+    };
+    put("m0/proto/notes.md", b"the first try");
+    put("m0/proto/rules.toml", b"x = 1\n");
+    put("assets/hero.psd", b"layers");
+    std::fs::copy(dir.join("assets/hero.png"), dir.join("assets/wip-hero.png")).unwrap();
+    put("node_modules/pkg/index.js", b"module.exports = 1;\n");
+    put("sessions/one.json", b"{}");
+    put("sessions/two.json", b"{}");
+    put("notes/kept.md", b"in the game");
+    let opts = |ignored: &[&str]| BuildOptions {
+        code: "test".into(),
+        ignored: ignored.iter().map(|s| s.to_string()).collect(),
+        ..Default::default()
+    };
+    let built = pack::build(&dir, &opts(&["node_modules/", "sessions/one.json"])).unwrap();
+    let r = &built.report;
+    let files: Vec<&str> = built.packs[0].files.iter().map(|f| f.0.as_str()).collect();
+    for gone in [
+        "m0/proto/notes.md",
+        "m0/proto/rules.toml",
+        "assets/hero.psd",
+        "node_modules/pkg/index.js",
+        "sessions/one.json",
+    ] {
+        assert!(!files.contains(&gone), "{gone} shipped");
+    }
+    assert!(files.contains(&"sessions/two.json"), "git ignores only one");
+    assert!(files.contains(&"notes/kept.md"));
+    assert_eq!(
+        r["excluded"]["[build] exclude"],
+        json!([
+            "assets/hero.psd",
+            "assets/wip-hero.png",
+            "m0/proto/notes.md",
+            "m0/proto/rules.toml"
+        ]),
+        "{r}"
+    );
+    assert_eq!(
+        r["excluded"][".gitignore"],
+        json!(["node_modules/pkg/index.js", "sessions/one.json"]),
+        "{r}"
+    );
+    let catalog = built.packs[0]
+        .files
+        .iter()
+        .find(|f| f.0 == argus_assets::CATALOG)
+        .expect("a catalog");
+    let catalog = String::from_utf8(built.packs[0].blobs[&catalog.1].clone()).unwrap();
+    assert!(catalog.contains("hero"), "the hero is a sprite: {catalog}");
+    assert!(
+        !catalog.contains("wip-hero"),
+        "the excluded image is no sprite"
+    );
+
+    // A pattern that is not one stops the build, naming it.
+    let mut toml = std::fs::read_to_string(dir.join("argus.toml")).unwrap();
+    toml = toml.replace("\"m0\"", "\"m0[\"");
+    std::fs::write(dir.join("argus.toml"), toml).unwrap();
+    let e = pack::build(&dir, &opts(&[])).unwrap_err();
+    assert!(e.message.contains("\"m0[\" is not a pattern"), "{e:?}");
+}
+
 #[test]
 fn a_patch_carries_only_what_changed_and_a_language_lays_over_the_game() {
     let dir = hollow("patch");
@@ -174,6 +252,7 @@ fn a_patch_carries_only_what_changed_and_a_language_lays_over_the_game() {
         &BuildOptions {
             code: "one".into(),
             since: vec![],
+            ..Default::default()
         },
     )
     .unwrap();
@@ -205,6 +284,7 @@ fn a_patch_carries_only_what_changed_and_a_language_lays_over_the_game() {
         &BuildOptions {
             code: "two".into(),
             since: first.packs.clone(),
+            ..Default::default()
         },
     )
     .unwrap();

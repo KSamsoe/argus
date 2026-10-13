@@ -29,7 +29,14 @@ What the directory holds:
 | `steam_api64.dll` (`libsteam_api.so` on Linux) | Steam's library, when `argus.toml` lists `modules = ["steam"]`. |
 | `build.json` | What was made, and the check's result. |
 
-The packs are built from the import cache, not copied from the folder. Sprites are packed onto texture pages, some of them compressed (BC7) where no pixel would show the difference. Entity files, prefabs, and def tables are in a binary form of the same data. WAV sounds are stored as Ogg Vorbis. Left out of the packs: `tests/`, `tools/`, `dist/`, `mods/`, `plugins/` (their source), the notes at the top for people and agents (`README.md`, `ARGUS.md`, `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `template.toml`), and anything whose name starts with a dot (`.argus/`, `.git/`). Everything else in the project goes in, including loose files at its root such as `README.md`, `AGENTS.md`, and `ARGUS.md`.
+The packs are built from the import cache, not copied from the folder. Sprites are packed onto texture pages, some of them compressed (BC7) where no pixel would show the difference. Entity files, prefabs, and def tables are in a binary form of the same data. WAV sounds are stored as Ogg Vorbis. Left out of the packs: `tests/`, `tools/`, `dist/`, `mods/`, `plugins/` (their source), the notes at the top for people and agents (`README.md`, `ARGUS.md`, `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `template.toml`), and anything whose name starts with a dot (`.argus/`, `.git/`). Also left out: whatever git ignores, when the project is in a git repository (a `node_modules/`, play sessions, a scratch folder), and whatever `[build] exclude` in `argus.toml` names:
+
+```toml
+[build]
+exclude = ["m0", "notes/**", "**/*.psd"]
+```
+
+Each entry is a pattern on the path from the project's folder: `*` matches within one folder, `**` across folders, and a pattern that names a folder leaves out everything in it. A sprite made from an image left out is left out with it. Everything else in the project goes in. The build's report lists what it left out under `excluded`, by reason (`[build] exclude` or `.gitignore`), so `argus build` output shows a folder that should have shipped and did not.
 
 A failed asset import or a script error stops the build, naming each one.
 

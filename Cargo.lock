@@ -572,6 +572,7 @@ dependencies = [
  "argus-tween",
  "argus-ui",
  "gilrs",
+ "glob",
  "serde_json",
  "toml_edit 0.22.27",
  "vorbis_rs",

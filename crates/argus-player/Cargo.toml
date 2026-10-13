@@ -38,6 +38,8 @@ argus-post = { path = "../argus-post", version = "0.0.6" }
 argus-light = { path = "../argus-light", version = "0.0.6" }
 argus-anim = { path = "../argus-anim", version = "0.0.6" }
 argus-skeletal = { path = "../argus-skeletal", version = "0.0.6" }
+# [build] exclude's patterns (pack.rs).
+glob = "0.3"
 argus-platform = { path = "../argus-platform", version = "0.0.6" }
 argus-tween = { path = "../argus-tween", version = "0.0.6" }
 argus-particles = { path = "../argus-particles", version = "0.0.6" }

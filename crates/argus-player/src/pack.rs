@@ -397,6 +397,60 @@ pub struct BuildOptions {
     /// The packs of the build this one follows. With any, the game goes into
     /// a patch holding only the blobs they lack.
     pub since: Vec<Pack>,
+    /// What git ignores in the project, as `git ls-files --ignored` lists it
+    /// (folders end in `/`), paths from the project's folder; left out of the
+    /// packs (issue 6: a web page shipped a prototype's node_modules and the
+    /// author's play sessions, which .gitignore kept out of git).
+    pub ignored: Vec<String>,
+}
+
+/// `argus.toml`'s `[build] exclude`, as patterns; an entry that is not one
+/// is refused, by name.
+pub fn exclude_patterns(cfg: &argus_scene::ProjectConfig) -> Result<Vec<glob::Pattern>> {
+    cfg.build_exclude
+        .iter()
+        .map(|p| {
+            glob::Pattern::new(p).map_err(|e| {
+                ArgusError::new(
+                    argus_scene::codes::BAD_SCENE,
+                    format!("argus.toml [build] exclude: {p:?} is not a pattern: {e}"),
+                )
+                .hint("A glob on the path from the project's folder: m0/**, **/*.psd, notes.md.")
+            })
+        })
+        .collect()
+}
+
+/// Whether `[build] exclude` names a file, by its path from the project's
+/// folder, or a folder above it (a pattern that names a folder leaves out
+/// what is in it). The daemon's code version asks it too, so a change to
+/// a file the game leaves out is no change to the game.
+pub fn excluded_by_patterns(rel: &str, patterns: &[glob::Pattern]) -> bool {
+    let opts = glob::MatchOptions {
+        case_sensitive: true,
+        require_literal_separator: true,
+        require_literal_leading_dot: false,
+    };
+    rel.match_indices('/')
+        .map(|(i, _)| &rel[..i])
+        .chain([rel])
+        .any(|p| patterns.iter().any(|g| g.matches_with(p, opts)))
+}
+
+/// Why a file found in the project is not in the packs: `[build] exclude`
+/// names it, or git ignores it; `None` when it goes in.
+fn excluded(rel: &str, patterns: &[glob::Pattern], ignored: &[String]) -> Option<&'static str> {
+    if excluded_by_patterns(rel, patterns) {
+        return Some("[build] exclude");
+    }
+    // An ignored folder (`git ls-files` ends it in `/`) leaves out what is
+    // in it.
+    let folders: Vec<&str> = rel.match_indices('/').map(|(i, _)| &rel[..i]).collect();
+    let git = ignored.iter().any(|i| match i.strip_suffix('/') {
+        Some(dir) => folders.contains(&dir),
+        None => i == rel,
+    });
+    git.then_some(".gitignore")
 }
 
 /// What a build of packs made.
@@ -688,6 +742,15 @@ pub fn build(root: &Path, opts: &BuildOptions) -> Result<Built> {
     let mut all = Vec::new();
     walk_files(root, root, &mut all)?;
     all.sort();
+    let patterns = exclude_patterns(&cfg)?;
+    let mut excluded_by: BTreeMap<&'static str, Vec<String>> = BTreeMap::new();
+    all.retain(|rel| match excluded(rel, &patterns, &opts.ignored) {
+        Some(why) => {
+            excluded_by.entry(why).or_default().push(rel.clone());
+            false
+        }
+        None => true,
+    });
     // The import cache: import now, so it is current.
     let mut importer = argus_assets::Importer::new(root);
     importer.scan();
@@ -699,7 +762,10 @@ pub fn build(root: &Path, opts: &BuildOptions) -> Result<Built> {
             None => format!("assets/{}: {}", f.name, f.error.message),
         })
         .collect();
-    let sprites = importer.packed_sprites();
+    // Sprites come from the import cache, not the files: one made from a
+    // file left out is left out with it.
+    let sprites =
+        importer.packed_sprites_except(&|rel| excluded(rel, &patterns, &opts.ignored).is_some());
     let mut game: Vec<(String, Vec<u8>)> = Vec::new();
     let mut langs: BTreeMap<String, Vec<(String, Vec<u8>)>> = BTreeMap::new();
     let mut made = Made::default();
@@ -838,6 +904,9 @@ pub fn build(root: &Path, opts: &BuildOptions) -> Result<Built> {
         "sprites": sprites.textures.len(),
         "pages": paged.report,
         "sources_left_out": left_out,
+        // What the project has that the game does not get, and why: the
+        // report's to show, so nothing is left out unseen.
+        "excluded": excluded_by,
         "languages": packs[1..].iter().filter_map(|p| match &p.kind { Kind::Lang(l) => Some(l.clone()), _ => None }).collect::<Vec<_>>(),
     });
     Ok(Built { packs, report })

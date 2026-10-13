@@ -99,6 +99,39 @@ pub fn engine_dir() -> Result<PathBuf, String> {
     Ok(dir)
 }
 
+/// What git ignores in the project (`.gitignore`, the repository's own
+/// excludes), as paths from its folder, folders ending in `/`: a build
+/// leaves them out (issue 6). Nothing outside a repository, or with no git
+/// to ask (a Mac without its developer tools asks a person to install them).
+fn git_ignored(root: &Path) -> Vec<String> {
+    if !argus_daemon::daemon::git_usable() {
+        return Vec::new();
+    }
+    let mut c = Command::new("git");
+    c.arg("-C").arg(root).args([
+        "ls-files",
+        "-z",
+        "--others",
+        "--ignored",
+        "--exclude-standard",
+        "--directory",
+    ]);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        // No console window for git.
+        c.creation_flags(0x0800_0000);
+    }
+    match c.output() {
+        Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout)
+            .split('\0')
+            .filter(|p| !p.is_empty())
+            .map(str::to_string)
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
 pub(crate) fn plain(p: &Path) -> String {
     p.to_string_lossy().trim_start_matches(r"\\?\").to_string()
 }
@@ -226,6 +259,23 @@ fn summary(r: &Json) -> String {
         binary["def_tables"],
         sounds["encoded"],
     ));
+    // What the project has that the game does not, so a folder left out
+    // by mistake shows here (issue 6).
+    let excluded: Vec<String> = r["packs"]["excluded"]
+        .as_object()
+        .into_iter()
+        .flatten()
+        .map(|(why, files)| {
+            let n = files.as_array().map_or(0, Vec::len);
+            format!("{n} files ({why})")
+        })
+        .collect();
+    if !excluded.is_empty() {
+        s.push_str(&format!(
+            "\n  left out: {}; build.json's packs.excluded names them",
+            excluded.join(", ")
+        ));
+    }
     if let Some(e) = r["executable"].as_str() {
         s.push_str(&format!("\n  executable: {e}"));
     }
@@ -331,6 +381,7 @@ fn build(inv: &Invocation, err: &mut dyn Write) -> Result<Json, String> {
         &BuildOptions {
             code: code.clone(),
             since: since.iter().map(|(_, p)| p.clone()).collect(),
+            ignored: git_ignored(&root),
         },
     )
     .map_err(|e| format!("{} {}", e.message, e.hint))?;
@@ -582,6 +633,7 @@ fn build_mod(inv: &Invocation, id: &str) -> Result<Json, String> {
         &BuildOptions {
             code: code.clone(),
             since: Vec::new(),
+            ..Default::default()
         },
     )
     .map_err(|e| format!("{} {}", e.message, e.hint))?;

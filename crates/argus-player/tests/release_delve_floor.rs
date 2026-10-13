@@ -291,6 +291,7 @@ fn delve_from_its_packs_plays_as_delve_from_its_folder() {
         &BuildOptions {
             code: "test".into(),
             since: vec![],
+            ..Default::default()
         },
     )
     .unwrap();
