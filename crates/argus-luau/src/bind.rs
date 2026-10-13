@@ -814,6 +814,43 @@ impl UserData for RngRef {
     }
 }
 
+/// A generator made from numbers a script gives (`q:rng_from(seed, floor,
+/// room)`), its own and not the system's stream: the same numbers draw the
+/// same values on every machine, whatever else was drawn first (issue 20:
+/// a game seeded each room from its own run seed with a generator it wrote
+/// in Luau, outside the engine's determinism checks).
+pub struct OwnedRng(std::cell::RefCell<argus_sim::Pcg32>);
+
+impl OwnedRng {
+    /// The generator for these numbers: each folded in with SplitMix64.
+    fn from_numbers(nums: &[i64]) -> OwnedRng {
+        let mix = |mut z: u64| {
+            z = z.wrapping_add(0x9E37_79B9_7F4A_7C15);
+            z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+            z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+            z ^ (z >> 31)
+        };
+        let mut h = mix(0x4152_4755_5352_4e47); // "ARGUSRNG"
+        for &n in nums {
+            h = mix(h ^ n as u64);
+        }
+        OwnedRng(std::cell::RefCell::new(argus_sim::Pcg32::new(h, mix(h))))
+    }
+}
+
+impl UserData for OwnedRng {
+    fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
+        m.add_method("next", |_, this, ()| Ok(this.0.borrow_mut().next_f64()));
+        m.add_method("below", |_, this, n: u32| Ok(this.0.borrow_mut().below(n)));
+        m.add_method("range", |_, this, (lo, hi): (i64, i64)| {
+            Ok(this.0.borrow_mut().range(lo, hi))
+        });
+        m.add_method("chance", |_, this, p: f32| {
+            Ok(this.0.borrow_mut().chance(p))
+        });
+    }
+}
+
 // ----- the q handle ---------------------------------------------------------
 
 /// The `q` argument of a system's `run`.
@@ -1477,6 +1514,26 @@ impl UserData for QueryHandle {
             lua.create_userdata(RngRef {
                 link: this.link.clone(),
             })
+        });
+        // rng_from(a, b, ...): a generator of its own from these whole
+        // numbers, needing no `rng` key: q:rng_from(run.seed, floor, room).
+        m.add_method("rng_from", |lua, _, nums: mlua::Variadic<f64>| {
+            if nums.is_empty() {
+                return Err(mlua::Error::runtime(
+                    "rng_from takes whole numbers to seed it: q:rng_from(seed, floor, room)",
+                ));
+            }
+            let mut ints = Vec::with_capacity(nums.len());
+            for (i, n) in nums.iter().enumerate() {
+                if n.fract() != 0.0 || !n.is_finite() || n.abs() > 9.0e15 {
+                    return Err(mlua::Error::runtime(format!(
+                        "rng_from's number {} is {n}, not a whole number",
+                        i + 1
+                    )));
+                }
+                ints.push(*n as i64);
+            }
+            lua.create_userdata(OwnedRng::from_numbers(&ints))
         });
         // text("hud.day", {day = 3}): a player-facing string in the world's
         // language (section 12, phase 3 item 4), its {name} holes filled

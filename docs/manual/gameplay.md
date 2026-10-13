@@ -429,6 +429,8 @@ return system "sim.potions" {
 | `rng:range(lo, hi)` | an integer from lo to hi, both included |
 | `rng:chance(p)` | true with probability p |
 
+A system's stream goes on from tick to tick, so what it draws depends on everything it drew before. A game that generates from a seed of its own (a run seed the player sees and shares, a floor, a room) wants each thing drawn from its own numbers instead: `q:rng_from(a, b, ...)` is a generator seeded from those whole numbers alone, with the same four calls. `q:rng_from(run.seed, floor, room)` draws the same room in whatever order the rooms are visited, on every machine. It needs no `rng` key. Make one where it is used rather than keeping it in a file-level local, which a seek does not put back.
+
 The run's seed is the scene's `seed` in `scene.toml`: a number replays exactly, and `"random"` lets the runner pick one and record it. Scenarios run many seeds (see [testing](testing.md)).
 
 Luau's own `math.random` is switched off (calling it fails, and the error says to use the system's stream), and scripts have no `os`, so no clock or date. A number that changed between a run and its replay would make a seek, a replay, or a test from the same seed come out differently, and marks and tests would stop reproducing.

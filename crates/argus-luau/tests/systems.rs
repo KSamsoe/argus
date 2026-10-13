@@ -833,3 +833,39 @@ return system "sim.cut" {
     assert_eq!(text_of("host.send"), Some(Value::Str(kept)));
 }
 
+/// Issue 20: a generator from given numbers draws the same values for the
+/// same numbers, whatever was drawn first, and other values for others.
+#[test]
+fn rng_from_gives_the_same_draws_for_the_same_numbers() {
+    let (mut h, mut w, mut s) = host(7);
+    let sys = r#"
+return system "sim.rooms" {
+  stage = "sim",
+  run = function(q)
+    local function room(seed, floor, n)
+      local r = q:rng_from(seed, floor, n)
+      return r:range(1, 1000000) .. "," .. r:below(1000) .. "," .. tostring(r:chance(0.5))
+    end
+    local a = room(4242, 1, 3)
+    for i = 1, 5 do room(4242, 1, i) end
+    assert(room(4242, 1, 3) == a, "the same numbers, the same room")
+    assert(room(4242, 1, 4) ~= a and room(4243, 1, 3) ~= a, "others differ")
+    local ok = pcall(q.rng_from, q, 1.5)
+    assert(not ok, "a fraction is refused")
+    q:emit("room", { text = a })
+  end,
+}"#;
+    assert!(
+        h.load_source(&mut w, &mut s, "systems/rooms.luau", sys),
+        "{:?}",
+        h.errors()
+    );
+    s.step(&mut w, 1).unwrap();
+    assert!(fault_messages(&w).is_empty(), "{:?}", fault_messages(&w));
+    let drawn = w.events().iter().find_map(|r| match &r.event {
+        Event::Game { name, fields } if name == "room" => Some(fields[0].1.clone()),
+        _ => None,
+    });
+    // Pinned: these are the engine's numbers on every machine.
+    assert_eq!(drawn, Some(Value::Str("459794,727,true".to_string())));
+}
