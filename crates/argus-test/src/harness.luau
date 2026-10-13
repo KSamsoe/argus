@@ -34,6 +34,8 @@ function scenario(name)
       "scenario " .. name .. " needs scene = \"name\", or replay = \"path\" (a report or a replay folder)")
     assert(spec.replay == nil or (spec.seed == nil and spec.seeds == nil),
       "scenario " .. name .. ": a replay runs with its own seed; leave seed and seeds out")
+    assert(spec.max_ms == nil or (type(spec.max_ms) == "number" and spec.max_ms > 0),
+      "scenario " .. name .. ": max_ms is the milliseconds a run's own code may take, more than 0")
     assert(spec.faults == nil or spec.faults == "fail" or spec.faults == "allow",
       "scenario " .. name .. ": faults is \"fail\" (the default: a system fault fails the run) or \"allow\"")
     spec.name = name
@@ -795,6 +797,9 @@ local function run_seed(spec, seed, opts, series)
     if at then return at .. ": " .. msg end
     return msg
   end
+  -- The run's own code is watched from here (issue 28): past its max_ms,
+  -- or when the daemon is asked to stop, it is cut off where it is.
+  H.run_begin(spec.name, seed or false, spec.max_ms)
   local ok, err = xpcall(function()
     -- A scenario's mods (phase 3 item 8), in load order; none unless it
     -- names them, whatever the scenario before it loaded.
@@ -843,6 +848,7 @@ local function run_seed(spec, seed, opts, series)
     ctx.ran = true
     ctx.result.log = t.messages
   end, where)
+  H.run_end()
   if not ok then
     ctx.result.ok = false
     ctx.result.error = tostring(err)
@@ -920,10 +926,13 @@ function M.run(opts)
         table.insert(sr.seeds, result)
         report.total_runs += 1
         if result.ok then report.passed_runs += 1 else report.failed_runs += 1 sr.ok = false end
+        if H.stopped() then break end
       end
       if not sr.ok then report.ok = false end
       table.insert(report.scenarios, sr)
     end
+    -- The daemon was asked to stop: no more runs.
+    if H.stopped() then break end
   end
   return report
 end

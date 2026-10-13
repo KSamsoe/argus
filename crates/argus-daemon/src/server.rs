@@ -61,6 +61,7 @@ pub fn serve_with(
     web: Option<std::net::SocketAddr>,
 ) -> std::io::Result<()> {
     let (tx, rx) = mpsc::channel::<Msg>();
+    let stop = daemon.stop_flag();
     let mut web_bound = None;
     if let (Some(addr), Some(root)) = (web, project_root) {
         let bound = crate::web::start(addr, root.to_path_buf(), tx.clone()).map_err(|e| {
@@ -91,11 +92,13 @@ pub fn serve_with(
                 }
             });
             let tx2 = tx.clone();
+            let stop = stop.clone();
             std::thread::spawn(move || {
                 let stdin = std::io::stdin();
                 for line in stdin.lock().lines() {
                     match line {
                         Ok(l) => {
+                            watch_line(&stop, &l);
                             if tx2.send(Msg::Line(STDIO, l)).is_err() {
                                 break;
                             }
@@ -139,13 +142,14 @@ pub fn serve_with(
                 let _ = std::fs::write(&p, info);
             }
             let tx2 = tx.clone();
+            let stop = stop.clone();
             std::thread::spawn(move || {
                 let mut next: ConnId = 1;
                 for conn in listener.incoming() {
                     let Ok(conn) = conn else { continue };
                     let id = next;
                     next += 1;
-                    spawn_connection(id, conn, tx2.clone());
+                    spawn_connection(id, conn, tx2.clone(), stop.clone());
                 }
             });
         }
@@ -153,7 +157,23 @@ pub fn serve_with(
     run_loop(&mut daemon, rx, matches!(transport, Transport::Stdio))
 }
 
-fn spawn_connection(id: ConnId, conn: Stream, tx: Sender<Msg>) {
+/// A `session.shutdown` seen as it arrives sets the daemon's stop flag,
+/// so a scenario running on the daemon's thread stops for it (issue 28).
+fn watch_line(stop: &std::sync::atomic::AtomicBool, line: &str) {
+    if line.contains("session.shutdown")
+        && serde_json::from_str::<serde_json::Value>(line)
+            .is_ok_and(|v| v["method"] == "session.shutdown")
+    {
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+fn spawn_connection(
+    id: ConnId,
+    conn: Stream,
+    tx: Sender<Msg>,
+    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+) {
     let (recv, mut send) = conn.split();
     let (out_tx, out_rx) = mpsc::channel::<String>();
     tx.send(Msg::Open(id, out_tx)).ok();
@@ -173,6 +193,7 @@ fn spawn_connection(id: ConnId, conn: Stream, tx: Sender<Msg>) {
                     if l.trim().is_empty() {
                         continue;
                     }
+                    watch_line(&stop, &l);
                     if tx.send(Msg::Line(id, l)).is_err() {
                         break;
                     }

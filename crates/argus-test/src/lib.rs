@@ -15,8 +15,16 @@ pub mod api;
 
 use mlua::{DeserializeOptions, Function, Lua, LuaSerdeExt, SerializeOptions, Table, Value};
 use serde_json::{json, Value as Json};
+use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
-use std::time::Instant;
+use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+/// A run's own code may take this long before it is cut off, unless the
+/// scenario says otherwise (`max_ms`).
+pub const MAX_MS: f64 = 600_000.0;
 
 /// The harness prelude.
 pub const HARNESS: &str = include_str!("harness.luau");
@@ -56,6 +64,127 @@ pub struct Options {
     /// (`sim.set`'s `{entity | def, path, value}`): a sweep's candidate, tried
     /// without writing it (phase 4 item 3).
     pub set: Vec<serde_json::Value>,
+    /// Set from another thread to stop the run (the daemon's
+    /// `session.shutdown`): the scenario running is cut off where it is,
+    /// and no more run (issue 28).
+    pub stop: Option<Arc<AtomicBool>>,
+}
+
+/// What cuts off a scenario's own code (issue 28: a scenario that looped
+/// for ever hung the daemon, which `argus daemon stop` could not stop):
+/// while a run's `run` function is going, the harness VM's interrupt
+/// looks at the run's deadline (`max_ms`) and the stop flag every 1,024
+/// of its checks. Once a run is to be cut off, every check in a
+/// scenario file's code raises (never in the harness's or a C function's,
+/// so the error handler can say where it was), so a `pcall` in the scenario catches one and the
+/// next check outside it ends the run.
+struct Watch {
+    running: Cell<bool>,
+    deadline: Cell<Option<Instant>>,
+    max_ms: Cell<f64>,
+    checks: Cell<u64>,
+    fired: RefCell<Option<String>>,
+    run: RefCell<(String, Json)>,
+    cut: RefCell<Vec<Json>>,
+    stop: Option<Arc<AtomicBool>>,
+}
+
+impl Watch {
+    fn stopped(&self) -> bool {
+        self.stop
+            .as_ref()
+            .is_some_and(|s| s.load(Ordering::Relaxed))
+    }
+}
+
+/// Give the harness `run_begin(name, seed, max_ms)`, `run_end()`, and
+/// `stopped()`, and the VM its interrupt.
+fn install_watch(lua: &Lua, fns: &Table, stop: Option<Arc<AtomicBool>>) -> mlua::Result<Rc<Watch>> {
+    let w = Rc::new(Watch {
+        running: Cell::new(false),
+        deadline: Cell::new(None),
+        max_ms: Cell::new(MAX_MS),
+        checks: Cell::new(0),
+        fired: RefCell::new(None),
+        run: RefCell::new((String::new(), Json::Null)),
+        cut: RefCell::new(Vec::new()),
+        stop,
+    });
+    let w1 = w.clone();
+    fns.set(
+        "run_begin",
+        lua.create_function(
+            move |lua, (name, seed, max_ms): (String, Value, Option<f64>)| {
+                let ms = max_ms.filter(|m| *m > 0.0).unwrap_or(MAX_MS);
+                w1.max_ms.set(ms);
+                w1.deadline
+                    .set(Some(Instant::now() + Duration::from_secs_f64(ms / 1e3)));
+                *w1.run.borrow_mut() = (name, from_lua(lua, seed).unwrap_or(Json::Null));
+                *w1.fired.borrow_mut() = None;
+                w1.running.set(true);
+                Ok(())
+            },
+        )?,
+    )?;
+    let w2 = w.clone();
+    fns.set(
+        "run_end",
+        lua.create_function(move |_, ()| {
+            w2.running.set(false);
+            w2.deadline.set(None);
+            Ok(())
+        })?,
+    )?;
+    let w3 = w.clone();
+    fns.set(
+        "stopped",
+        lua.create_function(move |_, ()| Ok(w3.stopped()))?,
+    )?;
+    let w4 = w.clone();
+    lua.set_interrupt(move |lua| {
+        if !w4.running.get() {
+            return Ok(mlua::VmState::Continue);
+        }
+        if let Some(why) = w4.fired.borrow().clone() {
+            // Only in a scenario's file: not the harness, nor a C function
+            // (the error handler's traceback).
+            let in_scenario = lua.inspect_stack(0).is_some_and(|d| {
+                d.source()
+                    .source
+                    .is_some_and(|s| s.trim_start_matches('=').starts_with("tests/"))
+            });
+            if !in_scenario {
+                return Ok(mlua::VmState::Continue);
+            }
+            return Err(mlua::Error::runtime(format!("the run was cut off: {why}")));
+        }
+        let n = w4.checks.get() + 1;
+        w4.checks.set(n);
+        if !n.is_multiple_of(1024) {
+            return Ok(mlua::VmState::Continue);
+        }
+        let why = if w4.stopped() {
+            Some("argus daemon stop asked the daemon to stop".to_string())
+        } else if w4.deadline.get().is_some_and(|d| Instant::now() > d) {
+            Some(format!(
+                "it ran past max_ms, {} ms (a scenario key; {} by default)",
+                w4.max_ms.get(),
+                MAX_MS
+            ))
+        } else {
+            None
+        };
+        let Some(why) = why else {
+            return Ok(mlua::VmState::Continue);
+        };
+        let (name, seed) = w4.run.borrow().clone();
+        w4.cut
+            .borrow_mut()
+            .push(json!({ "scenario": name, "seed": seed, "why": why }));
+        *w4.fired.borrow_mut() = Some(why.clone());
+        Err(mlua::Error::runtime(format!("the run was cut off: {why}")))
+    });
+    Ok(w)
 }
 
 /// Parse a seeds spec into a list.
@@ -321,6 +450,8 @@ pub fn run(driver: &mut dyn Driver, opts: &Options) -> Result<Json, String> {
         .map(|f| scenario_file_named(&root, f))
         .transpose()?;
     let (lua, harness, load_errors) = prepare(&root, opts.day_seconds)?;
+    let fns: Table = lua.globals().get("__harness").map_err(|e| e.to_string())?;
+    let watch = install_watch(&lua, &fns, opts.stop.clone()).map_err(|e| e.to_string())?;
     let seeds = match &opts.seeds {
         Some(s) => Some(parse_seeds(s)?),
         None => None,
@@ -339,7 +470,6 @@ pub fn run(driver: &mut dyn Driver, opts: &Options) -> Result<Json, String> {
     )
     .map_err(|e| e.to_string())?;
     let run_fn: Function = harness.get("run").map_err(|e| e.to_string())?;
-    let fns: Table = lua.globals().get("__harness").map_err(|e| e.to_string())?;
     let started = Instant::now();
     let report: Json = lua
         .scope(|scope| {
@@ -370,6 +500,16 @@ pub fn run(driver: &mut dyn Driver, opts: &Options) -> Result<Json, String> {
         ));
     }
     if let Some(o) = report.as_object_mut() {
+        // Runs cut off (max_ms, or the daemon asked to stop), for the report
+        // and the daemon's log.
+        let cut = watch.cut.borrow().clone();
+        if !cut.is_empty() {
+            o.insert("cut_off".to_string(), Json::Array(cut));
+        }
+        if watch.stopped() {
+            o.insert("stopped".to_string(), json!(true));
+            o.insert("ok".to_string(), json!(false));
+        }
         o.insert(
             "ms".to_string(),
             json!(started.elapsed().as_secs_f64() * 1e3),

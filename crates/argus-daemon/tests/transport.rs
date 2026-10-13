@@ -131,3 +131,55 @@ fn call(
         }
     }
 }
+
+/// Issue 28: `argus daemon stop` (session.shutdown) stops a scenario whose
+/// own code never ends, which held the daemon's thread so the shutdown
+/// waited behind it for ever; the test.run answers, stopped, and the
+/// daemon then shuts down.
+#[test]
+fn a_shutdown_stops_a_scenario_that_never_ends() {
+    let t = temp("socket-stop");
+    project(t.path());
+    write(
+        t.path(),
+        "tests/forever.luau",
+        "return scenario \"forever\" { scene = \"arena\", seed = 7, run = function(t) while true do end end }",
+    );
+    let name = format!("{}-stop", server::socket_name_for(t.path()));
+    let root = t.path().to_path_buf();
+    let name2 = name.clone();
+    let thread = std::thread::spawn(move || {
+        let daemon = open(&root);
+        let _ = serve(daemon, Transport::Socket(name2), Some(&root));
+    });
+    let _daemon = Served::new(&name, thread);
+    let connect = || {
+        for _ in 0..50 {
+            if let Ok(s) = server::connect(&name) {
+                return s;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        panic!("connect to argusd");
+    };
+    let (recv, mut send) = connect().split();
+    let mut reader = BufReader::new(recv);
+    let started = std::time::Instant::now();
+    // The run, on its own thread: it answers only once the scenario stops.
+    let runner = std::thread::spawn(move || call(&mut send, &mut reader, 1, "test.run", json!({})));
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    let (_r2, mut send2) = connect().split();
+    let stop = json!({ "jsonrpc": "2.0", "id": 9, "method": "session.shutdown" });
+    writeln!(send2, "{stop}").unwrap();
+    send2.flush().unwrap();
+    let r = runner.join().unwrap();
+    assert!(started.elapsed().as_secs() < 20, "{:?}", started.elapsed());
+    assert_eq!(r["result"]["stopped"], true, "{r}");
+    let said = r["result"]["scenarios"][0]["seeds"][0]["error"]
+        .as_str()
+        .unwrap_or("");
+    assert!(
+        said.contains("daemon stop") && said.contains("tests/forever.luau"),
+        "{said}"
+    );
+}

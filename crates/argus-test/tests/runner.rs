@@ -909,3 +909,97 @@ fn a_file_or_name_that_selects_nothing_is_an_error() {
     let r = run(&mut d, &pick(Some(&abs.to_string_lossy()), None)).unwrap();
     assert_eq!(r["total_runs"], 1, "{abs:?}: {r}");
 }
+
+/// Issue 28: a scenario's own code that never ends is cut off where it is,
+/// past its max_ms or when the daemon is asked to stop, and the runs after
+/// it still run (or, stopped, none do); a pcall does not keep it going.
+#[test]
+fn a_scenario_that_never_ends_is_cut_off_by_max_ms_or_a_stop() {
+    let (t, mut d) = fixture("runner-forever");
+    common::write(
+        t.path(),
+        "tests/forever.luau",
+        r#"return {
+  scenario "a loop that never ends" {
+    scene = "arena", seed = 7, max_ms = 300,
+    run = function(t)
+      t:step(1)
+      while true do pcall(function() local n = 0 for i = 1, 100 do n += i end end) end
+    end,
+  },
+  scenario "after it" {
+    scene = "arena", seed = 7,
+    run = function(t) t:step(1) end,
+  },
+}"#,
+    );
+    let started = std::time::Instant::now();
+    let r = run(&mut d, &Options::default()).unwrap();
+    assert!(
+        started.elapsed().as_secs() < 30,
+        "cut off promptly: {:?}",
+        started.elapsed()
+    );
+    let runs: Vec<&Json> = r["scenarios"].as_array().unwrap().iter().collect();
+    let forever = &runs
+        .iter()
+        .find(|s| s["name"] == "a loop that never ends")
+        .unwrap()["seeds"][0];
+    assert_eq!(forever["ok"], false, "{forever}");
+    let said = forever["error"].as_str().unwrap();
+    assert!(
+        said.contains("cut off") && said.contains("max_ms, 300 ms"),
+        "{said}"
+    );
+    assert!(
+        said.contains("tests/forever.luau:6"),
+        "where it was: {said}"
+    );
+    assert_eq!(
+        runs.iter().find(|s| s["name"] == "after it").unwrap()["ok"],
+        true,
+        "{r}"
+    );
+    assert_eq!(r["cut_off"][0]["scenario"], "a loop that never ends", "{r}");
+
+    // The daemon asked to stop, from another thread, while a run loops with
+    // no max_ms of its own: it stops, and nothing after it runs.
+    common::write(
+        t.path(),
+        "tests/forever.luau",
+        r#"return {
+  scenario "a loop that never ends" {
+    scene = "arena", seed = 7,
+    run = function(t) while true do end end,
+  },
+  scenario "after it" {
+    scene = "arena", seed = 7,
+    run = function(t) t:step(1) end,
+  },
+}"#,
+    );
+    let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let s2 = stop.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        s2.store(true, std::sync::atomic::Ordering::Relaxed);
+    });
+    let r = run(
+        &mut d,
+        &Options {
+            stop: Some(stop),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(r["stopped"], true, "{r}");
+    assert_eq!(r["ok"], false);
+    assert_eq!(r["total_runs"], 1, "nothing ran after the stop: {r}");
+    assert!(
+        r["cut_off"][0]["why"]
+            .as_str()
+            .unwrap()
+            .contains("daemon stop"),
+        "{r}"
+    );
+}

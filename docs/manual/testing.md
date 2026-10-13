@@ -64,6 +64,7 @@ return {
 | `mods` | Mod ids to load, in order: `mods = { "lanterns", "brighter" }`. |
 | `perf_margin` | How far over a `perf` bound still passes. 1.5 by default. |
 | `replay` | A player's report (an `.argr` file) or a replay folder, to start from instead of a scene: its scene with its seed, played to its frame, where `run` takes over. No `seed` or `seeds`. See [A scenario from a mark or a report](#a-scenario-from-a-mark-or-a-report). |
+| `max_ms` | How long one run may take, in milliseconds: 600,000 (ten minutes) by default. A run past it is cut off where its code is, and fails saying so. |
 | `faults` | `"fail"` (the default): a game system that faults and is switched off fails the run, which names the system, the error, and its file and line. `"allow"`: a scenario that expects a fault, and checks it with `t.expect:events("system.fault")`. |
 
 With neither `seed` nor `seeds`, the scene's own seed is used (`seed` in its `scene.toml`; `"random"` there means the runner picks one and the report says which).
@@ -252,6 +253,8 @@ argus test list                           # what there is, without running it
 ```
 
 A name matches when it is the scenario's whole name or part of it, ignoring case. A name no scenario has, or a `--file` that is not a `.luau` file directly in `tests/`, is an error that says what there is: it selects nothing, and a pass of nothing would tell a script that a scenario passed. Two more flags: `--software` draws failure clips with the software rasteriser (as CI does), and `--no-replays` saves no replays. `set` and `sweep` try other values for tune fields; they are in [Tuning and performance](tuning-and-performance.md).
+
+A scenario's own code runs inside the daemon. One that never ends (a loop that misses its way out) is cut off at its `max_ms`, failing with its file and line, and the next run goes on. `argus daemon stop` stops it at once, with no more runs after it. Either way the daemon's log (`.argus/daemon.log`) has a line for it.
 
 The command starts the project's daemon if none is running. It exits with 0 when every run passed and 1 otherwise, so a script or CI can use it. An agent runs the same thing with the `test` tool.
 

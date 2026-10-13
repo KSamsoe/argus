@@ -200,6 +200,11 @@ pub struct Daemon {
     capture_path: Option<PathBuf>,
     /// `session.shutdown` was called: the server should stop after replying.
     pub shutdown: bool,
+    /// Set by the server's connection threads the moment a
+    /// `session.shutdown` arrives, before it reaches this thread: a scenario
+    /// running here stops at it (issue 28: `argus daemon stop` waited two
+    /// minutes behind a scenario that never ended, and gave up).
+    stop_asked: std::sync::Arc<std::sync::atomic::AtomicBool>,
     /// The events being pumped came from ticks.
     from_ticks: bool,
     /// Worlds parked beside this one, by name (`sim.fork`).
@@ -286,6 +291,12 @@ impl Default for Daemon {
 }
 
 impl Daemon {
+    /// The flag a connection thread sets when `session.shutdown` arrives,
+    /// read by a scenario running on the daemon's thread.
+    pub fn stop_flag(&self) -> std::sync::Arc<std::sync::atomic::AtomicBool> {
+        self.stop_asked.clone()
+    }
+
     /// An empty daemon: no project, an empty world.
     pub fn new() -> Daemon {
         Daemon {
@@ -313,6 +324,7 @@ impl Daemon {
             subs: BTreeMap::new(),
             capture_path: None,
             shutdown: false,
+            stop_asked: Default::default(),
             exit_on_window_close: false,
             mutations: 0,
             broadphase_epoch: 0,
@@ -7049,6 +7061,7 @@ impl Daemon {
             replays: json::bool_param(params, "replays", true)?,
             software: json::bool_param(params, "software", false)?,
             set: override_list(params.get("set"))?,
+            stop: Some(self.stop_asked.clone()),
         };
         let sweep = sweep_of(params.get("sweep"))?;
         self.live_edits = true;
@@ -7065,6 +7078,18 @@ impl Daemon {
         );
         self.live_edits = false;
         let mut report = report.map_err(|e| ArgusError::new(codes::TEST_RUNNER, e))?;
+        // So the log says when a run was cut off, as the report does.
+        for c in report["cut_off"].as_array().into_iter().flatten() {
+            eprintln!(
+                "argusd: test.run cut off {:?} seed {}: {}",
+                c["scenario"].as_str().unwrap_or("?"),
+                c["seed"],
+                c["why"].as_str().unwrap_or("?")
+            );
+        }
+        if report["stopped"] == true {
+            eprintln!("argusd: test.run stopped: the daemon was asked to stop");
+        }
         match restore {
             Err(e) => report["restore_error"] = json::error_json(&e),
             // The game plays on after the tests if it was playing before.
