@@ -139,6 +139,7 @@ pub const SECTIONS: &[ApiSection] = &[
             d("map:center(x, y)", "That cell's centre in the world."),
             d("map:set(layer, x, y, tile)", "One cell (a runtime map's cells are the run's, in its digest and saves)."),
             d("map:fill(layer, x, y, w, h, tile)", "A rect of one tile (0 clears)."),
+            d("map:copy(layer, x, y, w, h, to, to_layer, tx, ty)", "A rect of cells onto another map (`to`, from `q:tiles`; nil: this one) and layer (nil: the same name), its top-left at `tx, ty` (nil: `x, y`): a room kept on a storage map and shown on the drawn one, ten layers in ten calls. Cells off this map copy as 0. Writes Tilemap."),
             d("map:paint(layer, x, y, rows, legend)", "Rows of characters, each a cell whose tile `legend` gives: `map:paint(\"ground\", 0, 0, {\"###\", \"#.#\"}, {[\"#\"] = 1, [\".\"] = 0})`."),
         ],
     },

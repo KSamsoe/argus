@@ -384,6 +384,20 @@ fn cell_arg(v: f64, what: &str) -> LuaResult<u32> {
     Ok(v as u32)
 }
 
+/// `map:copy`'s arguments: layer, x, y, w, h, then the map, layer, and
+/// place to copy to.
+type CopyArgs = (
+    String,
+    f64,
+    f64,
+    f64,
+    f64,
+    Option<AnyUserData>,
+    Option<String>,
+    Option<f64>,
+    Option<f64>,
+);
+
 impl UserData for TilesRef {
     fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
         // size(): the map's width and height in cells.
@@ -485,6 +499,44 @@ impl UserData for TilesRef {
                     &vec![cell_arg(tile, "tile")?; n],
                 )
                 .map_err(argus_err)
+            },
+        );
+        // copy(layer, x, y, w, h, to, to_layer, tx, ty): a rect of cells to
+        // another map (`to`, a map from q:tiles; nil for this one) and layer
+        // (nil for the same name), its top-left at tx, ty (nil: x, y). Cells
+        // off this map copy as 0. Issue 19: a room's ten layers moved between
+        // a storage map and the shown one a cell at a time, 2,000 calls.
+        m.add_method(
+            "copy",
+            |lua, this, (layer, x, y, w, h, to, to_layer, tx, ty): CopyArgs| {
+                let c = ctx(&this.link)?;
+                let t = tiles_for(lua, c, true)?;
+                let (x, y) = (cell_arg(x, "x")?, cell_arg(y, "y")?);
+                let (w, h) = (cell_arg(w, "w")?, cell_arg(h, "h")?);
+                let dest = match &to {
+                    Some(ud) => ud.borrow::<TilesRef>()?.entity,
+                    None => this.entity,
+                };
+                let to_layer = to_layer.unwrap_or_else(|| layer.clone());
+                let tx = tx.map(|v| cell_arg(v, "tx")).transpose()?.unwrap_or(x);
+                let ty = ty.map(|v| cell_arg(v, "ty")).transpose()?.unwrap_or(y);
+                if w == 0 || h == 0 {
+                    return Ok(());
+                }
+                let (mw, mh, _) = t.size(c.world(), this.entity).map_err(argus_err)?;
+                let mut cells = Vec::with_capacity(w as usize * h as usize);
+                for r in y..y.saturating_add(h) {
+                    for col in x..x.saturating_add(w) {
+                        cells.push(if col < mw && r < mh {
+                            t.get(c.world(), this.entity, &layer, col, r)
+                                .map_err(argus_err)?
+                        } else {
+                            0
+                        });
+                    }
+                }
+                t.set(c.world(), dest, &to_layer, [tx, ty, w, h], &cells)
+                    .map_err(argus_err)
             },
         );
         // paint(layer, x, y, rows, legend): rows of characters (a table of

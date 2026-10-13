@@ -219,3 +219,60 @@ fn a_script_writes_only_a_runtime_maps_tiles_and_only_when_it_says_so() {
     let errs = ok(&mut d, "script.errors", json!({}));
     assert!(errs.to_string().contains("the project's map"), "{errs}");
 }
+
+/// Issue 19: a block of cells copied between maps and layers in one call,
+/// as a game keeps a room on a storage map and shows it on the drawn one.
+#[test]
+fn map_copy_moves_a_block_of_cells_between_maps() {
+    let t = temp("runtime-map-copy");
+    project(t.path());
+    write(t.path(), "maps/floor.tilemap.toml", MAP);
+    write(
+        t.path(),
+        "maps/store.tilemap.toml",
+        &MAP.replace("floor.chunks", "store.chunks"),
+    );
+    for (id, file) in [("floor", "floor"), ("store", "store")] {
+        write(
+            t.path(),
+            &format!("scenes/arena/{id}.toml"),
+            &format!(
+                "[Transform]\npos = [0.0, 2.0]\n\n[Tilemap]\nmap = \"maps/{file}.tilemap.toml\"\n"
+            ),
+        );
+    }
+    write(
+        t.path(),
+        "systems/rooms.luau",
+        r#"return system "sim.rooms" {
+  stage = "sim",
+  reads = { "Tilemap" },
+  writes = { "Tilemap" },
+  doc = "Keeps a room on the store and shows it on the floor, offset by two.",
+  run = function(q)
+    if q.tick ~= 0 then return end
+    local store, floor = q:tiles("@store"), q:tiles("@floor")
+    store:set("walls", 0, 0, 7)
+    store:set("walls", 1, 1, 9)
+    store:copy("walls", 0, 0, 3, 2, floor, nil, 2, 0)
+    -- Off the store's right edge copies as empty.
+    floor:set("walls", 0, 1, 5)
+    store:copy("walls", 7, 1, 2, 1, floor, "walls", 0, 1)
+  end,
+}
+"#,
+    );
+    let mut d = open(t.path());
+    ok(&mut d, "sim.step", json!({ "n": 1 }));
+    let cells = ok(
+        &mut d,
+        "scene.tiles.get",
+        json!({ "file": "maps/floor.tilemap.toml", "layer": "walls", "rect": { "x": 0, "y": 0, "w": 8, "h": 2 } }),
+    )["cells"]
+        .clone();
+    assert_eq!(
+        cells,
+        json!([0, 0, 7, 0, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 0]),
+        "the block at column 2, and the empty pair over the 5"
+    );
+}
