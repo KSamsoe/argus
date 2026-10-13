@@ -320,8 +320,8 @@ return system "sim.sandbox" {
     for _, n in ipairs({ "os", "io", "load", "loadstring", "dofile" }) do
       assert(_G[n] == nil, n)
     end
-    local ok, err = pcall(require, "./helper")
-    assert(not ok and string.find(tostring(err), "read no other files"), tostring(err))
+    local ok, err = pcall(require, "helper")
+    assert(not ok and string.find(tostring(err), "lib/ folder"), tostring(err))
   end,
 }"#;
     assert!(

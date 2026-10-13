@@ -610,7 +610,7 @@ fn is_art_module(rel: &str) -> bool {
 
 fn is_script(rel: &str) -> bool {
     rel.ends_with(".luau")
-        && ["components/", "defs/", "systems/"]
+        && ["components/", "defs/", "systems/", "lib/"]
             .iter()
             .any(|d| rel.starts_with(d))
 }

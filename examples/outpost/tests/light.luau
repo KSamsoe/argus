@@ -4,16 +4,10 @@
 -- night; the campfire and the stove are lit as the light goes and put out
 -- in the morning. The agent reads it in the semantic frame's lighting.
 
+local helpers = require("helpers")
+local one = helpers.one
 local function set(t, entity, path, value)
-  local tx = t:call("edit.begin", { author = "test:outpost", note = "the light" }).tx
-  t:call("edit.set", { tx = tx, entity = entity, path = path, value = value })
-  t:call("edit.commit", { tx = tx })
-end
-
-local function one(t, select, where)
-  local q = t:call("world.query", { select = select, where = where })
-  if #q.rows ~= 1 then error("one row for " .. select[1] .. ", not " .. #q.rows, 0) end
-  return q.rows[1]
+  helpers.set(t, entity, path, value, "the light")
 end
 
 local function rgb(hex)

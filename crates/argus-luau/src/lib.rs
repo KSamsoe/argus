@@ -17,6 +17,7 @@ pub mod api;
 mod bind;
 mod decl;
 mod migrate;
+mod modules;
 
 pub use bind::script_codes as codes;
 pub use decl::{ComponentDecl, DefDecl, MigrateDecl, Step, SystemDecl};
@@ -27,7 +28,7 @@ use bind::{Link, QueryHandle};
 use decl::Pending;
 use mlua::{Function, Lua, VmState};
 use std::cell::{Cell, RefCell};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
@@ -269,11 +270,28 @@ pub struct ComponentInfo {
     pub has_migrate: bool,
 }
 
+/// A module of the project's `lib/` (issue 24), as `script.modules` lists it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ModuleInfo {
+    /// Its path from the game's root: `lib/rules.luau`, `mods/<id>/lib/x.luau`.
+    pub file: String,
+    /// The name `require` takes: `rules`, `rules/checks`.
+    pub name: String,
+    /// Its leading comment: the `--` lines before its code.
+    pub doc: String,
+    /// The files that require it directly.
+    pub used_by: Vec<String>,
+    /// Whether it is evaluated now (a file has required it since the load).
+    pub loaded: bool,
+}
+
 /// What a reload did.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ReloadReport {
-    /// Files re-evaluated (new or changed).
+    /// Files re-evaluated (new or changed, or using a module that changed).
     pub reloaded: Vec<String>,
+    /// Modules (`lib/`) that changed, evaluated again where they are used.
+    pub modules: Vec<String>,
     /// Files that disappeared; their systems were removed.
     pub removed: Vec<String>,
     /// Errors now outstanding across all files.
@@ -309,6 +327,9 @@ pub struct ScriptHost {
     /// most, by name (issue 13: the profile showed milliseconds only, so
     /// nothing said how near a system ran to the budget).
     checks: Rc<RefCell<BTreeMap<String, (u64, u64)>>>,
+    /// The project's modules (`require`, issue 24): what is evaluated, and
+    /// which file required which.
+    modules: Rc<RefCell<modules::Modules>>,
 }
 
 fn fnv(bytes: &[u8]) -> u64 {
@@ -449,6 +470,8 @@ impl ScriptHost {
         lua.set_app_data(DayLength(config.day_seconds));
         decl::install_globals(&lua).map_err(to_argus)?;
         deterministic_globals(&lua).map_err(to_argus)?;
+        let mods: Rc<RefCell<modules::Modules>> = Default::default();
+        modules::install(&lua, mods.clone()).map_err(to_argus)?;
         lua.set_memory_limit(config.memory_limit)
             .map_err(to_argus)?;
         let budget = Rc::new(Cell::new(i64::MAX));
@@ -478,6 +501,7 @@ impl ScriptHost {
             order: None,
             budget,
             checks: Rc::new(RefCell::new(BTreeMap::new())),
+            modules: mods,
         })
     }
 
@@ -519,6 +543,13 @@ impl ScriptHost {
     ) -> Result<bool> {
         self.root = Some(layers.game.clone());
         self.layers = Some(layers.clone());
+        {
+            let mut m = self.modules.borrow_mut();
+            m.layers = Some(layers.clone());
+            m.loaded.clear();
+            m.uses.clear();
+            m.errors.clear();
+        }
         let mut ok = true;
         for (shown, path) in scan_layers(layers) {
             // Source, or bytecode where a release pack compiled it (§15).
@@ -526,6 +557,7 @@ impl ScriptHost {
                 .map_err(|e| ArgusError::new(codes::SYNTAX, format!("cannot read {shown}: {e}")))?;
             ok &= self.load_bytes(world, sched, &shown, &src);
         }
+        self.sync_module_errors();
         Ok(ok)
     }
 
@@ -546,6 +578,68 @@ impl ScriptHost {
         };
         let layers = self.layers.clone().unwrap_or_else(|| Layers::game(&root));
         let mut report = ReloadReport::default();
+        // Modules first: one that changed is evaluated again where it is
+        // used, so every file using it, directly or through another
+        // module, reloads (issue 24). One that no longer compiles keeps
+        // its users as they are, with its error.
+        let on_disk: BTreeMap<String, PathBuf> = modules::scan(&layers).into_iter().collect();
+        let mut stale: BTreeSet<String> = BTreeSet::new();
+        {
+            let loaded: Vec<(String, u64)> = self
+                .modules
+                .borrow()
+                .loaded
+                .iter()
+                .map(|(k, v)| (k.clone(), v.1))
+                .collect();
+            for (rel, hash) in loaded {
+                let now = on_disk.get(&rel).and_then(|p| argus_os::fs::read(p).ok());
+                match now {
+                    Some(b) if fnv(&b) == hash => {}
+                    Some(b) => match self
+                        .lua
+                        .load(&b[..])
+                        .set_name(format!("={rel}"))
+                        .into_function()
+                    {
+                        Ok(_) => {
+                            stale.insert(rel);
+                        }
+                        Err(e) => {
+                            self.modules
+                                .borrow_mut()
+                                .errors
+                                .insert(rel.clone(), modules::said(&e));
+                        }
+                    },
+                    None => {
+                        stale.insert(rel);
+                    }
+                }
+            }
+        }
+        report.modules = stale.iter().cloned().collect();
+        // What uses a stale module is stale too, modules and files.
+        let users: BTreeSet<String> = if stale.is_empty() {
+            BTreeSet::new()
+        } else {
+            let m = self.modules.borrow();
+            let mut users = BTreeSet::new();
+            for f in m.uses.keys() {
+                if m.closure(f).iter().any(|x| stale.contains(x)) {
+                    users.insert(f.clone());
+                }
+            }
+            users
+        };
+        {
+            let mut m = self.modules.borrow_mut();
+            for rel in stale.iter().chain(users.iter()) {
+                if let Some((key, _)) = m.loaded.remove(rel) {
+                    let _ = self.lua.remove_registry_value(key);
+                }
+            }
+        }
         let found = scan_layers(&layers);
         let present: Vec<String> = found.iter().map(|(s, _)| s.clone()).collect();
         for (rel, path) in &found {
@@ -556,7 +650,7 @@ impl ScriptHost {
                 .get(rel)
                 .map(|r| r.hash != fnv(&src))
                 .unwrap_or(true);
-            if changed {
+            if changed || users.contains(rel) {
                 self.load_bytes(world, sched, rel, &src);
                 report.reloaded.push(rel.clone());
             }
@@ -588,8 +682,69 @@ impl ScriptHost {
             self.forget_file(sched, &rel);
             report.removed.push(rel);
         }
+        self.sync_module_errors();
         report.errors = self.errors().len();
         Ok(report)
+    }
+
+    /// Modules that did not evaluate, in `script.errors` under their files.
+    fn sync_module_errors(&mut self) {
+        let errs: Vec<(String, String)> = self
+            .modules
+            .borrow()
+            .errors
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        let is_module =
+            |f: &str| f.starts_with("lib/") || (f.starts_with("mods/") && f.contains("/lib/"));
+        let gone: Vec<String> = self
+            .errors
+            .keys()
+            .filter(|f| is_module(f) && !errs.iter().any(|(e, _)| e == *f))
+            .cloned()
+            .collect();
+        for f in gone {
+            self.errors.remove(&f);
+        }
+        for (rel, msg) in errs {
+            self.errors.remove(&rel);
+            self.record(&rel, ErrorPhase::Load, mlua::Error::runtime(msg));
+        }
+    }
+
+    /// The project's modules (`lib/`, and each mod's), with their leading
+    /// comments and the files that require them directly.
+    pub fn modules(&self) -> Vec<ModuleInfo> {
+        let m = self.modules.borrow();
+        let Some(layers) = &m.layers else {
+            return Vec::new();
+        };
+        modules::scan(layers)
+            .into_iter()
+            .map(|(file, path)| {
+                let used_by = m
+                    .uses
+                    .iter()
+                    .filter(|(_, used)| used.contains(&file))
+                    .map(|(f, _)| f.clone())
+                    .collect();
+                let text = argus_os::fs::read(&path)
+                    .map(|b| String::from_utf8_lossy(&b).into_owned())
+                    .unwrap_or_default();
+                let name = file
+                    .rsplit_once("lib/")
+                    .map(|(_, n)| n.trim_end_matches(".luau").to_string())
+                    .unwrap_or_default();
+                ModuleInfo {
+                    doc: modules::leading_comment(&text),
+                    loaded: m.loaded.contains_key(&file),
+                    file,
+                    name,
+                    used_by,
+                }
+            })
+            .collect()
     }
 
     fn forget_file(&mut self, sched: &mut Scheduler, rel: &str) {
@@ -625,6 +780,7 @@ impl ScriptHost {
         src: &[u8],
     ) -> bool {
         self.errors.remove(rel);
+        self.modules.borrow_mut().uses.remove(rel);
         let previous_systems = self
             .files
             .get(rel)
@@ -1081,8 +1237,8 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
 /// unseeded `math.random`: a script could read them, and a seek or a
 /// replay then gave another result. Found writing the manual; no example
 /// used them. `math.random` and `math.randomseed` now say what to use.
-/// So does `require`, which looks for a module file on disk, where a
-/// release build has none (found probing the sandbox, issue 9).
+/// (`require` is the host's own, `modules::install`: a project's `lib/`,
+/// read as a release build reads its packs, issue 24.)
 fn deterministic_globals(lua: &Lua) -> mlua::Result<()> {
     lua.load(
         r#"
@@ -1092,9 +1248,6 @@ fn deterministic_globals(lua: &Lua) -> mlua::Result<()> {
         end
         math.random = no_random
         math.randomseed = no_random
-        require = function(name)
-          error("require(" .. tostring(name) .. "): a game's scripts read no other files, since a release build has no folder to read them from; keep a helper in the file that uses it, and shared values in a def table (q:def)", 2)
-        end
         "#,
     )
     .set_name("=argus")

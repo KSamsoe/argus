@@ -134,6 +134,7 @@ pub fn for_agent(c: &mut dyn Caller) -> Result<String, Json> {
     let systems = c.call("script.systems", json!({ "limit": 1000 }))?;
     let prefabs = c.call("world.prefabs", json!({ "limit": 1000 }))?;
     let defs = c.call("world.defs", json!({}))?;
+    let modules = c.call("script.modules", json!({ "limit": 1000 }))?;
     let project = status["project"].as_str().unwrap_or("this project");
 
     let mut o = String::new();
@@ -167,7 +168,8 @@ Regenerate it after changing components, systems, prefabs, or scenes; do not edi
         let _ = writeln!(o, "| `{}` | {}. |", t.name, cell(&json!(first)));
     }
     o.push_str(
-        "\nChanges to files: scripts are Luau in `components/`, `defs/`, and `systems/`; entities are TOML under \
+        "\nChanges to files: scripts are Luau in `components/`, `defs/`, and `systems/`, with the code they share in \
+modules in `lib/` (`require(\"name\")`); entities are TOML under \
 `scenes/`; assets and their sidecars are in `assets/`. `reload` takes scripts and assets in while the game runs; an entity file changed on disk is taken in when the scene loads again (`scene load`). \
 Changes made with `edit` (entities, components, files with `write_file`) are in the change feed with who made them and why, and `edit undo=true` takes them back; a file changed directly works as well, but the feed does not have it. Prefer `edit` for a change a person will want to see or undo.\n\n\
 A hot path can be Rust instead: a crate in `plugins/<name>/` that `argus.toml`'s `plugins` lists, declaring its \
@@ -263,6 +265,26 @@ writes), and every file a project is made of are at the end of this file.\n\n",
         );
     }
     o.push('\n');
+
+    let module_rows = rows(&modules);
+    if !module_rows.is_empty() {
+        o.push_str("## Modules\n\n");
+        o.push_str(
+            "Code the scripts share, in `lib/`: a file uses one with `require(\"<module>\")`, and gets its value, read-only.\n\n",
+        );
+        o.push_str("| module | file | used by | what it is |\n|---|---|---|---|\n");
+        for m in module_rows {
+            let _ = writeln!(
+                o,
+                "| `{}` | {} | {} | {} |",
+                cell(&m["module"]),
+                cell(&m["file"]),
+                cell(&m["used_by"]),
+                cell(&m["doc"])
+            );
+        }
+        o.push('\n');
+    }
 
     let prefab_rows = rows(&prefabs);
     o.push_str("## Prefabs\n\n");

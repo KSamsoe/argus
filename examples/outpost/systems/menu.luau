@@ -16,23 +16,11 @@
 local CONTROLS = { "speed_1", "speed_3", "speed_10", "pause", "inspect", "menu" }
 local SIZES = { 1.0, 1.25, 1.5 }
 
-local function spawn(q, parent, names)
-  local all = { "UiNode", "Parent" }
-  for _, n in ipairs(names or {}) do table.insert(all, n) end
-  local e = q:spawn(all)
-  e:get("Parent").entity = parent
-  return e
-end
+local ui = require("ui")
+local spawn = ui.spawn
 
 local function button(q, parent, event, key, align)
-  local b = spawn(q, parent, { "UiPanel", "UiButton", "UiText" })
-  b:get("UiNode").pad = vector.create(18, 7, 0)
-  b:get("UiPanel").color = "button"
-  b:get("UiButton").event = event
-  local t = b:get("UiText")
-  if key ~= nil then t.key = key end
-  t.align = align or "center"
-  return b
+  return ui.button(q, parent, event, key, vector.create(18, 7, 0), align)
 end
 
 local function page(q, root, name)

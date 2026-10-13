@@ -169,6 +169,7 @@ pub const READS: &[&str] = &[
     "sim.status",
     "script.systems",
     "script.errors",
+    "script.modules",
     "obs.events",
     "obs.diff",
     "obs.trace",

@@ -1,18 +1,9 @@
 -- The line at the top of the screen (the day, the time, the food, the
 -- wood, the colonists, and the speed) and the notice under it (the colony's news: a
 -- day begun, a colonist lost), in the string tables' words (phase 3 item 4).
---
--- The hour is the colony's day on a 24-hour clock as the light shows it:
--- the day turns at dawn, 05:00; its daylight (to Colony.dusk) runs to
--- 19:00, when night falls; noon and midnight are halfway through each, as
--- systems/light.luau has them. (It was the share of the day times 24, so
--- dawn read 00:00 and night fell at 15:36.)
+-- The hour is the colony's clock (lib/clock.luau).
 
--- The colony's hour at t, a share of its day, with night falling at dusk.
-local function hour(t, dusk)
-  local h = if t < dusk then 5 + 14 * t / dusk else 19 + 10 * (t - dusk) / (1 - dusk)
-  return math.floor(h) % 24
-end
+local clock = require("clock")
 
 return system "late.colony.hud" {
   stage = "late",
@@ -46,7 +37,7 @@ return system "late.colony.hud" {
       local t = (rules.clock / q.day_length) % 1
       line = q:text("hud.line", {
         day = rules.day,
-        hour = string.format("%02d", hour(t, rules.dusk)),
+        hour = string.format("%02d", clock.hour(t, rules.dusk)),
         night = if t >= rules.dusk then q:text("hud.night") else "",
         food = string.format("%.1f", food),
         meals = math.floor(meal),

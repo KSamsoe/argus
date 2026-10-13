@@ -1003,3 +1003,98 @@ fn a_scenario_that_never_ends_is_cut_off_by_max_ms_or_a_stop() {
         "{r}"
     );
 }
+
+/// Issue 24: a scenario's `require` looks in `tests/lib/` first, then in
+/// the game's `lib/`; a module is evaluated once and frozen, and the files
+/// in `tests/lib/` are not scenarios.
+#[test]
+fn a_scenario_requires_its_helpers_and_the_games_modules() {
+    let (t, mut d) = fixture("runner-require");
+    common::write(
+        t.path(),
+        "lib/rules.luau",
+        "return { answer = 42, names = { \"bat\" } }",
+    );
+    common::write(t.path(), "lib/which.luau", "return { from = \"lib\" }");
+    common::write(
+        t.path(),
+        "lib/spin.luau",
+        "return { spin = function() while true do pcall(function() end) end end }",
+    );
+    common::write(
+        t.path(),
+        "tests/lib/which.luau",
+        "return { from = \"tests/lib\" }",
+    );
+    common::write(
+        t.path(),
+        "tests/lib/helpers.luau",
+        r#"local rules = require("rules")
+__made = (__made or 0) + 1
+return {
+  answer = rules.answer,
+  steps = function(t, n) t:step(n) return t:status().tick end,
+}"#,
+    );
+    common::write(
+        t.path(),
+        "tests/lib/a.luau",
+        "return { b = require(\"b\") }",
+    );
+    common::write(
+        t.path(),
+        "tests/lib/b.luau",
+        "return { a = require(\"a\") }",
+    );
+    common::write(
+        t.path(),
+        "tests/uses.luau",
+        r#"local helpers = require("helpers")
+local rules = require("rules")
+return {
+  scenario "helpers from tests/lib, rules from the game's lib" {
+    scene = "arena", seed = 7,
+    run = function(t)
+      assert(helpers.answer == 42 and rules.names[1] == "bat")
+      assert(require("which").from == "tests/lib", "tests/lib/ first")
+      assert(require("helpers") == helpers and __made == 1, "evaluated once")
+      assert(helpers.steps(t, 3) == 3)
+      assert(not pcall(function() rules.names[1] = "rat" end), "frozen")
+      local ok, why = pcall(require, "nope")
+      assert(not ok and string.find(tostring(why), "there is no tests/lib/nope.luau or lib/nope.luau", 1, true), tostring(why))
+      local ok2, why2 = pcall(require, "a")
+      assert(not ok2 and string.find(tostring(why2), "in a circle: tests/lib/a.luau, which requires tests/lib/b.luau, which requires tests/lib/a.luau", 1, true), tostring(why2))
+    end,
+  },
+  scenario "cut off in a game module" {
+    scene = "arena", seed = 7, max_ms = 300,
+    run = function(t) require("spin").spin() end,
+  },
+}"#,
+    );
+    let listed = list(t.path(), None).unwrap();
+    assert_eq!(listed["load_errors"], json!([]), "{listed}");
+    let files: Vec<&str> = listed["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["file"].as_str().unwrap())
+        .collect();
+    assert!(files.iter().all(|f| *f == "tests/uses.luau"), "{listed}");
+    let r = run(&mut d, &Options::default()).unwrap();
+    let runs = r["scenarios"].as_array().unwrap();
+    let first = runs
+        .iter()
+        .find(|s| s["name"] == "helpers from tests/lib, rules from the game's lib")
+        .unwrap();
+    assert_eq!(first["ok"], true, "{first}");
+    let spun = &runs
+        .iter()
+        .find(|s| s["name"] == "cut off in a game module")
+        .unwrap()["seeds"][0];
+    let said = spun["error"].as_str().unwrap();
+    assert!(
+        said.contains("cut off") && said.contains("lib/spin.luau:1"),
+        "{said}"
+    );
+}

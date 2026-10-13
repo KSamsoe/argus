@@ -7,10 +7,7 @@
 -- fullscreen on; its Controls show each action's key and rebind it. It
 -- works the same in the stress scene.
 
-local function press(t, action, value)
-  t.input:tap(action, value)
-  t:step(2)
-end
+local press = require("helpers").press
 
 -- A key pressed and let go, down the window's path: Escape is both the
 -- menu action and cancel, as a player's is.

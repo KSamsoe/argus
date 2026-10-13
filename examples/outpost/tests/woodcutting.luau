@@ -9,11 +9,7 @@
 
 local STUMP, TREE = "#7A5A38", "#1E3B1E"
 
-local function one(t, select, where)
-  local q = t:call("world.query", { select = select, where = where })
-  if #q.rows ~= 1 then error("one row for " .. select[1] .. ", not " .. #q.rows, 0) end
-  return q.rows[1]
-end
+local one = require("helpers").one
 
 local function who(t, name)
   return one(t, { "id" }, { ["Colonist.name"] = name })[1]

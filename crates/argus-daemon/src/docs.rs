@@ -1528,9 +1528,9 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "script.reload",
-        doc: "Recompile changed Luau files, rebind their systems in place, keep world state, tick, and RNG streams, and re-read def tables. Every system a fault switched off runs again, its file changed or not (switched_on names them); one a scene's settings switched off stays off. Then build each Rust plugin argus.toml lists (plugins/<name>/, with cargo) and, when its library changed, swap it in: snapshot, unload the old library, load the new one, restore, continue. A plugin that does not build keeps its old library running; its errors are in script.errors with file and line. reload_ms is from the build's end to the new code running.",
+        doc: "Recompile changed Luau files, rebind their systems in place, keep world state, tick, and RNG streams, and re-read def tables. A module (lib/) that changed is evaluated again, and every file that requires it, directly or through another module, reloads with it, changed or not: modules names the changed modules, reloaded every file evaluated again; a module that no longer compiles keeps its users as they were, with its error in script.errors. Every system a fault switched off runs again, its file changed or not (switched_on names them); one a scene's settings switched off stays off. Then build each Rust plugin argus.toml lists (plugins/<name>/, with cargo) and, when its library changed, swap it in: snapshot, unload the old library, load the new one, restore, continue. A plugin that does not build keeps its old library running; its errors are in script.errors with file and line. reload_ms is from the build's end to the new code running.",
         params: &[],
-        returns: "{reloaded: [file], removed: [file], errors: integer, switched_on: [system], plugins: [{plugin, swapped, build_ms, reload_ms}]}",
+        returns: "{reloaded: [file], modules: [file], removed: [file], errors: integer, switched_on: [system], plugins: [{plugin, swapped, build_ms, reload_ms}]}",
     },
     MethodDoc {
         name: "script.systems",
@@ -1546,6 +1546,15 @@ pub const METHODS: &[MethodDoc] = &[
         doc: "Outstanding script errors as file:line data, never a crash. A system a fault disabled is a row with phase \"run\", the system, and the frame, while it stays disabled. A Rust plugin that does not compile is a row with phase \"compile\" (the compiler's message at its file and line), one that does not load or check against the game a row with phase \"load\" or \"install\", each with the plugin; a system ordered after one that is missing because its plugin did not build is a row with phase \"order\". Materials are code too: a shader that does not compile, or a material sidecar that does not read, is a row with phase \"material\", the file and line of the mistake, and the asset.",
         params: &[],
         returns: "{total, rows: [{file, line, message, phase, ref, system?, frame?, asset?, plugin?}]}",
+    },
+    MethodDoc {
+        name: "script.modules",
+        doc: "The project's modules: each Luau file in lib/ (and a mod's mods/<id>/lib/), by the name require takes (lib/rules/checks.luau is \"rules/checks\"), with its leading comment (the -- lines before its code), the files that require it directly, and whether one has since the load.",
+        params: &[
+            opt("limit", INTEGER, "rows per page, 50 by default"),
+            opt("cursor", STRING, "the next page, from a previous answer's cursor"),
+        ],
+        returns: "{total, rows: [{module, file, doc, used_by, loaded}], next}",
     },
     MethodDoc {
         name: "obs.events",

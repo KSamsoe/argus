@@ -13,9 +13,12 @@
 
 pub mod api;
 
-use mlua::{DeserializeOptions, Function, Lua, LuaSerdeExt, SerializeOptions, Table, Value};
+use mlua::{
+    DeserializeOptions, Function, Lua, LuaSerdeExt, RegistryKey, SerializeOptions, Table, Value,
+};
 use serde_json::{json, Value as Json};
 use std::cell::{Cell, RefCell};
+use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -146,12 +149,14 @@ fn install_watch(lua: &Lua, fns: &Table, stop: Option<Arc<AtomicBool>>) -> mlua:
             return Ok(mlua::VmState::Continue);
         }
         if let Some(why) = w4.fired.borrow().clone() {
-            // Only in a scenario's file: not the harness, nor a C function
-            // (the error handler's traceback).
+            // Only in a scenario's own code, its file or a module it
+            // required: not the harness, nor a C function (the error
+            // handler's traceback).
             let in_scenario = lua.inspect_stack(0).is_some_and(|d| {
-                d.source()
-                    .source
-                    .is_some_and(|s| s.trim_start_matches('=').starts_with("tests/"))
+                d.source().source.is_some_and(|s| {
+                    let s = s.trim_start_matches('=');
+                    s != "harness.luau" && !s.starts_with('[')
+                })
             });
             if !in_scenario {
                 return Ok(mlua::VmState::Continue);
@@ -404,6 +409,7 @@ fn prepare(root: &Path, day_seconds: Option<f64>) -> Result<(Lua, Table, Vec<Jso
         .set_name("=harness.luau")
         .eval()
         .map_err(|e| format!("harness.luau: {e}"))?;
+    install_require(&lua, root).map_err(|e| e.to_string())?;
 
     let mut load_errors = Vec::new();
     for (rel, path) in scenario_files(root) {
@@ -422,6 +428,126 @@ fn prepare(root: &Path, day_seconds: Option<f64>) -> Result<(Lua, Table, Vec<Jso
         }
     }
     Ok((lua, harness, load_errors))
+}
+
+/// `require(name)` for scenarios (issue 24): `tests/lib/<name>.luau`, then
+/// the game's own `lib/<name>.luau`, so a test uses the game's constants
+/// and helpers instead of copying them. A module is evaluated once, its
+/// value frozen; one that requires itself through others is refused.
+fn install_require(lua: &Lua, root: &Path) -> mlua::Result<()> {
+    #[derive(Default)]
+    struct Modules {
+        loaded: BTreeMap<String, RegistryKey>,
+        loading: Vec<String>,
+    }
+    let m: Rc<RefCell<Modules>> = Default::default();
+    let root = root.to_path_buf();
+    let require = lua.create_function(move |lua, name: String| {
+        let (from, line) = lua
+            .inspect_stack(1)
+            .map(|d| {
+                let f = d.source().source.unwrap_or_default();
+                (f.trim_start_matches('=').to_string(), d.curr_line())
+            })
+            .unwrap_or_default();
+        let at = if line > 0 { format!("{from}:{line}: ") } else { String::new() };
+        let fail = |msg: String| mlua::Error::runtime(format!("{at}require({name:?}): {msg}"));
+        let named = !name.is_empty()
+            && name.split('/').all(|p| {
+                !p.is_empty()
+                    && p != "."
+                    && p != ".."
+                    && p.chars().all(|c| c.is_ascii_alphanumeric() || "_-.".contains(c))
+            });
+        if !named {
+            return Err(fail(
+                "a module's name is its path in tests/lib/ or lib/ without .luau, such as \"helpers\" or \"rules/checks\"".into(),
+            ));
+        }
+        let tried = [format!("tests/lib/{name}.luau"), format!("lib/{name}.luau")];
+        let Some(rel) = tried.iter().find(|r| root.join(r).is_file()).cloned() else {
+            let mut there: Vec<String> = ["tests/lib", "lib"]
+                .iter()
+                .flat_map(|d| module_files(&root, d))
+                .collect();
+            there.sort();
+            return Err(fail(format!(
+                "there is no {}; the modules are {}",
+                tried.join(" or "),
+                if there.is_empty() { "none".to_string() } else { there.join(", ") }
+            )));
+        };
+        if let Some(key) = m.borrow().loaded.get(&rel) {
+            return lua.registry_value::<Value>(key);
+        }
+        if let Some(i) = m.borrow().loading.iter().position(|r| *r == rel) {
+            let mut steps = m.borrow().loading[i..].to_vec();
+            steps.push(rel.clone());
+            return Err(fail(format!(
+                "modules cannot require each other in a circle: {}",
+                steps.join(", which requires ")
+            )));
+        }
+        let src = std::fs::read(root.join(&rel)).map_err(|e| fail(format!("{rel}: {e}")))?;
+        m.borrow_mut().loading.push(rel.clone());
+        let made = lua.load(&src[..]).set_name(format!("={rel}")).eval::<Value>();
+        m.borrow_mut().loading.pop();
+        match made {
+            Ok(v) => {
+                freeze(&v, &mut HashSet::new());
+                let key = lua.create_registry_value(v.clone())?;
+                m.borrow_mut().loaded.insert(rel, key);
+                Ok(v)
+            }
+            Err(e) => {
+                let first = e.to_string();
+                let first = first.lines().next().unwrap_or("");
+                let first = first
+                    .trim_start_matches("runtime error: ")
+                    .trim_start_matches("syntax error: ")
+                    .trim_start_matches("callback error: ");
+                Err(fail(format!("{rel} did not load: {first}")))
+            }
+        }
+    })?;
+    lua.globals().set("require", require)
+}
+
+/// The `.luau` files under `root/dir`, by the names `require` takes.
+fn module_files(root: &Path, dir: &str) -> Vec<String> {
+    fn walk(at: &Path, base: &Path, out: &mut Vec<String>) {
+        let Ok(rd) = std::fs::read_dir(at) else {
+            return;
+        };
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                walk(&p, base, out);
+            } else if let Ok(rel) = p.strip_prefix(base) {
+                let rel = rel.to_string_lossy().replace('\\', "/");
+                if let Some(n) = rel.strip_suffix(".luau") {
+                    out.push(n.to_string());
+                }
+            }
+        }
+    }
+    let base = root.join(dir);
+    let mut out = Vec::new();
+    walk(&base, &base, &mut out);
+    out
+}
+
+/// Freeze a module's value, and every table in it.
+fn freeze(v: &Value, seen: &mut HashSet<*const std::ffi::c_void>) {
+    if let Value::Table(t) = v {
+        if !seen.insert(t.to_pointer()) {
+            return;
+        }
+        for (_, x) in t.pairs::<Value, Value>().flatten() {
+            freeze(&x, seen);
+        }
+        t.set_readonly(true);
+    }
 }
 
 /// `test.list`: the scenarios under `tests/` with name, file, scene, and

@@ -9,10 +9,11 @@ This chapter is a guide to writing a game's Luau: declaring components, declarin
 | `components/` | components: the game's kinds of data |
 | `systems/` | systems: the game's rules |
 | `defs/` | data table schemas (their rows are TOML in `defs/<table>.toml`; see [Content](content.md)) |
+| `lib/` | modules: code the other files share, which they `require` (see [Sharing code](#sharing-code)) |
 
 Each file returns one declaration, or a table of them. Calling `component` is what declares a component, so a file can declare several and return the last, as the platformer template's `components/level.luau` does with `Hero`, `Hazard`, `Coin`, and `Goal`. Names are global across the project: a component's name is its type (`Health`), a system's name is its id (`sim.move`).
 
-Systems in one file share its local functions and constants: `return { system "input.menu" {...}, system "sim.menu" {...} }` lets two systems that belong together use the same helpers. Systems in different files cannot share code, so a helper several files need is written out in each.
+Systems in one file share its local functions and constants: `return { system "input.menu" {...}, system "sim.menu" {...} }` lets two systems that belong together use the same helpers. Code that files in different places need goes in a module in `lib/`, which each of them `require`s: see [Sharing code](#sharing-code).
 
 Luau is Lua with a few additions: `+=` and `-=`, optional types, and a built-in `vector` type that Argus uses for every `vec2` field.
 
@@ -379,6 +380,39 @@ return system "sim.turns" {
 
 A press that should not cost a turn (opening a menu) freezes the rest of that turn: see `examples/delve/systems/menu.luau`.
 
+## Sharing code
+
+A module is a Luau file in `lib/` that returns a value, usually a table of constants and functions. Any script file asks for it with `require` and its path in `lib/`, without `.luau`: `lib/clock.luau` is `require("clock")`, and `lib/rules/checks.luau` is `require("rules/checks")`. Outpost's HUD and inspector both show the colony's hour, so the hour is worked out in one module:
+
+```lua
+-- The colony's clock: the hour of its day on a 24-hour clock, as the
+-- light shows it. The HUD and the inspector both show it.
+local M = {}
+
+-- The colony's hour at t, a share of its day, with night falling at dusk.
+function M.hour(t, dusk)
+  local h = if t < dusk then 5 + 14 * t / dusk else 19 + 10 * (t - dusk) / (1 - dusk)
+  return math.floor(h) % 24
+end
+
+return M
+```
+
+That is `examples/outpost/lib/clock.luau`, shortened. The HUD (`systems/hud.luau`) and the inspector each start with `local clock = require("clock")` and call `clock.hour(t, rules.dusk)`. Outpost's `lib/ui.luau` is the other kind of module, helpers that build things: the menu and the inspector make their panels and buttons with it, each passing its own `q`.
+
+How modules behave:
+
+- **One value, frozen.** A module is evaluated once per load, and every file that requires it gets the same value. That value, and every table in it, is read-only: `clock.hour = nil` fails with "attempt to modify a readonly table", so one system cannot change what another sees.
+- **The same sandbox.** A module has what a system file has and nothing more, and the time its functions take counts against the calling system's instruction budget. It reads the world only through what it is handed: `ui.button(q, parent, "menu.resume")` takes the system's `q`.
+- **No state.** A module's file-level locals are like a system file's: not part of the world, so a seek, a replay, a save, or a test does not put them back. Keep only constants and functions there, and state in components.
+- **Its first comment is its description.** The `--` lines before its code are what ARGUS.md and `argus script modules` say about it, with the files that use it.
+- **Errors say where.** A missing module names the files it looked for and the modules there are. Modules that require each other in a circle are refused, naming the circle. An error inside a module is reported at the module's file and line, once, and each file that required it fails to load saying "lib/x.luau did not load".
+- **Reload follows it.** `argus reload` with a module changed reloads every file that uses it, directly or through another module, even files that did not change; the answer's `modules` names the changed modules and `reloaded` every file evaluated again. A module that no longer compiles keeps its users on their last version, with its error in `argus script errors`.
+- **Mods add, not replace.** A mod's files look in its own `mods/<id>/lib/` first, then in the game's `lib/`; the game's files look only in the game's. A mod can add modules of its own, but cannot change one the game's systems use.
+- **Release builds carry it.** `argus build` compiles `lib/` into the packs with the other scripts.
+
+Scenarios can share code too: their `require` looks in `tests/lib/` first, then in the game's `lib/`, so a test can use the game's constants instead of copying them ([Testing](testing.md#the-file)).
+
 ## The sandbox
 
 Scripts run inside the daemon, sandboxed, so a mistake cannot take the game down and every run can be replayed. What that means for you:
@@ -387,7 +421,7 @@ Scripts run inside the daemon, sandboxed, so a mistake cannot take the game down
 - **Each run has an instruction budget**: 5,000,000 of the VM's checks, which it makes at each function call and each turn of a loop. A loop that never ends is stopped ("instruction budget exceeded") and its system switched off. Work inside the string library counts too: a pattern that backtracks (the usual trim, `string.match(s, "^%s*(.-)%s*$")`, on a long run of spaces) can spend the budget on one call. `pcall` cannot catch running out: the call it wraps stops, and the next check outside it stops the run. `argus profile systems=true` gives each script system's checks, its last run's and its most (`checks`, `checks_max`, against `checks_budget`), beside its milliseconds. The Luau heap may hold 256 MB.
 - **Strings are bytes.** `#s` and `string.sub` count bytes, so a cut at a byte count can fall inside a character such as "é". Text written from a script (a `str` field, an event's field, `q:send`) keeps such a cut character as U+FFFD. To cut whole characters, count with the `utf8` library: `string.sub(s, 1, (utf8.offset(s, 1001) or #s + 1) - 1)` keeps the first 1,000.
 - **What a script has**: Luau's base functions (`assert`, `error`, `pcall`, `xpcall`, `select`, `type`, `typeof`, `tostring`, `tonumber`, `ipairs`, `pairs`, `next`, `unpack`, `setmetatable`, `getmetatable`, and the `raw` ones), and the libraries `math`, `string`, `table`, `vector`, `coroutine`, `bit32`, `utf8`, and `buffer`. `print` writes to the daemon's log, `.argus/daemon.log`; to see a value, emit it (`q:emit`) and read it with `argus events`. `tonumber` is Luau's: it takes `"nan"`, `"inf"`, `"1e999"`, and `"0x10"` as numbers, so a game that reads numbers from outside text (a model's answer) checks the range itself.
-- **What it does not have**: `io`, `os`, `load`, `loadstring`, and `dofile`. `require` is an error that says what to use instead: a game's scripts read no other files, because a release build has no folder to read them from. Keep a helper in the file that uses it, and values several systems share in a def table (`q:def`).
+- **What it does not have**: `io`, `os`, `load`, `loadstring`, and `dofile`. `require` reads only the project's modules, in `lib/` ([Sharing code](#sharing-code)): a game's scripts read no other files, because a release build has only its packs. Values a designer tunes, which several systems share, go in a def table (`q:def`).
 - **Keep all state in components.** A `local` at the top of a file is shared by every run of the system, but it is not part of the world: a seek, a replay, a save, or a test does not put it back. In a test of this, a counter kept in a file-level local read 30 after seeking back to frame 10 of a 20-tick run. Use file-level locals only for constants and helper functions.
 - **Read time from `q`, and random numbers from `q:rng()`.** There is no clock and no date to read, and `math.random` fails with an error that says what to use: give the system a stream (`rng = "loot"`) and call `q:rng():next()`, `q:rng():range(lo, hi)`, or `q:rng():chance(p)`. A number that differed between a run and its replay would break every seek, replay, mark, and test. (The first builds let `math.random` and `os` through; the manual's writers found it.)
 
@@ -428,7 +462,7 @@ Scripts are read when the scene loads, and again when you ask:
 argus reload
 ```
 
-It recompiles the changed Luau files and swaps their systems in while the world goes on from the current frame: entities, the tick, and the random streams are kept. A deleted file's systems go. Assets are imported again at the same time, and Rust plugins rebuilt. An AI agent calls the same thing as the `reload` tool. A script saved on disk waits until something asks; the running game does not watch for it. (Assets are different: the importer looks for changed files twice a second by itself.)
+It recompiles the changed Luau files and swaps their systems in while the world goes on from the current frame: entities, the tick, and the random streams are kept. A changed module in `lib/` reloads every file that requires it along with it. A deleted file's systems go. Assets are imported again at the same time, and Rust plugins rebuilt. An AI agent calls the same thing as the `reload` tool. A script saved on disk waits until something asks; the running game does not watch for it. (Assets are different: the importer looks for changed files twice a second by itself.)
 
 Two kinds of change need the scene loaded again instead, with `argus scene load`:
 

@@ -326,8 +326,9 @@ components, systems, prefabs, or scenes.\n\
 - The manual says how to do things, the reference lists everything: `argus docs list` lists both (`argus docs agents` \
 first, then the chapter for the task: scripting, scenes, gameplay, presentation, testing, ...), or the `docs` tool \
 over MCP (`docs topic=agents`). `argus docs find=<word>` searches them.\n\
-- `components/` declares the game's components and `systems/` its systems, in Luau; `scenes/<scene>/` holds \
-one TOML file per entity; `input.toml` the actions and their bindings.\n\
+- `components/` declares the game's components and `systems/` its systems, in Luau, with the code they share \
+in modules in `lib/` (`require(\"rules\")`); `scenes/<scene>/` holds one TOML file per entity; `input.toml` the \
+actions and their bindings.\n\
 - `argus test` runs the scenarios in `tests/`. A change is done when they pass; add a scenario for each \
 feature, so it stays working.\n\
 - `argus build` makes a release (the executable and its packs, or `--target web` for the page), and checks \

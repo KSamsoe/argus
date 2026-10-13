@@ -2,16 +2,10 @@
 -- timeline, an event vignette. The view glides to the grave and closes in,
 -- then glides back to where the player left it, while the colony goes on.
 
+local helpers = require("helpers")
+local one = helpers.one
 local function set(t, entity, path, value)
-  local tx = t:call("edit.begin", { author = "test:outpost", note = "a colonist lost" }).tx
-  t:call("edit.set", { tx = tx, entity = entity, path = path, value = value })
-  t:call("edit.commit", { tx = tx })
-end
-
-local function one(t, select, where)
-  local q = t:call("world.query", { select = select, where = where })
-  if #q.rows ~= 1 then error("one row for " .. select[1] .. ", not " .. #q.rows, 0) end
-  return q.rows[1]
+  helpers.set(t, entity, path, value, "a colonist lost")
 end
 
 return scenario "a colonist lost: a grave, and the view goes there and back" {

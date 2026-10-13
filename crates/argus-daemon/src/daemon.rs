@@ -829,6 +829,7 @@ impl Daemon {
             }
             "script.systems" => self.script_systems(params),
             "script.errors" => self.script_errors(),
+            "script.modules" => self.script_modules(params),
             "obs.events" => self.obs_events(params),
             "obs.subscribe" => self.obs_subscribe(conn, params),
             "prof.frame" => Ok(self.prof_frame()),
@@ -4880,6 +4881,7 @@ impl Daemon {
         let plugin_errors = self.session.as_ref().map_or(0, |s| s.plugins.errors.len());
         Ok(json!({
             "reloaded": report.reloaded,
+            "modules": report.modules,
             "removed": report.removed,
             "errors": report.errors + plugin_errors,
             "switched_on": switched_on,
@@ -4951,6 +4953,28 @@ impl Daemon {
                     "parallel": s.parallel,
                     "batch": s.batch,
                     "plugin": plugin,
+                })
+            })
+            .collect();
+        let (limit, offset) = query::page(params)?;
+        Ok(query::paged(rows, limit, offset))
+    }
+
+    /// The project's modules (`lib/`, issue 24): each with its leading
+    /// comment and the files that require it.
+    fn script_modules(&mut self, params: &Json) -> Result<Json> {
+        let ses = self.require_session()?;
+        let rows: Vec<Json> = ses
+            .host
+            .modules()
+            .into_iter()
+            .map(|m| {
+                json!({
+                    "module": m.name,
+                    "file": m.file,
+                    "doc": m.doc,
+                    "used_by": m.used_by,
+                    "loaded": m.loaded,
                 })
             })
             .collect();

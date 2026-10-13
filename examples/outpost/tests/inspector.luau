@@ -28,10 +28,7 @@ local function open(t)
   return q.rows[1][1], q.rows[1][2]
 end
 
-local function press(t, action, value)
-  t.input:tap(action, value)
-  t:step(2)
-end
+local press = require("helpers").press
 
 local function has(list, words)
   for _, l in ipairs(list) do

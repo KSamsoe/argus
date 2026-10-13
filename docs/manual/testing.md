@@ -34,7 +34,23 @@ return scenario "the player walks right" {
 
 ### The file
 
-Each `.luau` file directly in `tests/` returns one scenario, or a table of them. Files in folders under `tests/` are not read.
+Each `.luau` file directly in `tests/` returns one scenario, or a table of them. Files in folders under `tests/` are not read as scenarios.
+
+Helpers several scenario files need go in a module in `tests/lib/`, a Luau file that returns them: `tests/lib/helpers.luau` is `require("helpers")`. A scenario's `require` looks in `tests/lib/` first, then in the game's own `lib/` ([Sharing code](scripting.md#sharing-code)), so a test can use the game's constants and pure functions instead of writing them out again. A module is evaluated once for the whole run and its value is read-only. `tests/lib/` stays out of a release build, with the rest of `tests/`.
+
+```lua
+-- tests/lib/helpers.luau
+local M = {}
+
+-- The one row a query should find, or an error saying how many it found.
+function M.one(t, select, where)
+  local q = t:call("world.query", { select = select, where = where })
+  if #q.rows ~= 1 then error("one row for " .. select[1] .. ", not " .. #q.rows, 2) end
+  return q.rows[1]
+end
+
+return M
+```
 
 ```lua
 return {

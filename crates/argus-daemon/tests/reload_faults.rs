@@ -59,3 +59,43 @@ fn a_reload_switches_faulted_systems_on_and_leaves_the_scenes_off() {
     ok(&mut d, "sim.step", json!({ "n": 2 }));
     assert_eq!(disabled(&mut d), ["sim.quiet"], "past tick two it runs");
 }
+
+/// Issue 24: `script.modules` lists the modules in `lib/` with their
+/// comments and users, and a reload with one changed reloads its users.
+#[test]
+fn a_changed_module_reloads_the_files_that_use_it() {
+    let t = temp("reload-modules");
+    project(t.path());
+    write(
+        t.path(),
+        "lib/pace.luau",
+        "-- How fast things go.\nreturn { step = 1 }\n",
+    );
+    write(
+        t.path(),
+        "systems/paced.luau",
+        r#"local pace = require("pace")
+return system "sim.paced" {
+  stage = "sim",
+  run = function(q) q:emit("paced", { step = pace.step }) end,
+}"#,
+    );
+    let mut d = open(t.path());
+    let m = ok(&mut d, "script.modules", json!({}));
+    assert_eq!(m["total"], 1, "{m}");
+    assert_eq!(m["rows"][0]["module"], "pace");
+    assert_eq!(m["rows"][0]["doc"], "How fast things go.");
+    assert_eq!(m["rows"][0]["used_by"], json!(["systems/paced.luau"]));
+    write(
+        t.path(),
+        "lib/pace.luau",
+        "-- How fast things go.\nreturn { step = 2 }\n",
+    );
+    let r = ok(&mut d, "script.reload", json!({}));
+    assert_eq!(r["modules"], json!(["lib/pace.luau"]), "{r}");
+    assert_eq!(r["reloaded"], json!(["systems/paced.luau"]), "{r}");
+    ok(&mut d, "sim.step", json!({ "n": 1 }));
+    let ev = ok(&mut d, "obs.events", json!({ "name": "paced" }));
+    let rows = ev["rows"].as_array().unwrap();
+    assert_eq!(rows.last().unwrap()["fields"]["step"], 2, "{ev}");
+}
