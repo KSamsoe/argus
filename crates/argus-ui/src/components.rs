@@ -140,7 +140,9 @@ pub struct UiNode {
     )]
     pub fill: Vec2,
     /// Smallest size.
-    #[argus(doc = "Smallest size in pixels per axis; 0: none")]
+    #[argus(
+        doc = "Smallest size in pixels per axis; 0: none. It takes the place of the content as the smallest, so it may shrink past its content: shrink = 0 keeps the content"
+    )]
     pub min: Vec2,
     /// Largest size.
     #[argus(doc = "Largest size in pixels per axis; 0: none")]

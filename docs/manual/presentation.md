@@ -414,6 +414,8 @@ The engine's tokens are `text`, `muted`, `panel`, `border`, `focus`, `accent`, a
 
 Nodes are children of other nodes through `Parent` (or `[children.<name>]` tables), as anything is.
 
+A node is as big as what it holds, or its `size` (a `fill` share takes part of its parent instead). `min` and `max` bound that, and `grow` and `shrink` say how readily it takes up room its parent has to spare or gives up room its parent is short of. A node with no `min` never shrinks smaller than what it holds. A node with a `min` can: its `min` takes the place of its content as the smallest it may be, as in CSS. So in a column short of room, a panel with `min = [0.0, 380.0]` shrinks down to 380 even when its words need more, and they run past its bottom. Give such a node `shrink = 0.0` to keep it at least as big as what it holds.
+
 ### A HUD
 
 A HUD is a tree that takes no input. From `examples/delve/scenes/delve/turn.toml`:
