@@ -416,6 +416,8 @@ Nodes are children of other nodes through `Parent` (or `[children.<name>]` table
 
 A node is as big as what it holds, or its `size` (a `fill` share takes part of its parent instead). `min` and `max` bound that, and `grow` and `shrink` say how readily it takes up room its parent has to spare or gives up room its parent is short of. A node with no `min` never shrinks smaller than what it holds. A node with a `min` can: its `min` takes the place of its content as the smallest it may be, as in CSS. So in a column short of room, a panel with `min = [0.0, 380.0]` shrinks down to 380 even when its words need more, and they run past its bottom. Give such a node `shrink = 0.0` to keep it at least as big as what it holds.
 
+A script can make UI while the game runs: spawn an entity with a `UiNode` (and a `UiText`, `UiPanel`, or `UiButton`) and give it a `Parent` in a tree. It needs no `UiRect`; the layout adds one. A spawned button takes focus, hover, and presses as an authored one does, and a script may move the focus to it by setting its tree's `UiRoot.focus`.
+
 ### A HUD
 
 A HUD is a tree that takes no input. From `examples/delve/scenes/delve/turn.toml`:

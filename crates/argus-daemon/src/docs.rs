@@ -440,7 +440,7 @@ pub const METHODS: &[MethodDoc] = &[
         doc: "Component schemas with doc strings, field types, defaults, ranges, tune flags, and declaring file:line, plus which systems read and write them.",
         params: &[
             opt("component", STRING, "optional; all when omitted"),
-            opt("limit", INTEGER, "rows per page"),
+            opt("limit", INTEGER, "rows per page, 50 by default"),
             opt("cursor", STRING, "the next page, from a previous answer's cursor"),
             opt("source", STRING, "\"index\""),
         ],
@@ -461,7 +461,7 @@ pub const METHODS: &[MethodDoc] = &[
         params: &[
             opt("table", STRING, "optional"),
             opt("where", OBJECT, "{field: value}"),
-            opt("limit", INTEGER, "rows per page"),
+            opt("limit", INTEGER, "rows per page, 50 by default"),
             opt("cursor", STRING, "the next page, from a previous answer's cursor"),
             opt("source", STRING, "\"index\""),
         ],
@@ -472,7 +472,7 @@ pub const METHODS: &[MethodDoc] = &[
         doc: "Everything in the project that references a target: an entity (@id), a prefab path, a def ref (item:key), or a file path. From the index.",
         params: &[
             req("target", STRING, ""),
-            opt("limit", INTEGER, "rows per page"),
+            opt("limit", INTEGER, "rows per page, 50 by default"),
             opt("cursor", STRING, "the next page, from a previous answer's cursor"),
         ],
         returns: "{target, total, columns, rows: [[scene, from_kind, from, path, kind, at]], next}",
@@ -482,7 +482,7 @@ pub const METHODS: &[MethodDoc] = &[
         doc: "Full-text search over component, field, and system doc strings. From the index.",
         params: &[
             req("text", STRING, ""),
-            opt("limit", INTEGER, "rows per page"),
+            opt("limit", INTEGER, "rows per page, 50 by default"),
             opt("cursor", STRING, "the next page, from a previous answer's cursor"),
         ],
         returns: "{total, columns, rows: [[kind, name, doc]], next}",
@@ -492,7 +492,7 @@ pub const METHODS: &[MethodDoc] = &[
         doc: "Every entity in every scene whose prefab chain includes a prefab. From the index.",
         params: &[
             req("prefab", STRING, ""),
-            opt("limit", INTEGER, "rows per page"),
+            opt("limit", INTEGER, "rows per page, 50 by default"),
             opt("cursor", STRING, "the next page, from a previous answer's cursor"),
         ],
         returns: "{prefab, total, columns, rows: [[scene, entity]], next}",
@@ -648,7 +648,7 @@ pub const METHODS: &[MethodDoc] = &[
         doc: "Every asset under assets/: sprites (a PNG, an Aseprite file, a Tiled tileset .tsx or .tsj, or a sidecar describing a shape), tilemaps (a Tiled map, .tmx or .tmj; its embedded tilesets are sprites named <map file>/<tileset name>, maps/level1.tmx/terrain), sounds (a WAV, or a sidecar naming variations), animators (a sidecar with type = \"animator\": states, transitions, events by frame), particle effects (type = \"emitter\"), materials (a .wgsl shader, with a sidecar of typed parameters), fonts (a .ttf or .otf, baked into a distance-field atlas of the glyphs text needs; a sidecar may set size, spread, and chars), and skeletons (a .json exported from Spine 4, its images unpacked into the export's images folder, each an ordinary sprite), with the warnings the importer found. A name is the path without the extension; sprites/hero is assets/sprites/hero.png with assets/sprites/hero.toml beside it. For an animator the frames and clips columns are its state count and names; for an emitter its pool size and sprite; for a material its parameter count and names; for a font its glyphs baked; for a tilemap the engine layers it becomes; for a skeleton its bone count and animations (each a clip an animator plays). kind = \"material\" also lists the engine's material library (unlit, lit, palette, dissolve, outline, sdf_text), source builtin:<name>, unless a project asset of the same name shadows one.",
         params: &[
             opt("kind", STRING, "\"sprite\" | \"sound\" | \"animator\" | \"emitter\" | \"material\" | \"font\" | \"tilemap\"; optional"),
-            opt("limit", INTEGER, "rows per page"),
+            opt("limit", INTEGER, "rows per page, 50 by default"),
             opt("cursor", STRING, "the next page, from a previous answer's cursor"),
         ],
         returns: "{total, columns: [name, kind, source, frames, clips, warnings], rows, failed: [{name, message, at}], next}",
@@ -955,7 +955,7 @@ pub const METHODS: &[MethodDoc] = &[
         params: &[
             opt("since", INTEGER, "commit id, exclusive"),
             opt("author", STRING, "optional"),
-            opt("limit", INTEGER, "rows per page"),
+            opt("limit", INTEGER, "rows per page, 50 by default"),
             opt("cursor", STRING, "the next page, from a previous answer's cursor"),
         ],
         returns: "{total, rows: [{id, author, note, frame, kind, touched, files, ops, command, method?, params?}], next}",
@@ -1042,7 +1042,7 @@ pub const METHODS: &[MethodDoc] = &[
             opt("since", INTEGER, "tick"),
             opt("slot", INTEGER, ""),
             opt("action", STRING, ""),
-            opt("limit", INTEGER, "rows per page"),
+            opt("limit", INTEGER, "rows per page, 50 by default"),
             opt("cursor", STRING, "the next page, from a previous answer's cursor"),
         ],
         returns: "{total, columns, rows: [[tick, slot, action, value]], recording, clock, next}",
@@ -1536,7 +1536,7 @@ pub const METHODS: &[MethodDoc] = &[
         name: "script.systems",
         doc: "Every system with stage, ordering, declared reads and writes, clock, RNG stream, enabled state, and source. A system from a Rust plugin names it (plugin) and its source is the plugin's file and line. A parallel system (a Rust system the scheduler may run beside others) has its batch: the systems of one batch run at once, on threads when that saves time (sim.threads).",
         params: &[
-            opt("limit", INTEGER, "rows per page"),
+            opt("limit", INTEGER, "rows per page, 50 by default"),
             opt("cursor", STRING, "the next page, from a previous answer's cursor"),
         ],
         returns: "{total, rows: [{name, stage, after, reads, writes, clock, rng, enabled, disabled_reason, source, doc, parallel, batch, plugin}], next}",
@@ -1555,7 +1555,7 @@ pub const METHODS: &[MethodDoc] = &[
             opt("name", STRING, "optional"),
             opt("entity", STRING, "optional"),
             opt("from_frame", INTEGER, ""),
-            opt("limit", INTEGER, "rows per page"),
+            opt("limit", INTEGER, "rows per page, 50 by default"),
             opt("cursor", STRING, "the next page, from a previous answer's cursor"),
         ],
         returns: "{total, rows: [{seq, frame, name, by?, fields}], next, last_seq}",

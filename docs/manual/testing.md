@@ -99,7 +99,7 @@ A scenario presses the game's actions from `input.toml`, never raw keys:
 | `t.input:hold(action, value, frames)` | Hold an action at a value for n ticks. `{1, 0}` for a stick or axis pair, `true` for a button. Without `frames`, hold until released. |
 | `t.input:tap(action, value)` | The action at a value for one tick. |
 | `t.input:release(action)` | Back to rest (false, 0, or `{0, 0}`). |
-| `t.input:message(channel, text)` | Text from the host, as the page of a web build would send it: the next tick's scripts get a `host.message` event. A scripted stand-in for an outside service (a model's answer) lives here. |
+| `t.input:message(channel, text)` | Text from the host, as the page of a web build would send it: the next tick's scripts get a `host.message` event. A scripted stand-in for an outside service (a model's answer) lives here. It only queues the message: the next `t:advance` (or `t:step`) runs the tick that gets it. The text must be UTF-8, and up to 64 KiB. |
 
 Input is read when a tick runs. On a discrete clock, hold the action across the turn: a press and release with no tick between them is never seen. From `examples/hollow/tests/run.luau`:
 
@@ -188,6 +188,8 @@ Each seed is a fresh load of the scene. `--seeds` overrides every scenario's own
 ```sh
 argus test stairs --seeds 1..1000
 ```
+
+So a long sweep need not run every time: give the scenario a few seeds of its own for the everyday suite, and run the long one when you want it, `argus test --file tests/fuzz.luau --seeds 1..200`. A failing seed reruns alone with `--seeds 17..17`.
 
 ## Goldens
 

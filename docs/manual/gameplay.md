@@ -491,6 +491,8 @@ end,
 
 A host's message that arrives while the game is frozen waits for the systems the freeze stopped (see [Talking to the host](#talking-to-the-host)). `q.time` keeps running through a freeze (a pause stops the game's systems, not the clock). A game that shows its own time keeps it in a component its systems advance, as Hollow's `Run.started` and Outpost's `Colony.clock` do. Systems that must answer during a pause, such as Hollow's lighting under the settings page, are `unfrozen` too.
 
+A menu's buttons are pressed on a frozen tick: the menu's system froze it in the input stage, before the UI knew a button would be pressed. So a button that starts or changes the game ("New run", "Begin") does its work in an `unfrozen` system that reads the button's event. A system that is not `unfrozen` does not run on that tick. Delve's `sim.menu_buttons` resets the hero and the floor count itself on `menu.new_run`, and `sim.floor`, also `unfrozen`, draws the new floor on the same turn.
+
 Other ways time changes:
 
 - `q:speed(3)` asks for three ticks a frame from the next frame; `q:speed()` reads the speed. Outpost's 1x, 3x, and 10x keys use it (`examples/outpost/systems/controls.luau`). The speed is never 0: pause with `q:freeze()`.

@@ -364,7 +364,7 @@ The editor's Tiles tab paints the same way. A tiles op can also `erase`, give ev
 
 Two other kinds of map:
 
-- **A runtime map** (`runtime = true` in the index) has no chunks: its cells start empty each run and a script fills them with `q:tiles(map)`. `examples/delve/maps/floor.tilemap.toml` is one, painted by `systems/floor.luau` from the seed.
+- **A runtime map** (`runtime = true` in the index) has no chunks: its cells start empty each run and a script fills them with `q:tiles(map)`. `examples/delve/maps/floor.tilemap.toml` is one, painted by `systems/floor.luau` from the seed. The cells are the map file's for the run, not an entity's: `q:tiles(e)` takes an entity that places the map and reaches its file's cells, so two entities placing one runtime map share them. Saves, seeks, and replays keep them, and the `scene.tiles.get` method reads them as the run has them.
 - **A Tiled map** (`.tmx` or `.tmj` under `assets/`) is read as Tiled saved it and placed the same way, `[Tilemap] map = "assets/maps/level1.tmx"`. Edit it in Tiled; the engine reads it again when Tiled saves.
 
 The "Files" section of `argus docs` has every key of a tilemap, a tileset sidecar, and a Tiled map.

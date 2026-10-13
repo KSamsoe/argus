@@ -126,7 +126,7 @@ setInterval(async () => {
 }, 100);
 ```
 
-`player.take_sent()` is what the game sent since the last call (`q:send`), as JSON `[{tick, channel, text}]`. `player.message(channel, text)` sends the game a message and returns the turns it took. On a discrete clock that is 1: the turn runs inside the call, so what the game answered is in `take_sent()` straight after. On a continuous clock it is 0, and the scripts get the message on the next tick the page runs, within a frame. A player's report keeps the messages with the rest of the input, so a report replays without the outside world.
+`player.take_sent()` is what the game sent since the last call (`q:send`), as JSON `[{tick, channel, text}]`. The first call also has what the game sent before the script was loaded, a start screen's message from an `on_load` system, say. `player.message(channel, text)` sends the game a message and returns the turns it took. On a discrete clock that is 1: the turn runs inside the call, so what the game answered is in `take_sent()` straight after. On a continuous clock it is 0, and the scripts get the message on the next tick the page runs, within a frame. A player's report keeps the messages with the rest of the input, so a report replays without the outside world.
 
 What else a page script has:
 
