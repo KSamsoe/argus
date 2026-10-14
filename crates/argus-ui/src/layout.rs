@@ -943,12 +943,19 @@ fn place(
     };
     *depth += 1;
     out.push((i, rect));
+    // A scrolled node cuts at its padding, which stays put while the
+    // content moves (issue 32); a clipping node at its outer edge.
+    let edge = if it.scroll.is_some() {
+        [n.pad.x, n.pad.y]
+    } else {
+        [0.0, 0.0]
+    };
     let clip = if n.clip || it.scroll.is_some() {
         [
-            parent.clip[0].max(pos[0]),
-            parent.clip[1].max(pos[1]),
-            parent.clip[2].min(pos[0] + size[0]),
-            parent.clip[3].min(pos[1] + size[1]),
+            parent.clip[0].max(pos[0] + edge[0]),
+            parent.clip[1].max(pos[1] + edge[1]),
+            parent.clip[2].min(pos[0] + size[0] - edge[0]),
+            parent.clip[3].min(pos[1] + size[1] - edge[1]),
         ]
     } else {
         parent.clip
@@ -970,17 +977,33 @@ fn place(
         let content = bottom + n.pad.y;
         let view = size[1];
         let max = (content - view).max(0.0);
-        let y = if s.end && s.at_end && s.y == s.seen {
+        let mut y = if s.end && s.at_end && s.y == s.seen {
             max
         } else {
             s.y.clamp(0.0, max)
         };
+        // A child to bring into view (issue 32): all of it if it fits
+        // between the padding, else its top at the top.
+        if !s.to.is_null() {
+            let kid = it.kids.iter().map(|&k| &items[k]).find(|k| k.e == s.to);
+            if let Some(l) = kid.and_then(|k| k.tid).and_then(|id| tree.layout(id).ok()) {
+                let (top, h) = (l.location.y - n.pad.y, l.size.height);
+                let inner = size[1] - 2.0 * n.pad.y;
+                y = if h > inner {
+                    top
+                } else {
+                    y.clamp(top + h - inner, top)
+                }
+                .clamp(0.0, max);
+            }
+        }
         let want = UiScroll {
             y,
             content,
             view,
             at_end: y >= max - 0.5,
             seen: y,
+            to: argus_ecs::Entity::NULL,
             ..s
         };
         if want != s {

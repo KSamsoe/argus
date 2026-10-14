@@ -440,11 +440,13 @@ impl Default for UiTextBox {
 #[derive(Component, Clone, Copy, Debug, PartialEq)]
 #[repr(C)]
 #[argus(
-    doc = "A UI node whose children are laid out at their own sizes and scrolled: what is outside the node is cut off. Give it a size (size, fill, or grow). With end, a node scrolled to the end stays at the end as content is added, as a log keeps its newest line in view; the mouse wheel over it scrolls it (the tree's scroll action)"
+    doc = "A UI node whose children are laid out at their own sizes and scrolled: what is outside its padding is cut off, and the padding stays put. Give it a size (size, fill, or grow), or a max for one that grows with its content up to it and then scrolls. With end, a node scrolled to the end stays at the end as content is added, as a log keeps its newest line in view; to brings a child into view; the mouse wheel over it scrolls it (the tree's scroll action)"
 )]
 pub struct UiScroll {
     /// How far it is scrolled.
-    #[argus(doc = "How far it is scrolled, in canvas pixels from the top (a script may set it)")]
+    #[argus(
+        doc = "How far it is scrolled, in canvas pixels from the top (a script may set it); the layout keeps it between 0 and content - view"
+    )]
     pub y: f32,
     /// Stay at the end.
     #[argus(doc = "Scrolled to the end, it stays at the end as content is added")]
@@ -464,6 +466,11 @@ pub struct UiScroll {
     /// Where layout left it.
     #[argus(doc = "The y ui.layout left it at; a y set since is honoured (written by ui.layout)")]
     pub seen: f32,
+    /// A child to bring into view (issue 32).
+    #[argus(
+        doc = "A child to bring into view at the next layout: all of it if it fits (the least scroll that shows it), else its top at the view's top; the layout sets it back to none. A line written this tick is laid out this tick, so a script can set it as it adds the line"
+    )]
+    pub to: argus_ecs::Entity,
 }
 
 impl Default for UiScroll {
@@ -476,6 +483,7 @@ impl Default for UiScroll {
             view: 0.0,
             at_end: true,
             seen: 0.0,
+            to: argus_ecs::Entity::NULL,
         }
     }
 }

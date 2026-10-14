@@ -344,6 +344,68 @@ fn a_log_keeps_its_newest_line_in_view_until_scrolled_back() {
     assert_eq!(u.w.get::<UiScroll>(log).unwrap().y, 160.0);
 }
 
+/// Issue 32: a scrolled node cuts at its padding, which stays put, and
+/// `to` brings a line into view, then goes back to none.
+#[test]
+fn a_scrolled_node_cuts_at_its_padding_and_scrolls_to_a_line() {
+    let mut u = ui();
+    let root = u.node(None, UiNode::default());
+    u.w.insert(root, UiRoot::default()).unwrap();
+    let log = u.node(
+        Some(root),
+        UiNode {
+            size: Vec2::new(300.0, 100.0),
+            pad: Vec2::new(10.0, 6.0),
+            ..UiNode::default()
+        },
+    );
+    u.w.insert(log, UiScroll::default()).unwrap();
+    let lines: Vec<Entity> = (0..10)
+        .map(|n| {
+            let e = u.node(
+                Some(log),
+                UiNode {
+                    size: Vec2::new(0.0, 20.0),
+                    ..UiNode::default()
+                },
+            );
+            let t = id(&u.w, &format!("line {n}"));
+            u.w.insert(
+                e,
+                UiText {
+                    text: t,
+                    ..UiText::default()
+                },
+            )
+            .unwrap();
+            e
+        })
+        .collect();
+    u.step(2);
+    let box_ = u.w.get::<argus_ui::UiRect>(log).unwrap();
+    let line = u.w.get::<argus_ui::UiRect>(lines[9]).unwrap();
+    // The cut is the padding's inner edge, not the node's outer one.
+    assert_eq!(line.clip_min.y, box_.pos.y + 6.0);
+    assert_eq!(line.clip_max.y, box_.pos.y + 100.0 - 6.0);
+    assert_eq!(line.clip_min.x, box_.pos.x + 10.0);
+    // At the end, the newest line's bottom at the padding's inner edge.
+    assert_eq!(line.pos.y + line.size.y, box_.pos.y + 100.0 - 6.0);
+    // Scrolled to line 2: its top at the padding's inner edge, and to is
+    // none again.
+    u.w.update::<UiScroll, _>(log, |s| s.to = lines[2]).unwrap();
+    u.step(2);
+    let s = u.w.get::<UiScroll>(log).unwrap();
+    assert!(s.to.is_null(), "{s:?}");
+    assert!(!s.at_end);
+    let l2 = u.w.get::<argus_ui::UiRect>(lines[2]).unwrap();
+    assert_eq!(l2.pos.y, box_.pos.y + 6.0, "{s:?}");
+    // Line 5 is in view already: to moves nothing.
+    let y = s.y;
+    u.w.update::<UiScroll, _>(log, |s| s.to = lines[5]).unwrap();
+    u.step(2);
+    assert_eq!(u.w.get::<UiScroll>(log).unwrap().y, y);
+}
+
 /// Issue 31: a row too wide for the canvas puts its buttons off it, and
 /// the layout says so: the buttons first, then the row.
 #[test]

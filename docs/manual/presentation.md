@@ -423,7 +423,7 @@ The engine's tokens are `text`, `muted`, `panel`, `border`, `focus`, `accent`, a
 | `UiPanel` | What a node draws behind it: a `color`, an `image` (nine-sliced with `slice`; `frame` picks one frame of a sheet), a `border` |
 | `UiButton` | Takes focus and is pressed; emits `ui.pressed` and its own `event` |
 | `UiTextBox` | A box the player types into: pressed, it types; Enter sends its `event` with the text (see [A text box](#a-text-box)) |
-| `UiScroll` | A node whose children scroll inside it, cut off at its edges; a log keeps its newest line in view (see [A log that scrolls](#a-log-that-scrolls)) |
+| `UiScroll` | A node whose children scroll inside it, cut off inside its padding; a log keeps its newest line in view, and `to` scrolls to a line (see [A log that scrolls](#a-log-that-scrolls)) |
 | `UiRect` | Where the node landed (written by the layout) |
 
 Nodes are children of other nodes through `Parent` (or `[children.<name>]` tables), as anything is.
@@ -528,7 +528,13 @@ A game can take typed text without a box: while its slot's `Actions.typing` is t
 
 ### A log that scrolls
 
-A `UiScroll` on a node with a size lets its children be as tall as they are: what is outside the node is cut off, and `UiScroll.y` is how far down it is scrolled. With `end` (the default), a node scrolled to the end stays at the end as lines are added, so a log keeps its newest line in view. The mouse wheel over it scrolls it back, by `step` pixels a notch; a log scrolled back stays where it was put while lines come, and follows again once scrolled to the end. The layout writes `content` (how tall the lines are), `view`, and `at_end`.
+A `UiScroll` on a node with a size lets its children be as tall as they are: what is outside the node's padding is cut off, and `UiScroll.y` is how far down it is scrolled. The padding stays where it is, so a panel's border is never drawn over. With `end` (the default), a node scrolled to the end stays at the end as lines are added, so a log keeps its newest line in view. The mouse wheel over it scrolls it back, by `step` pixels a notch; a log scrolled back stays where it was put while lines come, and follows again once scrolled to the end. The layout writes `content` (how tall the lines are), `view`, and `at_end`.
+
+- **Its size.** A fixed size, a `fill`, or `grow` gives it its height. A node sized by its content with a `max` (`size = [0, 0]`, `max = [0, 204]`) grows with its lines up to the max, and scrolls past it.
+- **`y` stays in range.** The layout keeps `y` between 0 and `content - view`: a script that sets 5000 gets the end.
+- **Scrolling to a line.** `UiScroll.to = <child>` brings that child into view at the next layout: all of it if it fits, with the least scroll; its top at the top if it is taller than the view. The layout sets `to` back to none. A line a script adds this tick is laid out this tick, so it can set `to` as it adds the line: a game that shows each turn from its first line sets `to` to the turn's first line.
+- **The wheel** scrolls what is under the pointer. A wheel event does not move the pointer, so a test moves the mouse over the node first (`t.input:pointer`).
+- **In the semantic frame**, a line scrolled wholly out of view is not listed; one partly in view is listed with all its words.
 
 Delve's message log is one (`examples/delve/scenes/delve/log.toml`, `systems/messages.luau`): a node with a size and a `UiScroll`, its newest line `@messages` last by `order`, and each turn's words before it moved up into a line of their own, the oldest let go after 40.
 
