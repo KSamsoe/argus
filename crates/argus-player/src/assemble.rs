@@ -459,6 +459,7 @@ fn assemble_layers(
     })?;
     host.set_paths(Rc::new(NavPaths(nav.clone())));
     host.set_tiles(Rc::new(ScriptTiles(tiles.clone())));
+    host.set_casts(Rc::new(PhysicsCasts(tiles.clone())));
     host.set_texts(Rc::new(UiTexts(ui.clone())));
     host.set_screen(Rc::new(UiScreen(ui.clone())));
     host.load_layers(&mut world, &mut sched, layers)?;
@@ -594,6 +595,117 @@ fn install_rigid(
 /// Scripts' maps (`q:tiles`, phase 5 item 4): the session's map store, a
 /// runtime map's cells written, any map's read.
 struct ScriptTiles(Rc<RefCell<argus_tiles::MapStore>>);
+
+/// Shape queries for scripts (`q:raycast`, `q:shape_cast`, `q:overlap`;
+/// 2D staples item 0), on argus-physics' geometry over the colliders and
+/// the maps' collision cells.
+struct PhysicsCasts(Rc<RefCell<argus_tiles::MapStore>>);
+
+fn cast_round(s: &argus_luau::CastShape) -> argus_physics::geom::Round {
+    use argus_physics::geom::{Round, V};
+    let r = s.radius;
+    if !s.points.is_empty() {
+        let pts: Vec<V> = s.points.iter().map(|p| V::new(p[0], p[1])).collect();
+        return Round::hull(&pts, r);
+    }
+    if s.size[0] > 0.0 || s.size[1] > 0.0 {
+        let mut b = Round::rect(V::default(), s.size[0] * 0.5, s.size[1] * 0.5);
+        b.r = r;
+        return b;
+    }
+    let half = s.height * 0.5 - r;
+    if half > 0.0 {
+        return Round::capsule(V::new(0.0, -half), V::new(0.0, half), r);
+    }
+    Round::circle(V::default(), r)
+}
+
+fn cast_filter(f: &argus_luau::CastFilter) -> argus_physics::query::Filter {
+    argus_physics::query::Filter {
+        mask: f.mask,
+        colliders: f.colliders,
+        tiles: f.tiles,
+        one_way: f.one_way,
+        ignore: f.ignore.clone(),
+    }
+}
+
+fn cast_hit(h: &argus_physics::query::Hit) -> argus_luau::CastHit {
+    use argus_physics::query::Target;
+    let (entity, tile) = match h.target {
+        Target::Entity(e) => (Some(e), None),
+        Target::Tile { map, col, row } => (None, Some((map, col, row))),
+    };
+    argus_luau::CastHit {
+        entity,
+        tile,
+        point: [h.point.x, h.point.y],
+        normal: [h.normal.x, h.normal.y],
+        position: [h.position.x, h.position.y],
+        fraction: h.fraction,
+        distance: h.distance,
+    }
+}
+
+impl argus_luau::Casts for PhysicsCasts {
+    fn raycast(
+        &self,
+        world: &World,
+        from: [f32; 2],
+        to: [f32; 2],
+        filter: &argus_luau::CastFilter,
+        all: bool,
+    ) -> Result<Vec<argus_luau::CastHit>> {
+        use argus_physics::geom::V;
+        let hits = argus_physics::query::raycast(
+            world,
+            &mut self.0.borrow_mut(),
+            V::new(from[0], from[1]),
+            V::new(to[0], to[1]),
+            &cast_filter(filter),
+            all,
+        )?;
+        Ok(hits.iter().map(cast_hit).collect())
+    }
+
+    fn shape_cast(
+        &self,
+        world: &World,
+        shape: &argus_luau::CastShape,
+        from: [f32; 2],
+        to: [f32; 2],
+        filter: &argus_luau::CastFilter,
+    ) -> Result<Option<argus_luau::CastHit>> {
+        use argus_physics::geom::V;
+        let hit = argus_physics::query::shape_cast(
+            world,
+            &mut self.0.borrow_mut(),
+            &cast_round(shape),
+            V::new(from[0], from[1]),
+            V::new(to[0], to[1]),
+            &cast_filter(filter),
+        )?;
+        Ok(hit.as_ref().map(cast_hit))
+    }
+
+    fn overlap(
+        &self,
+        world: &World,
+        shape: &argus_luau::CastShape,
+        at: [f32; 2],
+        filter: &argus_luau::CastFilter,
+    ) -> Result<Vec<argus_luau::CastHit>> {
+        use argus_physics::geom::V;
+        let hits = argus_physics::query::overlap(
+            world,
+            &mut self.0.borrow_mut(),
+            &cast_round(shape),
+            V::new(at[0], at[1]),
+            &cast_filter(filter),
+        )?;
+        Ok(hits.iter().map(cast_hit).collect())
+    }
+}
 
 impl ScriptTiles {
     /// The map file a Tilemap entity places.

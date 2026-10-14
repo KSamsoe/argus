@@ -102,6 +102,90 @@ pub trait Paths {
 /// The paths a host was given, where the query handle reads them.
 pub(crate) struct PathsData(pub Rc<dyn Paths>);
 
+/// A shape for the queries (2D staples item 0): a circle (`radius`), a box
+/// (`size`, its corners rounded by `radius`), a capsule standing up
+/// (`radius` and `height`, the whole height), or a convex polygon
+/// (`points` around its origin, grown by `radius`).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct CastShape {
+    /// The radius.
+    pub radius: f32,
+    /// A box's width and height.
+    pub size: [f32; 2],
+    /// A capsule's whole height.
+    pub height: f32,
+    /// A polygon's points.
+    pub points: Vec<[f32; 2]>,
+}
+
+/// What a query meets.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CastFilter {
+    /// Colliders whose layer shares a bit with this.
+    pub mask: u32,
+    /// Colliders count.
+    pub colliders: bool,
+    /// Tile cells count.
+    pub tiles: bool,
+    /// One-way platforms stop what comes down onto them.
+    pub one_way: bool,
+    /// Left out.
+    pub ignore: Vec<argus_ecs::Entity>,
+}
+
+/// One thing a query met.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CastHit {
+    /// The collider's entity.
+    pub entity: Option<argus_ecs::Entity>,
+    /// Or a Tilemap entity's cell: the map, its column and row.
+    pub tile: Option<(argus_ecs::Entity, i64, i64)>,
+    /// Where they touch.
+    pub point: [f32; 2],
+    /// The surface's outward normal (zero from inside).
+    pub normal: [f32; 2],
+    /// Where a moving shape is when it touches.
+    pub position: [f32; 2],
+    /// How far along, 0 to 1.
+    pub fraction: f32,
+    /// How far along, in world units.
+    pub distance: f32,
+}
+
+/// The host's shape queries (2D staples item 0): `q:raycast`,
+/// `q:shape_cast`, and `q:overlap` against colliders and tile cells.
+pub trait Casts {
+    /// What a line meets: the nearest, or all of them nearest first.
+    fn raycast(
+        &self,
+        world: &argus_ecs::World,
+        from: [f32; 2],
+        to: [f32; 2],
+        filter: &CastFilter,
+        all: bool,
+    ) -> Result<Vec<CastHit>>;
+    /// Where a shape moving along a line first touches something.
+    fn shape_cast(
+        &self,
+        world: &argus_ecs::World,
+        shape: &CastShape,
+        from: [f32; 2],
+        to: [f32; 2],
+        filter: &CastFilter,
+    ) -> Result<Option<CastHit>>;
+    /// What a shape placed at a point overlaps.
+    fn overlap(
+        &self,
+        world: &argus_ecs::World,
+        shape: &CastShape,
+        at: [f32; 2],
+        filter: &CastFilter,
+    ) -> Result<Vec<CastHit>>;
+}
+
+/// The shape queries a host was given.
+pub(crate) struct CastsData(pub Rc<dyn Casts>);
+
 /// A project's data tables as scripts read them (§4 "Data tables", phase 3
 /// item 3: "Outpost is mostly defs"): `q:def("item:bread")` and
 /// `q:defs("recipes")`. The player's assembly hands the host its project's
@@ -426,6 +510,12 @@ impl ScriptHost {
     /// `q:downhill`; phase 3 item 2).
     pub fn set_paths(&self, paths: Rc<dyn Paths>) {
         self.lua.set_app_data(PathsData(paths));
+    }
+
+    /// Give scripts shape queries (`q:raycast`, `q:shape_cast`,
+    /// `q:overlap`; 2D staples item 0).
+    pub fn set_casts(&self, casts: Rc<dyn Casts>) {
+        self.lua.set_app_data(CastsData(casts));
     }
 
     /// Give scripts the game's maps (`q:tiles`; phase 5 item 4).

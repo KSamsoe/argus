@@ -397,6 +397,168 @@ fn paths_of(lua: &Lua) -> LuaResult<Rc<dyn crate::Paths>> {
         })
 }
 
+/// The host's shape queries, or an error saying there are none.
+fn casts_of(lua: &Lua) -> LuaResult<Rc<dyn crate::Casts>> {
+    lua.app_data_ref::<crate::CastsData>()
+        .map(|p| p.0.clone())
+        .ok_or_else(|| {
+            mlua::Error::runtime("no physics here: the host gave scripts no shape queries")
+        })
+}
+
+/// A query's `opts`: `mask`, `ignore` (an entity or a list), `one_way`,
+/// `tiles`, `colliders`; what it reads declared.
+fn cast_filter(c: &SystemCtx<'_>, opts: Option<LuaTable>) -> LuaResult<crate::CastFilter> {
+    let mut f = crate::CastFilter {
+        mask: u32::MAX,
+        colliders: true,
+        tiles: true,
+        one_way: true,
+        ignore: Vec::new(),
+    };
+    if let Some(o) = opts {
+        for pair in o.clone().pairs::<String, LuaValue>() {
+            let (k, _) = pair?;
+            if !matches!(
+                k.as_str(),
+                "mask" | "ignore" | "one_way" | "tiles" | "colliders"
+            ) {
+                return Err(mlua::Error::runtime(format!(
+                    "a query takes mask, ignore, one_way, tiles, and colliders; not {k:?}"
+                )));
+            }
+        }
+        if let Some(m) = o.get::<Option<f64>>("mask")? {
+            f.mask = m as u32;
+        }
+        for (k, slot) in [
+            ("one_way", &mut f.one_way),
+            ("tiles", &mut f.tiles),
+            ("colliders", &mut f.colliders),
+        ] {
+            if let Some(b) = o.get::<Option<bool>>(k)? {
+                *slot = b;
+            }
+        }
+        match o.get::<LuaValue>("ignore")? {
+            LuaValue::Nil => {}
+            LuaValue::UserData(u) => f.ignore.push(u.borrow::<EntityRef>()?.entity),
+            LuaValue::Table(t) => {
+                for v in t.sequence_values::<AnyUserData>() {
+                    f.ignore.push(v?.borrow::<EntityRef>()?.entity);
+                }
+            }
+            other => {
+                return Err(mlua::Error::runtime(format!(
+                    "ignore is an entity or a list of them; got {}",
+                    other.type_name()
+                )))
+            }
+        }
+    }
+    if f.colliders {
+        cast_read(c, "Collider")?;
+    }
+    if f.tiles {
+        cast_read(c, "Tilemap")?;
+    }
+    Ok(f)
+}
+
+/// A shape query reads colliders and maps, and says so as a path query
+/// does; a game without the component has none to read.
+fn cast_read(c: &SystemCtx<'_>, name: &str) -> LuaResult<()> {
+    let Some(id) = c.world().registry().id(name) else {
+        return Ok(());
+    };
+    if c.access().allows_read(id) {
+        return Ok(());
+    }
+    Err(argus_err(
+        ArgusError::new(
+            codes::ACCESS_VIOLATION,
+            format!(
+                "system {} asks a shape query, which reads {name}, without declaring it",
+                c.name
+            ),
+        )
+        .hint(format!(
+            "Add {name:?} to the system's reads list, or leave {} out with opts.{} = false.",
+            if name == "Collider" {
+                "colliders"
+            } else {
+                "tiles"
+            },
+            if name == "Collider" {
+                "colliders"
+            } else {
+                "tiles"
+            }
+        )),
+    ))
+}
+
+/// A shape: `{ radius = r }`, `{ size = v }`, `{ radius = r, height = h }`,
+/// or `{ points = { v, ... } }`.
+fn cast_shape(t: &LuaTable) -> LuaResult<crate::CastShape> {
+    let mut s = crate::CastShape::default();
+    for pair in t.clone().pairs::<String, LuaValue>() {
+        let (k, _) = pair?;
+        if !matches!(k.as_str(), "radius" | "size" | "height" | "points") {
+            return Err(mlua::Error::runtime(format!(
+                "a shape is radius, size, height, and points; not {k:?}"
+            )));
+        }
+    }
+    s.radius = t.get::<Option<f32>>("radius")?.unwrap_or(0.0).max(0.0);
+    s.height = t.get::<Option<f32>>("height")?.unwrap_or(0.0).max(0.0);
+    if let v @ (LuaValue::Vector(_) | LuaValue::Table(_)) = t.get::<LuaValue>("size")? {
+        let (x, y) = lua_point(v)?;
+        s.size = [x.abs(), y.abs()];
+    }
+    if let LuaValue::Table(pts) = t.get::<LuaValue>("points")? {
+        for v in pts.sequence_values::<LuaValue>() {
+            let (x, y) = lua_point(v?)?;
+            s.points.push([x, y]);
+        }
+    }
+    Ok(s)
+}
+
+/// A hit as a script reads it.
+fn hit_table(lua: &Lua, link: &Link, h: &crate::CastHit) -> LuaResult<LuaTable> {
+    let t = lua.create_table()?;
+    let vec = |p: [f32; 2]| LuaValue::Vector(mlua::Vector::new(p[0], p[1], 0.0));
+    if let Some(e) = h.entity {
+        t.set(
+            "entity",
+            lua.create_userdata(EntityRef {
+                entity: e,
+                link: link.clone(),
+            })?,
+        )?;
+    }
+    if let Some((map, col, row)) = h.tile {
+        let tile = lua.create_table()?;
+        tile.set(
+            "map",
+            lua.create_userdata(EntityRef {
+                entity: map,
+                link: link.clone(),
+            })?,
+        )?;
+        tile.set("x", col)?;
+        tile.set("y", row)?;
+        t.set("tile", tile)?;
+    }
+    t.set("point", vec(h.point))?;
+    t.set("normal", vec(h.normal))?;
+    t.set("position", vec(h.position))?;
+    t.set("fraction", h.fraction as f64)?;
+    t.set("distance", h.distance as f64)?;
+    Ok(t)
+}
+
 /// A system must declare what it reads, a path query too (section 3).
 fn needs_read(c: &SystemCtx<'_>, name: &str) -> LuaResult<()> {
     let id = c.world().registry().require(name).map_err(argus_err)?;
@@ -1355,6 +1517,75 @@ impl UserData for QueryHandle {
                     }
                     None => Ok((LuaValue::Nil, LuaValue::Nil)),
                 }
+            },
+        );
+        // Shape queries (2D staples item 0): q:raycast(from, to, opts) is
+        // the nearest collider or tile cell a line meets, or nil;
+        // q:raycast_all every one, nearest first; q:shape_cast(shape, from,
+        // to, opts) where a moving shape first touches; q:overlap(shape,
+        // at, opts) what a placed shape overlaps.
+        m.add_method(
+            "raycast",
+            |lua, this, (from, to, opts): (LuaValue, LuaValue, Option<LuaTable>)| {
+                let c = ctx(&this.link)?;
+                let f = cast_filter(c, opts)?;
+                let (a, b) = (place(c, from)?, place(c, to)?);
+                let hits = casts_of(lua)?
+                    .raycast(c.world(), a, b, &f, false)
+                    .map_err(argus_err)?;
+                match hits.first() {
+                    Some(h) => Ok(LuaValue::Table(hit_table(lua, &this.link, h)?)),
+                    None => Ok(LuaValue::Nil),
+                }
+            },
+        );
+        m.add_method(
+            "raycast_all",
+            |lua, this, (from, to, opts): (LuaValue, LuaValue, Option<LuaTable>)| {
+                let c = ctx(&this.link)?;
+                let f = cast_filter(c, opts)?;
+                let (a, b) = (place(c, from)?, place(c, to)?);
+                let hits = casts_of(lua)?
+                    .raycast(c.world(), a, b, &f, true)
+                    .map_err(argus_err)?;
+                let t = lua.create_table()?;
+                for (i, h) in hits.iter().enumerate() {
+                    t.set(i + 1, hit_table(lua, &this.link, h)?)?;
+                }
+                Ok(t)
+            },
+        );
+        m.add_method(
+            "shape_cast",
+            |lua, this, (shape, from, to, opts): (LuaTable, LuaValue, LuaValue, Option<LuaTable>)| {
+                let c = ctx(&this.link)?;
+                let f = cast_filter(c, opts)?;
+                let s = cast_shape(&shape)?;
+                let (a, b) = (place(c, from)?, place(c, to)?);
+                match casts_of(lua)?
+                    .shape_cast(c.world(), &s, a, b, &f)
+                    .map_err(argus_err)?
+                {
+                    Some(h) => Ok(LuaValue::Table(hit_table(lua, &this.link, &h)?)),
+                    None => Ok(LuaValue::Nil),
+                }
+            },
+        );
+        m.add_method(
+            "overlap",
+            |lua, this, (shape, at, opts): (LuaTable, LuaValue, Option<LuaTable>)| {
+                let c = ctx(&this.link)?;
+                let f = cast_filter(c, opts)?;
+                let s = cast_shape(&shape)?;
+                let p = place(c, at)?;
+                let hits = casts_of(lua)?
+                    .overlap(c.world(), &s, p, &f)
+                    .map_err(argus_err)?;
+                let t = lua.create_table()?;
+                for (i, h) in hits.iter().enumerate() {
+                    t.set(i + 1, hit_table(lua, &this.link, h)?)?;
+                }
+                Ok(t)
             },
         );
         m.add_method(

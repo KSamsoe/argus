@@ -27,7 +27,9 @@
 #![warn(missing_docs)]
 
 pub mod env;
+pub mod geom;
 pub mod mover;
+pub mod query;
 mod systems;
 
 use argus_ecs::{Component, Entity, Result, StrId, Vec2, World};

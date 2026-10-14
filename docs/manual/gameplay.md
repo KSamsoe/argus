@@ -223,6 +223,23 @@ return system "sim.pickups" {
 
 When you do not need events, ask the spatial index directly. `q:within(pos, r, "Enemy")` loops over entities near a point, nearest first; `q:nearest(pos, r, "Enemy")` gives the closest one. Swarm's bullets use `q:nearest` (`examples/swarm/systems/hits.luau`). A sim system sees positions as they were at the end of the last tick.
 
+### Asking what is there: rays and shapes
+
+A system can ask what a line or a shape meets, now, without a body moving: line of sight, a hitscan shot, a ledge ahead, room to stand up.
+
+```lua
+local hit = q:raycast(eye, target, { ignore = me, mask = 1 })
+if hit and hit.entity == target then
+  -- nothing in the way
+end
+```
+
+- `q:raycast(from, to, opts)` is the nearest thing the line from `from` to `to` meets, or nil. A hit has `entity` (a collider's) or `tile` (`{map, x, y}`, a Tilemap's cell), `point`, `normal` (the surface's, pointing out), `distance`, and `fraction` (0 at `from`, 1 at `to`). `q:raycast_all` is every hit, nearest first.
+- `q:shape_cast(shape, from, to, opts)` is where a shape moving from `from` to `to` first touches something: the hit's `position` is where the shape stops, its `point` where they touch. A shape is `{ radius = 0.5 }` (a circle), `{ size = vector.create(1, 2, 0) }` (a box), `{ radius = 0.3, height = 1.6 }` (a capsule standing up), or `{ points = { ... } }` (a convex polygon around the shape's origin).
+- `q:overlap(shape, at, opts)` is everything the shape overlaps when it is at `at`: a point is `{ radius = 0 }`.
+
+They meet every active `Collider` and every Tilemap's collision cells: solid cells, slopes (solid under their line), and one-way platforms, which stop only what comes down onto their top (and nothing at rest, for `q:overlap`). Touching is not overlapping: a box resting on the floor is not stopped by it as it slides along. `opts` takes `mask` (layer bits, as a collider's `mask`), `ignore` (an entity or a list, usually the asker), `one_way = false` (one-way platforms are not there), and `tiles = false` or `colliders = false`. Points are vectors, tables, or entities (their positions). The system declares `reads = { "Collider", "Tilemap" }`, or leaves the one it does not read out with its option. The geometry is exact and uses nothing but the four operations and square roots, so a query answers the same on every machine.
+
 The kinematic tier also reports what happened to bodies: `body.jumped {entity, coyote, buffered}` and `body.dropped {entity}` from the controller, and `body.landed {entity, speed}`, `body.wall {entity, side}`, `body.ceiling {entity}`, `body.corner_corrected {entity, dx, dy}`, and `body.crushed {entity, by}` from the move.
 
 ## Rigid bodies
