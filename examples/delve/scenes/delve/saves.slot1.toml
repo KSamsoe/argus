@@ -1,0 +1,9 @@
+# Slot 1: what it holds, and its buttons.
+[Parent]
+entity = "@saves"
+
+[UiNode]
+direction = "row"
+align = "center"
+gap = 8.0
+order = 1

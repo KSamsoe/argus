@@ -28,7 +28,7 @@ component "Monster" {
   kind = field.str { default = "rat" },
   atk = field.i32 { default = 1, range = {0, 100} },
   initiative = field.u8 { default = 5, range = {0, 20} },
-  sight = field.u8 { default = 60, range = {0, 255}, doc = "Manhattan distance at which it notices the hero" },
+  sight = field.u8 { default = 60, range = {0, 255}, doc = "Steps at which it notices the hero; it comes every turn when no wall is between them (a ray from cell to cell), else every other turn" },
   drop = field.u8 { default = 35, range = {0, 100}, doc = "Chance in a hundred that it leaves a potion where the hero kills it (the loot stream rolls it)" },
 }
 
@@ -49,4 +49,9 @@ component "Floor" {
 component "Turn" {
   doc = "Turn counter",
   n = field.u32 { default = 0 },
+}
+
+component "DebugView" {
+  doc = "What the game draws for its developer (2D staples item 1): q:draw shapes, which a release build never shows. Flip a field with argus edit or the editor's inspector",
+  sight = field.bool { default = false, doc = "Each monster in range's line to the hero: green where it sees the hero, red to the wall in the way" },
 }

@@ -8,11 +8,29 @@ end
 return system "sim.monsters" {
   stage = "sim",
   after = { "sim.player_turn" },
-  reads = { "Monster", "Transform", "Health", "Player", "Turn", "NavField" },
+  reads = { "Monster", "Transform", "Health", "Player", "Turn", "NavField", "Tilemap", "DebugView" },
   writes = { "Transform", "Health", "Player" },
-  doc = "Every monster acts in initiative order (ties by id): strike the hero when adjacent, else step along the shortest path toward it when within sight (the hero's flow field, section 12).",
+  doc = "Every monster acts in initiative order (ties by id): strike the hero when adjacent, else step along the shortest path toward it when within sight: every turn when no wall is between them (a ray against the floor's walls), every other turn when it only follows the trail (the hero's flow field, section 12). With @turn's DebugView.sight it draws each sight line.",
   run = function(q)
     local pe = q:entity("@player")
+    local hero = pe:get("Transform").pos
+    local debug = q:entity("@turn"):get("DebugView").sight
+    -- Whether a monster at (x, y) sees the hero: a ray from its cell's
+    -- centre to the hero's meets no wall (2D staples item 0). With the
+    -- debug view on, the ray is drawn (item 1).
+    local function sees(x, y)
+      local from = vector.create(x, y, 0)
+      local wall = q:raycast(from, hero, { colliders = false })
+      if debug then
+        if wall then
+          q:draw_line(from, wall.point, { color = "#FF5050" })
+          q:draw_circle(wall.point, 0.12, { color = "#FF5050", fill = true })
+        else
+          q:draw_line(from, hero, { color = "#60FF90" })
+        end
+      end
+      return wall == nil
+    end
     local pl = pe:get("Player")
     local turn = q:entity("@turn"):get("Turn").n
     if pl.dead then
@@ -52,7 +70,9 @@ return system "sim.monsters" {
           q:play("sfx/death")
           break
         end
-      elseif here ~= nil and here <= m.sight then
+      -- One that sees the hero comes every turn; one that only follows its
+      -- trail, every other turn.
+      elseif here ~= nil and here <= m.sight and (sees(m.x, m.y) or turn % 2 == 0) then
         local best, bx, by = here, nil, nil
         for _, c in ipairs(DIRS) do
           local nx, ny = m.x + c[1], m.y + c[2]

@@ -1,0 +1,8 @@
+[Parent]
+entity = "@saves.slot3"
+
+[UiNode]
+min = [240.0, 0.0]
+
+[UiText]
+text = "Slot 3"

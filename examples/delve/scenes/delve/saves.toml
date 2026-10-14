@@ -1,0 +1,16 @@
+# The saves (2D staples item 4): three slots, each saved to, loaded, and
+# deleted from here, and what each holds (the floor, the turn, the kills,
+# the summary q:save kept) read with q:saves (systems/menu_buttons.luau).
+[Parent]
+entity = "@menu"
+
+[UiNode]
+pad = [28.0, 22.0]
+gap = 8.0
+min = [520.0, 0.0]
+visible = false
+
+[UiPanel]
+image = "ui/panel"
+slice = 4.0
+scale = 2.0

@@ -9,6 +9,7 @@ resume = "Resume"
 new = "New run"
 controls = "Controls"
 settings = "Settings"
+saves = "Saves"
 
 # The menu's controls page (phase 5 item 2): each line is an action and
 # what it is bound to.
@@ -29,6 +30,18 @@ contrast = "High contrast: {state}"
 fullscreen = "Fullscreen: {state}"
 on = "on"
 off = "off"
+back = "Back"
+
+# The menu's saves page (2D staples item 4); systems/menu_buttons.luau
+# fills the holes from what each save holds.
+[saves]
+title = "Saves"
+slot = "Slot {n}: {what}"
+empty = "empty"
+held = "floor {floor}, turn {turn}, {kills} kills"
+save = "Save"
+load = "Load"
+delete = "Delete"
 back = "Back"
 
 [hud]

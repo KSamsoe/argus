@@ -3,26 +3,32 @@
 -- and Settings (phase 5 item 2) show their page in its place, and Back (or
 -- the cancel action) brings it back. The settings page cycles the text
 -- size and turns high contrast and fullscreen on and off, in @settings's
--- UiSettings; its words come from the string table.
+-- UiSettings; its words come from the string table. The saves page (2D
+-- staples item 4) saves the run to a slot with what it holds, loads one,
+-- and deletes one, and says what each slot holds (q:saves).
+local SLOTS = 3
 local SIZES = { 1.0, 1.25, 1.5 }
 
 return system "sim.menu_buttons" {
   stage = "sim",
   after = { "ui.input" },
   unfrozen = true,
-  reads = { "UiNode", "Player", "Health", "Floor", "Turn", "UiSettings", "UiText" },
-  writes = { "UiNode", "Player", "Health", "Floor", "Turn", "UiSettings", "UiText" },
-  doc = "The menu's buttons: Resume closes it; New run also resets the hero and the floor count, so sim.floor makes a new first floor; Controls and Settings swap their page in, and Back or cancel swaps it out; the settings page's buttons cycle the text size and turn high contrast and fullscreen on and off.",
+  reads = { "UiNode", "Player", "Health", "Floor", "Turn", "UiSettings", "UiText", "UiButton" },
+  writes = { "UiNode", "Player", "Health", "Floor", "Turn", "UiSettings", "UiText", "UiButton" },
+  doc = "The menu's buttons: Resume closes it; New run also resets the hero and the floor count, so sim.floor makes a new first floor; Controls, Settings, and Saves swap their page in, and Back or cancel swaps it out; the settings page's buttons cycle the text size and turn high contrast and fullscreen on and off; the saves page's save to, load, and delete a slot, and show what each holds.",
   run = function(q)
     local menu = q:entity("@menu"):get("UiNode")
     local panel = q:entity("@menu.panel"):get("UiNode")
     local pages = {
       controls = q:entity("@controls"):get("UiNode"),
       settings = q:entity("@settings"):get("UiNode"),
+      saves = q:entity("@saves"):get("UiNode"),
     }
     local resume = #q:events("menu.resume") > 0
     local new_run = #q:events("menu.new_run") > 0
-    if resume or new_run then
+    -- A load puts back the menu as it was saved; the game goes on closed.
+    local loaded = #q:events("game.loaded") > 0
+    if resume or new_run or loaded then
       menu.visible = false
       q:emit("menu.closed", {})
     end
@@ -56,6 +62,51 @@ return system "sim.menu_buttons" {
       end
       panel.visible = true
       return
+    end
+
+    -- The saves: a slot saved with what it holds, loaded, or deleted.
+    -- A save is written, and a delete done, after this step: what this
+    -- tick asked for shows at once, and q:saves() has it from the next.
+    local pe = q:entity("@player")
+    local pl = pe:get("Player")
+    local asked = {}
+    for n = 1, SLOTS do
+      local slot = "slot" .. n
+      if #q:events("saves.save" .. n) > 0 then
+        local summary = {
+          floor = pl.floor,
+          turn = q:entity("@turn"):get("Turn").n,
+          kills = pl.kills,
+          hp = pe:get("Health").cur,
+        }
+        q:save(slot, summary)
+        asked[slot] = { name = slot, summary = summary }
+      end
+      if #q:events("saves.load" .. n) > 0 then q:load(slot) end
+      if #q:events("saves.delete" .. n) > 0 then
+        q:delete_save(slot)
+        asked[slot] = false
+      end
+    end
+    if pages.saves.visible then
+      local held = {}
+      for _, s in ipairs(q:saves()) do held[s.name] = s end
+      for slot, s in pairs(asked) do held[slot] = s or nil end
+      for n = 1, SLOTS do
+        local s = held["slot" .. n]
+        local what = s and q:text("saves.held", {
+          floor = s.summary.floor or 0,
+          turn = s.summary.turn or 0,
+          kills = s.summary.kills or 0,
+        }) or q:text("saves.empty")
+        local text = q:text("saves.slot", { n = n, what = what })
+        local t = q:entity("@saves.slot" .. n .. ".text"):get("UiText")
+        if t.text ~= text then t.text = text end
+        for _, act in ipairs({ "load", "delete" }) do
+          local b = q:entity("@saves.slot" .. n .. "." .. act):get("UiButton")
+          if b.disabled ~= (s == nil) then b.disabled = (s == nil) end
+        end
+      end
     end
 
     -- The settings.

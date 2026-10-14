@@ -1,0 +1,19 @@
+[Parent]
+entity = "@saves.slot1"
+
+[UiNode]
+pad = [12.0, 6.0]
+order = 1
+
+[UiPanel]
+image = "ui/button"
+slice = 3.0
+scale = 2.0
+color = "button"
+
+[UiButton]
+event = "saves.save1"
+
+[UiText]
+key = "saves.save"
+align = "center"

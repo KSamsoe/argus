@@ -1,5 +1,10 @@
 [Turn]
 
+# What the game draws for its developer (2D staples item 1): sight = true
+# draws each monster's line to the hero. Flip it with argus edit or the
+# editor's inspector; a release build never draws it.
+[DebugView]
+
 # The line along the top of the screen: a UI text the player reads and the
 # semantic frame lists (phase 3 item 1; before, only the agent read it).
 # On a bronze-edged plate (assets/ui/panel.png, nine-sliced at twice its

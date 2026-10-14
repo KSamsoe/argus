@@ -20,7 +20,7 @@ return scenario "the menu takes no turn and its buttons work" {
         if u.focused then focused = u.text end
       end
     end
-    if table.concat(buttons, " | ") ~= "Resume | New run | Controls | Settings" then
+    if table.concat(buttons, " | ") ~= "Resume | New run | Controls | Settings | Saves" then
       error("the semantic frame's buttons: " .. table.concat(buttons, " | "), 0)
     end
     if focused ~= "Resume" then error("the semantic frame's focus: " .. tostring(focused), 0) end

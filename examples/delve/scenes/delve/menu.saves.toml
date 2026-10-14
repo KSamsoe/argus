@@ -1,0 +1,19 @@
+[Parent]
+entity = "@menu.panel"
+
+[UiNode]
+pad = [18.0, 8.0]
+order = 5
+
+[UiPanel]
+image = "ui/button"
+slice = 3.0
+scale = 2.0
+color = "button"
+
+[UiButton]
+event = "menu.saves"
+
+[UiText]
+key = "menu.saves"
+align = "center"
