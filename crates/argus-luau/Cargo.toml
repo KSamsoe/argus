@@ -6,7 +6,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-argus-os = { path = "../argus-os", version = "0.0.8" }
-argus-ecs = { path = "../argus-ecs", version = "0.0.8" }
-argus-sim = { path = "../argus-sim", version = "0.0.8" }
+argus-os = { path = "../argus-os", version = "0.1.0" }
+argus-ecs = { path = "../argus-ecs", version = "0.1.0" }
+argus-sim = { path = "../argus-sim", version = "0.1.0" }
 mlua = { version = "0.10", features = ["luau"] }

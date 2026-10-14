@@ -107,6 +107,12 @@ Phase 0, piece 10: the scenario test runner, in [crates/argus-test](../crates/ar
 
 Its trace is [crates/argus-test/SPEC-TRACE.md](../crates/argus-test/SPEC-TRACE.md).
 
+## The 2D staples, and 0.1.0
+
+After 0.0.8, the staples a 2D game reaches for that Argus lacked or had thinly, found by comparing it with Godot, GameMaker, Defold, and Unity 2D: raycasts and shape queries over colliders and tile cells, on one exact geometry core; debug drawing from scripts; capsule and polygon colliders; parallax for sprites and tile layers; save slots; and turn-based games that animate between turns, with that idle time recorded as part of the run. Toybox, Hollow, and Delve each use some of them. The plan and what each item built are in [docs/2d-staples-checklist.md](2d-staples-checklist.md).
+
+Then the last issues Bring Your Own Game Master's making raised (#30 to #35), and version 0.1.0: the first release with a whole game made on Argus, and the first whose patch releases promise not to break a game. Its notes are [docs/releases/0.1.0.md](releases/0.1.0.md).
+
 ## Distribution
 
 After phase 5, Argus ran only where it was built from source. This work makes it something a person installs and connects to the AI tools they already use; the plan, agreed with Kevin, is [docs/distribution-checklist.md](distribution-checklist.md), and the user's guide is [docs/install.md](install.md).

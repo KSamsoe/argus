@@ -13,7 +13,7 @@ gh release download --repo KSamsoe/argus --pattern "example-games-*-windows-x86_
 ## What you need
 
 - Windows 10 or 11 (64-bit), or Linux on x86-64 with glibc 2.39 or newer: Ubuntu 24.04, Debian 13, Fedora 40, or newer. (The Linux build is made on Ubuntu 24.04, and a game released for Linux needs the same of its players.)
-- Or a Mac with macOS 11 or newer, Apple Silicon or Intel (one build runs on both). **The Mac build is new:** it is made on Linux and had not run on a Mac when it was released, so see [testing it on a Mac](mac-testing.md).
+- Or a Mac with macOS 11 or newer, Apple Silicon or Intel (one build runs on both). The Mac build is made on Linux. It was first tested on a Mac at 0.0.6 (an Apple M4 Max, macOS 27), where its games played the same as on Windows, bit for bit; [testing it on a Mac](mac-testing.md) is the packet a Mac's AI agent works through.
 - A graphics card with DirectX 12, Vulkan, or Metal (every Mac since 2012). Without one, Argus draws in software: Windows has this built in, and on Linux it needs Mesa's software Vulkan (`mesa-vulkan-drivers`).
 - On Linux, for sound and windows: ALSA (`libasound2`) and X11 or Wayland, which a desktop already has.
 - Access to the Argus repository on GitHub, and a way to prove it: the GitHub CLI signed in (`gh auth login`), or a token in `GITHUB_TOKEN` that can read the repository.
@@ -104,7 +104,7 @@ A Mac release is the game's executable beside its data, run from Terminal; it is
 
 ```sh
 argus self-update             # the latest release, in place
-argus self-update 0.0.8       # that version
+argus self-update 0.1.0       # that version
 argus uninstall               # removes Argus; your games and settings stay
 ```
 

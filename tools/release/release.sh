@@ -22,7 +22,8 @@
 #    play with nothing installed; not named argus-*, which the installers
 #    look for), and SHA256SUMS.
 # 5. With --publish: a draft release v<version> on the private repository
-#    (gh), with those files. Publishing the draft is a person's click.
+#    (gh), with those files, its notes docs/releases/<version>.md if there
+#    is one. Publishing the draft is a person's click.
 #
 # The tree must be clean: a release is a commit. The Linux host defaults
 # to $ARGUS_RELEASE_HOST; $ARGUS_SSH_OPTS are added to ssh and scp (this
@@ -137,8 +138,10 @@ ls -la "$OUT"
 
 if [ "$PUBLISH" = 1 ]; then
   echo "== a draft release on GitHub"
+  # The release's notes are docs/releases/<version>.md when it has some.
+  NOTES=(--notes "Argus $VERSION ($REV). Install: install.ps1 (Windows) or install.sh (Linux and macOS) from the archive, or with a GitHub token from this release; see docs/install.md. The macOS build is cross-built and universal (Apple Silicon and Intel); docs/mac-testing.md checks it on a Mac. To play the example games with nothing installed: example-games-$VERSION for Windows, Linux, or macOS (its README.txt has the controls).")
+  [ -f "docs/releases/$VERSION.md" ] && NOTES=(--notes-file "docs/releases/$VERSION.md")
   gh release create "v$VERSION" "$OUT"/argus-* "$OUT"/example-games-* "$OUT"/install.* "$OUT/SHA256SUMS" \
-    --draft --target "$SHA" --title "Argus $VERSION" \
-    --notes "Argus $VERSION ($REV). Install: install.ps1 (Windows) or install.sh (Linux and macOS) from the archive, or with a GitHub token from this release; see docs/install.md. The macOS build is cross-built, universal (Apple Silicon and Intel), and new: see docs/macos-checklist.md. To play the example games with nothing installed: example-games-$VERSION for Windows, Linux, or macOS (its README.txt has the controls)."
+    --draft --target "$SHA" --title "Argus $VERSION" "${NOTES[@]}"
 fi
 echo "== done: $OUT"

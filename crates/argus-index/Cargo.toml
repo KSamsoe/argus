@@ -6,9 +6,9 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-argus-ecs = { path = "../argus-ecs", version = "0.0.8" }
-argus-sim = { path = "../argus-sim", version = "0.0.8" }
-argus-scene = { path = "../argus-scene", version = "0.0.8" }
+argus-ecs = { path = "../argus-ecs", version = "0.1.0" }
+argus-sim = { path = "../argus-sim", version = "0.1.0" }
+argus-scene = { path = "../argus-scene", version = "0.1.0" }
 rusqlite = { version = "0.40", features = ["bundled"] }
 # Exact float parsing: the index stores values as JSON text, and a read
 # from it must give the live world's f64 to the last bit (a PostShake default
@@ -17,4 +17,4 @@ serde_json = { version = "1", features = ["float_roundtrip"] }
 toml_edit = "0.22"
 
 [dev-dependencies]
-argus-luau = { path = "../argus-luau", version = "0.0.8" }
+argus-luau = { path = "../argus-luau", version = "0.1.0" }

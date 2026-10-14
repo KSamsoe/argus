@@ -7,10 +7,10 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-argus-ecs = { path = "../argus-ecs", version = "0.0.8" }
-argus-sim = { path = "../argus-sim", version = "0.0.8" }
-argus-tiles = { path = "../argus-tiles", version = "0.0.8" }
-argus-physics = { path = "../argus-physics", version = "0.0.8" }
+argus-ecs = { path = "../argus-ecs", version = "0.1.0" }
+argus-sim = { path = "../argus-sim", version = "0.1.0" }
+argus-tiles = { path = "../argus-tiles", version = "0.1.0" }
+argus-physics = { path = "../argus-physics", version = "0.1.0" }
 # The same run reaches the same world on every platform the engine runs on
 # (libm for every transcendental), and the state serialises for replays.
 rapier2d = { version = "0.36", features = ["enhanced-determinism", "serde-serialize"] }

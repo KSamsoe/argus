@@ -19,15 +19,15 @@ All four games above are examples in this repository, and each one also had a fe
 
 **Every change is a step you can see and undo.** Edits go through the engine as transactions with a note and an author, human or agent, in one change feed. `propose` offers a change for you to try before it is kept.
 
-**Same seed, same game.** A run is deterministic, bit for bit, on Windows, Linux, and in the browser. That is what makes the rest work: a failing test saves a replay that opens at the moment it failed, and when a player flags a moment while playing (a mark, with a note), the agent opens the game at exactly that frame.
+**Same seed, same game.** A run is deterministic, bit for bit, on Windows, Linux, the Mac, and in the browser. That is what makes the rest work: a failing test saves a replay that opens at the moment it failed, and when a player flags a moment while playing (a mark, with a note), the agent opens the game at exactly that frame.
 
 **Tests that play the game.** A scenario drives the game with scripted input and checks what must stay true, over one seed or a hundred. A change is done when the scenarios pass.
 
 **Tuning and speed as data.** Mark a field as tunable and sweep it across seeds to see which values hold up. `profile` reports each system's cost against the game's performance targets, and names the system to look at.
 
-**A whole 2D engine.** Luau scripts that reload while the game runs; scenes as plain text files, one per entity; sprites, Aseprite, and Spine animation; 2D lighting with shadows and normal maps; particles and materials; UI with a screen-reader feed; sound and adaptive music; kinematic movement and rigid-body physics; navigation and jobs for crowds and colonies; tilemaps; dialogue and timelines; languages; saves; mods; and Rust plugins for the hot paths.
+**A whole 2D engine.** Luau scripts that reload while the game runs; scenes as plain text files, one per entity; sprites, Aseprite, and Spine animation; 2D lighting with shadows and normal maps; particles and materials; parallax; UI with text boxes, scrolling logs, and a screen-reader feed; sound and adaptive music; kinematic movement and rigid-body physics, with box, circle, capsule, and polygon colliders; raycasts and shape queries; navigation and jobs for crowds and colonies; tilemaps; dialogue and timelines; languages; saves and save slots; mods; debug drawing; turn-based games that keep animating between turns; and Rust plugins for the hot paths.
 
-**Ships games.** `argus build` makes a release for Windows, Linux, or the web, checks that it plays and looks exactly as the project does, and needs no compiler. Steam support is built in.
+**Ships games.** `argus build` makes a release for Windows, Linux, macOS, or the web, checks that it plays and looks exactly as the project does, and needs no compiler. Steam support is built in.
 
 **Made for people too.** An editor window with the live game, a hierarchy, an inspector, a timeline, tilemap painting, and a replay scrubber; and a review page that works on a phone.
 
@@ -60,24 +60,24 @@ The usual way to make games with an agent today is an existing engine with an as
 |---|---|---|
 | What the agent talks to | The editor, which has to be open, through the calls its plugin offers | The running game: a background program holds the live world, and the agent, the editor, the tests, and the command line all use the same protocol to reach it, with or without an editor open |
 | What it sees | The scene's objects and their components, console logs, and screenshots | The frame as data, about 3 KB: what is on screen, where, and what it is; and an event log in which each event says what caused it |
-| Time | Play mode runs forward, and a moment that went wrong is gone unless someone kept it | Run, step, and seek back to any earlier frame. Every run is the same, bit for bit, on Windows, on Linux, and in the browser, so a moment a player flags opens at that exact frame, and a failing test hands over a replay |
+| Time | Play mode runs forward, and a moment that went wrong is gone unless someone kept it | Run, step, and seek back to any earlier frame. Every run is the same, bit for bit, on Windows, Linux, and the Mac, and in the browser, so a moment a player flags opens at that exact frame, and a failing test hands over a replay |
 | Knowing a change works | The engine's test framework, with the tests a team writes and wires up | Scenarios that play the game headless, over one seed or a hundred, in seconds; every template comes with them, and a change is done when they pass |
 | Changes | Edits in the editor, with the editor's undo | Transactions with an author and a note, in one change feed; any one can be undone, and `propose` lets a person try a change before it is kept |
 | The project | Scenes and prefabs saved in the engine's own formats, best changed through the editor | Plain text: one TOML file per entity, and Luau scripts that reload while the game runs; an agent can read, change, and diff all of it |
 | What the agent reads to learn the engine | The engine's docs online, and what the model already knows | The manual and the reference compiled into the engine, matched to the installed version and readable over MCP, and an `ARGUS.md` in every project describing that game |
 | Releasing | A build, checked by playing it | `argus build` checks that the release plays and looks as the project does, with no compiler needed |
 
-Where the big engines are ahead, and will stay ahead for a while: 3D, which Argus does not do at all; decades of tools, an asset store, and a very large community; consoles, phones, and the Mac, where Argus does not run yet; and generated assets (Coplay and Unity AI make models, sound, and voices; Argus's examples draw their art with scripts). Argus is young, at version 0.0.4, and 2D only.
+Where the big engines are ahead, and will stay ahead for a while: 3D, which Argus does not do at all; decades of tools, an asset store, and a very large community; consoles and phones, where Argus does not run yet; and generated assets (Coplay and Unity AI make models, sound, and voices; Argus's examples draw their art with scripts). Argus is young, at version 0.1.0, and 2D only.
 
 ## Play the games
 
 **[Play Hollow, Delve, and Outpost in your browser](https://klab.tailde2255.ts.net/)**: the same games, tick for tick, drawn with WebGPU (or WebGL2). Click a game, then play with the keys its page lists. (Swarm runs its chase in a Rust plugin, which a page cannot load, so it plays on the desktop.)
 
-Each release also has the four games built and ready to run, nothing to install: `example-games-<version>` for Windows or Linux, on the [releases page](https://github.com/KSamsoe/argus/releases). Unpack it and run a game's program; its `README.txt` has the controls.
+Each release also has the four games built and ready to run, nothing to install: `example-games-<version>` for Windows, Linux, or macOS (the Mac's without Swarm, whose Rust plugin is built on a Mac), on the [releases page](https://github.com/KSamsoe/argus/releases). Unpack it and run a game's program; its `README.txt` has the controls.
 
 ## Install
 
-Argus runs on Windows 10 or 11 and on Linux (x86-64, Ubuntu 24.04 or newer). Releases are on this repository; with the GitHub CLI signed in:
+Argus runs on Windows 10 or 11, on Linux (x86-64, Ubuntu 24.04 or newer), and on macOS 11 or newer, Apple Silicon or Intel ([what each needs](docs/install.md#what-you-need)). Releases are on this repository; with the GitHub CLI signed in:
 
 ```powershell
 # Windows (PowerShell)
@@ -86,7 +86,7 @@ powershell -ExecutionPolicy Bypass -File install.ps1
 ```
 
 ```sh
-# Linux
+# Linux and macOS
 gh release download --repo KSamsoe/argus --pattern install.sh
 sh install.sh
 ```
@@ -119,4 +119,4 @@ That adds Argus to the tool's own settings. Set up once with `--scope user`, and
 - **`argus docs`**: the full reference, generated from the engine itself: every tool, protocol method, script function, test function, project file, and engine component. Every project's `ARGUS.md` carries the parts for that game.
 - **[The design](docs/argus-engine-design-v0.3.html)**, **[how it was built](docs/history.md)**, and **[working on the engine](docs/developing.md)**, for changing Argus itself.
 
-Argus is early: version 0.0.8, in a private repository, on Windows, Linux, and macOS (cross-built on Linux, and tested on a Mac).
+Argus is young: version 0.1.0, the first release with a whole game made on it, in a private repository, on Windows, Linux, and macOS (cross-built on Linux, and tested on a Mac).
