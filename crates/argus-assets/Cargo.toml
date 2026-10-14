@@ -6,10 +6,10 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-argus-os = { path = "../argus-os", version = "0.0.7" }
-argus-ecs = { path = "../argus-ecs", version = "0.0.7" }
-argus-audio = { path = "../argus-audio", version = "0.0.7", default-features = false }
-argus-material = { path = "../argus-material", version = "0.0.7" }
+argus-os = { path = "../argus-os", version = "0.0.8" }
+argus-ecs = { path = "../argus-ecs", version = "0.0.8" }
+argus-audio = { path = "../argus-audio", version = "0.0.8", default-features = false }
+argus-material = { path = "../argus-material", version = "0.0.8" }
 toml_edit = "0.22"
 png = "0.17"
 serde_json = "1"

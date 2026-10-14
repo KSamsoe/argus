@@ -104,7 +104,7 @@ A Mac release is the game's executable beside its data, run from Terminal; it is
 
 ```sh
 argus self-update             # the latest release, in place
-argus self-update 0.0.7       # that version
+argus self-update 0.0.8       # that version
 argus uninstall               # removes Argus; your games and settings stay
 ```
 
