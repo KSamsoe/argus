@@ -109,6 +109,33 @@ pub struct Assembly {
     /// The mods laid over the game, those left out and why, and what they
     /// changed (phase 3 item 8).
     pub mods: crate::mods::Report,
+    /// The saves the host keeps, which scripts list (`q:saves`; 2D staples
+    /// item 4): the host fills it and keeps it current.
+    pub save_list: Rc<RefCell<Vec<argus_luau::SaveInfo>>>,
+}
+
+/// Scripts' `q:saves` (2D staples item 4): on a tick's first run, the
+/// host's list, recorded with the run's input; on a re-run, what it read.
+/// A project without input.toml has no journal to record it in: its
+/// scripts read the host's list as it is.
+struct HostSaves {
+    list: Rc<RefCell<Vec<argus_luau::SaveInfo>>>,
+    input: Option<Rc<RefCell<InputState>>>,
+}
+
+impl argus_luau::Saves for HostSaves {
+    fn list(&self) -> Vec<argus_luau::SaveInfo> {
+        let Some(input) = &self.input else {
+            return self.list.borrow().clone();
+        };
+        let mut st = input.borrow_mut();
+        if let Some(text) = st.saves_read() {
+            return crate::savegame::list_from_json(text);
+        }
+        let now = self.list.borrow().clone();
+        st.record_saves(&crate::savegame::list_json(&now));
+        now
+    }
 }
 
 /// Assemble scene `scene_name` of the project at `root`, with the mods
@@ -460,6 +487,11 @@ fn assemble_layers(
     host.set_paths(Rc::new(NavPaths(nav.clone())));
     host.set_tiles(Rc::new(ScriptTiles(tiles.clone())));
     host.set_casts(Rc::new(PhysicsCasts(tiles.clone())));
+    let save_list: Rc<RefCell<Vec<argus_luau::SaveInfo>>> = Default::default();
+    host.set_saves(Rc::new(HostSaves {
+        list: save_list.clone(),
+        input: input.clone(),
+    }));
     host.set_texts(Rc::new(UiTexts(ui.clone())));
     host.set_screen(Rc::new(UiScreen(ui.clone())));
     host.load_layers(&mut world, &mut sched, layers)?;
@@ -555,6 +587,7 @@ fn assemble_layers(
         #[cfg(feature = "audio")]
         audio,
         mods: crate::mods::Report::default(),
+        save_list,
     })
 }
 

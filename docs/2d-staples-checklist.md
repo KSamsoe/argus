@@ -34,6 +34,8 @@ Built (2026-10-14): a `Parallax` component (`factor`, `origin`) on a sprite, and
 
 - Scripts list the saves there are, with what each holds (when it was made, the scene, a game's own summary fields), and delete one; a "Continue" button and a three-slot menu can be built.
 
+Built (2026-10-14): `q:saves()`, `q:delete_save(name)`, and `q:save(name, summary)`. The saves on disk are outside the run, as a key is, so a tick's read is input: the first time a tick runs, the host's list is recorded in the input journal on a reserved channel (`argus_input::SAVES_CHANNEL`) for that tick, and a re-run (a seek, a replay, a report) reads the recorded list. Recording at the read, not when the list changes, keeps saves made after a seek back from branching the run, and puts nothing in the journal of a game that never asks. Each host keeps the list: the daemon from `.argus/saves/` (empty while `test.run` runs scenarios), a release build through `Player::list_saves`, `store_save`, and `delete_save` (disk and cloud), the web page through `note_save`, `forget_save`, and `take_deletes` over its IndexedDB store. A save's summary is in its identity (`meta.summary`). Tests: argus-daemon `tests/save_slots.rs` (summaries, newest first, a delete from the disk, a re-run reading the recorded list, a release player's list).
+
 ## 5. Animation between turns
 
 - In a turn-based game, animators, particles, and tweens move while the game waits for the next turn, not only on turns. Decided with Kevin before it is built: what this does to determinism, replays, and digests.

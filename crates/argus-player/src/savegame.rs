@@ -178,7 +178,7 @@ pub fn requested(
     world: &World,
     sched: &argus_sim::Scheduler,
     sources: &crate::keyframe::Sources,
-    out: &mut Vec<(String, Keyframe)>,
+    out: &mut Vec<Requested>,
 ) {
     // The world's frame moved on at the end of the tick; its events carry
     // the one before.
@@ -190,10 +190,153 @@ pub fn requested(
     for rec in all[start..].iter().filter(|r| r.frame == frame) {
         if let argus_ecs::Event::Game { name, fields } = &rec.event {
             if name == "save.requested" {
-                out.push((request_name(fields), sources.capture(world, sched, true)));
+                out.push(Requested {
+                    name: request_name(fields),
+                    keyframe: sources.capture(world, sched, true),
+                    summary: summary(fields),
+                });
             }
         }
     }
+}
+
+/// A save a tick asked for (`q:save(name, summary)`).
+pub struct Requested {
+    /// The save's name.
+    pub name: String,
+    /// The world as the tick ended.
+    pub keyframe: Keyframe,
+    /// The game's own fields for it, as JSON (2D staples item 4).
+    pub summary: Json,
+}
+
+/// A `save.requested` event's `summary.<key>` fields as a JSON object.
+pub fn summary(fields: &[(String, argus_ecs::Value)]) -> Json {
+    use argus_ecs::Value;
+    let mut o = serde_json::Map::new();
+    for (k, v) in fields {
+        let Some(key) = k.strip_prefix("summary.") else {
+            continue;
+        };
+        let j = match v {
+            Value::Str(s) => Json::from(s.clone()),
+            Value::Int(i) => Json::from(*i),
+            Value::UInt(u) => Json::from(*u),
+            Value::Float(f) => Json::from(*f),
+            Value::Bool(b) => Json::from(*b),
+            _ => continue,
+        };
+        o.insert(key.to_string(), j);
+    }
+    Json::Object(o)
+}
+
+/// A save's identity, from its bytes; `None` for bytes that are not one.
+pub fn meta(bytes: &[u8]) -> Option<Json> {
+    let mut r = Reader::new(bytes, "save file");
+    r.magic(TAG, VERSION).ok()?;
+    serde_json::from_str(&r.str().ok()?).ok()
+}
+
+/// A save as scripts list it (`q:saves`; 2D staples item 4), from its
+/// identity.
+pub fn info(meta: &Json) -> Option<argus_luau::SaveInfo> {
+    use argus_ecs::Value;
+    let name = meta["name"].as_str()?.to_string();
+    let mut summary: Vec<(String, Value)> = meta["summary"]
+        .as_object()
+        .into_iter()
+        .flatten()
+        .filter_map(|(k, v)| {
+            let v = match v {
+                Json::String(s) => Value::Str(s.clone()),
+                Json::Bool(b) => Value::Bool(*b),
+                Json::Number(n) => match (n.as_i64(), n.as_f64()) {
+                    (Some(i), _) => Value::Int(i),
+                    (None, Some(f)) => Value::Float(f),
+                    _ => return None,
+                },
+                _ => return None,
+            };
+            Some((k.clone(), v))
+        })
+        .collect();
+    summary.sort_by(|a, b| a.0.cmp(&b.0));
+    Some(argus_luau::SaveInfo {
+        name,
+        saved_at: meta["saved_at"].as_u64().unwrap_or(0),
+        scene: meta["scene"].as_str().unwrap_or("").to_string(),
+        tick: meta["tick"].as_u64().unwrap_or(0),
+        time: meta["time"].as_f64().unwrap_or(0.0),
+        summary,
+    })
+}
+
+/// Put `s` in a list of saves, newest first, in place of one of its name.
+pub fn keep(list: &mut Vec<argus_luau::SaveInfo>, s: argus_luau::SaveInfo) {
+    list.retain(|x| x.name != s.name);
+    list.push(s);
+    list.sort_by(|a, b| b.saved_at.cmp(&a.saved_at).then(a.name.cmp(&b.name)));
+}
+
+/// The saves in a folder (`*.save` files), newest first.
+pub fn list_dir(dir: &std::path::Path) -> Vec<argus_luau::SaveInfo> {
+    let mut out = Vec::new();
+    for e in argus_os::fs::read_dir(dir).into_iter().flatten() {
+        let p = e.path;
+        if p.extension().and_then(|x| x.to_str()) != Some("save") {
+            continue;
+        }
+        if let Some(i) = argus_os::fs::read(&p)
+            .ok()
+            .as_deref()
+            .and_then(meta)
+            .as_ref()
+            .and_then(info)
+        {
+            keep(&mut out, i);
+        }
+    }
+    out
+}
+
+/// A list of saves as the run's input records it: JSON.
+pub fn list_json(list: &[argus_luau::SaveInfo]) -> String {
+    let rows: Vec<Json> = list
+        .iter()
+        .map(|s| {
+            let mut summary = serde_json::Map::new();
+            for (k, v) in &s.summary {
+                use argus_ecs::Value;
+                let j = match v {
+                    Value::Str(t) => Json::from(t.clone()),
+                    Value::Int(i) => Json::from(*i),
+                    Value::UInt(u) => Json::from(*u),
+                    Value::Float(f) => Json::from(*f),
+                    Value::Bool(b) => Json::from(*b),
+                    _ => continue,
+                };
+                summary.insert(k.clone(), j);
+            }
+            serde_json::json!({
+                "name": s.name,
+                "saved_at": s.saved_at,
+                "scene": s.scene,
+                "tick": s.tick,
+                "time": s.time,
+                "summary": summary,
+            })
+        })
+        .collect();
+    Json::Array(rows).to_string()
+}
+
+/// The list [`list_json`] wrote.
+pub fn list_from_json(text: &str) -> Vec<argus_luau::SaveInfo> {
+    let Ok(Json::Array(rows)) = serde_json::from_str::<Json>(text) else {
+        return Vec::new();
+    };
+    rows.iter().filter_map(info).collect()
 }
 
 /// The save a `save.requested` or `load.requested` event names, in its

@@ -199,6 +199,12 @@ Phase 0 item 3, "Luau binding with component and def schemas": this crate.
 | `q:raycast`, `q:raycast_all`, `q:shape_cast`, `q:overlap`. | Done | `bind.rs` on the host's `Casts` service (argus-player fills it from argus-physics); `opts` checked by name; a query that meets colliders or maps needs their reads declared, as a path query does. | argus-daemon `tests/casts.rs` |
 | `q:draw_line`, `q:draw_arrow`, `q:draw_box`, `q:draw_circle`, `q:draw_text`. | Done | `bind.rs` `draw`: off (the host has not turned the list on), a draw reads nothing and keeps nothing; on, its `opts` are checked by name and the shape kept as the running system's. The host empties a system's shapes as each run starts (`lib.rs` `bind_system`) and forgets them when the system is declared again or removed. | argus-daemon `tests/draws.rs` |
 
+## 2D staples, item 4: save slots
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| Scripts list the saves, with what each holds, and delete one. | Done | `q:saves()` through the host's `Saves` service (`SaveInfo`: name, saved_at, scene, tick, time, summary); `q:delete_save(name)` a `save.delete_requested` event; `q:save(name, summary)` puts the summary in `summary.<key>` fields. | argus-daemon `tests/save_slots.rs` |
+
 ## Known limitations, stated so they are decisions
 
 - One Luau VM per `ScriptHost`; a forked world needs its own host (or the same host with a different scheduler, since the VM holds no world state).

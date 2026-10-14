@@ -1976,13 +1976,71 @@ impl UserData for QueryHandle {
         // daemon keeps saves in .argus/saves/, a release build where the
         // platform says, the web page in the browser's storage; each
         // answers with game.saved or game.loaded.
-        for (method, event) in [("save", "save.requested"), ("load", "load.requested")] {
+        // save(name, summary): the game's own fields go with the save, for a
+        // slot menu to show (2D staples item 4), as `summary.<key>` fields.
+        m.add_method(
+            "save",
+            |_, this, (name, summary): (Option<String>, Option<LuaTable>)| {
+                let name = name.unwrap_or_else(|| "auto".to_string());
+                let mut fields = vec![("save".to_string(), Value::Str(name))];
+                if let Some(t) = summary {
+                    for pair in t.pairs::<String, LuaValue>() {
+                        let (k, v) = pair?;
+                        let v = match v {
+                            LuaValue::String(_)
+                            | LuaValue::Integer(_)
+                            | LuaValue::Number(_)
+                            | LuaValue::Boolean(_) => event_value(v),
+                            other => {
+                                return Err(mlua::Error::runtime(format!(
+                                    "a save's summary holds words, numbers, and true or false; {k} is a {}",
+                                    other.type_name()
+                                )))
+                            }
+                        };
+                        fields.push((format!("summary.{k}"), v));
+                    }
+                    fields[1..].sort_by(|a, b| a.0.cmp(&b.0));
+                }
+                ctx(&this.link)?.emit("save.requested", fields);
+                Ok(())
+            },
+        );
+        for (method, event) in [
+            ("load", "load.requested"),
+            ("delete_save", "save.delete_requested"),
+        ] {
             m.add_method(method, move |_, this, name: Option<String>| {
                 let name = name.unwrap_or_else(|| "auto".to_string());
                 ctx(&this.link)?.emit(event, vec![("save".to_string(), Value::Str(name))]);
                 Ok(())
             });
         }
+        // saves(): the saves there are, newest first, as the host keeps
+        // them; what a tick reads is recorded with its input.
+        m.add_method("saves", |lua, this, ()| {
+            ctx(&this.link)?;
+            let list = match lua.app_data_ref::<crate::SavesData>() {
+                Some(s) => s.0.list(),
+                None => Vec::new(),
+            };
+            let out = lua.create_table()?;
+            for (i, s) in list.iter().enumerate() {
+                let t = lua.create_table()?;
+                t.set("name", s.name.as_str())?;
+                t.set("saved_at", s.saved_at)?;
+                t.set("scene", s.scene.as_str())?;
+                t.set("tick", s.tick)?;
+                t.set("time", s.time)?;
+                let sum = lua.create_table()?;
+                for (k, v) in &s.summary {
+                    sum.set(k.as_str(), value_to_lua(lua, v.clone(), &this.link)?)?;
+                }
+                t.set("summary", sum)?;
+                out.set(i + 1, t)?;
+            }
+            Ok(out)
+        });
         // speed(x): ask for x ticks a frame (section 6, Outpost's 1x/3x/10x):
         // a `speed.requested` event the scheduler answers at the end of this
         // tick, from the next frame, inside the run, so every host and

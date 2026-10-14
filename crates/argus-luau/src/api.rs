@@ -99,7 +99,9 @@ pub const SECTIONS: &[ApiSection] = &[
             d("q:send(channel, text)", "Text for whatever hosts the game: a `host.send` event `{channel, text}` (`q:send(\"gm.request\", digest)`). A release build's page reads it with `player.take_sent()`; the daemon's `events` and `obs.subscribe` see it like any event. A reply comes back as a `host.message` event (see `input.message`). The channel is a short name the game chose (letters, digits, `.`, `_`, `-`, up to 64); a text is up to 64 KiB."),
             d("q:events(name)", "The events emitted so far this tick with that name (every one for no name), oldest first, each a table of its fields plus `name`, the event's name, which no field has. This tick only: a system sees what systems before it emitted this tick (order them with `after`), and an event from an earlier tick is gone (keep what must last in a component). `argus events name=job.done limit=1` shows any event's fields, the engine's included."),
             d("q:freeze()", "The rest of this tick stands still but for `unfrozen` systems (a pause, a hit-stop), plugin systems included: on a discrete clock the rest of that turn's systems do not run. A `host.message` on that tick waits for each system it stopped, until it next runs."),
-            d("q:save(name)", "Ask whatever runs the game to save it, between ticks: `q:save()` is the save \"auto\". The save holds the world as this tick ends; the daemon keeps saves in `.argus/saves/`, a release build where the platform says, the web page in the browser's storage, and each answers with a `game.saved {save}` event. (A `save.requested {save}` event.)"),
+            d("q:save(name, summary)", "Ask whatever runs the game to save it, between ticks: `q:save()` is the save \"auto\". `summary` is the game's own fields for a slot menu to show (`{ level = 4, place = \"Hall\" }`: words, numbers, and true or false), which `q:saves()` gives back. The save holds the world as this tick ends; the daemon keeps saves in `.argus/saves/`, a release build where the platform says, the web page in the browser's storage, and each answers with a `game.saved {save}` event. (A `save.requested {save}` event.)"),
+            d("q:saves()", "The saves there are, newest first: each `{name, saved_at, scene, tick, time, summary}`, `saved_at` in seconds since 1970 and `summary` the fields `q:save` was given. What a tick reads is recorded with the run's input (it needs input.toml), so a replay, a seek, or a report reads the same list whatever the disk holds now; while `argus test` runs scenarios the list starts empty."),
+            d("q:delete_save(name)", "Ask for a save to be deleted after this step, from the disk and the platform's cloud and from what `q:saves()` lists. Answered with `game.save_deleted {save}`. (A `save.delete_requested {save}` event.)"),
             d("q:load(name)", "Ask for a save to be loaded after this step (`q:load()` loads \"auto\"); its components migrate as they declare. Answered with `game.loaded {save}`. (A `load.requested {save}` event.)"),
             d("q:speed(x)", "`q:speed(3)` asks for 3 ticks a frame from the next frame (a `speed.requested` event, in the run, so replays agree); `q:speed()` is the clock's speed as this tick began, however it was set. Never 0: pause with `q:freeze()`."),
             d("q:rng()", "This system's random stream (its `rng` key; an error without one): `rng:next()`, `rng:below(n)`, `rng:range(lo, hi)`, `rng:chance(p)` (below)."),
@@ -217,12 +219,15 @@ mod tests {
     #[test]
     fn every_method_and_field_a_script_can_call_is_in_the_reference() {
         let src = include_str!("bind.rs");
-        // Methods made in a loop (`for (method, event) in [("save", ..)]`)
+        // Methods made in a loop (`for (method, event) in [("load", ..)]`)
         // are not add_method("..") literals: q:save and q:load went
         // undocumented that way until the manual's writers found them.
-        for n in ["save", "load"] {
+        for (n, event) in [
+            ("load", "load.requested"),
+            ("delete_save", "save.delete_requested"),
+        ] {
             assert!(
-                src.contains(&format!("(\"{n}\", \"{n}.requested\")")),
+                src.contains(&format!("(\"{n}\", \"{event}\")")),
                 "{n} is still made in the loop this test knows"
             );
             assert!(

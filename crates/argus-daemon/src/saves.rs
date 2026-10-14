@@ -39,11 +39,18 @@ impl Daemon {
             let s = self.require_session()?;
             s.sources.capture(&self.world, &self.sched, true)
         };
-        self.write_save(&name, &path, &k)
+        self.write_save(&name, &path, &k, &json!({}))
     }
 
-    /// Write `k` as the save `name` at `path`, and say so in the log.
-    fn write_save(&mut self, name: &str, path: &Path, k: &crate::ring::Keyframe) -> Result<Json> {
+    /// Write `k` as the save `name` at `path`, with the game's `summary`
+    /// fields (2D staples item 4), and say so in the log.
+    fn write_save(
+        &mut self,
+        name: &str,
+        path: &Path,
+        k: &crate::ring::Keyframe,
+        summary: &Json,
+    ) -> Result<Json> {
         let t = Instant::now();
         let (root, scene, seed) = {
             let s = self.require_session()?;
@@ -68,11 +75,20 @@ impl Daemon {
         if let Some(m) = self.mods_identity() {
             meta["mods"] = m;
         }
+        if summary.as_object().is_some_and(|o| !o.is_empty()) {
+            meta["summary"] = summary.clone();
+        }
         let bytes = savegame::encode(&meta, k);
         if let Some(d) = path.parent() {
             std::fs::create_dir_all(d).map_err(|e| save_io(path, e))?;
         }
         std::fs::write(path, &bytes).map_err(|e| save_io(path, e))?;
+        // Kept where saves are: scripts list it (q:saves).
+        if path.starts_with(root.join(".argus").join("saves")) {
+            if let (Some(i), Some(s)) = (savegame::info(&meta), &self.session) {
+                savegame::keep(&mut s.save_list.borrow_mut(), i);
+            }
+        }
         // A save kept where saves are goes to the platform's cloud too
         // (phase 5 item 9), unless platform.toml says not.
         let cloud = self.platform_cfg.cloud_saves
@@ -189,6 +205,8 @@ impl Daemon {
     ) -> Result<Json> {
         let name = name.to_string();
         self.ask_mods_of(&file.meta["mods"]);
+        // The saves scripts list are the same after a load.
+        let kept = self.session.as_ref().map(|s| s.save_list.borrow().clone());
         self.load_for(root, file.scene(), file.seed())
             .map_err(|e| {
                 ArgusError::new(
@@ -202,6 +220,9 @@ impl Daemon {
             })?;
         let (sources, ring, particles) = {
             let s = self.session.as_ref().expect("session");
+            if let Some(k) = kept {
+                *s.save_list.borrow_mut() = k;
+            }
             (s.sources.clone(), s.ring.clone(), s.particles.clone())
         };
         let back = {
@@ -259,20 +280,27 @@ impl Daemon {
     /// do a load one asked for (`q:load`). A failure is an event, not the
     /// step's error: the game asked, and the log says what came of it.
     pub(super) fn answer_save_requests(&mut self) {
-        let pending: Vec<(String, crate::ring::Keyframe)> = match &self.session {
+        let pending: Vec<savegame::Requested> = match &self.session {
             Some(s) => std::mem::take(&mut *s.saves.borrow_mut()),
             None => return,
         };
         let load = self.load_request.take();
+        let deletes = std::mem::take(&mut self.delete_requests);
         if self.backstage {
             return;
         }
-        for (name, k) in pending {
-            let r = self
+        for r in pending {
+            let name = r.name.clone();
+            let w = self
                 .save_path(&json!({ "name": name }))
-                .and_then(|(name, path)| self.write_save(&name, &path, &k));
-            if let Err(e) = r {
+                .and_then(|(name, path)| self.write_save(&name, &path, &r.keyframe, &r.summary));
+            if let Err(e) = w {
                 self.request_failed("game.save_failed", &name, &e);
+            }
+        }
+        for name in deletes {
+            if let Err(e) = self.delete_save(&name) {
+                self.request_failed("game.delete_failed", &name, &e);
             }
         }
         if let Some(name) = load {
@@ -280,6 +308,30 @@ impl Daemon {
                 self.request_failed("game.load_failed", &name, &e);
             }
         }
+    }
+
+    /// `q:delete_save(name)` (2D staples item 4): the save gone from
+    /// `.argus/saves/` and the platform's cloud, and from what scripts
+    /// list; a `game.save_deleted {save}` event. A save there was not is
+    /// gone already: no error.
+    fn delete_save(&mut self, name: &str) -> Result<()> {
+        let (_, path) = self.save_path(&json!({ "name": name }))?;
+        if path.is_file() {
+            std::fs::remove_file(&path).map_err(|e| save_io(&path, e))?;
+        }
+        if self.platform_cfg.cloud_saves {
+            use argus_platform::Platform;
+            let _ = self.platform.cloud_delete(&savegame::file_name(name));
+        }
+        if let Some(s) = &self.session {
+            s.save_list.borrow_mut().retain(|x| x.name != name);
+        }
+        self.world.emit(Event::Game {
+            name: "game.save_deleted".to_string(),
+            fields: vec![("save".into(), Value::Str(name.to_string()))],
+        });
+        self.pump_events();
+        Ok(())
     }
 
     fn request_failed(&mut self, event: &str, name: &str, e: &ArgusError) {

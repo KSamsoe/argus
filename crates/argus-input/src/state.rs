@@ -209,6 +209,12 @@ pub struct InjectReport {
 /// game's channel can be it (a channel is letters, digits, `.`, `_`, `-`).
 pub const TYPED_CHANNEL: &str = "\u{1}typed";
 
+/// The channel a script's read of the host's save games is recorded on
+/// (`q:saves`; 2D staples item 4): on a live tick the host answers from
+/// its list and the answer is journaled for that tick, so a seek, a
+/// replay, or a report reads the same list. Never a `host.message`.
+pub const SAVES_CHANNEL: &str = "\u{1}saves";
+
 /// A command the input state was given.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Command {
@@ -375,6 +381,10 @@ pub struct InputState {
     /// sent) or the wheel turned. In a turn-based game such a tick takes
     /// no turn (issue 23).
     ui_only: bool,
+    /// This tick's recorded read of the host's saves, on [`SAVES_CHANNEL`].
+    saves_now: Option<String>,
+    /// This tick runs for the first time (not a re-run after a seek).
+    fresh_now: bool,
 }
 
 /// An action waiting for a key.
@@ -423,6 +433,8 @@ impl InputState {
             typing: BTreeSet::new(),
             typing_applied: BTreeSet::new(),
             ui_only: false,
+            saves_now: None,
+            fresh_now: false,
             current: BTreeMap::new(),
             pressed: Vec::new(),
             released: Vec::new(),
@@ -561,6 +573,32 @@ impl InputState {
             text.to_string(),
         ));
         Ok(())
+    }
+
+    /// This tick's recorded read of the host's save games (`q:saves`; 2D
+    /// staples item 4): what the tick read the first time it ran, when it
+    /// read them.
+    pub fn saves_read(&self) -> Option<&str> {
+        self.saves_now.as_deref()
+    }
+
+    /// Record this tick's read of the host's save games: journaled on a
+    /// tick that runs for the first time, so a re-run of it reads the
+    /// same. A re-run that did not read them the first time is not
+    /// recorded (it would branch the run).
+    pub fn record_saves(&mut self, text: &str) {
+        self.saves_now = Some(text.to_string());
+        let Some(tick) = self.last_tick else { return };
+        if self.fresh_now {
+            self.journal_live(
+                tick,
+                Command::Message {
+                    slot: 0,
+                    channel: SAVES_CHANNEL.to_string(),
+                    text: text.to_string(),
+                },
+            );
+        }
     }
 
     /// What `slot` typed for this tick: its `Actions.typed`.
@@ -1013,11 +1051,15 @@ impl InputState {
         self.last_tick = Some(tick);
         self.inbox.clear();
         self.typed_now.clear();
+        self.saves_now = None;
+        self.fresh_now = fresh;
         let due: Vec<u64> = self.messages.range(..=tick).map(|(t, _)| *t).collect();
         for t in due {
             for (slot, channel, text) in self.messages.remove(&t).unwrap_or_default() {
                 if channel == TYPED_CHANNEL {
                     self.typed_now.entry(slot).or_default().push_str(&text);
+                } else if channel == SAVES_CHANNEL {
+                    self.saves_now = Some(text);
                 } else {
                     self.inbox.push((slot, channel, text));
                 }
@@ -1167,6 +1209,16 @@ impl InputState {
                 slot,
                 channel,
                 text,
+            } if channel == SAVES_CHANNEL => {
+                self.messages
+                    .entry(now)
+                    .or_default()
+                    .push((*slot, channel.clone(), text.clone()));
+            }
+            Command::Message {
+                slot,
+                channel,
+                text,
             } => {
                 let _ = self.message_raw(now, *slot, channel, text);
             }
@@ -1218,6 +1270,8 @@ impl InputState {
             typing: self.typing.clone(),
             typing_applied: self.typing_applied.clone(),
             ui_only: self.ui_only,
+            saves_now: self.saves_now.clone(),
+            fresh_now: self.fresh_now,
         }
     }
 

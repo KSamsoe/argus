@@ -384,6 +384,28 @@ impl WebPlayer {
         self.p.mark(note, &self.code).to_string()
     }
 
+    /// A save the page keeps, for the game's menus (`q:saves`; 2D staples
+    /// item 4): every one it has as it opens the game, and each it keeps
+    /// after. False for bytes that are not a save.
+    pub fn note_save(&mut self, bytes: &[u8]) -> bool {
+        self.p.note_save(bytes)
+    }
+
+    /// A save the page no longer has.
+    pub fn forget_save(&mut self, name: &str) {
+        self.p.forget_save(name)
+    }
+
+    /// The saves the game asked to delete since the last call
+    /// (`q:delete_save`): the page deletes each and calls `forget_save`.
+    pub fn take_deletes(&mut self) -> js_sys::Array {
+        self.p
+            .take_deletes()
+            .into_iter()
+            .map(|n| wasm_bindgen::JsValue::from_str(&n))
+            .collect()
+    }
+
     /// The saves the game asked for since the last call (`q:save`), as
     /// `[name, bytes]` pairs, which the page keeps in the browser's storage
     /// (IndexedDB; phase 3 item 0, decided with Kevin).

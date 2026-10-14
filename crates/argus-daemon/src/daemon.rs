@@ -127,7 +127,10 @@ struct Session {
     mark_key: String,
     /// Keyframes of the ticks that asked for a save (`q:save`), by the
     /// save's name, written once the step is over (phase 3 item 0).
-    saves: Rc<RefCell<Vec<(String, crate::ring::Keyframe)>>>,
+    saves: Rc<RefCell<Vec<argus_player::savegame::Requested>>>,
+    /// The saves in `.argus/saves/`, which scripts list (`q:saves`; 2D
+    /// staples item 4).
+    save_list: Rc<RefCell<Vec<argus_luau::SaveInfo>>>,
     /// The UI's theme and fonts (phase 3 item 1), and the string tables
     /// (item 4).
     ui: Rc<RefCell<argus_ui::Shared>>,
@@ -251,6 +254,8 @@ pub struct Daemon {
     trial: Option<proposals::Trial>,
     /// A save a tick asked to load (`q:load`), done after the step.
     load_request: Option<String>,
+    /// Saves ticks asked to delete (`q:delete_save`), done after the step.
+    delete_requests: Vec<String>,
     /// A trial's parked world is catching up: no sound, no notifications.
     backstage: bool,
     /// The tuning session open, if any (phase 2 item 5).
@@ -339,6 +344,7 @@ impl Daemon {
             toast: None,
             trial: None,
             load_request: None,
+            delete_requests: Vec::new(),
             backstage: false,
             tuning: None,
             tune_committing: false,
@@ -1509,8 +1515,16 @@ impl Daemon {
             audio,
             mods,
             platform,
+            save_list,
             ..
         } = a;
+        // The saves scripts list (2D staples item 4): those in .argus/saves;
+        // none while test.run runs scenarios, which must not depend on the
+        // person's own saves.
+        if !self.live_edits {
+            *save_list.borrow_mut() =
+                argus_player::savegame::list_dir(&root.join(".argus").join("saves"));
+        }
         // The null platform, one a project (phase 5 item 9).
         if self.platform_root.as_deref() != Some(root.as_path()) {
             self.platform = argus_platform::NullPlatform::with_cloud(
@@ -1582,6 +1596,7 @@ impl Daemon {
             kept_in_play: Vec::new(),
             mark_key: cfg.mark_key.clone().unwrap_or_else(|| "F8".to_string()),
             saves: Rc::new(RefCell::new(Vec::new())),
+            save_list,
             ui,
             dialogue,
             timelines,
@@ -5430,6 +5445,10 @@ impl Daemon {
             if let Event::Game { name, fields } = &rec.event {
                 if name == "load.requested" && self.from_ticks && !self.backstage {
                     self.load_request = Some(argus_player::savegame::request_name(fields));
+                }
+                if name == "save.delete_requested" && self.from_ticks && !self.backstage {
+                    self.delete_requests
+                        .push(argus_player::savegame::request_name(fields));
                 }
             }
             let seq = self.events.next_seq;

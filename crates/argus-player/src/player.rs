@@ -49,7 +49,13 @@ pub struct Player {
     host: ScriptHost,
     /// Keyframes of the ticks that asked for a save (`q:save`), by name,
     /// until [`Player::take_saves`] (phase 3 item 0).
-    saves: Rc<RefCell<Vec<(String, crate::keyframe::Keyframe)>>>,
+    saves: Rc<RefCell<Vec<crate::savegame::Requested>>>,
+    /// The saves the host keeps, which scripts list (`q:saves`; 2D staples
+    /// item 4).
+    save_list: Rc<RefCell<Vec<argus_luau::SaveInfo>>>,
+    /// Saves the game asked to delete (`q:delete_save`), until
+    /// [`Player::take_deletes`].
+    deletes: Vec<String>,
     /// Saves the game asked to load (`q:load`), until
     /// [`Player::take_loads`].
     loads: Vec<String>,
@@ -169,6 +175,8 @@ impl Player {
             recorder: None,
             host: a.host,
             saves: Rc::new(RefCell::new(Vec::new())),
+            save_list: a.save_list,
+            deletes: Vec::new(),
             loads: Vec::new(),
             sent: Vec::new(),
             events: 0,
@@ -200,7 +208,8 @@ impl Player {
         let pending = std::mem::take(&mut *self.saves.borrow_mut());
         pending
             .into_iter()
-            .map(|(name, k)| {
+            .map(|r| {
+                let (name, k) = (r.name, r.keyframe);
                 let mut meta = json!({
                     "game": self.name,
                     "scene": self.scene,
@@ -213,11 +222,43 @@ impl Player {
                     "name": name,
                     "saved_at": argus_os::time::unix_secs(),
                 });
+                if r.summary.as_object().is_some_and(|o| !o.is_empty()) {
+                    meta["summary"] = r.summary;
+                }
                 self.with_mods(&mut meta);
                 let bytes = crate::savegame::encode(&meta, &k);
                 (name, bytes)
             })
             .collect()
+    }
+
+    /// A save the host keeps (2D staples item 4): scripts list it with
+    /// `q:saves`, in place of one of its name. The host gives every save it
+    /// has when it opens the game and each one it keeps after. False for
+    /// bytes that are not a save.
+    pub fn note_save(&mut self, bytes: &[u8]) -> bool {
+        match crate::savegame::meta(bytes)
+            .as_ref()
+            .and_then(crate::savegame::info)
+        {
+            Some(i) => {
+                crate::savegame::keep(&mut self.save_list.borrow_mut(), i);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// A save the host no longer has: scripts no longer list it.
+    pub fn forget_save(&mut self, name: &str) {
+        self.save_list.borrow_mut().retain(|s| s.name != name);
+    }
+
+    /// The saves the game asked to delete since the last call
+    /// (`q:delete_save(name)`); the caller deletes each and calls
+    /// [`Player::forget_save`].
+    pub fn take_deletes(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.deletes)
     }
 
     /// The saves the game asked to load since the last call
@@ -274,6 +315,8 @@ impl Player {
             .restore(&back.keyframe, &mut next.world, &mut next.sched);
         let _ = next.world.drain_events();
         next.audio = self.audio.take().or(next.audio);
+        // The saves the host keeps are the same after a load.
+        *next.save_list.borrow_mut() = self.save_list.borrow().clone();
         if self.recorder.is_some() {
             next.record();
         }
@@ -488,7 +531,56 @@ impl Player {
                 .cloud_write(&crate::savegame::file_name(name), bytes)?;
             went.push("cloud");
         }
+        self.note_save(bytes);
         Ok(went)
+    }
+
+    /// Delete a save the game asked to (`q:delete_save`; 2D staples item 4):
+    /// from the disk at `path` and from the platform's cloud, and from what
+    /// scripts list. Where it was.
+    pub fn delete_save(&mut self, path: Option<&Path>, name: &str) -> Result<Vec<&'static str>> {
+        let mut was = Vec::new();
+        if let Some(p) = path.filter(|p| argus_os::fs::is_file(p)) {
+            argus_os::fs::remove_file(p)
+                .map_err(|e| ArgusError::new(1, format!("{}: {e}", p.display())))?;
+            was.push("disk");
+        }
+        if self.platform_cfg.cloud_saves && self.platform.cloud_enabled() {
+            self.platform
+                .cloud_delete(&crate::savegame::file_name(name))?;
+            was.push("cloud");
+        }
+        self.forget_save(name);
+        Ok(was)
+    }
+
+    /// Every save in the folder `dir` (and the platform's cloud), for
+    /// scripts to list (`q:saves`): what a host does as it opens the game.
+    pub fn list_saves(&mut self, dir: Option<&Path>) {
+        if let Some(d) = dir {
+            for e in argus_os::fs::read_dir(d).into_iter().flatten() {
+                if e.path.extension().and_then(|x| x.to_str()) == Some("save") {
+                    if let Ok(bytes) = argus_os::fs::read(&e.path) {
+                        self.note_save(&bytes);
+                    }
+                }
+            }
+        }
+        if self.platform_cfg.cloud_saves && self.platform.cloud_enabled() {
+            let known: Vec<String> = self
+                .save_list
+                .borrow()
+                .iter()
+                .map(|s| crate::savegame::file_name(&s.name))
+                .collect();
+            for f in self.platform.cloud_files() {
+                if f.name.ends_with(".save") && !known.contains(&f.name) {
+                    if let Ok(Some(bytes)) = self.platform.cloud_read(&f.name) {
+                        self.note_save(&bytes);
+                    }
+                }
+            }
+        }
     }
 
     /// The save to load by name: the newer of the disk's copy at `path`
@@ -612,6 +704,9 @@ impl Player {
             if let Event::Game { name, fields } = &rec.event {
                 if name == "load.requested" {
                     self.loads.push(crate::savegame::request_name(fields));
+                }
+                if name == "save.delete_requested" {
+                    self.deletes.push(crate::savegame::request_name(fields));
                 }
                 if name == "host.send" {
                     let text_of = |k: &str| {

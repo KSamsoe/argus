@@ -169,6 +169,12 @@ Every statement in the design document (v0.3) that constrains a game as players 
 |---|---|---|---|
 | (§6) What a run's digest reads, to find where two platforms part. | Done | `Player::digest_rows`: the world's rows (`World::digest_rows`) and a row a runtime map chunk with its cells' hash, as `digest` includes them. Found with it: puppet's first difference across platforms, two skeleton parts' rotations one ulp apart on the first tick. | `argus-ecs` `persist::the_digest_rows_name_the_one_field_that_differs`; the spike's runs |
 
+## 2D staples, item 4: save slots
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| Each host keeps the list scripts read. | Done | `Assembly::save_list` behind the `Saves` service (`assemble.rs` `HostSaves`: a tick's read recorded with the input). `Player::list_saves`, `note_save`, `forget_save`, `delete_save`, `take_deletes`; `store_save` notes what it keeps; a load keeps the list. `savegame::meta`, `info`, `keep`, `list_dir`, and a save's `summary` in its identity. | argus-daemon `tests/save_slots.rs` |
+
 ## Known limitations, stated so they are decisions
 
 - A desktop report goes over plain HTTP to the server's tailnet address (`[reports] url`): a player off the tailnet keeps theirs, and it goes when they are on it, or they send the file.

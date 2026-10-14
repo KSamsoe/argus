@@ -180,6 +180,9 @@ fn run(args: Args) -> Result<(), String> {
     // recorder's first keyframe, so a report replays with them.
     let settings = argus_player::settings::Store::open(&mut p, save.as_deref(), None);
     p.record();
+    // The saves there are, for the game's own menus (q:saves).
+    let saves_dir = save.as_ref().map(|d| d.join("saves"));
+    p.list_saves(saves_dir.as_deref());
     if let Some(n) = args.headless {
         p.step(n).map_err(|e| e.message)?;
         let mut saves = Vec::new();
@@ -531,6 +534,15 @@ impl Game {
             if let Err(e) = self.p.store_save(path.as_deref(), &name, &bytes) {
                 self.toast = Some((
                     format!("The game could not be saved: {}", e.message),
+                    Instant::now(),
+                ));
+            }
+        }
+        for name in self.p.take_deletes() {
+            let path = save_file(self.save.as_deref(), &name).ok();
+            if let Err(e) = self.p.delete_save(path.as_deref(), &name) {
+                self.toast = Some((
+                    format!("The save {name:?} could not be deleted: {}", e.message),
                     Instant::now(),
                 ));
             }

@@ -541,6 +541,23 @@ Where saves go: the daemon keeps them in `.argus/saves/<name>.save`, a shipped g
 
 What a save does not hold: anything a script keeps in Luau variables (keep game state in components), and the input state (a loaded game hears the player's hands as they are now).
 
+### Save slots
+
+A menu can show the saves there are. `q:saves()` lists them, newest first. Each has its `name`, `saved_at` (seconds since 1970), `scene`, `tick`, `time`, and `summary`: fields the game gave when it saved, for a menu to show.
+
+```lua
+q:save("slot2", { level = 4, place = "The Hall", minutes = 37 })
+
+local latest = q:saves()[1]          -- for a Continue button
+if latest then
+  label.text = latest.summary.place .. ", level " .. latest.summary.level
+end
+```
+
+A summary holds words, numbers, and true or false. `q:delete_save(name)` deletes a save after the step that asked, from the disk and the platform's cloud, and emits `game.save_deleted {save}`. A three-slot menu is three names, `q:save` and `q:load` on a button, and `q:saves()` to show which slots hold a game.
+
+What a tick reads with `q:saves()` is part of the run, as a key press is. The first time a tick runs, the list comes from wherever the saves are kept and is recorded with the run's input. A replay, a seek back, or a bug report reads the recorded list, so the game does what it did whatever saves are on the disk now. This needs `input.toml`. Without it the list is read as it is, and is not recorded. While `argus test` runs scenarios, the list starts empty, so a test never depends on your own saves.
+
 ### Saves that survive code changes
 
 Each component has a schema `version`, 1 by default. When you add, rename, or remove fields of a component that saves hold, raise its version and say how an old row becomes a new one with `migrate`: a table of steps by version (`rename`, `default`, `drop`), a function per version, or one `function(row, from)`. This one is built from the scripting reference's example:

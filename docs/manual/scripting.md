@@ -125,7 +125,7 @@ Two rules about declarations catch people out:
 | events | `q:emit(name, fields)`, `q:events(name)`, `q:send(channel, text)` (text for the host; see [Talking to the host](gameplay.md#talking-to-the-host)) |
 | randomness | `q:rng()`, then `rng:next()`, `rng:below(n)`, `rng:range(lo, hi)`, `rng:chance(p)` |
 | time control | `q:freeze()`, `q:speed()`, `q:speed(x)` |
-| saves | `q:save(name)`, `q:load(name)` |
+| saves | `q:save(name, summary)`, `q:load(name)`, `q:saves()`, `q:delete_save(name)` |
 | presentation | `q:tween(e, "Comp.field", opts)`, `q:play(sound, fields)`, `q:text(key, args)`, `q:languages()` |
 | data tables | `q:def("item:bread")`, `q:defs("recipe")` |
 | maps and paths | `q:tiles(map)`, `q:path(from, to)`, `q:walkable(pos)`, `q:distance(field, pos)`, `q:downhill(field, pos)` |

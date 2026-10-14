@@ -186,6 +186,34 @@ pub trait Casts {
 /// The shape queries a host was given.
 pub(crate) struct CastsData(pub Rc<dyn Casts>);
 
+/// One save game as scripts list it (`q:saves`; 2D staples item 4).
+#[derive(Clone, Debug, PartialEq)]
+pub struct SaveInfo {
+    /// Its name (`q:save(name)`).
+    pub name: String,
+    /// When it was written, seconds since 1970.
+    pub saved_at: u64,
+    /// The scene it was in.
+    pub scene: String,
+    /// The tick and the time it holds.
+    pub tick: u64,
+    /// Sim seconds.
+    pub time: f64,
+    /// The game's own fields, given to `q:save(name, summary)`.
+    pub summary: Vec<(String, argus_ecs::Value)>,
+}
+
+/// The host's save games for scripts (`q:saves`; 2D staples item 4). A host
+/// records what a tick read with the run's input, so a re-run of the tick
+/// reads the same list: the disk is the outside world, as a key is.
+pub trait Saves {
+    /// The saves there are as this tick reads them, newest first.
+    fn list(&self) -> Vec<SaveInfo>;
+}
+
+/// The save games a host was given.
+pub(crate) struct SavesData(pub Rc<dyn Saves>);
+
 /// What systems draw for debugging (`q:draw_line` and the rest; 2D
 /// staples item 1), which the host reads with [`ScriptHost::draws`].
 pub(crate) struct DrawsData(pub Rc<RefCell<argus_sim::Draws>>);
@@ -522,6 +550,11 @@ impl ScriptHost {
     /// `q:overlap`; 2D staples item 0).
     pub fn set_casts(&self, casts: Rc<dyn Casts>) {
         self.lua.set_app_data(CastsData(casts));
+    }
+
+    /// Give scripts the host's save games (`q:saves`; 2D staples item 4).
+    pub fn set_saves(&self, saves: Rc<dyn Saves>) {
+        self.lua.set_app_data(SavesData(saves));
     }
 
     /// Give scripts the game's maps (`q:tiles`; phase 5 item 4).

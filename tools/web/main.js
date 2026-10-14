@@ -125,6 +125,7 @@ function saveStore(game) {
   return {
     put: (name, bytes) => use("readwrite", (s) => s.put(bytes, name)),
     get: (name) => use("readonly", (s) => s.get(name)),
+    del: (name) => use("readwrite", (s) => s.delete(name)),
     names: () => use("readonly", (s) => s.getAllKeys()),
   };
 }
@@ -134,6 +135,16 @@ try {
   const player = await loadPlayer();
   const game = JSON.parse(player.status()).game;
   const store = saveStore(game);
+  // The saves there are, for the game's own menus (q:saves), before the
+  // first frame.
+  try {
+    for (const name of await store.names()) {
+      const bytes = await store.get(name);
+      if (bytes) player.note_save(bytes);
+    }
+  } catch (e) {
+    said.textContent = `The saves could not be read: ${e.message ?? e}`;
+  }
   // The player's settings (phase 5 item 2): kept in the browser, applied
   // before the first frame, kept again when the player changes them.
   const settingsKey = `argus:${game}:settings`;
@@ -155,7 +166,16 @@ try {
   // After a frame: keep the saves it asked for, and do the loads.
   const savesAndLoads = () => {
     for (const [name, bytes] of player.take_saves()) {
-      store.put(name, bytes).catch((e) => (said.textContent = `The game could not be saved: ${e}`));
+      store
+        .put(name, bytes)
+        .then(() => player.note_save(bytes))
+        .catch((e) => (said.textContent = `The game could not be saved: ${e}`));
+    }
+    for (const name of player.take_deletes()) {
+      store
+        .del(name)
+        .then(() => player.forget_save(name))
+        .catch((e) => (said.textContent = `The save could not be deleted: ${e}`));
     }
     for (const name of player.take_loads()) {
       store
