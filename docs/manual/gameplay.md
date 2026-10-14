@@ -140,7 +140,19 @@ A script that spawns a child adds `GlobalTransform` itself: `q:spawn({"Transform
 
 ### Three tiers of physics
 
-Physics comes in three tiers, chosen per entity. All three share one `Collider` shape: a box (`size`) or, when `radius` is above 0, a circle, centred on the Transform plus `offset`.
+Physics comes in three tiers, chosen per entity. All three share one `Collider` shape, centred on the Transform plus `offset`:
+
+- a box: `size`;
+- a circle: `radius` above 0;
+- a capsule standing up: a `radius` and a `height` above twice it (`height` is the whole of it, ends included);
+- a convex polygon: `points`, its corners around the centre, at least three. A `radius` rounds its corners. Points that are not convex are taken as the shape around them.
+
+```toml
+[Collider]
+points = [[-1.0, -0.5], [1.0, -0.5], [0.0, 1.0]]
+```
+
+A rigid body's shape turns with it. The overlap tier and the queries take every shape upright, whatever the Transform's rotation. A kinematic body always moves as a box: a capsule or a polygon on one moves as the box around it.
 
 | Tier | Components | What it does | Example |
 |---|---|---|---|

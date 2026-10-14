@@ -57,7 +57,7 @@ pub use persist::{Migrate, Migrated, Row, StateReport};
 pub use query::{Access, ArchetypeView, DynColumn, Fetch, Query};
 pub use schema::{
     Component, ComponentId, ComponentKind, ComponentSchema, DefRef, FieldSchema, FieldValue,
-    Registry, SchemaBuilder,
+    Points, Registry, SchemaBuilder,
 };
 pub use snapshot::Snapshot;
 pub use spatial::SpatialHash;

@@ -22,6 +22,8 @@ Built (2026-10-14): `q:draw_line`, `q:draw_arrow`, `q:draw_box`, `q:draw_circle`
 
 - `Collider` takes a capsule (`radius` with a `height`, as the queries' capsule) and a convex polygon (`points`, a list field): the overlap tier, rigid bodies, and the queries meet them. A kinematic body stays a box, said so.
 
+Built (2026-10-14): `Collider.height` and `Collider.points`, a list of vec2 through argus-ecs's new `Points` field type (a Rust component's list, stored as the list's interned text, as a script's are). `Collider::kind`, `round`, and `boxed` say what it is, its shape for the geometry core, and the box a kinematic body moves as. The overlap pass keeps its box and circle tests and uses the geometry core when either shape is a capsule or a polygon, a polygon's shape made once for its corners (checked by their text, since an id can name another list after a seek back). Rigid bodies take Rapier capsules and convex hulls; a shape changed in place now replaces the collider, because Rapier 0.36's `set_shape` leaves a resting body's contacts as the old shape made them (a box resized in place had the same bug), and a kinematic body's proxy is now the box around its shape (a circle's was its unused `size`). Tests: argus-physics `tests/shapes.rs`, argus-rigid `a_capsule_and_a_polygon_land_on_their_shapes`, argus-daemon `tests/shapes.rs`.
+
 ## 3. Parallax
 
 - A camera-relative scroll factor on sprites and tile layers (a background moves at a share of the camera's speed), and Tiled's own parallax factors taken instead of dropped.

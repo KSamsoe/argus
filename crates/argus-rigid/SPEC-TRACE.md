@@ -34,6 +34,14 @@ Every statement in the design document (v0.3) about the dynamic physics tier (§
 
 Most of it is the engine's side (reading and writing 500 entities' components a tick), not Rapier's step. Gated loosely in `rigid::perf_five_hundred_boxes_in_a_pile` (release, ignored). No §17 row names rigid bodies.
 
+## 2D staples, item 2: capsule and polygon colliders
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| Rigid bodies meet capsules and polygons. | Done | `system.rs` `shared`: Rapier's `capsule_y` and (round) convex hulls, a polygon that makes none being the circle of its radius. A body's height and corners (`corners_key`) are in its `Given`, so a change rebuilds the shape. | `a_capsule_and_a_polygon_land_on_their_shapes` |
+| A shape changed in place is the body's shape. | Done | The collider is replaced, not given `set_shape`: Rapier 0.36 kept a resting body's contacts as the old shape made them, so a box resized in place went on resting on its old size. | `a_capsule_and_a_polygon_land_on_their_shapes` |
+| A kinematic body pushes as the box it moves as. | Done | Its proxy is `Collider::boxed`; a circle's proxy was its unused `size`. | `tests/rigid.rs` |
+
 ## Known limitations, stated so they are decisions
 
 - A one-way tile is solid to a rigid body: it has no "from above".

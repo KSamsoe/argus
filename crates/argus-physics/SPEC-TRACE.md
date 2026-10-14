@@ -76,6 +76,14 @@ Test: `perf_a_thousand_characters_and_twenty_thousand_contacts` (ignored; `cargo
 | One exact geometry core, deterministic across platforms. | Done | `geom`: every shape is a rounded convex polygon (`Round`); a moving shape against a target is a ray against their Minkowski sum; overlap is the origin inside the sum. Only `+ - * /` and `sqrt`, no trig. Touching is not overlapping (`EPS`), so a shape sliding along a floor is not stopped by it. | `geom` units, `tests/query.rs` |
 | Slopes and one-way cells. | Done | A slope cell is the hull under its line; a one-way cell stops only something moving down onto its top, and nothing at rest for `overlap`. | `tests/query.rs` |
 
+## 2D staples, item 2: capsule and polygon colliders
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| `Collider` takes a capsule and a convex polygon. | Done | `height` (a capsule's whole height, with a radius) and `points` (a polygon's corners, argus-ecs `Points`); `Collider::kind` says which shape it is, `round` gives it to the geometry core. | `tests/shapes.rs` `shapes_are_what_their_fields_say` |
+| The overlap tier and the queries meet them by their shapes. | Done | `physics.overlap` keeps its box and circle tests; a pair with a capsule or a polygon is tested in the geometry core, a polygon's shape made once for its corners and checked by their text. `query::collider_shape` is `Collider::round`. Neither turns a shape with its Transform. | `tests/shapes.rs`, argus-daemon `tests/shapes.rs` |
+| A kinematic body stays a box. | Done | `Collider::boxed`: a capsule's or a polygon's body moves as the box around it. | `a_kinematic_capsule_moves_as_the_box_around_it` |
+
 ## Known limitations, stated so they are decisions
 
 - A kinematic body is a box, unrotated and unscaled; circles are overlap-only. A parented collider is placed by its `GlobalTransform` as last propagated, one tick behind a parent that moved this tick; kinematic bodies should not have parents.

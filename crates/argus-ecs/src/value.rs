@@ -197,7 +197,7 @@ fn encode_list(of: ListOf, items: &[Value]) -> Result<String> {
 }
 
 /// The elements [`encode_list`] wrote.
-fn decode_list(of: ListOf, s: &str) -> Vec<Value> {
+pub(crate) fn decode_list(of: ListOf, s: &str) -> Vec<Value> {
     let mut out = Vec::new();
     let mut rest = s;
     while !rest.is_empty() {

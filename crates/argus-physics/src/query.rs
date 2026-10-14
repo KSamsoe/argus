@@ -80,14 +80,9 @@ pub struct Hit {
     pub position: V,
 }
 
-/// A collider's shape where it is.
-pub fn collider_shape(c: &Collider, at: V) -> Round {
-    let centre = at + V::new(c.offset.x, c.offset.y);
-    if c.radius > 0.0 {
-        Round::circle(centre, c.radius)
-    } else {
-        Round::rect(centre, c.size.x.abs() * 0.5, c.size.y.abs() * 0.5)
-    }
+/// A collider's shape where it is: an entity at `at`.
+pub fn collider_shape(world: &World, c: &Collider, at: V) -> Round {
+    c.round(world).shift(at + V::new(c.offset.x, c.offset.y))
 }
 
 /// Where an entity is in the world: its GlobalTransform, else its
@@ -126,7 +121,7 @@ fn colliders(world: &World, f: &Filter) -> Vec<(Entity, Round)> {
         if c.layer & f.mask == 0 {
             continue;
         }
-        out.push((e, collider_shape(&c, at)));
+        out.push((e, collider_shape(world, &c, at)));
     }
     out
 }

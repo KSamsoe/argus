@@ -351,6 +351,42 @@ impl FieldValue for DefRef {
     }
 }
 
+/// A list of points (`list of vec2`) in a Rust component: a polygon
+/// collider's corners (2D staples item 2). Same storage as [`StrId`], the
+/// list's encoding interned, so equal lists have equal ids in one world;
+/// its default is the empty list.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[repr(transparent)]
+pub struct Points(pub StrId);
+
+impl Points {
+    /// No points.
+    pub const EMPTY: Points = Points(StrId::EMPTY);
+
+    /// Whether there are none.
+    pub fn is_empty(self) -> bool {
+        self.0 == StrId::EMPTY
+    }
+
+    /// The points in an interned list's text (`world.strings().get(p.0)`).
+    pub fn read(text: &str) -> Vec<crate::Vec2> {
+        crate::value::decode_list(crate::ListOf::Vec2, text)
+            .into_iter()
+            .filter_map(|v| match v {
+                Value::Vec2(p) => Some(p),
+                _ => None,
+            })
+            .collect()
+    }
+}
+
+impl FieldValue for Points {
+    const TYPE: FieldType = FieldType::List(crate::ListOf::Vec2);
+    fn to_value(self) -> Value {
+        Value::List(Vec::new())
+    }
+}
+
 /// A Rust component type. Implement with `#[derive(Component)]` on a
 /// `#[repr(C)]` struct whose fields all implement [`FieldValue`]; unit
 /// structs become tags. `Default` supplies the field defaults.

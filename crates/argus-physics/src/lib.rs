@@ -1,8 +1,9 @@
 //! Argus physics, phase 1 item 6 (§12 "Physics, in tiers"): two of the
 //! three tiers, sharing the one broadphase.
 //!
-//! - **Overlap.** An entity with a [`Collider`] and no body: a box or a
-//!   circle that reports contacts and nothing else (Swarm's bullets,
+//! - **Overlap.** An entity with a [`Collider`] and no body: a box, a
+//!   circle, a capsule, or a convex polygon that reports contacts and
+//!   nothing else (Swarm's bullets,
 //!   Delve's triggers, Outpost's zones). `physics.overlap` emits
 //!   `overlap.begin` and `overlap.end` for every pair whose layers agree.
 //! - **Kinematic.** A [`Collider`] plus a [`KinematicBody`]: a box moved
@@ -32,7 +33,7 @@ pub mod mover;
 pub mod query;
 mod systems;
 
-use argus_ecs::{Component, Entity, Result, StrId, Vec2, World};
+use argus_ecs::{Component, Entity, Points, Result, StrId, Vec2, World};
 use argus_sim::Scheduler;
 use argus_tiles::MapStore;
 use std::cell::RefCell;
@@ -45,7 +46,7 @@ pub use systems::{CONTROL, MOVE, OVERLAP};
 #[derive(Component, Clone, Copy, Debug, PartialEq)]
 #[repr(C)]
 #[argus(
-    doc = "A box (size) or circle (radius above 0) centred on the Transform plus offset. Alone it reports contacts as overlap.begin and overlap.end events; with a KinematicBody it is the body's shape (always a box)"
+    doc = "A shape centred on the Transform plus offset: a box (size), a circle (radius above 0), a capsule standing up (a radius and a height above twice it), or a convex polygon (points). Alone it reports contacts as overlap.begin and overlap.end events; with a RigidBody it is the body's shape, turning with it; with a KinematicBody the body moves as the box around it. Only a rigid body's turns: the overlap tier and the queries take it upright"
 )]
 pub struct Collider {
     /// Box width and height.
@@ -53,7 +54,7 @@ pub struct Collider {
     pub size: Vec2,
     /// Circle radius; above 0 makes the shape a circle.
     #[argus(
-        doc = "Circle radius in world units; above 0 the shape is a circle and size is ignored",
+        doc = "Circle radius in world units; above 0 the shape is a circle and size is ignored, with a height a capsule, and with points it rounds the polygon's corners",
         range(0, 100000)
     )]
     pub radius: f32,
@@ -68,6 +69,103 @@ pub struct Collider {
         doc = "Layer bits this collider meets; two colliders meet only when each one's mask has a bit of the other's layer"
     )]
     pub mask: u32,
+    /// A capsule's whole height (2D staples item 2).
+    #[argus(
+        doc = "A capsule's whole height in world units, standing up: with a radius, above twice it, the shape is a capsule; 0 for none",
+        range(0, 100000)
+    )]
+    pub height: f32,
+    /// A convex polygon's corners (2D staples item 2).
+    #[argus(
+        doc = "A convex polygon's corners around the centre in world units (their hull, if they are not convex), at least three; given, size and height are ignored"
+    )]
+    pub points: Points,
+}
+
+/// What a [`Collider`] is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ShapeKind {
+    /// A box: `size`.
+    Box,
+    /// A circle: `radius`.
+    Circle,
+    /// A capsule standing up: `radius` and `height`.
+    Capsule,
+    /// A convex polygon: `points`, its corners rounded by `radius`.
+    Polygon,
+}
+
+impl Collider {
+    /// Which shape it is: points make a polygon, a radius with a height
+    /// above twice it a capsule, a radius a circle, and nothing more a box.
+    pub fn kind(&self) -> ShapeKind {
+        if !self.points.is_empty() {
+            ShapeKind::Polygon
+        } else if self.radius > 0.0 && self.height > 2.0 * self.radius {
+            ShapeKind::Capsule
+        } else if self.radius > 0.0 {
+            ShapeKind::Circle
+        } else {
+            ShapeKind::Box
+        }
+    }
+
+    /// A polygon's corners, read from the world's strings; none for any
+    /// other kind.
+    pub fn corners(&self, world: &World) -> Vec<Vec2> {
+        if self.points.is_empty() {
+            return Vec::new();
+        }
+        Points::read(&world.strings().get(self.points.0))
+    }
+
+    /// Its shape around its centre (the position plus offset not added), a
+    /// polygon's corners being `corners`.
+    pub fn round_with(&self, corners: &[Vec2]) -> geom::Round {
+        use geom::{Round, V};
+        let r = self.radius.max(0.0);
+        match self.kind() {
+            ShapeKind::Polygon => {
+                let pts: Vec<V> = corners.iter().map(|p| V::new(p.x, p.y)).collect();
+                Round::hull(&pts, r)
+            }
+            ShapeKind::Capsule => {
+                let half = self.height * 0.5 - r;
+                Round::capsule(V::new(0.0, -half), V::new(0.0, half), r)
+            }
+            ShapeKind::Circle => Round::circle(V::default(), r),
+            ShapeKind::Box => Round::rect(
+                V::default(),
+                self.size.x.abs() * 0.5,
+                self.size.y.abs() * 0.5,
+            ),
+        }
+    }
+
+    /// [`Collider::round_with`], a polygon's corners read from the world.
+    pub fn round(&self, world: &World) -> geom::Round {
+        self.round_with(&self.corners(world))
+    }
+
+    /// The box around it, as a box collider: what a kinematic body moves
+    /// as. A box is itself.
+    pub fn boxed(&self, world: &World) -> Collider {
+        if self.kind() == ShapeKind::Box {
+            return *self;
+        }
+        let (lo, hi) = self.round(world).bounds();
+        Collider {
+            size: Vec2::new(hi.x - lo.x, hi.y - lo.y),
+            radius: 0.0,
+            offset: Vec2::new(
+                self.offset.x + (lo.x + hi.x) * 0.5,
+                self.offset.y + (lo.y + hi.y) * 0.5,
+            ),
+            height: 0.0,
+            points: Points::EMPTY,
+            ..*self
+        }
+    }
 }
 
 impl Default for Collider {
@@ -78,6 +176,8 @@ impl Default for Collider {
             offset: Vec2::ZERO,
             layer: 1,
             mask: u32::MAX,
+            height: 0.0,
+            points: Points::EMPTY,
         }
     }
 }

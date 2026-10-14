@@ -32,6 +32,12 @@ pub(crate) struct Given {
     pub(crate) can_sleep: bool,
     pub(crate) size: [f32; 2],
     pub(crate) radius: f32,
+    /// A capsule's height (2D staples item 2).
+    #[serde(default)]
+    pub(crate) height: f32,
+    /// A polygon's corners, as `corners_key` has them.
+    #[serde(default)]
+    pub(crate) corners: u64,
     pub(crate) offset: [f32; 2],
     pub(crate) density: f32,
     pub(crate) friction: f32,

@@ -1,10 +1,11 @@
 //! The three physics systems and their events.
 
 use crate::env::{Aabb, Asker, Env, Solid, Support, EPS};
+use crate::geom::{Round, V};
 use crate::mover::{move_solid, Actor, Params};
-use crate::{CharacterController, Collider, KinematicBody};
+use crate::{CharacterController, Collider, KinematicBody, ShapeKind};
 use argus_ecs::{
-    ComponentId, Entity, GlobalTransform, Result, StrId, Transform, Value, Vec2, World,
+    ComponentId, Entity, GlobalTransform, Points, Result, StrId, Transform, Value, Vec2, World,
 };
 use argus_sim::{Scheduler, Stage, SystemCtx, SystemDesc};
 use argus_tiles::{MapStore, TileGrid, Tilemap};
@@ -85,6 +86,7 @@ pub(crate) fn install(
     let mut state = OverlapState {
         contacts,
         slots: Vec::new(),
+        polygons: HashMap::new(),
     };
     sched.add_system(
         SystemDesc::new(OVERLAP, Stage::Sim)
@@ -341,8 +343,13 @@ fn step(
     let mut actor_meta: Vec<Meta> = Vec::new();
     for e in ents {
         let k: KinematicBody = ctx.get(e)?;
-        let c: Collider = ctx.get(e)?;
+        let mut c: Collider = ctx.get(e)?;
         let t: Transform = ctx.get(e)?;
+        // A body moves as a box: a capsule's or a polygon's is the box
+        // around it (2D staples item 2).
+        if matches!(c.kind(), ShapeKind::Capsule | ShapeKind::Polygon) {
+            c = c.boxed(ctx.world());
+        }
         let (hw, hh) = if c.radius > 0.0 {
             (c.radius, c.radius)
         } else {
@@ -559,6 +566,29 @@ struct OverlapState {
     contacts: Rc<RefCell<crate::Contacts>>,
     /// Slot of each collider this tick, by entity index (u32::MAX: none).
     slots: Vec<u32>,
+    /// Polygons made from their corners' text, by its id, with the text
+    /// and the radius they were made from: the same id can be another
+    /// list after a seek back, so the text is checked.
+    polygons: HashMap<StrId, (String, u32, Round)>,
+}
+
+impl OverlapState {
+    /// A polygon collider's shape around its centre, made once for the
+    /// same corners and radius.
+    fn polygon(&mut self, world: &World, c: &Collider) -> Round {
+        let text = world.strings().get(c.points.0);
+        if let Some((t, r, round)) = self.polygons.get(&c.points.0) {
+            if *t == *text && *r == c.radius.to_bits() {
+                return round.clone();
+            }
+        }
+        let round = c.round_with(&Points::read(&text));
+        self.polygons.insert(
+            c.points.0,
+            (text.to_string(), c.radius.to_bits(), round.clone()),
+        );
+        round
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -577,11 +607,33 @@ struct Shape {
     mask: u32,
     /// Distance from the hashed position to the farthest point of the shape.
     reach: f32,
+    /// A capsule's or a polygon's shape, an index into the tick's rounds
+    /// (2D staples item 2); `NONE` for a box or a circle.
+    g: u32,
 }
 
-fn meet(a: &Shape, b: &Shape) -> bool {
+const NONE: u32 = u32::MAX;
+
+impl Shape {
+    /// Its shape where it is, as the geometry core has it.
+    fn round(&self, rounds: &[Round]) -> Round {
+        let c = V::new(self.cx, self.cy);
+        if self.g != NONE {
+            rounds[self.g as usize].shift(c)
+        } else if self.r > 0.0 {
+            Round::circle(c, self.r)
+        } else {
+            Round::rect(c, self.hw, self.hh)
+        }
+    }
+}
+
+fn meet(a: &Shape, b: &Shape, rounds: &[Round]) -> bool {
     if (a.mask & b.layer) == 0 || (b.mask & a.layer) == 0 {
         return false;
+    }
+    if a.g != NONE || b.g != NONE {
+        return a.round(rounds).overlaps(&b.round(rounds));
     }
     let (dx, dy) = (b.cx - a.cx, b.cy - a.cy);
     match (a.r > 0.0, b.r > 0.0) {
@@ -611,9 +663,15 @@ fn overlap(
         return Ok(());
     }
     let mut shapes: Vec<Shape> = Vec::new();
+    // Capsules and polygons, by their place in `shapes`, made after.
+    let mut odd: Vec<(usize, Collider)> = Vec::new();
     let mut add = |e: Entity, p: Vec2, c: &Collider| {
         let (hw, hh) = (c.size.x.abs() * 0.5, c.size.y.abs() * 0.5);
-        let r = c.radius.max(0.0);
+        let general = matches!(c.kind(), ShapeKind::Capsule | ShapeKind::Polygon);
+        if general {
+            odd.push((shapes.len(), *c));
+        }
+        let r = if general { 0.0 } else { c.radius.max(0.0) };
         let extent = if r > 0.0 {
             r
         } else {
@@ -631,6 +689,7 @@ fn overlap(
             layer: c.layer,
             mask: c.mask,
             reach: extent + (c.offset.x * c.offset.x + c.offset.y * c.offset.y).sqrt(),
+            g: NONE,
         });
     };
     ctx.query()
@@ -642,6 +701,18 @@ fn overlap(
         .each::<(&Collider, &GlobalTransform)>(|e, (c, g)| add(e, g.pos, c))?;
     if shapes.is_empty() && st.contacts.borrow().pairs.is_empty() {
         return Ok(());
+    }
+    let mut rounds: Vec<Round> = Vec::with_capacity(odd.len());
+    for (i, c) in odd {
+        let round = match c.kind() {
+            ShapeKind::Polygon => st.polygon(ctx.world(), &c),
+            _ => c.round_with(&[]),
+        };
+        let reach = round.pts.iter().map(|p| p.len()).fold(0.0f32, f32::max) + round.r;
+        let s = &mut shapes[i];
+        s.reach = reach + (c.offset.x * c.offset.x + c.offset.y * c.offset.y).sqrt();
+        s.g = rounds.len() as u32;
+        rounds.push(round);
     }
     shapes.sort_by_key(|s| s.e);
     ctx.rebuild_broadphase();
@@ -666,7 +737,7 @@ fn overlap(
                 if j == u32::MAX as usize || j <= i || shapes[j].e != e {
                     return;
                 }
-                if meet(a, &shapes[j]) {
+                if meet(a, &shapes[j], &rounds) {
                     pairs.push((a.e, e));
                 }
             });

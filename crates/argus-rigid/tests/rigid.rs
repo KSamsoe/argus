@@ -112,6 +112,56 @@ fn a_box_falls_lands_and_sleeps_and_the_landing_is_an_event() {
     );
 }
 
+/// 2D staples item 2: a capsule and a polygon are rigid bodies' shapes,
+/// and a shape changed in place is the body's new one.
+#[test]
+fn a_capsule_and_a_polygon_land_on_their_shapes() {
+    let mut g = game("shapes");
+    ground(&mut g);
+    let pill = body(
+        &mut g,
+        at(-3.0, 4.0),
+        Collider {
+            radius: 0.5,
+            height: 2.0,
+            ..Default::default()
+        },
+        RigidBody {
+            lock_rotation: true,
+            ..Default::default()
+        },
+    );
+    let wedge = body(
+        &mut g,
+        at(3.0, 4.0),
+        Collider::default(),
+        RigidBody::default(),
+    );
+    let corners = [(-1.0, 0.0), (1.0, 0.0), (0.0, 1.5)]
+        .iter()
+        .map(|&(x, y)| Value::Vec2(Vec2::new(x, y)))
+        .collect();
+    g.w.set_field(wedge, "Collider.points", Value::List(corners))
+        .unwrap();
+    let run = |g: &mut Game, n: usize| {
+        for _ in 0..n {
+            g.s.step(&mut g.w, 1).unwrap();
+            g.w.drain_events();
+        }
+    };
+    run(&mut g, 240);
+    // Standing on its rounded end: its centre half its height up.
+    assert!((pos(&g, pill).y - 1.0).abs() < 0.02, "{:?}", pos(&g, pill));
+    // On its flat side, its corners' origin on the floor.
+    assert!(pos(&g, wedge).y.abs() < 0.02, "{:?}", pos(&g, wedge));
+    let t: Transform = g.w.get(wedge).unwrap();
+    assert!(t.rot.abs() < 1e-2, "still flat: {}", t.rot);
+    // Taller, in place: it stands on the new shape.
+    g.w.set_field(pill, "Collider.height", 3.0f32).unwrap();
+    run(&mut g, 240);
+    assert!((pos(&g, pill).y - 1.5).abs() < 0.02, "{:?}", pos(&g, pill));
+}
+
 #[test]
 fn a_stack_stands_and_a_hinge_swings() {
     let mut g = game("stack");

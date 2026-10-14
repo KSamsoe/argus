@@ -19,7 +19,7 @@ use crate::{Joint, RigidBody, RigidWorld, RIGID};
 use argus_ecs::{
     ArgusError, ComponentId, Entity, GlobalTransform, Result, Transform, Value, Vec2, World,
 };
-use argus_physics::Collider;
+use argus_physics::{Collider, ShapeKind};
 use argus_sim::{Scheduler, Stage, SystemCtx, SystemDesc};
 use argus_tiles::{MapStore, Tilemap};
 use rapier2d::prelude::*;
@@ -102,13 +102,48 @@ fn groups(c: &Collider) -> InteractionGroups {
     )
 }
 
-fn shape(c: &Collider) -> ColliderBuilder {
-    let b = if c.radius > 0.0 {
-        ColliderBuilder::ball(c.radius)
-    } else {
-        ColliderBuilder::cuboid(c.size.x.max(1e-4) * 0.5, c.size.y.max(1e-4) * 0.5)
-    };
-    b.translation(v(c.offset)).collision_groups(groups(c))
+/// A collider's shape for Rapier: a polygon's `corners` given (2D staples
+/// item 2). Corners that make no polygon (fewer than three, or in a line)
+/// are the circle of its radius.
+fn shared(c: &Collider, corners: &[Vec2]) -> SharedShape {
+    let r = c.radius.max(0.0);
+    match c.kind() {
+        ShapeKind::Polygon => {
+            let pts: Vec<Vector> = corners.iter().map(|p| v(*p)).collect();
+            let hull = if r > 0.0 {
+                SharedShape::round_convex_hull(&pts, r)
+            } else {
+                SharedShape::convex_hull(&pts)
+            };
+            hull.unwrap_or_else(|| SharedShape::ball(r.max(1e-4)))
+        }
+        ShapeKind::Capsule => SharedShape::capsule_y(c.height * 0.5 - r, r),
+        ShapeKind::Circle => SharedShape::ball(r),
+        ShapeKind::Box => SharedShape::cuboid(c.size.x.max(1e-4) * 0.5, c.size.y.max(1e-4) * 0.5),
+    }
+}
+
+fn shape(c: &Collider, corners: &[Vec2]) -> ColliderBuilder {
+    ColliderBuilder::new(shared(c, corners))
+        .translation(v(c.offset))
+        .collision_groups(groups(c))
+}
+
+/// What a polygon's corners were, as a number a change shows in.
+fn corners_key(corners: &[Vec2]) -> u64 {
+    let mut h: u64 = 0xcbf29ce484222325;
+    for p in corners {
+        for b in
+            p.x.to_bits()
+                .to_le_bytes()
+                .iter()
+                .chain(&p.y.to_bits().to_le_bytes())
+        {
+            h ^= *b as u64;
+            h = h.wrapping_mul(0x100000001b3);
+        }
+    }
+    h
 }
 
 fn position(ctx: &SystemCtx<'_>, e: Entity, gt: ComponentId) -> [f32; 2] {
@@ -266,7 +301,9 @@ fn sync_proxies(ctx: &SystemCtx<'_>, s: &mut RigidState, ids: Ids) -> Result<()>
     ents.sort();
     let mut seen = BTreeSet::new();
     for e in ents {
-        let c: Collider = ctx.get(e)?;
+        // A kinematic body moves as the box around its shape, and pushes
+        // rigid ones as it.
+        let c: Collider = ctx.get::<Collider>(e)?.boxed(ctx.world());
         let t: Transform = ctx.get(e)?;
         let k = e.to_bits();
         seen.insert(k);
@@ -293,9 +330,8 @@ fn sync_proxies(ctx: &SystemCtx<'_>, s: &mut RigidState, ids: Ids) -> Result<()>
                         .translation(v(t.pos))
                         .user_data(k as u128),
                 );
-                let boxed = Collider { radius: 0.0, ..c };
                 let collider = s.colliders.insert_with_parent(
-                    shape(&boxed).user_data(k as u128),
+                    shape(&c, &[]).user_data(k as u128),
                     body,
                     &mut s.bodies,
                 );
@@ -324,7 +360,7 @@ fn sync_proxies(ctx: &SystemCtx<'_>, s: &mut RigidState, ids: Ids) -> Result<()>
     Ok(())
 }
 
-fn given(r: &RigidBody, c: &Collider) -> Given {
+fn given(r: &RigidBody, c: &Collider, corners: &[Vec2]) -> Given {
     Given {
         kind: if r.fixed {
             1
@@ -341,6 +377,8 @@ fn given(r: &RigidBody, c: &Collider) -> Given {
         can_sleep: r.can_sleep,
         size: [c.size.x, c.size.y],
         radius: c.radius,
+        height: c.height,
+        corners: corners_key(corners),
         offset: [c.offset.x, c.offset.y],
         density: r.density,
         friction: r.friction,
@@ -367,8 +405,15 @@ fn wrote(t: &Transform, r: &RigidBody) -> Wrote {
     }
 }
 
-fn add_body(s: &mut RigidState, k: u64, t: &Transform, r: &RigidBody, c: &Collider) -> Body {
-    let g = given(r, c);
+fn add_body(
+    s: &mut RigidState,
+    k: u64,
+    t: &Transform,
+    r: &RigidBody,
+    c: &Collider,
+    corners: &[Vec2],
+) -> Body {
+    let g = given(r, c, corners);
     let mut b = RigidBodyBuilder::new(body_type(g.kind))
         .translation(v(t.pos))
         .rotation(t.rot)
@@ -385,7 +430,7 @@ fn add_body(s: &mut RigidState, k: u64, t: &Transform, r: &RigidBody, c: &Collid
     }
     let body = s.bodies.insert(b);
     let collider = s.colliders.insert_with_parent(
-        shape(c)
+        shape(c, corners)
             .density(r.density.max(1e-3))
             .friction(r.friction)
             .restitution(r.restitution)
@@ -418,16 +463,17 @@ fn sync_bodies(ctx: &SystemCtx<'_>, s: &mut RigidState, ids: Ids) -> Result<()> 
         let t: Transform = ctx.get(e)?;
         let k = e.to_bits();
         seen.insert(k);
-        let g = given(&r, &c);
+        let corners = c.corners(ctx.world());
+        let g = given(&r, &c, &corners);
         let Some(rec) = s.rigid.get(&k).cloned() else {
-            let b = add_body(s, k, &t, &r, &c);
+            let b = add_body(s, k, &t, &r, &c, &corners);
             s.rigid.insert(k, b);
             continue;
         };
         // What cannot change in place starts the body again where it is.
         if g.can_sleep != rec.given.can_sleep {
             remove_body(s, rec.body);
-            let b = add_body(s, k, &t, &r, &c);
+            let b = add_body(s, k, &t, &r, &c, &corners);
             s.rigid.insert(k, b);
             continue;
         }
@@ -466,19 +512,38 @@ fn sync_bodies(ctx: &SystemCtx<'_>, s: &mut RigidState, ids: Ids) -> Result<()> 
         }
         let shaped = g.size != rec.given.size
             || g.radius != rec.given.radius
+            || g.height != rec.given.height
+            || g.corners != rec.given.corners
             || g.offset != rec.given.offset
             || g.layer != rec.given.layer
             || g.mask != rec.given.mask;
-        if let Some(col) = s.colliders.get_mut(rec.collider) {
-            if shaped {
-                col.set_shape(if c.radius > 0.0 {
-                    SharedShape::ball(c.radius)
-                } else {
-                    SharedShape::cuboid(c.size.x.max(1e-4) * 0.5, c.size.y.max(1e-4) * 0.5)
-                });
-                col.set_translation_wrt_parent(v(c.offset));
-                col.set_collision_groups(groups(&c));
+        if shaped {
+            // A new collider, not `set_shape`: Rapier 0.36 keeps a resting
+            // body's contacts as its old shape made them, so a capsule made
+            // taller in place would go on standing on its old height.
+            s.colliders.remove(
+                rec.collider,
+                &mut s.islands,
+                &mut s.bodies,
+                &mut s.soft_bodies,
+                true,
+            );
+            let collider = s.colliders.insert_with_parent(
+                shape(&c, &corners)
+                    .density(g.density.max(1e-3))
+                    .friction(g.friction)
+                    .restitution(g.restitution)
+                    .user_data(k as u128),
+                rec.body,
+                &mut s.bodies,
+            );
+            if let Some(b) = s.rigid.get_mut(&k) {
+                b.collider = collider;
             }
+            if let Some(body) = s.bodies.get_mut(rec.body) {
+                body.wake_up(true);
+            }
+        } else if let Some(col) = s.colliders.get_mut(rec.collider) {
             if g.density != rec.given.density {
                 col.set_density(g.density.max(1e-3));
             }
