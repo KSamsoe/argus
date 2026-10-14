@@ -24,7 +24,7 @@ pub mod strings;
 pub mod text;
 pub mod theme;
 
-pub use components::{UiButton, UiNode, UiPanel, UiRect, UiRoot, UiText};
+pub use components::{UiButton, UiNode, UiPanel, UiRect, UiRoot, UiScroll, UiText, UiTextBox};
 pub use input::INPUT;
 pub use layout::{canvas_to_world, world_to_canvas, LAYOUT};
 pub use strings::Strings;
@@ -226,6 +226,8 @@ pub fn register(world: &mut World) -> Result<()> {
     world.register::<UiText>()?;
     world.register::<UiPanel>()?;
     world.register::<UiButton>()?;
+    world.register::<UiTextBox>()?;
+    world.register::<UiScroll>()?;
     world.register::<UiSettings>()?;
     Ok(())
 }

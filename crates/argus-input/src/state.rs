@@ -17,7 +17,7 @@ use crate::map::{ActionKind, ActionMap};
 use argus_ecs::codec::{Reader, Writer};
 use argus_ecs::{ArgusError, Result, Value, Vec2};
 use serde_json::{json, Value as Json};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
@@ -205,6 +205,10 @@ pub struct InjectReport {
     pub until: Option<u64>,
 }
 
+/// The channel typed text waits on among the messages until its tick: no
+/// game's channel can be it (a channel is letters, digits, `.`, `_`, `-`).
+pub const TYPED_CHANNEL: &str = "\u{1}typed";
+
 /// A command the input state was given.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Command {
@@ -262,6 +266,13 @@ pub enum Command {
         /// The channel, a short name the game chose.
         channel: String,
         /// The text.
+        text: String,
+    },
+    /// Text a slot typed while typing (issue 23).
+    Text {
+        /// Player slot.
+        slot: u8,
+        /// What was typed, control characters included.
         text: String,
     },
 }
@@ -351,6 +362,19 @@ pub struct InputState {
     messages: BTreeMap<u64, Vec<Message>>,
     /// The messages due this tick, for `input.actions` to hand the scripts.
     inbox: Vec<Message>,
+    /// What each slot typed for this tick (issue 23). Text not yet due
+    /// waits among the messages, on [`TYPED_CHANNEL`], so a keyframe keeps
+    /// it as it keeps them.
+    typed_now: BTreeMap<u8, String>,
+    /// The slots typing (their `Actions.typing`): their keyboards move no
+    /// action, and what they type is theirs.
+    typing: BTreeSet<u8>,
+    /// The slots typing when the devices were last applied.
+    typing_applied: BTreeSet<u8>,
+    /// This tick's input was only the UI's: characters typed (no line
+    /// sent) or the wheel turned. In a turn-based game such a tick takes
+    /// no turn (issue 23).
+    ui_only: bool,
 }
 
 /// An action waiting for a key.
@@ -395,6 +419,10 @@ impl InputState {
             rebound: Vec::new(),
             messages: BTreeMap::new(),
             inbox: Vec::new(),
+            typed_now: BTreeMap::new(),
+            typing: BTreeSet::new(),
+            typing_applied: BTreeSet::new(),
+            ui_only: false,
             current: BTreeMap::new(),
             pressed: Vec::new(),
             released: Vec::new(),
@@ -412,11 +440,19 @@ impl InputState {
     /// became active is a one-turn command (like an inject) and a release
     /// is nothing; the return is the number of commands, which is how
     /// many turns the caller should advance.
-    pub fn apply_devices(&mut self, now: u64, devices: &crate::devices::Devices) -> usize {
+    pub fn apply_devices(&mut self, now: u64, devices: &mut crate::devices::Devices) -> usize {
         let slots: Vec<u8> = self.map.slots.iter().map(|s| s.index).collect();
+        // A slot stopped typing: the keys still down (the Enter that sent
+        // the line) move nothing until they are let go.
+        if self.typing_applied.iter().any(|s| !self.typing.contains(s)) {
+            devices.mute_held();
+        }
+        self.typing_applied = self.typing.clone();
+        let mut commands = self.apply_typed(now, devices, &slots);
         let mut changes = Vec::new();
         for slot in slots {
-            for (action, v) in devices.resolve(&self.map, slot) {
+            let typing = self.typing.contains(&slot);
+            for (action, v) in devices.resolve_typing(&self.map, slot, typing) {
                 let Ok(a) = self.map.action(&action) else {
                     continue;
                 };
@@ -431,11 +467,120 @@ impl InputState {
             }
         }
         if changes.is_empty() {
-            return 0;
+            return commands;
         }
-        let commands = self.apply_device_changes(now, &changes);
+        commands += self.apply_device_changes(now, &changes);
         self.journal_live(now, Command::Devices { changes });
         commands
+    }
+
+    /// The wheel and the text since the last poll (issue 23): a wheel's
+    /// turn is a one-tick push of each axis action bound to it, journaled
+    /// as an inject; text goes to each slot with a keyboard that is
+    /// typing, and is dropped for one that is not.
+    fn apply_typed(
+        &mut self,
+        now: u64,
+        devices: &mut crate::devices::Devices,
+        slots: &[u8],
+    ) -> usize {
+        let (wheel, text) = devices.take_typed();
+        let mut commands = 0;
+        if wheel != 0.0 {
+            let v = Json::from(f64::from(wheel.clamp(-1.0, 1.0)));
+            let wheeled: Vec<String> = self
+                .map
+                .actions
+                .iter()
+                .filter(|a| {
+                    a.kind == ActionKind::Axis
+                        && a.bindings
+                            .get("mouse")
+                            .is_some_and(|b| b.iter().any(|n| n == "wheel"))
+                })
+                .map(|a| a.name.clone())
+                .collect();
+            for &slot in slots {
+                let mouse = self
+                    .map
+                    .slot(slot)
+                    .is_ok_and(|s| s.devices.iter().any(|d| d == "mouse"));
+                if !mouse {
+                    continue;
+                }
+                for a in &wheeled {
+                    if self.inject(now, slot, a, Some(&v), Some(1), false).is_ok() {
+                        commands += 1;
+                    }
+                }
+            }
+        }
+        if !text.is_empty() {
+            for &slot in slots {
+                let keyboard = self
+                    .map
+                    .slot(slot)
+                    .is_ok_and(|s| s.devices.iter().any(|d| d == "keyboard"));
+                if keyboard && self.typing.contains(&slot) && self.text(now, slot, &text).is_ok() {
+                    commands += 1;
+                }
+            }
+        }
+        commands
+    }
+
+    /// Text a slot typed, for the tick `now` (issue 23): it is that tick's
+    /// `Actions.typed`.
+    pub fn text(&mut self, now: u64, slot: u8, text: &str) -> Result<()> {
+        self.text_raw(now, slot, text)?;
+        self.journal_live(
+            now,
+            Command::Text {
+                slot,
+                text: text.to_string(),
+            },
+        );
+        Ok(())
+    }
+
+    fn text_raw(&mut self, now: u64, slot: u8, text: &str) -> Result<()> {
+        self.map.slot(slot)?;
+        if text.len() > crate::devices::MAX_TYPED {
+            return Err(ArgusError::new(
+                codes::BAD_VALUE,
+                format!("{} bytes typed at once is too many", text.len()),
+            )
+            .hint(format!(
+                "Text typed comes {} bytes at a time at most.",
+                crate::devices::MAX_TYPED
+            )));
+        }
+        self.messages.entry(now).or_default().push((
+            slot,
+            TYPED_CHANNEL.to_string(),
+            text.to_string(),
+        ));
+        Ok(())
+    }
+
+    /// What `slot` typed for this tick: its `Actions.typed`.
+    pub fn typed(&self, slot: u8) -> &str {
+        self.typed_now.get(&slot).map(String::as_str).unwrap_or("")
+    }
+
+    /// Whether `slot` is typing: its keyboard types, and moves no action
+    /// (its `Actions.typing`, which `input.actions` reads each tick).
+    pub fn set_typing(&mut self, slot: u8, on: bool) {
+        if on {
+            self.typing.insert(slot);
+        } else {
+            self.typing.remove(&slot);
+        }
+    }
+
+    /// Whether `slot` is typing.
+    pub fn is_typing(&self, slot: u8) -> bool {
+        self.typing.contains(&slot)
     }
 
     /// Device values that changed, scheduled from `now`.
@@ -867,10 +1012,16 @@ impl InputState {
         self.released.clear();
         self.last_tick = Some(tick);
         self.inbox.clear();
+        self.typed_now.clear();
         let due: Vec<u64> = self.messages.range(..=tick).map(|(t, _)| *t).collect();
         for t in due {
-            self.inbox
-                .extend(self.messages.remove(&t).unwrap_or_default());
+            for (slot, channel, text) in self.messages.remove(&t).unwrap_or_default() {
+                if channel == TYPED_CHANNEL {
+                    self.typed_now.entry(slot).or_default().push_str(&text);
+                } else {
+                    self.inbox.push((slot, channel, text));
+                }
+            }
         }
         let due: Vec<u64> = self.scheduled.range(..=tick).map(|(t, _)| *t).collect();
         let mut applied = Vec::new();
@@ -923,7 +1074,46 @@ impl InputState {
         if fresh {
             self.log_through = Some(tick);
         }
+        // Only the UI's input: text typed with no line sent, and the
+        // wheel (the pointer moving with it, which is a place, not a
+        // press). A turn-based game's tick for it takes no turn.
+        let wheeled = |name: &str| {
+            self.map.action(name).is_ok_and(|a| {
+                a.bindings
+                    .get("mouse")
+                    .is_some_and(|b| b.iter().any(|n| n == "wheel"))
+            })
+        };
+        let ui = |name: &str| {
+            wheeled(name)
+                || self
+                    .map
+                    .action(name)
+                    .is_ok_and(|a| a.kind == ActionKind::Pointer)
+        };
+        let typed_line = self.typed_now.values().any(|t| t.contains(['\r', '\n']));
+        let something = !self.typed_now.is_empty()
+            || applied
+                .iter()
+                .any(|e| wheeled(&e.action) && e.value.is_active());
+        // An action going back to rest (the last turn's tap let go) is no
+        // command; any other change is the game's.
+        self.ui_only = self.discrete
+            && something
+            && !typed_line
+            && self.inbox.is_empty()
+            && applied
+                .iter()
+                .all(|e| ui(&e.action) || !e.value.is_active());
         applied
+    }
+
+    /// Whether this tick's input was only the UI's (characters typed with
+    /// no line sent, the wheel) in a turn-based game: `input.actions`
+    /// freezes such a tick, so it takes no turn, as a menu's press takes
+    /// none (issue 23).
+    pub fn ui_only(&self) -> bool {
+        self.ui_only
     }
 
     // ----- the journal: seek and branch (phase 2) ----------------------------
@@ -980,6 +1170,9 @@ impl InputState {
             } => {
                 let _ = self.message_raw(now, *slot, channel, text);
             }
+            Command::Text { slot, text } => {
+                let _ = self.text_raw(now, *slot, text);
+            }
         }
     }
 
@@ -1021,6 +1214,10 @@ impl InputState {
             rebound: Vec::new(),
             messages: self.messages.clone(),
             inbox: self.inbox.clone(),
+            typed_now: self.typed_now.clone(),
+            typing: self.typing.clone(),
+            typing_applied: self.typing_applied.clone(),
+            ui_only: self.ui_only,
         }
     }
 
@@ -1549,6 +1746,11 @@ impl JournalEntry {
                 w.str(channel);
                 w.str(text);
             }
+            Command::Text { slot, text } => {
+                w.u8(7);
+                w.u8(*slot);
+                w.str(text);
+            }
         }
     }
 
@@ -1609,6 +1811,10 @@ impl JournalEntry {
             6 => Command::Message {
                 slot: r.u8()?,
                 channel: r.str()?,
+                text: r.str()?,
+            },
+            7 => Command::Text {
+                slot: r.u8()?,
                 text: r.str()?,
             },
             k => return Err(r.bad(format!("input command kind {k}"))),

@@ -404,6 +404,9 @@ impl Game {
                 Some(WindowInput::Text(t)) => {
                     if let Some(s) = self.prompt.as_mut() {
                         s.extend(t.chars().filter(|c| !c.is_control()));
+                    } else {
+                        // The game's, for a slot that is typing (issue 23).
+                        devs.push(DeviceInput::Text { text: t });
                     }
                 }
                 Some(WindowInput::Resized(w, h)) => self.r.gpu_mut().resize(w, h),

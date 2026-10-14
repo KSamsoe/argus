@@ -82,6 +82,8 @@ pub struct UiSeen {
     pub focused: bool,
     /// Cannot be pressed.
     pub disabled: bool,
+    /// A text box (issue 23): `text` is what is in it, or its hint.
+    pub textbox: bool,
 }
 
 /// A view: centre, half extents in world units, roll in radians.
@@ -201,6 +203,9 @@ impl SemanticFrame {
                 }
                 if u.disabled {
                     o["disabled"] = json!(true);
+                }
+                if u.textbox {
+                    o["textbox"] = json!(true);
                 }
                 o
             }).collect::<Vec<_>>(),
@@ -790,7 +795,7 @@ fn lighting(
 /// The UI's words and buttons, placed in the frame through the canvas. A
 /// text inside a button is the button's words, not a line of its own.
 fn ui_seen(world: &World, spec: &FrameSpec) -> Vec<UiSeen> {
-    use argus_ui::{UiButton, UiRect, UiText};
+    use argus_ui::{UiButton, UiRect, UiText, UiTextBox};
     let (Some(canvas), Some(rect_id)) = (spec.ui_canvas, world.component_id_of::<UiRect>()) else {
         return Vec::new();
     };
@@ -865,6 +870,19 @@ fn ui_seen(world: &World, spec: &FrameSpec) -> Vec<UiSeen> {
             continue;
         }
         at.insert(*e, out.len());
+        // A text box says what is in it (or its hint), not its caret.
+        let tb = world.get::<UiTextBox>(*e).ok();
+        let text = match tb {
+            Some(t) => {
+                let s = world.strings().resolve(t.text).to_string();
+                if s.is_empty() {
+                    world.strings().resolve(t.hint).to_string()
+                } else {
+                    s
+                }
+            }
+            None => text,
+        };
         out.push(UiSeen {
             entity: *e,
             id: entity_id(world, *e),
@@ -873,6 +891,7 @@ fn ui_seen(world: &World, spec: &FrameSpec) -> Vec<UiSeen> {
             button: b.is_some(),
             focused: b.is_some_and(|b| b.focused),
             disabled: b.is_some_and(|b| b.disabled),
+            textbox: tb.is_some(),
         });
     }
     out

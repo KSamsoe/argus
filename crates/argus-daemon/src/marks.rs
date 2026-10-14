@@ -1083,7 +1083,7 @@ impl Daemon {
         let up = |e: &DeviceInput| matches!(e, DeviceInput::ReleaseAll);
         if let Some(p) = self.mark_prompt.as_mut() {
             for t in typed {
-                for c in t.chars() {
+                for c in t.chars().filter(|c| !c.is_control()) {
                     if p.text.chars().count() < NOTE_MAX {
                         p.text.push(c);
                     }
@@ -1111,6 +1111,10 @@ impl Daemon {
             }
             return evs.into_iter().filter(up).collect();
         }
+        // No note open: what was typed is the game's, for a slot that is
+        // typing (issue 23).
+        let mut evs = evs;
+        evs.extend(typed.into_iter().map(|text| DeviceInput::Text { text }));
         let Some(key) = self.session.as_ref().map(|s| s.mark_key.clone()) else {
             return evs;
         };

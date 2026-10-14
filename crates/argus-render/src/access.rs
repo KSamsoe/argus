@@ -81,8 +81,18 @@ pub fn tree(frame: &SemanticFrame, name: &str) -> TreeUpdate {
 }
 
 fn ui_node(u: &UiSeen) -> Node {
-    let mut n = Node::new(if u.button { Role::Button } else { Role::Label });
-    n.set_label(u.text.clone());
+    let mut n = Node::new(if u.textbox {
+        Role::TextInput
+    } else if u.button {
+        Role::Button
+    } else {
+        Role::Label
+    });
+    if u.textbox {
+        n.set_value(u.text.clone());
+    } else {
+        n.set_label(u.text.clone());
+    }
     n.set_bounds(rect(u.bounds));
     if u.button {
         if u.disabled {

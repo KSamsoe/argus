@@ -37,6 +37,7 @@ pub fn window_input(ev: DeviceEvent) -> Option<WindowInput> {
             pressed,
         }),
         DeviceEvent::Cursor { at } => WindowInput::Cursor(at.0, at.1),
+        DeviceEvent::Wheel { lines } => WindowInput::Device(DeviceInput::Wheel { lines }),
         DeviceEvent::Focus { focused: false } => WindowInput::Device(DeviceInput::ReleaseAll),
         DeviceEvent::Text { text } => WindowInput::Text(text),
         DeviceEvent::Resized { width, height } => WindowInput::Resized(width, height),

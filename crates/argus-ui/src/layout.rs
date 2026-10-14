@@ -21,7 +21,7 @@
 //! interned ids, and measures text without making its lines: §17 gives it
 //! a millisecond for 2,000 nodes with text.
 
-use crate::components::{UiButton, UiNode, UiRect, UiRoot, UiText};
+use crate::components::{UiButton, UiNode, UiRect, UiRoot, UiScroll, UiText};
 use crate::text::{size_of, FontFace};
 use crate::{Shared, UiSettings};
 use argus_ecs::{
@@ -32,6 +32,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use taffy::prelude::*;
+use taffy::{Overflow, Point};
 
 /// The layout system's name.
 pub const LAYOUT: &str = "ui.layout";
@@ -44,6 +45,7 @@ pub(crate) struct Ids {
     pub text: ComponentId,
     pub parent: ComponentId,
     pub settings: ComponentId,
+    pub scroll: ComponentId,
 }
 
 impl Ids {
@@ -56,6 +58,7 @@ impl Ids {
             text: world.component_id_of::<UiText>().expect("registered"),
             parent: world.component_id_of::<Parent>().expect("registered"),
             settings: world.component_id_of::<UiSettings>().expect("registered"),
+            scroll: world.component_id_of::<UiScroll>().expect("registered"),
         }
     }
 }
@@ -107,6 +110,7 @@ pub(crate) fn install(
         .writes(ids.text)
         .writes(ids.root)
         .writes(ids.button)
+        .writes(ids.scroll)
         .source("argus-ui:layout")
         .doc("Lays out every UI tree on the canvas (ui.toml width and height), flexbox style: writes each node's UiRect (where it landed, its draw order, whether it shows, its opacity, its clip) and each text's shown words, holes filled. A tree hung from a world entity sits at its place on screen. A tree whose focused button cannot take focus now (hidden, disabled) focuses its first one that can, so a menu opened this tick shows its focus at once.");
     for t in [
@@ -167,6 +171,7 @@ struct Prev {
     node: UiNode,
     top: bool,
     fill: Option<(f32, f32)>,
+    scroll: bool,
     kids: Vec<NodeId>,
     text: Option<TextKey>,
 }
@@ -201,6 +206,7 @@ struct Item {
     root: Option<UiRoot>,
     button: Option<UiButton>,
     rect: Option<UiRect>,
+    scroll: Option<UiScroll>,
     kids: Vec<usize>,
     /// Its entry in the texts measured, for a text node.
     measured: Option<usize>,
@@ -242,7 +248,7 @@ impl TextItem {
 /// A node's taffy style: `top` for a tree's top (never absolutely placed to
 /// taffy; it is placed by hand), `fill` the canvas a screen tree's top
 /// fills unless it says otherwise.
-fn style(kw: &Kw, n: &UiNode, top: bool, fill: Option<(f32, f32)>) -> Style {
+fn style(kw: &Kw, n: &UiNode, top: bool, fill: Option<(f32, f32)>, scroll: bool) -> Style {
     let dim = |px: f32, share: f32| -> Dimension {
         if px > 0.0 {
             length(px)
@@ -339,6 +345,17 @@ fn style(kw: &Kw, n: &UiNode, top: bool, fill: Option<(f32, f32)>) -> Style {
         } else {
             Position::Relative
         },
+        // A scrolled node is as big as it is given, not as its content: its
+        // content goes past it (issue 23).
+        overflow: Point {
+            x: Overflow::Visible,
+            y: if scroll {
+                Overflow::Scroll
+            } else {
+                Overflow::Visible
+            },
+        },
+        scrollbar_width: 0.0,
         ..Style::DEFAULT
     };
     // A screen tree's top fills the canvas unless it says otherwise.
@@ -405,6 +422,7 @@ fn gather(world: &World, ids: &Ids) -> Result<Vec<Item>> {
         let roots = v.column::<UiRoot>().ok();
         let buttons = v.column::<UiButton>().ok();
         let rects = v.column::<UiRect>().ok();
+        let scrolls = v.column::<UiScroll>().ok();
         for (i, e) in v.entities().iter().enumerate() {
             items.push(Item {
                 e: *e,
@@ -414,6 +432,7 @@ fn gather(world: &World, ids: &Ids) -> Result<Vec<Item>> {
                 root: roots.as_ref().map(|r| r[i]),
                 button: buttons.as_ref().map(|b| b[i]),
                 rect: rects.as_ref().map(|r| r[i]),
+                scroll: scrolls.as_ref().map(|s| s[i]),
                 kids: Vec::new(),
                 measured: None,
                 tid: None,
@@ -611,14 +630,16 @@ fn layout(
             // Compared in place: a tick where nothing changed allocates
             // nothing here.
             Some(p) => {
-                if p.node != it.node || p.top != top || p.fill != fill {
+                let scroll = it.scroll.is_some();
+                if p.node != it.node || p.top != top || p.fill != fill || p.scroll != scroll {
                     state
                         .tree
-                        .set_style(n, style(kw, &it.node, top, fill))
+                        .set_style(n, style(kw, &it.node, top, fill, scroll))
                         .map_err(tree_err)?;
                     p.node = it.node;
                     p.top = top;
                     p.fill = fill;
+                    p.scroll = scroll;
                 }
                 if !p.kids.iter().copied().eq(it.kids.iter().map(kid_node)) {
                     p.kids = it.kids.iter().map(kid_node).collect();
@@ -639,7 +660,7 @@ fn layout(
                 let kids: Vec<NodeId> = it.kids.iter().map(kid_node).collect();
                 state
                     .tree
-                    .set_style(n, style(kw, &it.node, top, fill))
+                    .set_style(n, style(kw, &it.node, top, fill, it.scroll.is_some()))
                     .map_err(tree_err)?;
                 state.tree.set_children(n, &kids).map_err(tree_err)?;
                 state
@@ -652,6 +673,7 @@ fn layout(
                         node: it.node,
                         top,
                         fill,
+                        scroll: it.scroll.is_some(),
                         kids,
                         text,
                     },
@@ -665,6 +687,7 @@ fn layout(
         .collect();
     let tree = &mut state.tree;
     let mut out: Vec<(usize, UiRect)> = Vec::with_capacity(items.len());
+    let mut scrolled: Vec<(usize, UiScroll)> = Vec::new();
     let mut tree_of: Vec<usize> = vec![usize::MAX; items.len()];
     let mut depth = 0u32;
     for &t in &tops {
@@ -750,12 +773,25 @@ fn layout(
             clip: [0.0, 0.0, canvas[0], canvas[1]],
         };
         let first = out.len();
-        place(tree, &items, t, &parent, true, &mut depth, &mut out);
+        place(
+            tree,
+            &items,
+            t,
+            &parent,
+            true,
+            &mut depth,
+            &mut out,
+            &mut scrolled,
+        );
         for (i, _) in &out[first..] {
             tree_of[*i] = t;
         }
     }
 
+    // Where each scrolled node is now (issue 23).
+    for (i, s) in scrolled {
+        ctx.update::<UiScroll, _>(items[i].e, |x| *x = s)?;
+    }
     // Write what changed, adding a UiRect where there is none.
     let mut rects: Vec<Option<UiRect>> = vec![None; items.len()];
     let mut updates = Vec::new();
@@ -866,6 +902,7 @@ struct Frame {
     clip: [f32; 4],
 }
 
+#[allow(clippy::too_many_arguments)]
 fn place(
     tree: &TaffyTree<Entity>,
     items: &[Item],
@@ -874,6 +911,7 @@ fn place(
     top: bool,
     depth: &mut u32,
     out: &mut Vec<(usize, UiRect)>,
+    scrolled: &mut Vec<(usize, UiScroll)>,
 ) {
     let it = &items[i];
     let n = &it.node;
@@ -905,7 +943,7 @@ fn place(
     };
     *depth += 1;
     out.push((i, rect));
-    let clip = if n.clip {
+    let clip = if n.clip || it.scroll.is_some() {
         [
             parent.clip[0].max(pos[0]),
             parent.clip[1].max(pos[1]),
@@ -915,14 +953,49 @@ fn place(
     } else {
         parent.clip
     };
+    // A scrolled node's children move up by how far it is scrolled: kept at
+    // the end while it was there and nobody moved it (issue 23).
+    let mut inner = pos;
+    if let Some(s) = it.scroll {
+        let mut bottom: f32 = 0.0;
+        for &k in &it.kids {
+            let kid = &items[k];
+            if kid.node.absolute || !kid.node.visible {
+                continue;
+            }
+            if let Some(l) = kid.tid.and_then(|id| tree.layout(id).ok()) {
+                bottom = bottom.max(l.location.y + l.size.height + kid.node.margin.y);
+            }
+        }
+        let content = bottom + n.pad.y;
+        let view = size[1];
+        let max = (content - view).max(0.0);
+        let y = if s.end && s.at_end && s.y == s.seen {
+            max
+        } else {
+            s.y.clamp(0.0, max)
+        };
+        let want = UiScroll {
+            y,
+            content,
+            view,
+            at_end: y >= max - 0.5,
+            seen: y,
+            ..s
+        };
+        if want != s {
+            scrolled.push((i, want));
+        }
+        inner[1] -= y;
+    }
     let frame = Frame {
-        pos,
+        pos: inner,
         size,
         shown,
         alpha,
         clip,
     };
     for &k in &it.kids {
-        place(tree, items, k, &frame, false, depth, out);
+        place(tree, items, k, &frame, false, depth, out, scrolled);
     }
 }

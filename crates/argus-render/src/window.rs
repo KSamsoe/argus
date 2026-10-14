@@ -38,6 +38,11 @@ pub enum DeviceEvent {
         /// Pixel position, y down.
         at: (f32, f32),
     },
+    /// The mouse wheel turned (issue 23).
+    Wheel {
+        /// Lines, up positive.
+        lines: f32,
+    },
     /// The window was resized.
     Resized {
         /// New size in pixels.
@@ -192,11 +197,14 @@ impl ApplicationHandler for App {
             WindowEvent::KeyboardInput { event, .. } => {
                 let pressed = event.state == ElementState::Pressed;
                 if pressed {
-                    if let Some(t) = event
-                        .text
-                        .as_ref()
-                        .filter(|t| !t.chars().any(char::is_control))
-                    {
+                    // Characters, and Backspace, Enter, and Escape as their
+                    // control characters, held ones repeating: what a text
+                    // box takes (issue 23). A note prompt keeps only the
+                    // characters.
+                    if let Some(t) = event.text.as_ref().filter(|t| {
+                        t.chars()
+                            .all(|c| !c.is_control() || matches!(c, '\u{8}' | '\r' | '\u{1b}'))
+                    }) {
                         self.events.push(DeviceEvent::Text {
                             text: t.to_string(),
                         });
@@ -225,6 +233,16 @@ impl ApplicationHandler for App {
                     pressed: state == ElementState::Pressed,
                     at: self.cursor,
                 });
+            }
+            WindowEvent::MouseWheel { delta, .. } => {
+                // Lines; a touchpad's pixels at 40 a line.
+                let lines = match delta {
+                    winit::event::MouseScrollDelta::LineDelta(_, y) => y,
+                    winit::event::MouseScrollDelta::PixelDelta(p) => p.y as f32 / 40.0,
+                };
+                if lines != 0.0 {
+                    self.events.push(DeviceEvent::Wheel { lines });
+                }
             }
             _ => {}
         }

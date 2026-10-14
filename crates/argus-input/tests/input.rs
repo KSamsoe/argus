@@ -115,8 +115,11 @@ fn the_map_parses_and_becomes_a_component() {
             "fire_pressed",
             "fire_released",
             "move",
-            "throttle"
-        ]
+            "throttle",
+            "typed",
+            "typing"
+        ],
+        "the actions, then the engine's typed and typing (issue 23)"
     );
     assert_eq!(schema.field("throttle").unwrap().range, Some((-1.0, 1.0)));
     assert_eq!(schema.field("fire").unwrap().doc, "Shoot");
@@ -493,7 +496,7 @@ fn device_changes_are_logged_as_actions_and_replay_without_devices() {
     s.step(&mut w, 1).unwrap();
     d.apply(&key("Space", true));
     d.apply(&key("d", true));
-    assert_eq!(st.borrow_mut().apply_devices(s.tick(), &d), 0);
+    assert_eq!(st.borrow_mut().apply_devices(s.tick(), &mut d), 0);
     s.step(&mut w, 1).unwrap();
     assert_eq!(w.get_field(p1, "Actions.fire").unwrap(), Value::Bool(true));
     assert_eq!(
@@ -505,7 +508,7 @@ fn device_changes_are_logged_as_actions_and_replay_without_devices() {
         Value::Vec2(Vec2::new(1.0, 0.0))
     );
     // Held: nothing new is scheduled, the value stays, the edge is gone.
-    st.borrow_mut().apply_devices(s.tick(), &d);
+    st.borrow_mut().apply_devices(s.tick(), &mut d);
     s.step(&mut w, 1).unwrap();
     assert_eq!(w.get_field(p1, "Actions.fire").unwrap(), Value::Bool(true));
     assert_eq!(
@@ -513,7 +516,7 @@ fn device_changes_are_logged_as_actions_and_replay_without_devices() {
         Value::Bool(false)
     );
     d.apply(&key("Space", false));
-    st.borrow_mut().apply_devices(s.tick(), &d);
+    st.borrow_mut().apply_devices(s.tick(), &mut d);
     s.step(&mut w, 1).unwrap();
     assert_eq!(
         w.get_field(p1, "Actions.fire_released").unwrap(),
@@ -550,7 +553,7 @@ fn in_a_discrete_scene_a_press_is_one_command_for_the_next_turn() {
     let p1 = w.entity("@p1").unwrap();
     d.apply(&key("ArrowUp", true)); // not bound: wasd only
     d.apply(&key("w", true));
-    let turns = st.borrow_mut().apply_devices(s.tick(), &d);
+    let turns = st.borrow_mut().apply_devices(s.tick(), &mut d);
     assert_eq!(turns, 1, "one command, so the caller advances one turn");
     s.advance(&mut w, turns as u64).unwrap();
     assert_eq!(
@@ -558,7 +561,7 @@ fn in_a_discrete_scene_a_press_is_one_command_for_the_next_turn() {
         Value::Vec2(Vec2::new(0.0, 1.0))
     );
     // Still held: no second command, and the move is back at rest next turn.
-    assert_eq!(st.borrow_mut().apply_devices(s.tick(), &d), 0);
+    assert_eq!(st.borrow_mut().apply_devices(s.tick(), &mut d), 0);
     s.advance(&mut w, 1).unwrap();
     assert_eq!(
         w.get_field(p1, "Actions.move").unwrap(),
@@ -566,9 +569,9 @@ fn in_a_discrete_scene_a_press_is_one_command_for_the_next_turn() {
     );
     // Release then press again: a second command.
     d.apply(&key("w", false));
-    assert_eq!(st.borrow_mut().apply_devices(s.tick(), &d), 0);
+    assert_eq!(st.borrow_mut().apply_devices(s.tick(), &mut d), 0);
     d.apply(&key("w", true));
-    assert_eq!(st.borrow_mut().apply_devices(s.tick(), &d), 1);
+    assert_eq!(st.borrow_mut().apply_devices(s.tick(), &mut d), 1);
 }
 
 /// Issue 11: in a discrete game the pointer was a press. Its first move took
@@ -604,18 +607,18 @@ devices = ["keyboard", "mouse"]
 
     d.apply(&at(120.0, 80.0));
     assert_eq!(
-        st.borrow_mut().apply_devices(s.tick(), &d),
+        st.borrow_mut().apply_devices(s.tick(), &mut d),
         0,
         "a move is no turn"
     );
     d.apply(&at(300.0, 200.0));
-    assert_eq!(st.borrow_mut().apply_devices(s.tick(), &d), 0);
+    assert_eq!(st.borrow_mut().apply_devices(s.tick(), &mut d), 0);
     d.apply(&DeviceInput::Mouse {
         button: "left".into(),
         pressed: true,
     });
     assert_eq!(
-        st.borrow_mut().apply_devices(s.tick(), &d),
+        st.borrow_mut().apply_devices(s.tick(), &mut d),
         1,
         "the click is the turn"
     );
@@ -631,7 +634,7 @@ devices = ["keyboard", "mouse"]
         button: "left".into(),
         pressed: false,
     });
-    st.borrow_mut().apply_devices(s.tick(), &d);
+    st.borrow_mut().apply_devices(s.tick(), &mut d);
     s.advance(&mut w, 1).unwrap();
     assert_eq!(
         w.get_field(p, "Actions.pointer").unwrap(),
@@ -945,4 +948,86 @@ fn a_message_arrives_as_a_host_message_event_for_the_scripts() {
     assert_eq!(field("channel"), Some(Value::Str("gm.ruling".into())));
     assert_eq!(field("text"), Some(Value::Str("{\"ok\": true}".into())));
     assert_eq!(field("slot"), Some(Value::UInt(1)));
+}
+
+/// Issue 23: typed text goes to a slot that is typing and is dropped for
+/// one that is not; it survives a keyframe and a journal on disk, as a
+/// message does; and a wheel's turn is a one-tick push of its axis.
+#[test]
+fn typed_text_survives_a_keyframe_and_a_wheel_turn_lasts_a_tick() {
+    use argus_ecs::codec::{Reader, Writer};
+    let wheel_map = r#"
+[actions.ui_scroll]
+type = "axis"
+[actions.ui_scroll.bindings]
+mouse = ["wheel"]
+[slots.1]
+devices = ["keyboard", "mouse"]
+"#;
+    let m = ActionMap::parse("input.toml", wheel_map).unwrap();
+    let mut st = InputState::new(m.clone(), false);
+    let mut dev = argus_input::Devices::default();
+    st.begin_tick(0);
+    dev.apply(&argus_input::DeviceInput::Text {
+        text: "lost".into(),
+    });
+    st.apply_devices(1, &mut dev);
+    st.begin_tick(1);
+    assert_eq!(st.typed(1), "", "not typing: dropped");
+
+    st.set_typing(1, true);
+    dev.apply(&argus_input::DeviceInput::Text {
+        text: "hé\u{8}".into(),
+    });
+    dev.apply(&argus_input::DeviceInput::Wheel { lines: 3.0 });
+    st.apply_devices(2, &mut dev);
+    let key = st.snapshot();
+    let mut w = Writer::new();
+    key.encode(&mut w, 0);
+    for e in st.journal() {
+        e.encode(&mut w);
+    }
+    let bytes = w.into_bytes();
+    let mut r = Reader::new(&bytes, "test");
+    let back = argus_input::InputSnapshot::decode_as(&mut r, true, true).unwrap();
+    let mut entries = Vec::new();
+    while r.remaining() > 0 {
+        entries.push(argus_input::JournalEntry::decode(&mut r).unwrap());
+    }
+    assert_eq!(entries.as_slice(), st.journal());
+
+    for s in [&mut st, &mut {
+        let mut fresh = InputState::new(m.clone(), false);
+        fresh.load_journal(Vec::new(), &back);
+        fresh
+    }] {
+        s.begin_tick(2);
+        assert_eq!(s.typed(1), "hé\u{8}");
+        assert_eq!(
+            s.value(1, "ui_scroll"),
+            Some(argus_input::ActionValue::Axis(1.0)),
+            "a notch, at most 1"
+        );
+        s.begin_tick(3);
+        assert_eq!(s.typed(1), "");
+        assert_eq!(
+            s.value(1, "ui_scroll"),
+            Some(argus_input::ActionValue::Axis(0.0)),
+            "for one tick"
+        );
+    }
+    // A wheel binds an axis, nothing else.
+    let bad = ActionMap::parse(
+        "input.toml",
+        "[actions.go]\ntype = \"button\"\n[actions.go.bindings]\nmouse = [\"wheel\"]\n",
+    )
+    .unwrap_err();
+    assert!(bad.message.contains("wheel"), "{}", bad.message);
+    let reserved =
+        ActionMap::parse("input.toml", "[actions.typed]\ntype = \"button\"\n").unwrap_err();
+    assert!(
+        reserved.message.contains("engine's"),
+        "{}",
+        reserved.message
+    );
 }

@@ -71,6 +71,11 @@ pub fn install(
         Box::new(move |ctx| {
             let tick = ctx.tick;
             st.borrow_mut().begin_tick(tick);
+            // In a turn-based game, a tick for the UI alone (typing, the
+            // wheel) takes no turn: only systems that run frozen see it.
+            if st.borrow().ui_only() {
+                ctx.freeze();
+            }
             // Text from the host (host channel item 0), oldest first.
             let inbox = st.borrow().inbox().to_vec();
             for (slot, channel, text) in inbox {
@@ -84,16 +89,34 @@ pub fn install(
                 );
             }
             let entities = ctx.query().has(slot_id).has(actions_id).entities();
-            let st = st.borrow();
-            for e in entities {
-                let slot = match ctx.get_field(e, "PlayerSlot.slot")? {
-                    Value::UInt(n) => n as u8,
-                    Value::Int(n) => n as u8,
-                    _ => 1,
-                };
-                for (field, v) in st.fields_for(slot) {
-                    ctx.set_field(e, &format!("{ACTIONS}.{field}"), v)?;
+            let mut typing: std::collections::BTreeMap<u8, bool> = Default::default();
+            {
+                let st = st.borrow();
+                for e in entities {
+                    let slot = match ctx.get_field(e, "PlayerSlot.slot")? {
+                        Value::UInt(n) => n as u8,
+                        Value::Int(n) => n as u8,
+                        _ => 1,
+                    };
+                    for (field, v) in st.fields_for(slot) {
+                        ctx.set_field(e, &format!("{ACTIONS}.{field}"), v)?;
+                    }
+                    // What the slot typed, and whether it is typing (a text
+                    // box, or a script, set it last tick): its keyboard
+                    // types until it is false again (issue 23).
+                    ctx.set_field(
+                        e,
+                        &format!("{ACTIONS}.{}", crate::map::TYPED),
+                        Value::Str(st.typed(slot).to_string()),
+                    )?;
+                    let on = ctx.get_field(e, &format!("{ACTIONS}.{}", crate::map::TYPING))?
+                        == Value::Bool(true);
+                    *typing.entry(slot).or_default() |= on;
                 }
+            }
+            let mut st = st.borrow_mut();
+            for (slot, on) in typing {
+                st.set_typing(slot, on);
             }
             Ok(())
         }),

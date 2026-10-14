@@ -215,6 +215,18 @@ impl WebPlayer {
         self.p.key(code, pressed) as u32
     }
 
+    /// Text typed: a character, or Backspace, Enter, and Escape as their
+    /// control characters (issue 23). A slot that is typing (a text box)
+    /// gets it.
+    pub fn text(&mut self, text: &str) -> u32 {
+        self.p.text(text) as u32
+    }
+
+    /// The mouse wheel turned, lines up positive (issue 23).
+    pub fn wheel(&mut self, lines: f32) -> u32 {
+        self.p.wheel(lines) as u32
+    }
+
     /// The mouse at a place on the canvas element, in its CSS pixels, with
     /// the element's CSS size: the pointer, on the UI canvas (phase 3 item
     /// 1). Returns turns taken, as a key does.

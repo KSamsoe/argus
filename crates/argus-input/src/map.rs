@@ -121,6 +121,12 @@ const DEVICES: &[&str] = &["keyboard", "mouse", "gamepad", "platform"];
 /// follow.
 pub const DEVICE_ACTION: &str = "device";
 
+/// The Actions field holding what a slot typed this tick (issue 23).
+pub const TYPED: &str = "typed";
+/// The Actions field that makes a slot's keyboard type instead of moving
+/// actions (issue 23).
+pub const TYPING: &str = "typing";
+
 impl ActionMap {
     /// Read `input.toml` under `root`; `None` when the project has none.
     pub fn load(root: &Path) -> Result<Option<ActionMap>> {
@@ -202,6 +208,9 @@ impl ActionMap {
                         let known: &[&str] = match dev {
                             // A pointer is where the mouse is.
                             "mouse" if kind == ActionKind::Pointer => &["position"],
+                            // The wheel turns an axis: a notch is a one-tick
+                            // push of 1 or -1 (issue 23).
+                            "mouse" if kind == ActionKind::Axis => &["wheel"],
                             "mouse" => crate::devices::MOUSE_NAMES,
                             "gamepad" => crate::devices::PAD_NAMES,
                             "platform" => crate::devices::PLATFORM_NAMES,
@@ -233,6 +242,15 @@ impl ActionMap {
         if let Some(a) = actions.iter().find(|a| a.name == DEVICE_ACTION) {
             return Err(bad(
                 format!("actions.{DEVICE_ACTION} is the engine's: the kind of device the player last used, which button prompts follow"),
+                a.at.clone(),
+            ));
+        }
+        if let Some(a) = actions.iter().find(|a| a.name == TYPED || a.name == TYPING) {
+            return Err(bad(
+                format!(
+                    "actions.{} is the engine's: Actions.typed is what was typed this tick, and Actions.typing makes the keyboard type",
+                    a.name
+                ),
                 a.at.clone(),
             ));
         }
@@ -480,7 +498,23 @@ impl ActionMap {
                 ),
             };
         }
-        b.build()
+        b.field_full(
+            TYPED,
+            FieldType::Str,
+            Value::Str(String::new()),
+            None,
+            "What the player typed this tick, while typing is true (the engine's): text, with backspace, enter, and escape as \\u{8}, \\r, and \\u{1b}",
+            false,
+        )
+        .field_full(
+            TYPING,
+            FieldType::Bool,
+            Value::Bool(false),
+            None,
+            "While true, the slot's keyboard types (into typed) instead of moving actions (the engine's; a text box sets it)",
+            false,
+        )
+        .build()
     }
 
     /// `input.bindings`: the map as the protocol reports it.

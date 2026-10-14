@@ -1,19 +1,11 @@
-# The message line under the HUD (phase 3 item 4): what the last turn did,
-# written by systems/messages.luau in the string tables' words. On a quiet
-# plate (assets/ui/plate.png), over the rock above the floor.
-[UiRoot]
-interactive = false
-layer = 1
+# The log's newest line (phase 3 item 4, issue 23): what the last turn did,
+# written by systems/messages.luau in the string tables' words. Its last
+# order keeps it under the older turns' lines.
+[Parent]
+entity = "@log"
 
 [UiNode]
-absolute = true
-offset = [10.0, 38.0]
-pad = [10.0, 3.0]
-
-[UiPanel]
-image = "ui/plate"
-slice = 2.0
-scale = 2.0
+order = 100000
 
 [UiText]
 text = ""

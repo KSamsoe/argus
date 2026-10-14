@@ -410,6 +410,8 @@ The engine's tokens are `text`, `muted`, `panel`, `border`, `focus`, `accent`, a
 | `UiText` | Words: `text`, or a string table's `key`; `size`, `color`, `font`, `align`, `wrap`. A newline (`\n` in a script's string, a line break in a TOML multi-line string) always starts a new line; `wrap` also breaks at spaces to fit the node's width |
 | `UiPanel` | What a node draws behind it: a `color`, an `image` (nine-sliced with `slice`; `frame` picks one frame of a sheet), a `border` |
 | `UiButton` | Takes focus and is pressed; emits `ui.pressed` and its own `event` |
+| `UiTextBox` | A box the player types into: pressed, it types; Enter sends its `event` with the text (see [A text box](#a-text-box)) |
+| `UiScroll` | A node whose children scroll inside it, cut off at its edges; a log keeps its newest line in view (see [A log that scrolls](#a-log-that-scrolls)) |
 | `UiRect` | Where the node landed (written by the layout) |
 
 Nodes are children of other nodes through `Parent` (or `[children.<name>]` tables), as anything is.
@@ -481,6 +483,65 @@ align = "center"
 ```
 
 Focus moves between buttons with `ui_move`, to the nearest in that direction (or where a button's `up`, `down`, `left`, `right` say). `ui_confirm` presses the focused button, and `ui_click` the one under the pointer. A menu that appears with nothing focused gets its first button. A press emits `ui.pressed {entity, event, by}` and the button's own event (`pause.resume` above), which a system reacts to with `q:events`. `ui_cancel` emits `ui.cancel {root}`. The UI systems run `unfrozen`, so a menu works while the game is frozen. Pages are subtrees whose `visible` a system switches (`examples/hollow/systems/pause_menu.luau`).
+
+### A text box
+
+A `UiTextBox` is a button the player types into. It goes on a node with a `UiButton` (to take the focus and be pressed) and a `UiText` (which shows it):
+
+```toml
+[UiNode]
+size = [360.0, 28.0]
+pad = [8.0, 4.0]
+
+[UiPanel]
+color = "button"
+
+[UiButton]
+
+[UiText]
+
+[UiTextBox]
+hint = "What do you do?"
+event = "player.said"
+max = 200
+```
+
+Pressed (confirm, or a click), it types: the keyboard's characters go into `UiTextBox.text`, and the keyboard moves no action meanwhile, so `w` is a letter and not a step. Backspace takes the last character off. Enter sends it: `ui.submitted {entity, text}` and the box's own `event` with the same fields, which a system reads with `q:events("player.said")`; the box is emptied (`clear = false` keeps the text) and stops typing (`keep = true` keeps it typing, for an input line that is always open). Escape, the cancel action, or a click elsewhere stops it without sending. While it types, its `UiText` shows the text and a caret; empty and not typing, the `hint`. A script starts it with `UiTextBox.typing = true`, or empties it by writing `text`.
+
+What is typed is input like a key: the input journal records it, so a replay, a mark, and a player's report type it again, and a seek back and forward does. In a turn-based game a character typed takes no turn (the systems that run `unfrozen`, the UI's among them, see it, as they see a menu's moves); Enter, which sends the line, does.
+
+A game can take typed text without a box: while its slot's `Actions.typing` is true, the keyboard types instead of moving actions, and what it typed this tick is `Actions.typed` (Backspace, Enter, and Escape as `"\u{8}"`, `"\r"`, and `"\u{1b}"`). A console or a chat line sets `typing` and reads `typed` itself.
+
+### A log that scrolls
+
+A `UiScroll` on a node with a size lets its children be as tall as they are: what is outside the node is cut off, and `UiScroll.y` is how far down it is scrolled. With `end` (the default), a node scrolled to the end stays at the end as lines are added, so a log keeps its newest line in view. The mouse wheel over it scrolls it back, by `step` pixels a notch; a log scrolled back stays where it was put while lines come, and follows again once scrolled to the end. The layout writes `content` (how tall the lines are), `view`, and `at_end`.
+
+Delve's message log is one (`examples/delve/scenes/delve/log.toml`, `systems/messages.luau`): a node with a size and a `UiScroll`, its newest line `@messages` last by `order`, and each turn's words before it moved up into a line of their own, the oldest let go after 40.
+
+```toml
+[UiRoot]
+layer = 1
+
+[UiNode]
+absolute = true
+offset = [10.0, 38.0]
+size = [560.0, 66.0]
+pad = [10.0, 3.0]
+
+[UiScroll]
+```
+
+The wheel is an `axis` action bound `mouse = ["wheel"]`, the tree's `scroll` action (`ui_scroll` unless `UiRoot.scroll` names another):
+
+```toml
+[actions.ui_scroll]
+type = "axis"
+doc = "Scroll the message log: the mouse wheel over it"
+[actions.ui_scroll.bindings]
+mouse = ["wheel"]
+```
+
+The tree has to be `interactive` (the default) to be scrolled. In a turn-based game a turn of the wheel takes no turn.
 
 Button prompts come from `InputGlyph`: `action = "restart"` fills `InputGlyph.label` with what the player presses on the device they last used ("R" on a keyboard, the pad's name for the button on a pad), for a `{InputGlyph.label}` hole or a script.
 

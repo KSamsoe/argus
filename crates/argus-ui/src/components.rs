@@ -57,6 +57,11 @@ pub struct UiRoot {
     /// Action that clicks.
     #[argus(doc = "The button action that presses the button under the pointer (empty: ui_click)")]
     pub click: StrId,
+    /// Action that scrolls.
+    #[argus(
+        doc = "The axis action that scrolls the UiScroll node under the pointer, up positive: a mouse wheel bound with mouse = [\"wheel\"] (empty: ui_scroll)"
+    )]
+    pub scroll: StrId,
     /// Direction held.
     #[argus(doc = "The nav direction held last tick (written by ui.input)")]
     pub held: Vec2,
@@ -82,6 +87,7 @@ impl Default for UiRoot {
             cancel: StrId::EMPTY,
             pointer: StrId::EMPTY,
             click: StrId::EMPTY,
+            scroll: StrId::EMPTY,
             held: Vec2::ZERO,
             wait: 0.0,
             pointer_at: Vec2::ZERO,
@@ -382,4 +388,94 @@ pub struct UiButton {
     /// Right neighbour.
     #[argus(doc = "Where focus goes right; null: the nearest to the right")]
     pub right: Entity,
+}
+
+/// A box the player types into (issue 23).
+#[derive(Component, Clone, Copy, Debug, PartialEq)]
+#[repr(C)]
+#[argus(
+    doc = "A box the player types into, on a UI node with a UiButton (to be focused and pressed) and a UiText (which shows it): pressing it starts typing, Enter sends event and ui.submitted {entity, text}, Escape, the cancel action, or a press elsewhere stops. While it types, the keyboard moves no action (Actions.typing)"
+)]
+pub struct UiTextBox {
+    /// What is in it.
+    #[argus(doc = "What is in it (written as the player types; a script may set it)")]
+    pub text: StrId,
+    /// Shown while empty.
+    #[argus(doc = "Shown while it is empty and not typing")]
+    pub hint: StrId,
+    /// The most characters.
+    #[argus(doc = "The most characters it holds", range(1, 4096))]
+    pub max: u32,
+    /// Event on Enter.
+    #[argus(
+        doc = "An event emitted with {entity, text} when Enter sends the text, beside ui.submitted"
+    )]
+    pub event: StrId,
+    /// Empty it after.
+    #[argus(doc = "Empty it once the text is sent")]
+    pub clear: bool,
+    /// Keep typing after.
+    #[argus(doc = "Keep typing after Enter: an input line that stays open")]
+    pub keep: bool,
+    /// Typing now.
+    #[argus(doc = "Typing now (written by ui.input; a script sets it to start typing)")]
+    pub typing: bool,
+}
+
+impl Default for UiTextBox {
+    fn default() -> Self {
+        UiTextBox {
+            text: StrId::EMPTY,
+            hint: StrId::EMPTY,
+            max: 200,
+            event: StrId::EMPTY,
+            clear: true,
+            keep: false,
+            typing: false,
+        }
+    }
+}
+
+/// A node whose content scrolls (issue 23).
+#[derive(Component, Clone, Copy, Debug, PartialEq)]
+#[repr(C)]
+#[argus(
+    doc = "A UI node whose children are laid out at their own sizes and scrolled: what is outside the node is cut off. Give it a size (size, fill, or grow). With end, a node scrolled to the end stays at the end as content is added, as a log keeps its newest line in view; the mouse wheel over it scrolls it (the tree's scroll action)"
+)]
+pub struct UiScroll {
+    /// How far it is scrolled.
+    #[argus(doc = "How far it is scrolled, in canvas pixels from the top (a script may set it)")]
+    pub y: f32,
+    /// Stay at the end.
+    #[argus(doc = "Scrolled to the end, it stays at the end as content is added")]
+    pub end: bool,
+    /// One step of the wheel.
+    #[argus(doc = "Pixels one notch of the wheel scrolls", range(1, 1000))]
+    pub step: f32,
+    /// The content's height.
+    #[argus(doc = "How tall its content is (written by ui.layout)")]
+    pub content: f32,
+    /// The view's height.
+    #[argus(doc = "How tall the part shown is (written by ui.layout)")]
+    pub view: f32,
+    /// At the end.
+    #[argus(doc = "Whether the end is in view (written by ui.layout)")]
+    pub at_end: bool,
+    /// Where layout left it.
+    #[argus(doc = "The y ui.layout left it at; a y set since is honoured (written by ui.layout)")]
+    pub seen: f32,
+}
+
+impl Default for UiScroll {
+    fn default() -> Self {
+        UiScroll {
+            y: 0.0,
+            end: true,
+            step: 40.0,
+            content: 0.0,
+            view: 0.0,
+            at_end: true,
+            seen: 0.0,
+        }
+    }
 }

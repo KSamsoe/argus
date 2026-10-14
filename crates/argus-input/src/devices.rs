@@ -109,9 +109,24 @@ pub enum DeviceInput {
         /// Held.
         on: bool,
     },
+    /// The mouse wheel turned: lines, up positive (issue 23).
+    Wheel {
+        /// Lines turned, up positive.
+        lines: f32,
+    },
+    /// Text typed: characters, and backspace, enter, and escape as
+    /// `\u{8}`, `\r`, and `\u{1b}` (issue 23). A slot that is typing
+    /// gets it; otherwise it is dropped.
+    Text {
+        /// What was typed.
+        text: String,
+    },
     /// Focus lost: everything held is released (no stuck keys).
     ReleaseAll,
 }
+
+/// The most text kept between two polls of the devices.
+pub const MAX_TYPED: usize = 4096;
 
 /// Normalise a key name: winit's `KeyW`, `Digit1`, `ArrowLeft` and a
 /// binding's `w`, `1`, `left` all become the same lowercase token.
@@ -168,6 +183,14 @@ pub struct Devices {
     keyboard_used: u64,
     /// Events seen, for `input.devices`.
     pub events_seen: u64,
+    /// The wheel's lines since the last poll ([`Devices::take_typed`]).
+    wheel: f32,
+    /// Text typed since the last poll.
+    text: String,
+    /// Keys held when typing stopped: none of them moves an action until
+    /// it is let go, so the Enter that sent a text box's line does not
+    /// press the button it lands on (issue 23).
+    muted: BTreeSet<String>,
 }
 
 impl Devices {
@@ -182,6 +205,7 @@ impl Devices {
                     self.uses += 1;
                     self.keyboard_used = self.uses;
                 } else {
+                    self.muted.remove(&k);
                     self.keys.remove(&k);
                 }
             }
@@ -255,6 +279,18 @@ impl Devices {
                     self.platform.remove(name);
                 }
             }
+            DeviceInput::Wheel { lines } => {
+                if lines.is_finite() {
+                    self.wheel += lines;
+                    self.uses += 1;
+                    self.keyboard_used = self.uses;
+                }
+            }
+            DeviceInput::Text { text } => {
+                if self.text.len() + text.len() <= MAX_TYPED {
+                    self.text.push_str(text);
+                }
+            }
             DeviceInput::ReleaseAll => {
                 self.keys.clear();
                 self.mouse.clear();
@@ -279,7 +315,14 @@ impl Devices {
     }
 
     fn key(&self, k: &str) -> bool {
-        self.keys.contains(&key_name(k))
+        let k = key_name(k);
+        self.keys.contains(&k) && !self.muted.contains(&k)
+    }
+
+    /// Ignore every key held now until it is let go: typing stopped, and
+    /// the keys that stopped it are still down.
+    pub fn mute_held(&mut self) {
+        self.muted = self.keys.clone();
     }
 
     /// The kind of device a slot's player last pressed something on: the
@@ -342,6 +385,25 @@ impl Devices {
     /// lists. Actions no device of the slot binds are left out, so they
     /// stay whatever injects made them.
     pub fn resolve(&self, map: &ActionMap, slot: u8) -> Vec<(String, ActionValue)> {
+        self.resolve_typing(map, slot, false)
+    }
+
+    /// The wheel's lines and the text typed since the last call, taken.
+    pub fn take_typed(&mut self) -> (f32, String) {
+        (
+            std::mem::take(&mut self.wheel),
+            std::mem::take(&mut self.text),
+        )
+    }
+
+    /// [`Devices::resolve`] for a slot that may be typing: then its
+    /// keyboard moves no action, and what it held is let go (issue 23).
+    pub fn resolve_typing(
+        &self,
+        map: &ActionMap,
+        slot: u8,
+        typing: bool,
+    ) -> Vec<(String, ActionValue)> {
         let Ok(s) = map.slot(slot) else {
             return Vec::new();
         };
@@ -357,13 +419,15 @@ impl Devices {
                 }
                 continue;
             }
-            let kb = a.bindings.get("keyboard").filter(|_| keyboard);
+            let kb_bound = a.bindings.get("keyboard").filter(|_| keyboard);
             let ms = a.bindings.get("mouse").filter(|_| mouse);
             let gp = a.bindings.get("gamepad").filter(|_| !pads.is_empty());
             let pf = a.bindings.get("platform");
-            if kb.is_none() && ms.is_none() && gp.is_none() && pf.is_none() {
+            if kb_bound.is_none() && ms.is_none() && gp.is_none() && pf.is_none() {
                 continue;
             }
+            // Typing: the keyboard holds nothing, so what it held is let go.
+            let kb = kb_bound.filter(|_| !typing);
             let v = match a.kind {
                 ActionKind::Button => {
                     let mut on = false;

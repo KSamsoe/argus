@@ -9,12 +9,19 @@
 //! never sees keys (§12 "Input actions"): a menu works from a keyboard, a
 //! gamepad, or a test's `input.inject`, and a replay presses the same.
 //!
+//! A text box (`UiTextBox`, issue 23) is a button that, pressed, types:
+//! it sets its slot's `Actions.typing`, so the keyboard types into
+//! `Actions.typed` instead of moving actions, and takes that text in;
+//! Enter sends it (`ui.submitted` and its event), Escape, the cancel
+//! action, or a press elsewhere stops it. The tree's scroll action (the
+//! wheel) scrolls the `UiScroll` node under the pointer.
+//!
 //! It runs first in the sim stage, on the layout of the tick before, so
 //! what it emits (`ui.pressed {entity, event}`, the button's own event,
 //! `ui.focused`, `ui.cancel`) is seen by the game's systems in the same
 //! tick.
 
-use crate::components::{UiButton, UiRect, UiRoot};
+use crate::components::{UiButton, UiRect, UiRoot, UiScroll, UiText, UiTextBox};
 use crate::layout::Ids;
 use crate::Shared;
 use argus_ecs::{ComponentId, Entity, Parent, Result, StrId, Value, Vec2, World};
@@ -33,6 +40,7 @@ const REPEAT_EVERY: f32 = 0.12;
 struct InIds {
     ids: Ids,
     button: ComponentId,
+    textbox: ComponentId,
     slot: Option<ComponentId>,
     actions: Option<ComponentId>,
 }
@@ -45,6 +53,7 @@ pub(crate) fn install(
     let ids = InIds {
         ids: Ids::of(world),
         button: world.component_id_of::<UiButton>().expect("registered"),
+        textbox: world.component_id_of::<UiTextBox>().expect("registered"),
         slot: world.component_id("PlayerSlot"),
         actions: world.component_id("Actions"),
     };
@@ -57,10 +66,17 @@ pub(crate) fn install(
         .reads(ids.ids.parent)
         .writes(ids.ids.root)
         .writes(ids.button)
+        .writes(ids.textbox)
+        .writes(ids.ids.text)
+        .writes(ids.ids.scroll)
         .source("argus-ui:input")
         .doc("Moves focus between the buttons of each interactive UI tree with its player's nav action (nearest in the direction, or the neighbour a button names), and presses: confirm the focused button, click the one under the pointer (ui.pressed {entity, event} and the button's event); cancel emits ui.cancel. The pointer focuses what it moves over.");
-    for c in [ids.slot, ids.actions].into_iter().flatten() {
+    if let Some(c) = ids.slot {
         desc = desc.reads(c);
+    }
+    // Actions.typing: a text box makes its slot's keyboard type.
+    if let Some(c) = ids.actions {
+        desc = desc.writes(c);
     }
     sched.add_system(desc, Box::new(move |ctx| run(ctx, &ids)))
 }
@@ -132,6 +148,10 @@ struct Acts {
     cancel: bool,
     click: bool,
     pointer: Option<Vec2>,
+    /// The scroll action: the wheel, up positive.
+    scroll: f32,
+    /// What the slot typed (`Actions.typed`).
+    typed: String,
 }
 
 fn actions(world: &World, player: Option<Entity>, root: &UiRoot) -> Acts {
@@ -144,6 +164,7 @@ fn actions(world: &World, player: Option<Entity>, root: &UiRoot) -> Acts {
     let cancel = name_or(world, root.cancel, "ui_cancel");
     let click = name_or(world, root.click, "ui_click");
     let pointer = name_or(world, root.pointer, "pointer");
+    let scroll = name_or(world, root.scroll, "ui_scroll");
     let pressed = |n: &str| matches!(get(&format!("{n}_pressed")), Some(Value::Bool(true)));
     Acts {
         nav: match get(&nav) {
@@ -157,6 +178,68 @@ fn actions(world: &World, player: Option<Entity>, root: &UiRoot) -> Acts {
             Some(Value::Vec2(v)) => Some(v),
             _ => None,
         },
+        scroll: match get(&scroll) {
+            Some(Value::Float(v)) => v as f32,
+            _ => 0.0,
+        },
+        typed: match get("typed") {
+            Some(Value::Str(s)) => s,
+            _ => String::new(),
+        },
+    }
+}
+
+/// A text box as this tick changes it.
+struct TextBox {
+    e: Entity,
+    b: UiTextBox,
+    text: String,
+}
+
+/// The characters typed, into `t`: Backspace takes the last one off,
+/// Enter sends it, Escape stops typing.
+fn type_into(
+    t: &mut TextBox,
+    typed: &str,
+    events: &mut Vec<(String, Vec<(String, Value)>)>,
+    world: &World,
+) {
+    for c in typed.chars() {
+        if !t.b.typing {
+            break;
+        }
+        match c {
+            '\u{8}' => {
+                t.text.pop();
+            }
+            '\r' | '\n' => submit(t, events, world),
+            '\u{1b}' => t.b.typing = false,
+            c if c.is_control() => {}
+            c => {
+                if t.text.chars().count() < t.b.max.max(1) as usize {
+                    t.text.push(c);
+                }
+            }
+        }
+    }
+}
+
+/// Send a text box's text: `ui.submitted` and its own event.
+fn submit(t: &mut TextBox, events: &mut Vec<(String, Vec<(String, Value)>)>, world: &World) {
+    let fields = vec![
+        ("entity".to_string(), Value::Entity(t.e)),
+        ("text".to_string(), Value::Str(t.text.clone())),
+    ];
+    events.push(("ui.submitted".to_string(), fields.clone()));
+    let ev = world.strings().resolve(t.b.event).to_string();
+    if !ev.is_empty() {
+        events.push((ev, fields));
+    }
+    if t.b.clear {
+        t.text.clear();
+    }
+    if !t.b.keep {
+        t.b.typing = false;
     }
 }
 
@@ -216,6 +299,41 @@ fn run(ctx: &mut SystemCtx<'_>, ids: &InIds) -> Result<()> {
     }
     btns.sort_by_key(|b| (b.r.depth, b.e));
 
+    // Text boxes, and nodes that scroll, with the tree each is in.
+    let mut boxes: Vec<TextBox> = Vec::new();
+    world.query().has(ids.textbox).for_each_view(|v| {
+        let bs = v.column::<UiTextBox>()?;
+        for (i, e) in v.entities().iter().enumerate() {
+            boxes.push(TextBox {
+                e: *e,
+                b: bs[i],
+                text: world.strings().resolve(bs[i].text).to_string(),
+            });
+        }
+        Ok(())
+    })?;
+    boxes.sort_by_key(|t| t.e);
+    let boxes_before: Vec<UiTextBox> = boxes.iter().map(|t| t.b).collect();
+    let texts_before: Vec<String> = boxes.iter().map(|t| t.text.clone()).collect();
+    let mut scrolls: Vec<(Entity, UiScroll, UiRect, Entity)> = Vec::new();
+    world
+        .query()
+        .has(ids.ids.scroll)
+        .has(ids.ids.rect)
+        .for_each_view(|v| {
+            let ss = v.column::<UiScroll>()?;
+            let rs = v.column::<UiRect>()?;
+            for (i, e) in v.entities().iter().enumerate() {
+                scrolls.push((*e, ss[i], rs[i], Entity::NULL));
+            }
+            Ok(())
+        })?;
+    for s in &mut scrolls {
+        s.3 = top_of(world, ids.ids.node, s.0);
+    }
+    let mut scroll_writes: Vec<(Entity, f32)> = Vec::new();
+    let mut typing_writes: Vec<(Entity, bool)> = Vec::new();
+
     // The players' action entities by slot.
     let mut players: HashMap<u8, Entity> = HashMap::new();
     if let (Some(slot), Some(acts)) = (ids.slot, ids.actions) {
@@ -248,7 +366,10 @@ fn run(ctx: &mut SystemCtx<'_>, ids: &InIds) -> Result<()> {
             continue;
         }
         let slot = if r.slot == 0 { 1 } else { r.slot };
-        let acts = actions(world, players.get(&slot).copied(), &r);
+        let player = players.get(&slot).copied();
+        let acts = actions(world, player, &r);
+        let in_tree = |e: Entity| btns.iter().any(|b| b.e == e && b.root == r_e);
+        let was_typing = boxes.iter().any(|t| t.b.typing && in_tree(t.e));
         let find = |e: Entity| mine.iter().find(|b| b.e == e).copied();
         // Focus on something that can take it.
         if find(r.focus).is_none() {
@@ -319,7 +440,9 @@ fn run(ctx: &mut SystemCtx<'_>, ids: &InIds) -> Result<()> {
         let mut under = None;
         if let Some(p) = acts.pointer {
             under = mine.iter().rev().find(|b| b.contains(p)).map(|b| b.e);
-            if p != r.pointer_at {
+            // While a box types, the pointer passing over a button does not
+            // take the focus (and the typing) away; a click does.
+            if p != r.pointer_at && !was_typing {
                 if let Some(u) = under {
                     r.focus = u;
                 }
@@ -347,15 +470,84 @@ fn run(ctx: &mut SystemCtx<'_>, ids: &InIds) -> Result<()> {
                 }
             }
         };
+        if let Some(p) = acts.pointer {
+            r.pointer_at = p;
+        }
+        let mut pressed_here: Option<(Entity, bool)> = None;
         if acts.click {
             if let Some(u) = under {
                 r.focus = u;
                 press(u, "pointer", &mut pressed);
+                pressed_here = Some((u, true));
             }
         } else if acts.confirm && !r.focus.is_null() {
             press(r.focus, "confirm", &mut pressed);
+            pressed_here = Some((r.focus, false));
         }
-        if acts.cancel {
+        // Text boxes (issue 23).
+        let mut cancel_eaten = false;
+        match pressed_here {
+            Some((p, by_click)) => {
+                let typing_p = boxes.iter().any(|t| t.e == p && t.b.typing);
+                for t in boxes.iter_mut().filter(|t| in_tree(t.e)) {
+                    if t.e == p {
+                        if typing_p && !by_click {
+                            // Confirm on a box that types (a gamepad's): send.
+                            submit(t, &mut events, world);
+                        } else {
+                            t.b.typing = true;
+                        }
+                    } else {
+                        t.b.typing = false;
+                    }
+                }
+            }
+            None if acts.click && under.is_none() => {
+                for t in boxes.iter_mut().filter(|t| in_tree(t.e)) {
+                    t.b.typing = false;
+                }
+            }
+            None => {}
+        }
+        if let Some(t) = boxes.iter_mut().find(|t| t.b.typing && in_tree(t.e)) {
+            if r.focus != t.e && r.focus != before.focus && pressed_here.is_none() {
+                // The focus moved off it this tick (a gamepad's nav): it
+                // stops. One a script set typing takes the focus instead.
+                t.b.typing = false;
+            } else if acts.cancel {
+                t.b.typing = false;
+                cancel_eaten = true;
+            } else {
+                r.focus = t.e;
+                type_into(t, &acts.typed, &mut events, world);
+            }
+        }
+        // A box that types keeps its slot typing (a script may have set it
+        // going); one that stopped lets the keyboard go. A game's own use of
+        // Actions.typing, with no box typing, is left alone.
+        let now_typing = boxes.iter().any(|t| t.b.typing && in_tree(t.e));
+        if let Some(p) = player {
+            let on = world.get_field(p, "Actions.typing").ok() == Some(Value::Bool(true));
+            if (now_typing && !on) || (was_typing && !now_typing && on) {
+                typing_writes.push((p, now_typing));
+            }
+        }
+        // The wheel scrolls the scrolling node under the pointer.
+        if acts.scroll != 0.0 {
+            if let Some(p) = acts.pointer {
+                let hit = scrolls
+                    .iter()
+                    .filter(|s| s.3 == r_e && s.2.shown && contains(&s.2, p))
+                    .max_by_key(|s| s.2.depth);
+                if let Some((e, s, _, _)) = hit {
+                    let y = (s.y - acts.scroll * s.step).max(0.0);
+                    if y != s.y {
+                        scroll_writes.push((*e, y));
+                    }
+                }
+            }
+        }
+        if acts.cancel && !cancel_eaten {
             events.push((
                 "ui.cancel".to_string(),
                 vec![("root".to_string(), Value::Entity(r_e))],
@@ -396,8 +588,58 @@ fn run(ctx: &mut SystemCtx<'_>, ids: &InIds) -> Result<()> {
     for (e, b) in button_writes {
         ctx.update::<UiButton, _>(e, |x| *x = b)?;
     }
+    // The boxes: what changed, and what each shows (the text and a caret
+    // while it types; the hint while it is empty).
+    for (i, t) in boxes.iter().enumerate() {
+        let text_id = if t.text != texts_before[i] {
+            world.strings().intern(&t.text)
+        } else {
+            t.b.text
+        };
+        let want = UiTextBox {
+            text: text_id,
+            ..t.b
+        };
+        let shown = if t.b.typing {
+            format!("{}|", t.text)
+        } else if t.text.is_empty() {
+            world.strings().resolve(t.b.hint).to_string()
+        } else {
+            t.text.clone()
+        };
+        let show = match world.get::<UiText>(t.e) {
+            Ok(ut) if world.strings().resolve(ut.text) != shown.as_str() => {
+                Some(world.strings().intern(&shown))
+            }
+            _ => None,
+        };
+        let changed = want != boxes_before[i];
+        let e = t.e;
+        if changed {
+            ctx.update::<UiTextBox, _>(e, |x| *x = want)?;
+        }
+        if let Some(id) = show {
+            ctx.update::<UiText, _>(e, |x| x.text = id)?;
+        }
+    }
+    for (e, on) in typing_writes {
+        ctx.set_field(e, "Actions.typing", Value::Bool(on))?;
+    }
+    for (e, y) in scroll_writes {
+        ctx.update::<UiScroll, _>(e, |s| s.y = y)?;
+    }
     for (name, fields) in events {
         ctx.emit(name, fields);
     }
     Ok(())
+}
+
+/// Whether `p` is in a node's rect where its clip lets it be seen.
+fn contains(r: &UiRect, p: Vec2) -> bool {
+    let lo = Vec2::new(r.pos.x.max(r.clip_min.x), r.pos.y.max(r.clip_min.y));
+    let hi = Vec2::new(
+        (r.pos.x + r.size.x).min(r.clip_max.x),
+        (r.pos.y + r.size.y).min(r.clip_max.y),
+    );
+    p.x >= lo.x && p.y >= lo.y && p.x < hi.x && p.y < hi.y
 }

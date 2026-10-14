@@ -388,6 +388,19 @@ impl Player {
         }])
     }
 
+    /// Text typed (characters, and Backspace, Enter, and Escape as their
+    /// control characters): a slot that is typing gets it (issue 23).
+    pub fn text(&mut self, text: &str) -> u64 {
+        self.devices(&[DeviceInput::Text {
+            text: text.to_string(),
+        }])
+    }
+
+    /// The mouse wheel turned, lines up positive (issue 23).
+    pub fn wheel(&mut self, lines: f32) -> u64 {
+        self.devices(&[DeviceInput::Wheel { lines }])
+    }
+
     /// Device input (keys, mouse, pads) through the action map, as the
     /// daemon takes it. Returns the turns a discrete game took: one command,
     /// one turn.
@@ -410,7 +423,7 @@ impl Player {
             return 0;
         };
         let now = self.sched.tick();
-        let commands = st.borrow_mut().apply_devices(now, &self.devices);
+        let commands = st.borrow_mut().apply_devices(now, &mut self.devices);
         // A caught key is a command too: the controls page shows it on the
         // next tick, and a discrete game ticks only on a command.
         if (commands > 0 || caught)
@@ -524,7 +537,7 @@ impl Player {
         self.devices.apply(&DeviceInput::ReleaseAll);
         if let Some(st) = self.input.clone() {
             let now = self.sched.tick();
-            st.borrow_mut().apply_devices(now, &self.devices);
+            st.borrow_mut().apply_devices(now, &mut self.devices);
         }
     }
 

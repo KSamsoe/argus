@@ -2,6 +2,10 @@
 -- sim.advance: the hero acts on its command, then every monster acts in
 -- initiative order.
 
+component "LogLine" {
+  doc = "A past turn's line in the message log (scenes/delve/log.toml), its order the turn it came",
+}
+
 component "Health" {
   doc = "Hit points; zero is dead",
   cur = field.i32 { default = 10, range = {0, 1000}, doc = "Current" },

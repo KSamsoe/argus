@@ -34,9 +34,22 @@ fn injected_actions_reach_gameplay_and_never_name_keys() {
         .collect();
     assert_eq!(
         fields,
-        ["device", "fire", "fire_pressed", "fire_released", "move"]
+        [
+            "device",
+            "fire",
+            "fire_pressed",
+            "fire_released",
+            "move",
+            "typed",
+            "typing"
+        ],
+        "the actions, then the engine's typed and typing (issue 23)"
     );
-    assert_eq!(desc["rows"][0]["written_by"], json!(["input.actions"]));
+    // ui.input writes Actions.typing: a text box makes the keyboard type.
+    assert_eq!(
+        desc["rows"][0]["written_by"],
+        json!(["input.actions", "ui.input"])
+    );
     assert_eq!(
         desc["rows"][0]["read_by"],
         json!([

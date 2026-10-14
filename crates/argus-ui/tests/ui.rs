@@ -806,7 +806,7 @@ fn a_controls_button_rebinds_an_action_to_the_next_key() {
         pressed: true,
     });
     let now = u.s.tick();
-    u.input.borrow_mut().apply_devices(now, &dev);
+    u.input.borrow_mut().apply_devices(now, &mut dev);
     u.step(1);
     assert_eq!(
         u.w.get_field(player, "Actions.jump").unwrap(),

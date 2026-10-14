@@ -266,6 +266,10 @@ try {
       return;
     }
     if (!e.repeat) player.key(e.code, true);
+    // What a text box takes: the character, or Backspace, Enter, and
+    // Escape as their control characters (held ones repeat).
+    const typed = { Backspace: "\b", Enter: "\r", Escape: "\u001b" }[e.key] ?? (e.key.length === 1 ? e.key : "");
+    if (typed && !e.ctrlKey && !e.metaKey) player.text(typed);
   });
   canvas.addEventListener("keyup", (e) => {
     player.key(e.code, false);
@@ -289,6 +293,16 @@ try {
     if (buttons[e.button]) player.mouse(buttons[e.button], false);
   });
   canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+  // The wheel: a line a notch, up positive.
+  canvas.addEventListener(
+    "wheel",
+    (e) => {
+      e.preventDefault();
+      const lines = e.deltaMode === 0 ? -e.deltaY / 40 : -e.deltaY;
+      if (lines) player.wheel(lines);
+    },
+    { passive: false },
+  );
   canvas.addEventListener("blur", () => player.release_all());
   canvas.focus();
 

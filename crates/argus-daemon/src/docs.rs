@@ -1122,8 +1122,8 @@ pub const METHODS: &[MethodDoc] = &[
         name: "input.device",
         doc: "Device events from a client's viewport (phase 4 item 1), down the window's own path: F8 and its note prompt, F9 and F10 for a proposal, then the action map, so gameplay still sees actions and the input log records them as a window's. Keys by the window's names (KeyW, ArrowLeft, Space, F8, Enter), mouse buttons (left, right, middle, back, forward), the pointer in the pixels of this connection's render.stream, and release_all when the viewport loses focus. text is what was typed, for a mark's note. Actions are read when a tick runs, so a key pressed and released in one call, with no tick between, is never seen: on a discrete clock hold the key across the turn (press, advance, release). Not in the change feed key by key: the input log has them; what F8, F9, and F10 do is (mark.drop, proposal.show, ...).",
         params: &[
-            opt("events", ARRAY, "[{key, pressed} | {mouse, pressed} | {pointer: [x, y]} | {release_all: true}]"),
-            opt("text", ARRAY, "strings typed, in order"),
+            opt("events", ARRAY, "[{key, pressed} | {mouse, pressed} | {pointer: [x, y]} | {wheel: lines, up positive} | {release_all: true}]"),
+            opt("text", ARRAY, "strings typed, in order: characters, and backspace, enter, and escape as \\u0008, \\r, and \\u001b (in JSON); a slot that is typing (Actions.typing, a text box) gets them, and F8's note when it is open"),
         ],
         returns: "{events, turns}",
     },

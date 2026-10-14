@@ -60,6 +60,12 @@ doc = "Press the button under the pointer"
 [actions.ui_click.bindings]
 mouse = ["left"]
 
+[actions.ui_scroll]
+type = "axis"
+doc = "Scroll the message log: the mouse wheel over it"
+[actions.ui_scroll.bindings]
+mouse = ["wheel"]
+
 [actions.pointer]
 type = "pointer"
 doc = "Where the mouse is, on the UI canvas"

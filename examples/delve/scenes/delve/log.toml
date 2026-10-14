@@ -1,0 +1,21 @@
+# The message log under the HUD line (issue 23): what the last turns did,
+# the newest at the bottom (systems/messages.luau). It scrolls: the wheel
+# over it goes back through older turns, and once scrolled to the end it
+# follows the newest again. Shown from the first message, on a quiet plate
+# (assets/ui/plate.png), over the rock above the floor.
+[UiRoot]
+layer = 1
+
+[UiNode]
+absolute = true
+offset = [10.0, 38.0]
+size = [560.0, 66.0]
+pad = [10.0, 3.0]
+visible = false
+
+[UiPanel]
+image = "ui/plate"
+slice = 2.0
+scale = 2.0
+
+[UiScroll]

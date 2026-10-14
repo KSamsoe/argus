@@ -934,7 +934,7 @@ impl Daemon {
             return 0;
         };
         let now = self.sched.tick();
-        let commands = st.borrow_mut().apply_devices(now, &self.devices);
+        let commands = st.borrow_mut().apply_devices(now, &mut self.devices);
         self.input_branched();
         let mut turns = 0;
         // A caught key is a command too: the controls page shows it on the
@@ -1176,6 +1176,11 @@ impl Daemon {
         }
         if e.get("release_all").and_then(Json::as_bool) == Some(true) {
             return Ok(DeviceInput::ReleaseAll);
+        }
+        if let Some(lines) = e.get("wheel").and_then(Json::as_f64) {
+            return Ok(DeviceInput::Wheel {
+                lines: lines as f32,
+            });
         }
         if let Some(p) = e.get("pointer").and_then(Json::as_array) {
             let (x, y) = match (
