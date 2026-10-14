@@ -1848,6 +1848,22 @@ impl Daemon {
         .as_object()
         .cloned()
         .map(|mut o| {
+            // UI nodes laid out off the screen or past their parent (issue
+            // 31), the buttons among them first.
+            if let Some(canvas) = self.ui_canvas() {
+                let over = argus_ui::overflows(&self.world, canvas);
+                if !over.is_empty() {
+                    let lines: Vec<Json> = over
+                        .iter()
+                        .take(8)
+                        .map(|o| json!(o.line(&argus_ecs::text::entity_id(&self.world, o.entity))))
+                        .collect();
+                    o.insert(
+                        "ui_overflow".into(),
+                        json!({ "total": over.len(), "first": lines }),
+                    );
+                }
+            }
             // What did not load or was switched off (issue 30): a game short
             // of a system says so where an agent looks first.
             if let Ok(errs) = self.script_errors() {

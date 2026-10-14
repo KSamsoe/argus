@@ -37,11 +37,132 @@ pub mod codes {
 pub use text::{FontFace, PixelFont, SdfFont, SdfGlyph, PIXEL_FONT};
 pub use theme::{parse_color, Rgba, Theme};
 
-use argus_ecs::{Component, Result, World};
+use argus_ecs::{Component, Entity, Result, World};
 use argus_sim::Scheduler;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+
+/// A node laid out past the canvas or past its parent (issue 31): a row
+/// too wide for the screen puts its first button off it, and nothing else
+/// says so.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Overflow {
+    /// The node.
+    pub entity: Entity,
+    /// "the canvas" or "its parent".
+    pub past: &'static str,
+    /// How far past each edge: left, top, right, bottom, canvas pixels.
+    pub by: [f32; 4],
+    /// A button or a text box: what a player cannot reach off the screen.
+    pub interactive: bool,
+}
+
+impl Overflow {
+    /// What it says, naming the node `id`.
+    pub fn line(&self, id: &str) -> String {
+        let what = if self.interactive { ", a button," } else { "" };
+        let edges: Vec<String> = ["left", "top", "right", "bottom"]
+            .iter()
+            .zip(self.by)
+            .filter(|(_, d)| *d > 0.5)
+            .map(|(e, d)| format!("{} px past its {e} edge", d.round()))
+            .collect();
+        format!(
+            "{id}{what} is laid out past {}: {}",
+            self.past,
+            edges.join(", ")
+        )
+    }
+}
+
+/// The shown nodes laid out past the canvas (`canvas`, ui.toml's size) or
+/// past their parent, by their last layout (issue 31). A node inside one
+/// that clips (a `UiScroll`, `clip = true`) is cut on purpose and not
+/// counted; nor is a tree hung from a world entity, which may stand at the
+/// screen's edge; nor an absolute node against its parent. Interactive
+/// nodes first, then in entity order.
+pub fn overflows(world: &World, canvas: [f32; 2]) -> Vec<Overflow> {
+    let Some(rid) = world.component_id_of::<UiRect>() else {
+        return Vec::new();
+    };
+    let mut ents = world.query().has(rid).entities();
+    ents.sort();
+    let past = |r: &UiRect, lo: [f32; 2], hi: [f32; 2]| {
+        [
+            (lo[0] - r.pos.x).max(0.0),
+            (lo[1] - r.pos.y).max(0.0),
+            (r.pos.x + r.size.x - hi[0]).max(0.0),
+            (r.pos.y + r.size.y - hi[1]).max(0.0),
+        ]
+    };
+    let over = |b: &[f32; 4]| b.iter().any(|d| *d > 0.5);
+    let parent_of = |e: Entity| {
+        world
+            .get::<argus_ecs::Parent>(e)
+            .ok()
+            .map(|p| p.entity)
+            .filter(|p| !p.is_null())
+    };
+    let mut out = Vec::new();
+    for e in ents {
+        let Ok(r) = world.get::<UiRect>(e) else {
+            continue;
+        };
+        if !r.shown || r.size.x <= 0.0 || r.size.y <= 0.0 {
+            continue;
+        }
+        // Cut on purpose by a clipping ancestor.
+        let whole = r.clip_min.x <= 0.5
+            && r.clip_min.y <= 0.5
+            && r.clip_max.x >= canvas[0] - 0.5
+            && r.clip_max.y >= canvas[1] - 0.5;
+        if !whole {
+            continue;
+        }
+        // Hung from a world entity: its root follows something.
+        let mut root = e;
+        for _ in 0..64 {
+            match parent_of(root) {
+                Some(p) if world.get::<UiNode>(p).is_ok() => root = p,
+                _ => break,
+            }
+        }
+        let follows = world.get::<UiRoot>(root).is_ok_and(|t| !t.follow.is_null());
+        let interactive = world.get::<UiButton>(e).is_ok() || world.get::<UiTextBox>(e).is_ok();
+        let by = past(&r, [0.0, 0.0], canvas);
+        if !follows && over(&by) {
+            out.push(Overflow {
+                entity: e,
+                past: "the canvas",
+                by,
+                interactive,
+            });
+            continue;
+        }
+        let absolute = world.get::<UiNode>(e).is_ok_and(|n| n.absolute);
+        if absolute {
+            continue;
+        }
+        if let Some(pr) = parent_of(e).and_then(|p| world.get::<UiRect>(p).ok()) {
+            let by = past(
+                &r,
+                [pr.pos.x, pr.pos.y],
+                [pr.pos.x + pr.size.x, pr.pos.y + pr.size.y],
+            );
+            if over(&by) {
+                out.push(Overflow {
+                    entity: e,
+                    past: "its parent",
+                    by,
+                    interactive,
+                });
+            }
+        }
+    }
+    out.sort_by_key(|o| !o.interactive);
+    out
+}
 
 /// A player's UI settings (§12 accessibility): "text scaling and
 /// high-contrast palettes are UI theme tokens", and whether the window is

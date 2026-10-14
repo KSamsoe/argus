@@ -722,6 +722,12 @@ pub fn semantic(world: &World, spec: &FrameSpec) -> SemanticFrame {
 
     let lighting = lighting(world, rect, &to_px, h);
     let ui = ui_seen(world, spec);
+    // UI nodes laid out off the screen or past their parent (issue 31).
+    if let Some(canvas) = spec.ui_canvas {
+        for o in argus_ui::overflows(world, canvas).iter().take(8) {
+            problems.push(o.line(&entity_id(world, o.entity)));
+        }
+    }
     SemanticFrame {
         size: [spec.width, spec.height],
         camera,

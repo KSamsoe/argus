@@ -343,3 +343,60 @@ fn a_log_keeps_its_newest_line_in_view_until_scrolled_back() {
     u.step(2);
     assert_eq!(u.w.get::<UiScroll>(log).unwrap().y, 160.0);
 }
+
+/// Issue 31: a row too wide for the canvas puts its buttons off it, and
+/// the layout says so: the buttons first, then the row.
+#[test]
+fn a_node_laid_out_past_the_canvas_is_named() {
+    let mut u = ui();
+    let root = u.node(
+        None,
+        UiNode {
+            justify: id(&u.w, "center"),
+            ..UiNode::default()
+        },
+    );
+    u.w.insert(root, UiRoot::default()).unwrap();
+    let row = u.node(
+        Some(root),
+        UiNode {
+            direction: id(&u.w, "row"),
+            ..UiNode::default()
+        },
+    );
+    let mut buttons = Vec::new();
+    for _ in 0..2 {
+        let b = u.node(
+            Some(row),
+            // A min it may not shrink below: two of them are 1200 wide.
+            UiNode {
+                min: Vec2::new(600.0, 40.0),
+                ..UiNode::default()
+            },
+        );
+        u.w.insert(b, UiButton::default()).unwrap();
+        buttons.push(b);
+    }
+    u.step(2);
+    let canvas = [960.0, 540.0];
+    let over = argus_ui::overflows(&u.w, canvas);
+    assert!(!over.is_empty(), "nothing said");
+    assert!(over[0].interactive, "{over:?}");
+    assert!(
+        over.iter()
+            .any(|o| buttons.contains(&o.entity) && o.past == "the canvas"),
+        "{over:?}"
+    );
+    let line = over[0].line("@b");
+    assert!(
+        line.contains("a button") && line.contains("past the canvas"),
+        "{line}"
+    );
+    // Fitted, nothing is.
+    for &b in &buttons {
+        u.w.update::<UiNode, _>(b, |n| n.min = Vec2::new(200.0, 40.0))
+            .unwrap();
+    }
+    u.step(2);
+    assert!(argus_ui::overflows(&u.w, canvas).is_empty());
+}
