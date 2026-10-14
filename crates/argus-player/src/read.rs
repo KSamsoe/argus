@@ -81,20 +81,34 @@ pub fn get(world: &World, r: &str, path: &str) -> Result<Json> {
 }
 
 /// `player.query(components)`: every entity that has all these components
-/// (names, comma-separated), oldest first, each with those components.
+/// (names, comma-separated; `!Name` one it must not have), in entity
+/// order, switched-off ones too, each with the components it must have.
 pub fn query(world: &World, components: &str) -> Result<Json> {
+    // Switched-off entities are in, as the protocol's world.query has
+    // them; a name with `!` leaves out the entities that have it (issue
+    // 34): "Monster,!Inactive,!InactiveUnder" is a script's q:each.
     let mut ids = Vec::new();
+    let mut not = Vec::new();
     for name in components
         .split(',')
         .map(str::trim)
         .filter(|n| !n.is_empty())
     {
-        ids.push(world.component_id(name).ok_or_else(|| {
+        let (out, name) = match name.strip_prefix('!') {
+            Some(n) => (true, n.trim()),
+            None => (false, name),
+        };
+        let id = world.component_id(name).ok_or_else(|| {
             ArgusError::new(
                 argus_ecs::codes::UNKNOWN_COMPONENT,
                 format!("there is no component {name:?}"),
             )
-        })?);
+        })?;
+        if out {
+            not.push(id);
+        } else {
+            ids.push(id);
+        }
     }
     if ids.is_empty() {
         return Err(ArgusError::new(
@@ -102,9 +116,12 @@ pub fn query(world: &World, components: &str) -> Result<Json> {
             "query names its components: player.query(\"Monster,Health\")",
         ));
     }
-    let mut q = world.query();
+    let mut q = world.query().including_inactive();
     for &c in &ids {
         q = q.has(c);
+    }
+    for &c in &not {
+        q = q.not(c);
     }
     let mut es = q.entities();
     es.sort();

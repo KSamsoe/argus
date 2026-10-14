@@ -350,7 +350,28 @@ pub fn run(src: &dyn Source, params: &Json) -> Result<Json> {
     }
 
     if let Some(order) = opt_str(params, "order")? {
-        if let Some(inner) = order
+        if order == "ref" {
+            // By how the protocol spells each entity (issue 34): ids by
+            // name, then the rest by number. It does not change when
+            // components come and go, as a draw from the rows must not.
+            let key = |id: u64| {
+                let r = src.entity_ref(id);
+                let s = r.as_str().unwrap_or("").to_string();
+                match s.strip_prefix("e:") {
+                    Some(n) => {
+                        let (i, g) = n.split_once('.').unwrap_or((n, "0"));
+                        (
+                            1u8,
+                            String::new(),
+                            i.parse::<u64>().unwrap_or(0),
+                            g.parse::<u64>().unwrap_or(0),
+                        )
+                    }
+                    None => (0u8, s, 0, 0),
+                }
+            };
+            rows.sort_by_cached_key(|r| (key(r.0), r.0));
+        } else if let Some(inner) = order
             .strip_prefix("dist(")
             .and_then(|s| s.strip_suffix(')'))
         {

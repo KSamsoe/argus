@@ -132,8 +132,8 @@ What else a page script has:
 
 | On `window.argus` | What it is |
 |---|---|
-| `player.get(entity, path)` | The world as JSON: `player.get("@player", "Health.cur")` a field, `player.get("@player", "Health")` a component, `player.get("@player", "")` the whole entity, `{entity, components}`. Entities are spelled as the protocol spells them, `@id` or `e:12`. |
-| `player.query(components)` | Every entity with all these components, `player.query("Monster,Health")`, as a JSON list of `{entity, components}` with those components. |
+| `player.get(entity, path)` | The world as JSON: `player.get("@player", "Health.cur")` a field, `player.get("@player", "Health")` a component, `player.get("@player", "")` the whole entity, `{entity, components}`. Entities are spelled as the protocol spells them, `@id` or `e:12`. It reads any entity, switched off or not. |
+| `player.query(components)` | Every entity with all these components, `player.query("Monster,Health")`, as a JSON list of `{entity, components}` with those components, in entity order. Switched-off entities are in, as in the protocol's `world.query`; a name with `!` leaves out the entities that have it: `player.query("Monster,!Inactive,!InactiveUnder")` is what a script's `q:each("Monster")` sees. |
 | `player.semantic()` | What is on screen now, as JSON: the semantic frame an agent reads with `argus observe` and a screen reader is given (the UI's text and buttons in reading order, and the entities in view with a `Describe`). What a player sees. |
 | `player.status()` | JSON: the tick, entity and event counts, the world's digest, frames drawn. |
 | `player.key(code, pressed)` | A key down or up, by `KeyboardEvent.code` (`"KeyW"`, `"ControlLeft"`), as the page feeds the game its keys. Returns the turns it took. |

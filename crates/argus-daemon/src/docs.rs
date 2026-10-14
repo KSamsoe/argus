@@ -416,7 +416,7 @@ pub const METHODS: &[MethodDoc] = &[
             opt("select", ARRAY, "[\"id\" | \"room\" | \"Component.field\" | \"Component\" | \"count()\" | \"sum(Component.field)\" | mean | min | max]; default [\"id\"], or [\"count()\"] with group_by"),
             opt("where", OBJECT, "{has: [Component], not: [Component], room: name | [names], within: {of: entity, r: number}, \"Component.field\": value | {eq|ne|lt|lte|gt|gte: value}}"),
             opt("group_by", ARRAY, "[\"Component.field\"] (or one as a string): one row a distinct value, the value leading the row; only entities with those components"),
-            opt("order", STRING, "\"Component.field\" | \"-Component.field\" | \"dist(entity)\"; grouped, a column of the answer: \"-sum(Stockpile.food)\""),
+            opt("order", STRING, "\"Component.field\" | \"-Component.field\" | \"dist(entity)\" | \"ref\" (by the protocol's spelling: ids by name, then e:N by number); grouped, a column of the answer: \"-sum(Stockpile.food)\". Without it, entity order: by the entity's number, a reused slot's after the rest, which a despawn and a spawn change; \"ref\" stays put while the same ids exist"),
             opt("limit", INTEGER, "default 50"),
             opt("cursor", STRING, ""),
             opt("scene", STRING, "optional: another scene, from the index"),

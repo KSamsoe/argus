@@ -95,6 +95,12 @@ fn queries_have_the_protocol_shape() {
         .query("arena", &json!({ "order": "-Health.cur", "cursor": "c:2" }))
         .unwrap();
     assert_eq!(r["rows"], json!([["@gate"], ["@gate/light"]]));
+    // Issue 34: by the protocol's spelling, ids by name.
+    let r = idx.query("arena", &json!({ "order": "ref" })).unwrap();
+    assert_eq!(
+        r["rows"],
+        json!([["@bat"], ["@gate"], ["@gate/light"], ["@player"]])
+    );
     let e = idx
         .query("arena", &json!({ "select": ["Nope.x"] }))
         .unwrap_err();

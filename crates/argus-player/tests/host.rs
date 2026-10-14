@@ -258,3 +258,43 @@ fn a_page_reads_the_world_as_json() {
     assert!(argus_player::read::query(&p.world, "Nope").is_err());
     assert!(argus_player::read::get(&p.world, "@player", "Health.nope").is_err());
 }
+
+/// Issue 34: a page's query has the switched-off entities, as the
+/// protocol's world.query does, and a `!` name leaves them out.
+#[test]
+fn a_page_query_has_switched_off_entities_and_a_bang_leaves_them_out() {
+    let dir = project("read-off");
+    let mut p = Player::open(&dir, None, None).unwrap();
+    let count = |p: &Player, q: &str| {
+        argus_player::read::query(&p.world, q)
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .len()
+    };
+    let all = argus_player::read::query(&p.world, "Monster").unwrap();
+    let n = all.as_array().unwrap().len();
+    assert!(n >= 2, "the template places monsters: {all}");
+    let off = all[0]["entity"].as_str().unwrap().to_string();
+    let e = p.world.entity(&off).unwrap();
+    p.world.set_active(e, false).unwrap();
+    assert_eq!(count(&p, "Monster"), n, "switched off, still read");
+    let on = argus_player::read::query(&p.world, "Monster, !Inactive, !InactiveUnder").unwrap();
+    let on = on.as_array().unwrap();
+    assert_eq!(on.len(), n - 1);
+    assert!(
+        on.iter().all(|r| r["entity"] != off.as_str()),
+        "{off} left out"
+    );
+    assert_eq!(
+        on[0]["components"].as_object().unwrap().len(),
+        1,
+        "only Monster"
+    );
+    assert!(argus_player::read::get(&p.world, &off, "Monster").is_ok());
+    assert!(
+        argus_player::read::query(&p.world, "!Inactive").is_err(),
+        "none to have"
+    );
+    assert!(argus_player::read::query(&p.world, "Monster, !Nope").is_err());
+}

@@ -306,11 +306,13 @@ for e in q:each("room_b") do e:set_active(false) end   -- park room b
 for e in q:inactive("room_a") do e:set_active(true) end -- bring room a back
 ```
 
-`e:set_active(on)` switches one, `e:active()` says whether it is in the game (not off, and not under one that is), and `q:inactive("A", ...)` goes over the entities with those components that are off, or under one that is. Switching writes the engine's `Inactive` component, so the system lists it: `writes = { "Inactive" }`. An entity file can start off with `tags = ["Inactive"]`.
+`e:set_active(on)` switches one, `e:active()` says whether it is in the game (not off, and not under one that is), and `q:inactive("A", ...)` goes over the entities with those components that are off, or under one that is, handing out each entity and then its components as `q:each` does (`for e, mo in q:inactive("Monster")`). Switching writes the engine's `Inactive` component, so the system lists it: `writes = { "Inactive" }`. An entity file can start off with `tags = ["Inactive"]`.
 
 This is how a game keeps what it is not using now: a pool of bullets switched on as they are fired and off as they land instead of spawned and despawned, a menu built once and shown when opened, or the rooms of a floor a game makes at run time, each room's entities tagged with it and every room but the player's switched off. A child switched off by itself stays off when its parent comes back on.
 
-Agents and the editor see inactive entities: the protocol's `world.query` includes them (`"where": {"not": ["Inactive", "InactiveUnder"]}` leaves them out), and `InactiveUnder` marks the children of a switched-off entity.
+Agents and the editor see inactive entities: the protocol's `world.query` includes them (`"where": {"not": ["Inactive", "InactiveUnder"]}` leaves them out), and `InactiveUnder` marks the children of a switched-off entity. A web page's `player.query` includes them too, and `!Inactive,!InactiveUnder` leaves them out ([Releasing](releasing.md)).
+
+`world.query`'s rows come in entity order unless `order` says otherwise. Entity order is by each entity's number, which switching entities off and on does not change, but despawning and spawning does (a slot is reused). A tool or a scenario that draws at random from the rows, and must play the same after such a change, asks for `"order": "ref"`: by how the protocol spells each entity, `@id`s by name and then the rest by number.
 
 ### Reacting to an event
 
