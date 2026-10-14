@@ -192,6 +192,13 @@ Phase 0 item 3, "Luau binding with component and def schemas": this crate.
 | (§12) `q:within` costs what the loop takes. | Done | Nearest first as before, ordered as the loop goes (a heap over `World::within_unordered`), so a loop that stops after a few of tens of thousands pays for those few: Swarm's music, counting to 30 of 49,000, went from 10.7 ms a tick to 0.47. The order is the sort's, ties by entity. | `argus-daemon` `plugins::perf_swarm_stress_tick_under_6_ms_with_its_chase_in_rust` (the window with the swarm on the hero); every game's suite |
 | (§3) Prefabs: "a named bundle of components with values", spawned at run time (GitHub issue 1). | Done | `q:spawn_prefab(name, fields)` places the prefab's entity and its children (each with `Parent` and a `GlobalTransform` beside its `Transform`), its fields as the prefab chain gives them, then the caller's. The host resolves it (`Prefabs`, `argus_player::ProjectPrefabs`, cached by name and given again when a prefab changes). A system names the prefabs it spawns in `spawns`, which grants their components as a whole, so a component the prefab gains needs no new `writes`. | `spawn_prefab::*` here; `argus-daemon` `spawn_prefab::a_script_spawns_a_prefab_and_a_seek_spawns_it_again` (the seek spawns the same bats, an edited prefab spawns as it is now) |
 
+## 2D staples, items 0 and 1: queries and debug drawing
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| `q:raycast`, `q:raycast_all`, `q:shape_cast`, `q:overlap`. | Done | `bind.rs` on the host's `Casts` service (argus-player fills it from argus-physics); `opts` checked by name; a query that meets colliders or maps needs their reads declared, as a path query does. | argus-daemon `tests/casts.rs` |
+| `q:draw_line`, `q:draw_arrow`, `q:draw_box`, `q:draw_circle`, `q:draw_text`. | Done | `bind.rs` `draw`: off (the host has not turned the list on), a draw reads nothing and keeps nothing; on, its `opts` are checked by name and the shape kept as the running system's. The host empties a system's shapes as each run starts (`lib.rs` `bind_system`) and forgets them when the system is declared again or removed. | argus-daemon `tests/draws.rs` |
+
 ## Known limitations, stated so they are decisions
 
 - One Luau VM per `ScriptHost`; a forked world needs its own host (or the same host with a different scheduler, since the VM holds no world state).

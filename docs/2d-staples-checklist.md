@@ -16,6 +16,8 @@ Built (2026-10-14): `argus_physics::geom` (`Round`, the ray, distance, and Minko
 
 - `q:draw` lines, boxes, circles, arrows, and text in world space, for this frame: seen in the window, the editor, and a picture frame (`obs.frame`), never in a release build, and not part of the world.
 
+Built (2026-10-14): `q:draw_line`, `q:draw_arrow`, `q:draw_box`, `q:draw_circle`, `q:draw_text`, with `color`, `width`, `fill`, and `size`. "For this frame" became "until the system runs again": a turn-based game's shapes would otherwise vanish the frame after its turn. The list is `argus_sim::Draws`, kept by the script host (each system's emptied as it starts a run, forgotten when it is declared again or removed), off unless the host turns it on, which only the daemon does. The renderer draws it on the UI canvas under the UI (`argus-render` `debug.rs`), and `SemanticFrame::with_debug` lists it under the frame's `debug` in pixels. Tests: argus-sim `draw.rs` units, argus-daemon `tests/draws.rs` (pixels and the semantic list, a system that stops drawing, a bad colour, a release player keeping none).
+
 ## 2. Polygon and capsule colliders
 
 - `Collider` takes a capsule (`radius` with a `height`, as the queries' capsule) and a convex polygon (`points`, a list field): the overlap tier, rigid bodies, and the queries meet them. A kinematic body stays a box, said so.

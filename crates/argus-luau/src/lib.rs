@@ -186,6 +186,10 @@ pub trait Casts {
 /// The shape queries a host was given.
 pub(crate) struct CastsData(pub Rc<dyn Casts>);
 
+/// What systems draw for debugging (`q:draw_line` and the rest; 2D
+/// staples item 1), which the host reads with [`ScriptHost::draws`].
+pub(crate) struct DrawsData(pub Rc<RefCell<argus_sim::Draws>>);
+
 /// A project's data tables as scripts read them (§4 "Data tables", phase 3
 /// item 3: "Outpost is mostly defs"): `q:def("item:bread")` and
 /// `q:defs("recipes")`. The player's assembly hands the host its project's
@@ -414,6 +418,8 @@ pub struct ScriptHost {
     /// The project's modules (`require`, issue 24): what is evaluated, and
     /// which file required which.
     modules: Rc<RefCell<modules::Modules>>,
+    /// What the systems drew for debugging (2D staples item 1).
+    draws: Rc<RefCell<argus_sim::Draws>>,
 }
 
 fn fnv(bytes: &[u8]) -> u64 {
@@ -578,6 +584,8 @@ impl ScriptHost {
             });
         }
         lua.sandbox(true).map_err(to_argus)?;
+        let draws: Rc<RefCell<argus_sim::Draws>> = Default::default();
+        lua.set_app_data(DrawsData(draws.clone()));
         Ok(ScriptHost {
             lua,
             config,
@@ -592,7 +600,15 @@ impl ScriptHost {
             budget,
             checks: Rc::new(RefCell::new(BTreeMap::new())),
             modules: mods,
+            draws,
         })
+    }
+
+    /// What the systems drew for debugging (`q:draw_line` and the rest; 2D
+    /// staples item 1): off until the host turns it on, which a release
+    /// build does not. Whatever draws the world reads it.
+    pub fn draws(&self) -> Rc<RefCell<argus_sim::Draws>> {
+        self.draws.clone()
     }
 
     /// A script system's checks of the instruction budget, `(last run,
@@ -841,6 +857,7 @@ impl ScriptHost {
         if let Some(rec) = self.files.remove(rel) {
             for s in rec.systems {
                 let _ = sched.remove_system(&s);
+                self.draws.borrow_mut().forget(&s);
             }
         }
         self.errors.remove(rel);
@@ -1027,6 +1044,7 @@ impl ScriptHost {
         for old in previous_systems {
             if !declared_systems.contains(&old) {
                 let _ = sched.remove_system(&old);
+                self.draws.borrow_mut().forget(&old);
             }
         }
         self.files.insert(
@@ -1096,6 +1114,9 @@ impl ScriptHost {
         let spawns: Rc<[String]> = s.spawns.clone().into();
         let checks = self.checks.clone();
         let name = s.name.clone();
+        let draws = self.draws.clone();
+        // Bound again: what the old declaration drew goes with it.
+        draws.borrow_mut().forget(&name);
         let f: SystemFn = Box::new(move |ctx| {
             // The 'static is a lie the proxies never get to exploit: the
             // link is nulled before this closure returns.
@@ -1108,6 +1129,7 @@ impl ScriptHost {
                     spawns: spawns.clone(),
                 })
                 .map_err(to_argus)?;
+            draws.borrow_mut().begin(&name);
             let r = run.call::<()>(q);
             link.set(std::ptr::null_mut());
             let used = (limit - budget.get()).clamp(0, limit) as u64;

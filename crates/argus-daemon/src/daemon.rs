@@ -1272,6 +1272,7 @@ impl Daemon {
             }
             s.renderer.set_time(t);
             s.renderer.set_ui(Some(ses.ui.clone()));
+            s.renderer.set_draws(Some(ses.host.draws()));
             s.renderer.set_occluders(edges);
             let store = ses.particles.borrow();
             let drawn = s
@@ -1568,6 +1569,9 @@ impl Daemon {
             tiles: Some(tiles.clone()),
             rigid,
         };
+        // Debug shapes (2D staples item 1): the daemon is where they are
+        // looked at, in the window, the editor, and pictures.
+        host.draws().borrow_mut().set_on(true);
         self.session = Some(Session {
             ring: Rc::new(RefCell::new(crate::ring::Ring::new(
                 ring_every,
@@ -6016,6 +6020,7 @@ impl Daemon {
         let _ = self.sched.present(&mut self.world);
         r.set_time(shader_time(&self.sched, alpha));
         r.set_ui(self.session.as_ref().map(|s| s.ui.clone()));
+        r.set_draws(self.session.as_ref().map(|s| s.host.draws()));
         r.set_occluders(edges);
         // Set every time: the renderer is kept between calls.
         r.gpu_mut().set_see_as(see_as);
@@ -6143,7 +6148,7 @@ impl Daemon {
         let started = std::time::Instant::now();
         let ses = self.session.as_ref().expect("session");
         let store = ses.particles.borrow();
-        let sf = argus_render::semantic(
+        let mut sf = argus_render::semantic(
             &self.world,
             &argus_render::FrameSpec {
                 width,
@@ -6157,6 +6162,7 @@ impl Daemon {
             },
         );
         drop(store);
+        sf.with_debug(&ses.host.draws().borrow());
         let mut out = sf.to_json();
         out["tick"] = json!(self.sched.tick());
         out["time"] = json!((self.sched.time() * 1000.0).round() / 1000.0);
@@ -6390,6 +6396,7 @@ impl Daemon {
         if let (Some((_, r)), Some(ses)) = (&mut self.render.window, &self.session) {
             r.set_time(t);
             r.set_ui(Some(ses.ui.clone()));
+            r.set_draws(Some(ses.host.draws()));
             r.set_occluders(edges);
             let store = ses.particles.borrow();
             let _ = r.render_frame(&self.world, tick, alpha, &extras, Some(&store));

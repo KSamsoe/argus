@@ -15,6 +15,7 @@
 
 pub mod access;
 pub mod annotate;
+mod debug;
 pub mod gpu;
 pub mod light;
 pub mod post;
@@ -624,6 +625,8 @@ pub struct Renderer {
     ui: Option<std::rc::Rc<std::cell::RefCell<argus_ui::Shared>>>,
     /// The window's own bar: its words and colour.
     bar: Option<(String, argus_ui::Rgba)>,
+    /// What systems drew for debugging (2D staples item 1).
+    draws: Option<std::rc::Rc<std::cell::RefCell<argus_sim::Draws>>>,
     /// Compiled materials by name.
     materials: HashMap<String, MatState>,
     /// Materials the GPU refused, with why (their last good version draws).
@@ -756,6 +759,7 @@ impl Renderer {
             colors: HashMap::new(),
             ui: None,
             bar: None,
+            draws: None,
             materials: HashMap::new(),
             material_errors: BTreeMap::new(),
             compile_ms: 0.0,
@@ -1737,7 +1741,15 @@ impl Renderer {
             f.glow = glow_runs;
             f
         }));
-        let ui = self.ui_draw(world, &mut flat);
+        let ui = self.ui_draw(
+            world,
+            &mut flat,
+            View {
+                center,
+                half,
+                angle,
+            },
+        );
         // Behind everything: the drawing camera's Background, else ours.
         let clear = argus_camera::background(world)
             .and_then(|c| parse_color(&c))
@@ -1770,6 +1782,12 @@ impl Renderer {
         self.ui = shared;
     }
 
+    /// Draw what systems drew for debugging (2D staples item 1) over the
+    /// world and under the UI; `None` draws none.
+    pub fn set_draws(&mut self, draws: Option<std::rc::Rc<std::cell::RefCell<argus_sim::Draws>>>) {
+        self.draws = draws;
+    }
+
     /// The window's own bar (a mark's note being typed, a proposal on
     /// trial): drawn by the UI across the bottom of the canvas, over
     /// everything, in `rgba`; or none.
@@ -1799,8 +1817,9 @@ impl Renderer {
     }
 
     /// The UI's quads as instances after the world's, in runs by atlas and
-    /// scissor, and the view that puts the canvas in the target.
-    fn ui_draw(&self, world: &World, flat: &mut Vec<Instance>) -> Option<UiDraw> {
+    /// scissor, and the view that puts the canvas in the target; under
+    /// them, the debug shapes, seen through `view`.
+    fn ui_draw(&self, world: &World, flat: &mut Vec<Instance>, view: View) -> Option<UiDraw> {
         use argus_ui::draw::Paint;
         // With no UI, the theme's defaults (the bar may still be up).
         let default;
@@ -1831,7 +1850,13 @@ impl Renderer {
         if let Some((text, color)) = &self.bar {
             quads.extend(argus_ui::draw::bar(shared, text, *color));
         }
-        if quads.is_empty() {
+        let debug = match &self.draws {
+            Some(d) if !d.borrow().is_empty() => {
+                debug::pieces(&d.borrow(), shared, view, [w as f32, h as f32], &fit)
+            }
+            _ => Vec::new(),
+        };
+        if quads.is_empty() && debug.is_empty() {
             return None;
         }
         let lin = |c: f32| {
@@ -1843,7 +1868,16 @@ impl Renderer {
         };
         let full = [0.0, 0.0, 1.0, 1.0];
         let mut runs: Vec<(Run, [u32; 4])> = Vec::new();
-        for q in quads {
+        let pieces = debug
+            .into_iter()
+            .chain(quads.into_iter().map(|quad| debug::Piece {
+                quad,
+                rot: 0.0,
+                // Pivot at the top left (a fraction of the frame, y up).
+                pivot: [0.0, 1.0],
+            }));
+        for piece in pieces {
+            let q = &piece.quad;
             let (atlas, frame, sub, material) = match &q.paint {
                 Paint::Flat => ("rect", 0u32, full, 0usize),
                 Paint::Image { sprite, frame, sub } => (&**sprite, *frame, *sub, 0),
@@ -1881,8 +1915,7 @@ impl Renderer {
             let start = flat.len();
             flat.push(Instance {
                 pos_size: [q.pos[0], -q.pos[1], q.size[0], q.size[1]],
-                // Pivot at the top left (a fraction of the frame, y up).
-                rot_z: [0.0, 0.0, 0.0, 1.0],
+                rot_z: [piece.rot, 0.0, piece.pivot[0], piece.pivot[1]],
                 uv: [
                     uv[0] + sub[0] * uv[2],
                     uv[1] + sub[1] * uv[3],

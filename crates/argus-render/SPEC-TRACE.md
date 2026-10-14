@@ -93,6 +93,13 @@ Every statement in the design document (v0.3) that constrains the renderer as ph
 | (§17) "Hollow post stack, 5 passes at 1080p < 1.5 ms GPU", with lighting on. | Done | 0.386 ms for the five passes and sixteen shadowed lights over 400 edges, 0.189 ms of it the lighting (RTX 3070 Ti, Vulkan). | `render::perf_post_stack_five_passes_at_1080p` (release, `--ignored`) |
 | (§13) The CRT pass. | Done | `post.rs` `crt`: `PostCrt`'s curve, scanlines, bleed, and mask. | `render::post_passes_change_the_picture_in_order` |
 
+## 2D staples, item 1: debug drawing
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| Debug shapes from scripts seen in the window, the editor, and a picture, never in a release build. | Done | `debug.rs`: `Renderer::set_draws` gives the renderer the list; its shapes become quads on the UI canvas, under the UI's and after the light and post passes, a line a turned quad squared off at its ends, a filled circle the `circle` atlas, text through argus-ui's `label`. The daemon gives the list to its window, stream, pictures, and marks; the game and the web page give none. | argus-daemon `tests/draws.rs` |
+| The agent reads them. | Done | `SemanticFrame::with_debug`: the frame's `debug`, each shape in the frame's pixels with the system that drew it, those off the frame counted, past 40 counted. | argus-daemon `tests/draws.rs` |
+
 ## Known limitations, stated so they are decisions
 
 - The tests that need a GPU skip only when the machine has no adapter at all. Before item 11 they skipped on any failure to start the renderer, so a renderer that could not build its pipeline passed every test; item 11 found that when a binding change broke the pipeline and every render test still passed.

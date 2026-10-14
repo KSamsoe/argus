@@ -16,6 +16,7 @@
 
 pub mod alloc;
 pub mod clock;
+pub mod draw;
 pub mod par;
 pub mod prof;
 pub mod rng;
@@ -23,6 +24,7 @@ pub mod scheduler;
 pub mod system;
 
 pub use clock::{Clock, ClockKind};
+pub use draw::Draws;
 pub use par::{ParCtx, ParSystemFn};
 pub use prof::{
     AllocProf, Capture, CapturedSpan, CapturedTick, SystemProf, SystemSample, TickRecord,

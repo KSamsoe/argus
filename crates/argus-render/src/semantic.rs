@@ -164,6 +164,9 @@ pub struct SemanticFrame {
     pub omitted: usize,
     /// Text holes that named nothing.
     pub problems: Vec<String>,
+    /// The shapes systems drew for debugging (2D staples item 1), when a
+    /// host added them ([`SemanticFrame::with_debug`]).
+    pub debug: Option<Json>,
 }
 
 impl SemanticFrame {
@@ -223,6 +226,9 @@ impl SemanticFrame {
         .map(|mut o| {
             if let Some(l) = &self.lighting {
                 o.insert("lighting".into(), l.clone());
+            }
+            if let Some(d) = &self.debug {
+                o.insert("debug".into(), d.clone());
             }
             Json::Object(o)
         })
@@ -708,6 +714,7 @@ pub fn semantic(world: &World, spec: &FrameSpec) -> SemanticFrame {
         lighting,
         omitted,
         problems,
+        debug: None,
     }
 }
 

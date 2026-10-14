@@ -482,6 +482,7 @@ impl Daemon {
         let r = self.render.offscreen(w, h, software, &ses.assets)?;
         r.set_time(shader_time(&self.sched, 1.0));
         r.set_ui(Some(ses.ui.clone()));
+        r.set_draws(Some(ses.host.draws()));
         r.set_occluders(edges);
         let store = ses.particles.borrow();
         r.render_frame(&self.world, tick, 1.0, &extras, Some(&store))?;

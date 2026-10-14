@@ -560,6 +560,80 @@ fn hit_table(lua: &Lua, link: &Link, h: &crate::CastHit) -> LuaResult<LuaTable> 
 }
 
 /// A system must declare what it reads, a path query too (section 3).
+/// The colour a debug shape is drawn in when `opts.color` says nothing.
+const DRAW_COLOR: [u8; 4] = [255, 210, 63, 255];
+
+/// `"#rrggbb"` or `"#rrggbbaa"`.
+fn draw_color(s: &str) -> Option<[u8; 4]> {
+    let h = s.trim().strip_prefix('#')?;
+    if h.len() != 6 && h.len() != 8 {
+        return None;
+    }
+    let v = |i: usize| u8::from_str_radix(h.get(i..i + 2)?, 16).ok();
+    let a = if h.len() == 8 { v(6)? } else { 255 };
+    Some([v(0)?, v(2)?, v(4)?, a])
+}
+
+/// A debug draw (2D staples item 1). With the host's shapes on: `opts`
+/// read (only the `keys` this kind takes: `color`, `width` or `size`,
+/// `fill`), the shape made (told whether to fill), and kept as the running
+/// system's. Off (a release build): nothing is read or kept.
+fn draw(
+    lua: &Lua,
+    c: &SystemCtx<'_>,
+    opts: Option<LuaTable>,
+    keys: &[&str],
+    size: f32,
+    shape: impl FnOnce(bool) -> LuaResult<argus_sim::draw::Shape>,
+) -> LuaResult<()> {
+    let Some(d) = lua.app_data_ref::<crate::DrawsData>() else {
+        return Ok(());
+    };
+    if !d.0.borrow().on() {
+        return Ok(());
+    }
+    let (mut color, mut size, mut fill) = (DRAW_COLOR, size, false);
+    if let Some(o) = opts {
+        for pair in o.pairs::<String, LuaValue>() {
+            let (k, v) = pair?;
+            if !keys.contains(&k.as_str()) {
+                return Err(mlua::Error::runtime(format!(
+                    "this draw takes {}; not {k:?}",
+                    keys.join(", ")
+                )));
+            }
+            match (k.as_str(), v) {
+                ("color", LuaValue::String(s)) => {
+                    let s = s.to_str()?.to_string();
+                    color = draw_color(&s).ok_or_else(|| {
+                        mlua::Error::runtime(format!(
+                            "color is \"#rrggbb\" or \"#rrggbbaa\"; got {s:?}"
+                        ))
+                    })?;
+                }
+                ("width" | "size", LuaValue::Number(n)) if n > 0.0 => size = n as f32,
+                ("width" | "size", LuaValue::Integer(n)) if n > 0 => size = n as f32,
+                ("fill", LuaValue::Boolean(b)) => fill = b,
+                (k, v) => {
+                    let want = match k {
+                        "color" => "a colour string",
+                        "fill" => "true or false",
+                        _ => "a number above 0",
+                    };
+                    return Err(mlua::Error::runtime(format!(
+                        "{k} is {want}; got {}",
+                        v.type_name()
+                    )));
+                }
+            }
+        }
+    }
+    let shape = shape(fill)?;
+    d.0.borrow_mut()
+        .push(c.name, argus_sim::draw::Drawn { shape, color, size });
+    Ok(())
+}
+
 fn needs_read(c: &SystemCtx<'_>, name: &str) -> LuaResult<()> {
     let id = c.world().registry().require(name).map_err(argus_err)?;
     if c.access().allows_read(id) {
@@ -1586,6 +1660,81 @@ impl UserData for QueryHandle {
                     t.set(i + 1, hit_table(lua, &this.link, h)?)?;
                 }
                 Ok(t)
+            },
+        );
+        // Debug drawing (2D staples item 1): kept as this system's until it
+        // runs again; off in a release build.
+        m.add_method(
+            "draw_line",
+            |lua, this, (from, to, opts): (LuaValue, LuaValue, Option<LuaTable>)| {
+                let c: &SystemCtx<'_> = ctx(&this.link)?;
+                draw(lua, c, opts, &["color", "width"], 2.0, |_| {
+                    Ok(argus_sim::draw::Shape::Line {
+                        from: place(c, from)?,
+                        to: place(c, to)?,
+                        arrow: false,
+                    })
+                })
+            },
+        );
+        m.add_method(
+            "draw_arrow",
+            |lua, this, (from, to, opts): (LuaValue, LuaValue, Option<LuaTable>)| {
+                let c: &SystemCtx<'_> = ctx(&this.link)?;
+                draw(lua, c, opts, &["color", "width"], 2.0, |_| {
+                    Ok(argus_sim::draw::Shape::Line {
+                        from: place(c, from)?,
+                        to: place(c, to)?,
+                        arrow: true,
+                    })
+                })
+            },
+        );
+        m.add_method(
+            "draw_box",
+            |lua, this, (at, size, opts): (LuaValue, LuaValue, Option<LuaTable>)| {
+                let c: &SystemCtx<'_> = ctx(&this.link)?;
+                draw(lua, c, opts, &["color", "width", "fill"], 2.0, |fill| {
+                    let (w, h) = lua_point(size)?;
+                    Ok(argus_sim::draw::Shape::Box {
+                        at: place(c, at)?,
+                        size: [w.abs(), h.abs()],
+                        fill,
+                    })
+                })
+            },
+        );
+        m.add_method(
+            "draw_circle",
+            |lua, this, (at, radius, opts): (LuaValue, f32, Option<LuaTable>)| {
+                let c: &SystemCtx<'_> = ctx(&this.link)?;
+                draw(lua, c, opts, &["color", "width", "fill"], 2.0, |fill| {
+                    Ok(argus_sim::draw::Shape::Circle {
+                        at: place(c, at)?,
+                        radius: radius.abs(),
+                        fill,
+                    })
+                })
+            },
+        );
+        m.add_method(
+            "draw_text",
+            |lua, this, (at, text, opts): (LuaValue, LuaValue, Option<LuaTable>)| {
+                let c: &SystemCtx<'_> = ctx(&this.link)?;
+                draw(lua, c, opts, &["color", "size"], 14.0, |_| {
+                    let text = match lua.coerce_string(text)? {
+                        Some(s) => s.to_str()?.to_string(),
+                        None => {
+                            return Err(mlua::Error::runtime(
+                                "draw_text's text is a string or a number",
+                            ))
+                        }
+                    };
+                    Ok(argus_sim::draw::Shape::Text {
+                        at: place(c, at)?,
+                        text,
+                    })
+                })
             },
         );
         m.add_method(

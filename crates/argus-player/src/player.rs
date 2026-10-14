@@ -699,6 +699,12 @@ impl Player {
             .map(|t| [t.pos.x, t.pos.y])
     }
 
+    /// What the systems drew for debugging (2D staples item 1): kept only
+    /// when the host turns it on, which a release build does not.
+    pub fn draws(&self) -> Rc<RefCell<argus_sim::Draws>> {
+        self.host.draws()
+    }
+
     /// What the page shows in its status line.
     pub fn status(&self) -> Json {
         json!({

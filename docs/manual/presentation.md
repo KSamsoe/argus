@@ -627,6 +627,22 @@ m.intensity = math.min(1, n / 30)
 
 Every play is an event (`sound.play` asked, `sound.played` with the variation chosen and the gain and pitch it played at, its jitter included, or `sound.missing`), and music changes are `music.started`, `music.layer`, and `music.queued`. `argus audio status` shows the buses with their levels and ducking, the voices, and the music. `argus audio clip` writes the last seconds of the mix as a WAV for a person to hear. Headless, the mixer runs on sim time, so the clip is the same every run.
 
+## Debug drawing
+
+A system can draw shapes in the world to show what it is thinking: where a ray went, what a guard can see, the path it chose, a number over an enemy.
+
+```lua
+local hit = q:raycast(eye, target, { ignore = me })
+q:draw_line(eye, hit and hit.point or target, { color = hit and "#ff4040" or "#40ff40" })
+q:draw_text(me, "hp " .. hp.now)
+```
+
+There are `q:draw_line(from, to)`, `q:draw_arrow(from, to)`, `q:draw_box(at, size)`, `q:draw_circle(at, r)`, and `q:draw_text(at, text)`. A point can be an entity, which means where it is. The last argument is optional and takes `color` (`"#rrggbb"` or `"#rrggbbaa"`; amber when not given), `width` (in UI pixels, so a line is as thick at any zoom), `fill = true` for a box or circle, and `size` for text.
+
+Shapes are drawn over the world and under the UI, and the light and the post effects leave them alone. A system's shapes stay up until that system runs again. In a real-time game that means every tick. In a turn-based game they stay up between turns. When a system stops drawing something, the shape goes the next time the system runs.
+
+They are for development. The daemon's window, the editor's viewport, and `obs.frame` pictures show them. The semantic frame lists them under `debug`, in the picture's pixels with the system that drew each, so an agent can read them without looking. A release build draws nothing, and a draw there costs almost nothing. Shapes are not part of the world: no digest, keyframe, replay, or save holds them, so leaving a draw in changes nothing about how the game plays.
+
 ## Where to go next
 
 - [Gameplay](gameplay.md): input, physics, navigation, events, and timers.

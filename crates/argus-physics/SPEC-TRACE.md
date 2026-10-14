@@ -68,6 +68,14 @@ Test: `perf_a_thousand_characters_and_twenty_thousand_contacts` (ignored; `cargo
 |---|---|---|---|
 | (§12) The kinematic tier's controller, documented. | Done | CharacterController's doc (in ARGUS.md and `world describe`) says how a jump works: gravity and take-off from jump_height and jump_time, the buffer and coyote time, rising and the cut, dropping through a one-way platform, its events, and that a system between physics.control and physics.move may change this tick's decisions. The gate's Hollow trial learned it with a probe of every tick. | the gate's Hollow trial |
 
+## 2D staples, item 0: raycasts and shape queries
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| Raycasts and shape queries from scripts, meeting colliders and tile cells. | Done | `query`: `raycast` (every collider, then each map's cells in the line's order by a grid walk), `shape_cast`, and `overlap`, filtered by layer mask, an ignore list, and whether tiles, colliders, and one-way cells count; inactive entities are not met. Hits are sorted by fraction, then target. | `tests/query.rs` |
+| One exact geometry core, deterministic across platforms. | Done | `geom`: every shape is a rounded convex polygon (`Round`); a moving shape against a target is a ray against their Minkowski sum; overlap is the origin inside the sum. Only `+ - * /` and `sqrt`, no trig. Touching is not overlapping (`EPS`), so a shape sliding along a floor is not stopped by it. | `geom` units, `tests/query.rs` |
+| Slopes and one-way cells. | Done | A slope cell is the hull under its line; a one-way cell stops only something moving down onto its top, and nothing at rest for `overlap`. | `tests/query.rs` |
+
 ## Known limitations, stated so they are decisions
 
 - A kinematic body is a box, unrotated and unscaled; circles are overlap-only. A parented collider is placed by its `GlobalTransform` as last propagated, one tick behind a parent that moved this tick; kinematic bodies should not have parents.

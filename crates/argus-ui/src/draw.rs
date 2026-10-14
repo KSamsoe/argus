@@ -298,6 +298,50 @@ pub fn bar(shared: &Shared, text: &str, color: Rgba) -> Vec<Quad> {
     out
 }
 
+/// Words centred on a canvas point, a line a paragraph, on a dark backing:
+/// a debug shape's text (2D staples item 1), in the theme's font.
+pub fn label(
+    shared: &Shared,
+    text: &str,
+    size: f32,
+    at: [f32; 2],
+    color: Rgba,
+    clip: [f32; 4],
+) -> Vec<Quad> {
+    let theme = &shared.theme;
+    let font = shared.fonts.face(&theme.font, &theme.font);
+    let l = lines(font.as_ref(), text, size, None);
+    let pad = [size * 0.3, size * 0.15];
+    let top = at[1] - l.height * 0.5;
+    let mut out = vec![Quad {
+        pos: [at[0] - l.width * 0.5 - pad[0], top - pad[1]],
+        size: [l.width + 2.0 * pad[0], l.height + 2.0 * pad[1]],
+        paint: Paint::Flat,
+        color: [0.0, 0.0, 0.0, 0.6 * color[3]],
+        clip,
+        node: Entity::NULL,
+    }];
+    for (row, line) in l.lines.iter().enumerate() {
+        let x0 = at[0] - line.width * 0.5;
+        let y0 = top + row as f32 * l.line_height;
+        glyphs(font.as_ref(), &line.text, size, |g| {
+            out.push(Quad {
+                pos: [x0 + g.x, y0 + g.y],
+                size: [g.w, g.h],
+                paint: Paint::Glyph {
+                    atlas: font.atlas(),
+                    frame: g.frame,
+                    sdf: font.sdf(),
+                },
+                color,
+                clip,
+                node: Entity::NULL,
+            })
+        });
+    }
+    out
+}
+
 fn glyphs(font: &dyn FontFace, text: &str, size: f32, mut f: impl FnMut(crate::text::Glyph)) {
     for g in font.glyphs(text, size) {
         f(g);

@@ -179,6 +179,12 @@ Phase 0 item 2, "scheduler with stages, declared write sets, and both clock driv
 | (§6) "Cross-platform bit-determinism (fixed-point math, or a constrained float subset) is a known path." | Done (the path named) | The subset is enough, no fixed point: IEEE's four operations and `sqrt` as they are, and every other function from one software library (`libm`, which Rapier already uses and which is what the browser computes). Luau's doubles rounded into `f32` components agreed on all three platforms for all 160,000 probe values. The write-up lists the four changes lockstep would need. | `determinism --math` (argus-web's example) |
 | (§15) "Determinism plus an action log is most of a lockstep model." | Done (measured) | The action-log half holds (inputs only as per-slot actions; no clock or device in a script). The determinism half needs the engine's `f32` functions on `libm`, the same for Luau's C library for strict lockstep, `-ffp-contract=off` for Luau built by clang on ARM, and a cheaper desync digest; the world digest costs 1.9 ms at Swarm's 900 entities. | same |
 
+## 2D staples, item 1: debug drawing's list
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| Debug shapes are not part of the world. | Done | `draw::Draws`: each system's shapes by name, kept beside the world, never in it, so no digest, keyframe, replay, or save holds them. Off by default; a system keeps at most `MAX_SHAPES` a run, the rest counted. | `draw` units |
+
 ## Known limitations, stated so they are decisions
 
 - One scheduler per world; forks need their own scheduler built from the same system list. The daemon piece owns that pairing.
