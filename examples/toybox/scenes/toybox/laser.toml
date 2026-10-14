@@ -1,0 +1,12 @@
+# A tripwire along the floor (2D staples items 0 and 1): sim.laser casts a
+# ray to the right each tick and keeps what it meets, the pill unless a
+# ball rolls through; its beam is drawn for debugging.
+[Transform]
+pos = [5.0, 0.4]
+
+[Laser]
+length = 14.0
+
+[Describe]
+role = "hud"
+text = "Tripwire: {Laser.hit}, {Laser.tripped} tripped."

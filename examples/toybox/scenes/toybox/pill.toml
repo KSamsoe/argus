@@ -1,0 +1,18 @@
+# A pill standing on the floor (2D staples item 2): a capsule collider, a
+# radius and its whole height, on a body that keeps upright. The tripwire
+# ends at it.
+[Transform]
+pos = [15.0, 6.0]
+
+[Collider]
+radius = 0.5
+height = 2.0
+
+[RigidBody]
+lock_rotation = true
+friction = 0.6
+
+[Sprite]
+atlas = "pill"
+size = [1.0, 2.0]
+z = 1.0

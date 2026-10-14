@@ -1,0 +1,17 @@
+# A ramp between the crates and the bridge (2D staples item 2): a fixed
+# body whose collider is a polygon, the corners around its centre. Balls
+# that bounce off the bridge to the left roll down it.
+[Transform]
+pos = [-6.0, 1.0]
+
+[Collider]
+points = [[-2.0, -1.0], [2.0, -1.0], [-2.0, 1.0]]
+
+[RigidBody]
+fixed = true
+friction = 0.4
+
+[Sprite]
+atlas = "wedge"
+size = [4.0, 2.0]
+z = 1.0

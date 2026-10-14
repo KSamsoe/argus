@@ -13,3 +13,11 @@ component "Ball" {
   doc = "A dropped ball",
   born = field.u32 { default = 0, doc = "The tick it was dropped" },
 }
+
+component "Laser" {
+  doc = "A tripwire: a ray cast to the right from the entity, what it meets, and how often a ball broke it",
+  length = field.f32 { default = 10, range = {0, 1000}, doc = "How far the ray reaches" },
+  hit = field.str { doc = "What it meets: an entity's name, \"ball\", or empty for nothing" },
+  distance = field.f32 { doc = "How far along the ray that is" },
+  tripped = field.u32 { doc = "Times a ball broke the beam" },
+}
