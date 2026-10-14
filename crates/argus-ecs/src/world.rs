@@ -463,12 +463,8 @@ impl World {
             hash.reserve(self.entities.alive);
         }
         // An inactive entity is not near anything (issue 18).
-        let (off, under) = self.registry.inactive_tags();
         for arch in &self.archetypes {
-            if arch.is_empty()
-                || off.is_some_and(|c| arch.has(c))
-                || under.is_some_and(|c| arch.has(c))
-            {
+            if arch.is_empty() || arch.is_inactive() {
                 continue;
             }
             let (col, off) = match (g.and_then(|g| arch.column(g)), arch.column(t)) {

@@ -21,6 +21,10 @@ pub struct Archetype {
     pub(crate) columns: Vec<Column>,
     pub(crate) entities: Vec<Entity>,
     index: HashMap<ComponentId, usize>,
+    /// Its entities are switched off, or under one that is (it holds
+    /// `Inactive` or `InactiveUnder`): what every query asks, so it is
+    /// known once, when the archetype is made (issue 18).
+    inactive: bool,
 }
 
 impl Archetype {
@@ -42,13 +46,25 @@ impl Archetype {
             .enumerate()
             .map(|(i, &c)| (c, i))
             .collect();
+        // A component is registered before an archetype holds it, so the
+        // tags' ids are known by now if it holds either.
+        let (off, under) = registry.inactive_tags();
+        let inactive = components
+            .iter()
+            .any(|&c| Some(c) == off || Some(c) == under);
         Archetype {
             id,
             components,
             columns,
             entities: Vec::new(),
             index,
+            inactive,
         }
+    }
+
+    /// Whether its entities are switched off, or under one that is.
+    pub fn is_inactive(&self) -> bool {
+        self.inactive
     }
 
     /// Number of entities.

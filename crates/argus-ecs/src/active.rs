@@ -61,11 +61,11 @@ impl World {
     /// Whether an entity is in the game: alive, not switched off, and not
     /// under an entity that is.
     pub fn is_active(&self, e: Entity) -> bool {
-        if !self.is_alive(e) {
-            return false;
-        }
-        let (a, b) = self.registry.inactive_tags();
-        !(a.is_some_and(|c| self.has(e, c)) || b.is_some_and(|c| self.has(e, c)))
+        // Its archetype says, with no lookup by component: q:each asks
+        // this of every entity it hands out.
+        self.entities
+            .slot(e)
+            .is_some_and(|s| !self.archetypes[s.archetype as usize].is_inactive())
     }
 
     /// Whether the entity itself is switched off (not just under one that
@@ -85,9 +85,13 @@ impl World {
         let (Some(off), under) = self.registry.inactive_tags() else {
             return Ok(());
         };
-        let any_off = self.query().including_inactive().has(off).count() > 0;
-        let any_under = under.is_some_and(|u| self.query().including_inactive().has(u).count() > 0);
-        if !any_off && !any_under {
+        // Every tick at the hierarchy stage: one pass over the archetypes'
+        // flags when nothing is switched off.
+        let any = self
+            .archetypes
+            .iter()
+            .any(|a| a.is_inactive() && !a.is_empty());
+        if !any {
             return Ok(());
         }
         let Some(parent_c) = self.component_id_of::<Parent>() else {

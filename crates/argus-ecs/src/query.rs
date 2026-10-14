@@ -176,12 +176,8 @@ impl<'w> Query<'w> {
         {
             return false;
         }
-        if self.activity == Activity::All {
-            return true;
-        }
-        let (a, b) = self.world.registry().inactive_tags();
-        let off = a.is_some_and(|c| arch.has(c)) || b.is_some_and(|c| arch.has(c));
-        off == (self.activity == Activity::Inactive)
+        self.activity == Activity::All
+            || arch.is_inactive() == (self.activity == Activity::Inactive)
     }
 
     /// Matching archetypes (including empty ones).
