@@ -84,6 +84,12 @@ Every statement in the design document (v0.3) that constrains tilemaps as phase 
 | A Tiled map is Tiled's to edit. | Done | `MapFile::tiled` marks a map read from Tiled, and `MapFile::set` refuses it; the daemon refuses `edit.tiles` on one when it is queued and, at commit, before a cell changes, with the hint "This map is Tiled's: edit it in Tiled"; `save` refuses an in-memory map. The editor paints through `edit.tiles`, so a stroke on a Tiled map shows that refusal in its problem bar and changes nothing. A save in Tiled moves the file's modification time and the store reads it again, as it reopens an index another process saved; its revision moves, so a navigation grid is built again. | `tiled::a_tiled_map_is_tileds_to_edit_and_a_save_in_tiled_is_read_again`, `argus-daemon/tests/tiled.rs` |
 | Its structure through the protocol. | Done | `scene.tiles.info` (and each row of `scene.tiles.list`) gives every layer's `visible`, and `tiled`: what the file holds (its tilesets with firstgid and tile count, Tiled's layers and the engine layers each became, its object layers' objects) and what did not carry over; `scene.tiles.get` and `scene.tiles.collision` read it as any map. | `argus-daemon/tests/tiled.rs` |
 
+## 2D staples, item 3: parallax layers
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| A tile layer's parallax factor. | Done | `LayerDef::parallax` (`parallax = [x, y]` or one number) and `MapIndex::parallax_origin`, read from and written to the index, and from a Tiled map. `visible` takes a parallax layer's cells around the view as the layer is drawn, with a margin of a quarter view and a tile for the frames between ticks, and tags each `TileDraw` with its factor and origin; the renderer shifts it. Drawing only: collision reads the cells where they are. | `a_parallax_layer_is_saved_and_shows_the_tiles_where_it_is_drawn` |
+
 ## Known limitations, stated so they are decisions
 
 - A big fill is a big edit. A 1,024 × 1,024 fill touches 256 chunks and takes 85 ms including the save; brush-sized edits stay well under a frame.

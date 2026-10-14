@@ -377,6 +377,18 @@ q:emit("camera.shake", { amount = 0.8 })
 
 `decay`, `curve`, `max_offset`, `max_angle`, and `frequency` shape it. `PostShake` (above) instead moves the finished picture of the world. Neither moves the UI, which is drawn after the post passes.
 
+**Parallax.** A background can move slower than the world as the camera moves, so it looks far away. Give a sprite a `Parallax`:
+
+```toml
+[Parallax]
+factor = [0.5, 0.5]
+origin = [0.0, 0.0]
+```
+
+`factor` is how fast it crosses the screen against the world: 0.5 is a far hill, 0 the sky (it never moves), and above 1 a foreground that passes faster. `origin` is where the camera's centre is when the sprite is drawn exactly where its Transform says; set it to where the camera starts. A tile layer takes `parallax = [0.5, 0.5]` (or `parallax = 0.5` for both) in its `*.tilemap.toml`, and the map takes `parallax_origin`, in world units from its top-left corner. A Tiled map's layer parallax factors and its parallax origin are read as they are.
+
+Parallax is drawing only. A parallax sprite still collides and overlaps where its Transform is, and a parallax layer's tiles collide where their cells are, so keep collision on layers without it. The semantic frame shows a parallax sprite where it is drawn.
+
 ## UI
 
 The UI is entities too, laid out on a canvas of UI pixels (960 x 540 by default, y down) that is scaled to fit the window. `ui.toml` at the project's root sets the canvas, the font, the text size, and the colour tokens. From `examples/delve/ui.toml`:

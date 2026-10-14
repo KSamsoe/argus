@@ -771,6 +771,8 @@ impl Player {
                 pos: t.pos,
                 size: [t.size, t.size],
                 z: t.z,
+                parallax: t.parallax,
+                parallax_origin: t.parallax_origin,
             }));
         }
         out

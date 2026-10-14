@@ -28,6 +28,8 @@ Built (2026-10-14): `Collider.height` and `Collider.points`, a list of vec2 thro
 
 - A camera-relative scroll factor on sprites and tile layers (a background moves at a share of the camera's speed), and Tiled's own parallax factors taken instead of dropped.
 
+Built (2026-10-14): a `Parallax` component (`factor`, `origin`) on a sprite, and a tile layer's `parallax` with its map's `parallax_origin` (argus-tiles `LayerDef`, `MapIndex`). The renderer shifts each by `argus_render::parallax_shift`, `(camera - origin) * (1 - factor)`, with the frame's interpolated camera, so a far layer does not step between ticks; `argus_tiles::visible` takes a parallax layer's cells around the view as the layer sees it, with a margin for those frames. The Tiled importer carries a layer's factors (its groups' multiplied in) and the map's parallax origin instead of warning. The semantic frame places a parallax sprite where it is drawn. Drawing only: collision and overlaps stay where things are. Tests: argus-tiles `a_parallax_layer_is_saved_and_shows_the_tiles_where_it_is_drawn`, argus-assets `tests/tiled.rs` (both map forms), argus-daemon `tests/parallax.rs` (the picture and the semantic frame).
+
 ## 4. Save slots
 
 - Scripts list the saves there are, with what each holds (when it was made, the scene, a game's own summary fields), and delete one; a "Continue" button and a three-slot menu can be built.

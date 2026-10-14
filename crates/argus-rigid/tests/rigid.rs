@@ -420,6 +420,7 @@ fn a_box_lands_on_a_tilemaps_solid_tiles() {
             tileset: None,
             z: 0.0,
             collision: true,
+            parallax: [1.0, 1.0],
         }],
     )
     .unwrap();

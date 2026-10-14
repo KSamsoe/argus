@@ -18,8 +18,10 @@
 //! (`maps/level1.tmx/terrain`), a name no file under `assets/` can have.
 //!
 //! What the engine has no place for is a warning, never a silent loss:
-//! flipped tiles (the engine draws tiles unflipped), opacity, parallax,
-//! tint, image layers, Tiled's terrain sets, and a tile's collision shapes.
+//! flipped tiles (the engine draws tiles unflipped), opacity, tint, image
+//! layers, Tiled's terrain sets, and a tile's collision shapes. A layer's
+//! parallax factors (its groups' multiplied in) and the map's parallax
+//! origin are carried (2D staples item 3).
 
 use crate::{
     codes, fnv, Asset, Clip, Direction, Entry, Frame, Group, Importer, SpriteAsset, Warning,
@@ -681,6 +683,8 @@ pub struct MapLayer {
     pub z: f32,
     /// Its `collision` property: its tiles' properties collide.
     pub collision: bool,
+    /// Its parallax factors, its groups' multiplied in: 1, 1 for none.
+    pub parallax: [f32; 2],
     /// Shown in Tiled (and in every group around it).
     pub visible: bool,
     /// Its custom properties (with its groups').
@@ -764,6 +768,10 @@ pub struct TiledMap {
     pub infinite: bool,
     /// The Tiled cell that is the engine's (0, 0).
     pub origin: [i64; 2],
+    /// Where the camera's centre is when the parallax layers are drawn
+    /// where their tiles are: Tiled's parallax origin, in world units from
+    /// the engine grid's top-left corner, y up.
+    pub parallax_origin: [f32; 2],
     /// The map's custom properties.
     pub properties: Props,
     /// Its tilesets, by first id.
@@ -797,6 +805,7 @@ impl TiledMap {
             "tile_size": self.tile_size,
             "infinite": self.infinite,
             "origin": self.origin,
+            "parallax_origin": self.parallax_origin,
             "properties": props_json(&self.properties),
             "tilesets": self.tilesets.iter().map(|t| json!({
                 "name": t.name,
@@ -820,6 +829,7 @@ impl TiledMap {
                 "tileset": l.tileset,
                 "collision": l.collision,
                 "z": l.z,
+                "parallax": l.parallax,
                 "visible": l.visible,
                 "tiles": l.cells.len(),
                 "properties": props_json(&l.properties),
@@ -867,6 +877,7 @@ struct RawTiles {
     name: String,
     visible: bool,
     offset: [f64; 2],
+    parallax: [f64; 2],
     props: Props,
     cells: Vec<(i64, i64, u32)>,
     /// An infinite map's chunks: x, y, w, h.
@@ -919,6 +930,8 @@ struct Raw {
     props: Props,
     tilesets: Vec<TsRef>,
     layers: Vec<Flat>,
+    /// Tiled's parallax origin, in pixels.
+    parallax_origin: [f64; 2],
 }
 
 /// A group's say over the layers in it.
@@ -929,6 +942,7 @@ struct Ctx {
     offset: [f64; 2],
     props: Props,
     opacity: f64,
+    parallax: [f64; 2],
 }
 
 impl Ctx {
@@ -939,6 +953,7 @@ impl Ctx {
             offset: [0.0, 0.0],
             props: Props::new(),
             opacity: 1.0,
+            parallax: [1.0, 1.0],
         }
     }
 
@@ -950,7 +965,7 @@ impl Ctx {
         offset: [f64; 2],
         props: Props,
         opacity: f64,
-        parallax: bool,
+        parallax: [f64; 2],
         tint: bool,
         at: &str,
         w: &mut Warns,
@@ -960,12 +975,6 @@ impl Ctx {
             w.add(
                 at,
                 format!("layer {path:?} has opacity {opacity}; the engine draws it opaque"),
-            );
-        }
-        if parallax {
-            w.add(
-                at,
-                format!("layer {path:?} has a parallax factor; it is not carried"),
             );
         }
         if tint {
@@ -982,6 +991,10 @@ impl Ctx {
             offset: [self.offset[0] + offset[0], self.offset[1] + offset[1]],
             props: merged,
             opacity: self.opacity * opacity,
+            parallax: [
+                self.parallax[0] * parallax[0],
+                self.parallax[1] * parallax[1],
+            ],
         }
     }
 }
@@ -1109,6 +1122,10 @@ fn xml_raw(shown: &str, root: &Node, w: &mut Warns) -> Result<Raw> {
         props: xml_props(root, shown, w),
         tilesets: Vec::new(),
         layers: Vec::new(),
+        parallax_origin: [
+            num(root, "parallaxoriginx", shown)?.unwrap_or(0.0),
+            num(root, "parallaxoriginy", shown)?.unwrap_or(0.0),
+        ],
     };
     for t in root.all("tileset") {
         let firstgid = num(t, "firstgid", shown)?.unwrap_or(0);
@@ -1144,7 +1161,7 @@ fn xml_walk(shown: &str, node: &Node, ctx: &Ctx, raw: &mut Raw, w: &mut Warns) -
             [f("offsetx", 0.0)?, f("offsety", 0.0)?],
             xml_props(c, shown, w),
             f("opacity", 1.0)?,
-            f("parallaxx", 1.0)? != 1.0 || f("parallaxy", 1.0)? != 1.0,
+            [f("parallaxx", 1.0)?, f("parallaxy", 1.0)?],
             c.attr("tintcolor").is_some(),
             &at,
             w,
@@ -1212,6 +1229,7 @@ fn xml_walk(shown: &str, node: &Node, ctx: &Ctx, raw: &mut Raw, w: &mut Warns) -
                     name: lc.prefix,
                     visible: lc.visible,
                     offset: lc.offset,
+                    parallax: lc.parallax,
                     props: lc.props,
                     cells,
                     chunks,
@@ -1351,6 +1369,10 @@ fn json_raw(shown: &str, v: &Json, w: &mut Warns) -> Result<Raw> {
         props: json_props(v, shown, w),
         tilesets: Vec::new(),
         layers: Vec::new(),
+        parallax_origin: [
+            v["parallaxoriginx"].as_f64().unwrap_or(0.0),
+            v["parallaxoriginy"].as_f64().unwrap_or(0.0),
+        ],
     };
     for t in v["tilesets"].as_array().into_iter().flatten() {
         let firstgid = json_u32(t, "firstgid", shown)?;
@@ -1384,7 +1406,7 @@ fn json_walk(shown: &str, node: &Json, ctx: &Ctx, raw: &mut Raw, w: &mut Warns) 
             [f("offsetx", 0.0), f("offsety", 0.0)],
             json_props(l, &at, w),
             f("opacity", 1.0),
-            f("parallaxx", 1.0) != 1.0 || f("parallaxy", 1.0) != 1.0,
+            [f("parallaxx", 1.0), f("parallaxy", 1.0)],
             l["tintcolor"].is_string(),
             &at,
             w,
@@ -1446,6 +1468,7 @@ fn json_walk(shown: &str, node: &Json, ctx: &Ctx, raw: &mut Raw, w: &mut Warns) 
                     name: lc.prefix,
                     visible: lc.visible,
                     offset: lc.offset,
+                    parallax: lc.parallax,
                     props: lc.props,
                     cells,
                     chunks,
@@ -1741,6 +1764,10 @@ pub fn read_map(
         tile_size,
         infinite: raw.infinite,
         origin: [x0, y0],
+        parallax_origin: [
+            ((raw.parallax_origin[0] / tpx - x0 as f64) * tile_size as f64) as f32,
+            (-(raw.parallax_origin[1] / tpx - y0 as f64) * tile_size as f64) as f32,
+        ],
         properties: raw.props.clone(),
         tilesets: uses,
         tiled_layers: Vec::new(),
@@ -1873,6 +1900,7 @@ pub fn read_map(
                         tileset: ti.map(|i| out.tilesets[i].asset.clone()),
                         z,
                         collision,
+                        parallax: [t.parallax[0] as f32, t.parallax[1] as f32],
                         visible: t.visible,
                         properties: t.props.clone(),
                         cells,

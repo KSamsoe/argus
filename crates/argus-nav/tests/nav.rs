@@ -250,6 +250,7 @@ fn a_grid_covers_a_tilemap_and_follows_its_edits() {
             tileset: None,
             z: 0.0,
             collision: true,
+            parallax: [1.0, 1.0],
         }],
     )
     .unwrap();

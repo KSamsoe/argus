@@ -772,7 +772,7 @@ pub const METHODS: &[MethodDoc] = &[
             req("file", STRING, "project-relative, ending .tilemap.toml"),
             opt("width", INTEGER, ""),
             opt("height", INTEGER, ""),
-            req("layers", ARRAY, "[{name, tileset (a sprite asset), z, collision}]"),
+            req("layers", ARRAY, "[{name, tileset (a sprite asset), z, collision, parallax ([x, y] or a number; 1 for none)}]"),
             opt("tile_size", NUMBER, "world units, default 1"),
             opt("chunk", INTEGER, "default 64"),
             opt("cell", INTEGER, "1 | 2 | 4; bytes per tile id, default 2"),

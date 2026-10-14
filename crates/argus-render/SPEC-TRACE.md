@@ -100,6 +100,12 @@ Every statement in the design document (v0.3) that constrains the renderer as ph
 | Debug shapes from scripts seen in the window, the editor, and a picture, never in a release build. | Done | `debug.rs`: `Renderer::set_draws` gives the renderer the list; its shapes become quads on the UI canvas, under the UI's and after the light and post passes, a line a turned quad squared off at its ends, a filled circle the `circle` atlas, text through argus-ui's `label`. The daemon gives the list to its window, stream, pictures, and marks; the game and the web page give none. | argus-daemon `tests/draws.rs` |
 | The agent reads them. | Done | `SemanticFrame::with_debug`: the frame's `debug`, each shape in the frame's pixels with the system that drew it, those off the frame counted, past 40 counted. | argus-daemon `tests/draws.rs` |
 
+## 2D staples, item 3: parallax
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| A camera-relative scroll factor on sprites and tile layers. | Done | `Parallax` (`factor`, `origin`) on a sprite's entity, and `Extra::parallax`/`parallax_origin` on a tile: `parallax_shift` moves each by `(camera - origin) * (1 - factor)`, the camera as this frame draws it (interpolated), after the sprite's own interpolation. The semantic frame puts a parallax sprite where it is drawn. | argus-daemon `tests/parallax.rs` |
+
 ## Known limitations, stated so they are decisions
 
 - The tests that need a GPU skip only when the machine has no adapter at all. Before item 11 they skipped on any failure to start the renderer, so a renderer that could not build its pipeline passed every test; item 11 found that when a binding change broke the pipeline and every render test still passed.

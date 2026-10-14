@@ -126,6 +126,32 @@ impl Default for Sprite {
     }
 }
 
+/// A sprite drawn as if far away or near (2D staples item 3).
+#[derive(Component, Clone, Copy, Debug, PartialEq)]
+#[repr(C)]
+#[argus(
+    doc = "Draws the entity's Sprite as if far away or near: it crosses the screen factor times as fast as the world does when the camera moves (0.5 a far hill, 0 the sky, above 1 a foreground), and is where its Transform says when the camera's centre is at origin. Drawing only: what it collides with or overlaps is where its Transform is"
+)]
+pub struct Parallax {
+    /// How fast it crosses the screen, against the world.
+    #[argus(
+        doc = "How fast it crosses the screen as the camera moves, against the world: 1, 1 with it; below 1 slower (far); 0 not at all; above 1 faster (near)"
+    )]
+    pub factor: Vec2,
+    /// Where the camera's centre is when it is drawn where it is.
+    #[argus(doc = "Where the camera's centre is when it is drawn where its Transform says")]
+    pub origin: Vec2,
+}
+
+impl Default for Parallax {
+    fn default() -> Self {
+        Parallax {
+            factor: Vec2::new(1.0, 1.0),
+            origin: Vec2::ZERO,
+        }
+    }
+}
+
 /// The view comes from a camera entity (item 7, `argus-camera`): the active
 /// camera with the highest priority, its position plus its shake.
 pub use argus_camera::{Background, Camera, CameraShake};
@@ -134,6 +160,7 @@ use argus_particles::{lut_index, ParticleStore, LUT};
 /// Register the renderer's components (and the camera's, which it reads).
 pub fn register(world: &mut World) -> argus_ecs::Result<()> {
     world.register::<Sprite>()?;
+    world.register::<Parallax>()?;
     world.register::<Describe>()?;
     argus_material::register(world)?;
     argus_camera::register(world)?;
@@ -534,6 +561,25 @@ pub struct Extra {
     pub size: [f32; 2],
     /// Draw order.
     pub z: f32,
+    /// A parallax factor (2D staples item 3): it is drawn shifted by the
+    /// camera's centre less `parallax_origin`, times 1 less this. 1, 1 for
+    /// none.
+    pub parallax: [f32; 2],
+    /// Where the camera's centre is when it is drawn where it is.
+    pub parallax_origin: [f32; 2],
+}
+
+/// Where something with a parallax factor is drawn for a camera centred
+/// at `center` (2D staples item 3): shifted by `(center - origin) * (1 -
+/// factor)`, so it crosses the screen `factor` times as fast as the world.
+pub fn parallax_shift(center: [f32; 2], factor: [f32; 2], origin: [f32; 2]) -> [f32; 2] {
+    if factor == [1.0, 1.0] {
+        return [0.0, 0.0];
+    }
+    [
+        (center[0] - origin[0]) * (1.0 - factor[0]),
+        (center[1] - origin[1]) * (1.0 - factor[1]),
+    ]
 }
 
 /// An instance's frame drawn once (not repeated).
@@ -1179,6 +1225,14 @@ impl Renderer {
             // StrId -> atlas index (u32::MAX for a missing atlas), resolved once per name.
             let mut atlas_of: HashMap<StrId, u32> = HashMap::new();
             let mut kind_of: HashMap<StrId, u32> = HashMap::new();
+            // Sprites drawn as if far or near (2D staples item 3).
+            let mut far: HashMap<Entity, Parallax> = HashMap::new();
+            if let Some(pc) = world.component_id_of::<Parallax>() {
+                let _ = world.query().has(pc).each::<(&Parallax,)>(|e, (p,)| {
+                    far.insert(e, *p);
+                });
+            }
+            let view_center = center;
             let prev = &self.prev;
             let colors = &mut self.colors;
             let gpu = &self.gpu;
@@ -1200,6 +1254,17 @@ impl Renderer {
                         y = py + (y - py) * alpha;
                         rot = pr + (rot - pr) * alpha;
                         interpolated += 1;
+                    }
+                }
+                if !far.is_empty() {
+                    if let Some(p) = far.get(&e) {
+                        let d = parallax_shift(
+                            view_center,
+                            [p.factor.x, p.factor.y],
+                            [p.origin.x, p.origin.y],
+                        );
+                        x += d[0];
+                        y += d[1];
                     }
                 }
                 if !s.visible {
@@ -1493,10 +1558,11 @@ impl Renderer {
                 } else {
                     zb | 0x8000_0000
                 } as u64;
+                let d = parallax_shift(center, x.parallax, x.parallax_origin);
                 instances.push((
                     (zo << 32) | ai as u64,
                     Instance {
-                        pos_size: [x.pos[0], x.pos[1], x.size[0], x.size[1]],
+                        pos_size: [x.pos[0] + d[0], x.pos[1] + d[1], x.size[0], x.size[1]],
                         rot_z: [0.0, x.z, 0.5, 0.5],
                         uv,
                         color,

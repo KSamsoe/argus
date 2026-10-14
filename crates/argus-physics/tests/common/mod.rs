@@ -130,6 +130,7 @@ impl Rig {
                 tileset: Some("tiles/set".into()),
                 z: 0.0,
                 collision: true,
+                parallax: [1.0, 1.0],
             }],
         )
         .unwrap();

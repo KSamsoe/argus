@@ -89,9 +89,11 @@ pub fn open(root: &Path, rel: &str) -> Result<MapFile> {
                 tileset: l.tileset.clone(),
                 z: l.z,
                 collision: l.collision,
+                parallax: l.parallax,
             })
             .collect(),
         runtime: false,
+        parallax_origin: map.parallax_origin,
     };
     let mut m = MapFile::in_memory(root, rel, index);
     let c = m.index.chunk;

@@ -395,11 +395,32 @@ pub fn semantic(world: &World, spec: &FrameSpec) -> SemanticFrame {
     };
     let mut pivots: HashMap<(StrId, u32), [f32; 2]> = HashMap::new();
     let mut looks: HashMap<(StrId, u32, StrId, StrId, StrId), Rc<str>> = HashMap::new();
+    // Sprites drawn as if far or near (2D staples item 3): where they are drawn.
+    let mut far: HashMap<Entity, crate::Parallax> = HashMap::new();
+    if let Some(pc) = world.component_id_of::<crate::Parallax>() {
+        let _ = world
+            .query()
+            .has(pc)
+            .each::<(&crate::Parallax,)>(|e, (p,)| {
+                far.insert(e, *p);
+            });
+    }
     let mut add =
         |e: Entity, pos: [f32; 2], rot: f32, scale: [f32; 2], s: &Sprite, cands: &mut Vec<Cand>| {
             if !s.visible {
                 return;
             }
+            let pos = match far.get(&e) {
+                Some(p) => {
+                    let d = crate::parallax_shift(
+                        view.center,
+                        [p.factor.x, p.factor.y],
+                        [p.origin.x, p.origin.y],
+                    );
+                    [pos[0] + d[0], pos[1] + d[1]]
+                }
+                None => pos,
+            };
             let p = *pivots
                 .entry((s.atlas, s.frame))
                 .or_insert_with(|| pivot_of(s.atlas, s.frame));

@@ -2731,6 +2731,18 @@ impl Daemon {
                 tileset: l["tileset"].as_str().map(str::to_string),
                 z: l["z"].as_f64().unwrap_or(0.0) as f32,
                 collision: l["collision"].as_bool().unwrap_or(false),
+                parallax: match &l["parallax"] {
+                    Json::Null => [1.0, 1.0],
+                    Json::Number(n) => {
+                        let f = n.as_f64().unwrap_or(1.0) as f32;
+                        [f, f]
+                    }
+                    Json::Array(a) if a.len() == 2 => [
+                        a[0].as_f64().unwrap_or(1.0) as f32,
+                        a[1].as_f64().unwrap_or(1.0) as f32,
+                    ],
+                    _ => return Err(bad_params("a layer's parallax is [x, y] or a number")),
+                },
             });
         }
         let map = argus_tiles::MapFile::create(
@@ -3081,6 +3093,8 @@ impl Daemon {
                 pos: t.pos,
                 size: [t.size, t.size],
                 z: t.z,
+                parallax: t.parallax,
+                parallax_origin: t.parallax_origin,
             }));
         }
         out

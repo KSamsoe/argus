@@ -373,10 +373,17 @@ pub struct TileDraw {
     pub size: f32,
     /// Draw order.
     pub z: f32,
+    /// Its layer's parallax factor (2D staples item 3): the renderer draws
+    /// it shifted by `(camera - parallax_origin) * (1 - parallax)`.
+    pub parallax: [f32; 2],
+    /// Its map's parallax origin in the world.
+    pub parallax_origin: [f32; 2],
 }
 
 /// The tiles of `map` that fall in a view (centre and half extents in
-/// world units), placed with the map's top-left corner at `origin`.
+/// world units), placed with the map's top-left corner at `origin`. A
+/// parallax layer's are the ones it shows where it is drawn, with a
+/// margin, since the renderer shifts it by the camera between ticks.
 pub fn visible(
     map: &mut MapFile,
     origin: [f32; 2],
@@ -385,36 +392,50 @@ pub fn visible(
 ) -> Result<Vec<TileDraw>> {
     let ts = map.index.tile_size;
     let (w, h) = (map.index.width as f32, map.index.height as f32);
-    // World x grows with columns; world y shrinks as rows go down.
-    let c0 = ((view_center[0] - view_half[0] - origin[0]) / ts)
-        .floor()
-        .clamp(0.0, w);
-    let c1 = ((view_center[0] + view_half[0] - origin[0]) / ts)
-        .ceil()
-        .clamp(0.0, w);
-    let r0 = ((origin[1] - (view_center[1] + view_half[1])) / ts)
-        .floor()
-        .clamp(0.0, h);
-    let r1 = ((origin[1] - (view_center[1] - view_half[1])) / ts)
-        .ceil()
-        .clamp(0.0, h);
+    // The cells under a view: world x grows with columns; world y shrinks
+    // as rows go down.
+    let rect_at = |c: [f32; 2], half: [f32; 2]| -> Option<Rect> {
+        let c0 = ((c[0] - half[0] - origin[0]) / ts).floor().clamp(0.0, w);
+        let c1 = ((c[0] + half[0] - origin[0]) / ts).ceil().clamp(0.0, w);
+        let r0 = ((origin[1] - (c[1] + half[1])) / ts).floor().clamp(0.0, h);
+        let r1 = ((origin[1] - (c[1] - half[1])) / ts).ceil().clamp(0.0, h);
+        if c1 <= c0 || r1 <= r0 {
+            return None;
+        }
+        Some(Rect::new(
+            c0 as u32,
+            r0 as u32,
+            (c1 - c0) as u32,
+            (r1 - r0) as u32,
+        ))
+    };
+    let plain = rect_at(view_center, view_half);
+    let po = map.index.parallax_origin;
+    let porigin = [origin[0] + po[0], origin[1] + po[1]];
     let mut out = Vec::new();
-    if c1 <= c0 || r1 <= r0 {
-        return Ok(out);
-    }
-    let rect = Rect::new(c0 as u32, r0 as u32, (c1 - c0) as u32, (r1 - r0) as u32);
-    let layers: Vec<(usize, Option<String>, f32)> = map
+    let layers: Vec<(usize, Option<String>, f32, [f32; 2])> = map
         .index
         .layers
         .iter()
         .enumerate()
-        .map(|(i, l)| (i, l.tileset.clone(), l.z))
+        .map(|(i, l)| (i, l.tileset.clone(), l.z, l.parallax))
         .collect();
-    for (li, tileset, z) in layers {
+    for (li, tileset, z, parallax) in layers {
         let Some(tileset) = tileset else { continue };
         if !map.layer_visible(li) {
             continue;
         }
+        let rect = if parallax == [1.0, 1.0] {
+            plain
+        } else {
+            // Where it is drawn, the view seen from it.
+            let c = [
+                view_center[0] - (view_center[0] - porigin[0]) * (1.0 - parallax[0]),
+                view_center[1] - (view_center[1] - porigin[1]) * (1.0 - parallax[1]),
+            ];
+            rect_at(c, [view_half[0] * 1.25 + ts, view_half[1] * 1.25 + ts])
+        };
+        let Some(rect) = rect else { continue };
         let cells = map.get(li, rect)?;
         for (i, t) in cells.into_iter().enumerate() {
             if t == 0 {
@@ -430,6 +451,8 @@ pub fn visible(
                 ],
                 size: ts,
                 z,
+                parallax,
+                parallax_origin: porigin,
             });
         }
     }

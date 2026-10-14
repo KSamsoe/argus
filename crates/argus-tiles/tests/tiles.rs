@@ -36,6 +36,7 @@ fn layer(name: &str, tileset: Option<&str>, collision: bool) -> LayerDef {
         tileset: tileset.map(str::to_string),
         z: 0.0,
         collision,
+        parallax: [1.0, 1.0],
     }
 }
 
@@ -333,6 +334,58 @@ fn blob47_uses_the_eight_neighbours_with_corners_only_between_edges() {
         r.failed[0].error.r#ref.as_deref(),
         Some("assets/tiles/cave.toml:3")
     );
+}
+
+/// 2D staples item 3: a layer's parallax is kept in the index, and the
+/// tiles it shows are the ones under the view as it is drawn.
+#[test]
+fn a_parallax_layer_is_saved_and_shows_the_tiles_where_it_is_drawn() {
+    let dir = project("parallax");
+    let mut far = layer("far", Some("tiles/x"), false);
+    far.parallax = [0.5, 0.5];
+    let mut m = MapFile::create(
+        &dir,
+        "m.tilemap.toml",
+        200,
+        20,
+        1.0,
+        16,
+        2,
+        vec![layer("near", Some("tiles/x"), false), far],
+    )
+    .unwrap();
+    m.fill(0, Rect::new(0, 0, 200, 20), 1).unwrap();
+    m.fill(1, Rect::new(0, 0, 200, 20), 2).unwrap();
+    m.save().unwrap();
+    // The index is the person's: the origin is written into it by hand.
+    let path = dir.join("m.tilemap.toml");
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(text.contains("parallax = [0.5, 0.5]"), "{text}");
+    let text = text.replace("cell = 2\n", "cell = 2\nparallax_origin = [0, -10]\n");
+    std::fs::write(&path, text).unwrap();
+    let mut m = MapFile::open(&dir, "m.tilemap.toml").unwrap();
+    assert_eq!(m.index.layers[1].parallax, [0.5, 0.5]);
+    assert_eq!(m.index.layers[0].parallax, [1.0, 1.0]);
+    assert_eq!(m.index.parallax_origin, [0.0, -10.0]);
+
+    // The camera at x 100, 10 tall: the near layer shows columns 95..105;
+    // the far one is drawn 50 units right, so it shows the columns about
+    // 50 (and a margin, for the frames between ticks).
+    let v = visible(&mut m, [0.0, 0.0], [100.0, -10.0], [5.0, 5.0]).unwrap();
+    let cols = |frame: u32| -> Vec<f32> {
+        v.iter()
+            .filter(|t| t.frame == frame)
+            .map(|t| t.pos[0])
+            .collect()
+    };
+    let (near, far) = (cols(0), cols(1));
+    assert!(near.iter().all(|x| (95.0..105.0).contains(x)), "{near:?}");
+    assert!(
+        far.contains(&50.5) && far.iter().all(|x| (40.0..60.0).contains(x)),
+        "{far:?}"
+    );
+    let t = v.iter().find(|t| t.frame == 1).unwrap();
+    assert_eq!((t.parallax, t.parallax_origin), ([0.5, 0.5], [0.0, -10.0]));
 }
 
 #[test]

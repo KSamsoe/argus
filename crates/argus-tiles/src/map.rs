@@ -18,7 +18,13 @@
 //! tileset   = "tiles/cave"    # a sprite asset: tile n is frame n - 1, 0 is empty
 //! z         = 0.0
 //! collision = true            # its tiles' solid / one_way properties collide
+//! parallax  = [0.5, 0.5]      # moves at half the world's speed (default 1)
 //! ```
+//!
+//! A layer's `parallax` (2D staples item 3) is drawing only: it is drawn
+//! shifted by the camera's distance from the map's `parallax_origin`
+//! (world units from its top-left corner, y up; default the corner) times
+//! one less the factor, and its cells collide where they are.
 //!
 //! The folder holds one file per non-empty chunk, `<layer>/<cx>_<cy>.bin`
 //! (little-endian cells, row-major, `chunk * chunk` of them), and
@@ -81,6 +87,10 @@ pub struct LayerDef {
     pub z: f32,
     /// Whether its tiles collide.
     pub collision: bool,
+    /// How fast it moves across the screen as the camera moves, against
+    /// the world's (2D staples item 3): 1, 1 with the world, below 1
+    /// slower (far), 0 not at all, above 1 faster (near). Drawing only.
+    pub parallax: [f32; 2],
 }
 
 /// The text index.
@@ -104,6 +114,33 @@ pub struct MapIndex {
     pub layers: Vec<LayerDef>,
     /// The cells are the run's, written by scripts, never saved.
     pub runtime: bool,
+    /// Where the camera's centre is when its parallax layers are drawn
+    /// where their cells are: world units from the map's top-left corner,
+    /// y up.
+    pub parallax_origin: [f32; 2],
+}
+
+/// A `parallax` or a `parallax_origin`: `[x, y]`, or one number for both.
+fn pair(
+    v: Option<&toml_edit::Item>,
+    what: &str,
+    d: [f32; 2],
+) -> std::result::Result<[f32; 2], String> {
+    let Some(v) = v else { return Ok(d) };
+    let num = |v: &toml_edit::Value| v.as_float().or(v.as_integer().map(|i| i as f64));
+    if let Some(n) = v.as_value().and_then(num) {
+        return Ok([n as f32, n as f32]);
+    }
+    if let Some(a) = v.as_array() {
+        let n: Vec<f64> = a.iter().filter_map(num).collect();
+        if a.len() == 2 && n.len() == 2 {
+            return Ok([n[0] as f32, n[1] as f32]);
+        }
+    }
+    Err(format!(
+        "{what} = {}; it is [x, y], or one number for both",
+        v.to_string().trim()
+    ))
 }
 
 /// 64-bit FNV-1a.
@@ -297,6 +334,7 @@ impl MapFile {
                 hash: String::new(),
                 layers,
                 runtime: false,
+                parallax_origin: [0.0, 0.0],
             },
             manifest: BTreeMap::new(),
             loaded: HashMap::new(),
@@ -364,6 +402,7 @@ impl MapFile {
                         .get("collision")
                         .and_then(|v| v.as_bool())
                         .unwrap_or(false),
+                    parallax: pair(t.get("parallax"), "parallax", [1.0, 1.0]).map_err(bad)?,
                 });
             }
         }
@@ -412,6 +451,8 @@ impl MapFile {
                 .get("runtime")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false),
+            parallax_origin: pair(doc.get("parallax_origin"), "parallax_origin", [0.0, 0.0])
+                .map_err(bad)?,
         };
         if !matches!(index.cell, 1 | 2 | 4) {
             return Err(bad(format!(
@@ -888,6 +929,16 @@ impl MapFile {
         if i.runtime {
             d["runtime"] = value(true);
         }
+        let two = |p: [f32; 2]| {
+            let mut a = toml_edit::Array::new();
+            for x in p {
+                a.push(x.to_string().parse::<f64>().unwrap_or(0.0));
+            }
+            value(a)
+        };
+        if i.parallax_origin != [0.0, 0.0] {
+            d["parallax_origin"] = two(i.parallax_origin);
+        }
         let mut layers = ArrayOfTables::new();
         for l in &i.layers {
             let mut t = Table::new();
@@ -897,6 +948,9 @@ impl MapFile {
             }
             t["z"] = float(l.z);
             t["collision"] = value(l.collision);
+            if l.parallax != [1.0, 1.0] {
+                t["parallax"] = two(l.parallax);
+            }
             layers.push(t);
         }
         d["layers"] = Item::ArrayOfTables(layers);

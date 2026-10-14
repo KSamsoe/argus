@@ -194,7 +194,7 @@ fn glow() -> Vec<u32> {
 fn level_tmx() -> String {
     format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
-<map version="1.10" tiledversion="1.11.0" orientation="orthogonal" renderorder="right-down" width="6" height="4" tilewidth="8" tileheight="8" infinite="0" nextlayerid="9" nextobjectid="3">
+<map version="1.10" tiledversion="1.11.0" orientation="orthogonal" renderorder="right-down" width="6" height="4" tilewidth="8" tileheight="8" infinite="0" nextlayerid="9" nextobjectid="3" parallaxoriginx="16" parallaxoriginy="8">
  <properties>
   <property name="music" value="cave"/>
  </properties>
@@ -215,7 +215,7 @@ fn level_tmx() -> String {
 {}
 </data>
  </layer>
- <layer id="2" name="back" width="6" height="4">
+ <layer id="2" name="back" width="6" height="4" parallaxx="0.5" parallaxy="0.25">
   <data encoding="base64" compression="zlib">
    {}
   </data>
@@ -223,7 +223,7 @@ fn level_tmx() -> String {
  <layer id="3" name="mixed" width="6" height="4">
   <data encoding="base64" compression="gzip">{}</data>
  </layer>
- <group id="4" name="fx" offsetx="8" offsety="0" visible="0">
+ <group id="4" name="fx" offsetx="8" offsety="0" visible="0" parallaxx="2">
   <layer id="5" name="glow" width="6" height="4" opacity="0.5">
    <properties>
     <property name="z" type="float" value="-2"/>
@@ -254,6 +254,7 @@ fn level_tmj() -> String {
     format!(
         r#"{{ "type": "map", "version": "1.10", "orientation": "orthogonal", "renderorder": "right-down",
   "width": 6, "height": 4, "tilewidth": 8, "tileheight": 8, "infinite": false,
+  "parallaxoriginx": 16, "parallaxoriginy": 8,
   "properties": [ {{ "name": "music", "type": "string", "value": "cave" }} ],
   "tilesets": [
     {{ "firstgid": 1, "source": "cave.tsj" }},
@@ -264,10 +265,11 @@ fn level_tmj() -> String {
     {{ "type": "tilelayer", "id": 1, "name": "ground", "width": 6, "height": 4, "opacity": 1, "visible": true, "x": 0, "y": 0,
        "properties": [ {{ "name": "collision", "type": "bool", "value": true }} ], "data": [{}] }},
     {{ "type": "tilelayer", "id": 2, "name": "back", "width": 6, "height": 4, "opacity": 1, "visible": true, "x": 0, "y": 0,
+       "parallaxx": 0.5, "parallaxy": 0.25,
        "encoding": "base64", "compression": "zlib", "data": "{}" }},
     {{ "type": "tilelayer", "id": 3, "name": "mixed", "width": 6, "height": 4, "opacity": 1, "visible": true, "x": 0, "y": 0,
        "encoding": "base64", "compression": "gzip", "data": "{}" }},
-    {{ "type": "group", "id": 4, "name": "fx", "offsetx": 8, "offsety": 0, "opacity": 1, "visible": false, "layers": [
+    {{ "type": "group", "id": 4, "name": "fx", "offsetx": 8, "offsety": 0, "opacity": 1, "visible": false, "parallaxx": 2, "layers": [
       {{ "type": "tilelayer", "id": 5, "name": "glow", "width": 6, "height": 4, "opacity": 0.5, "visible": true, "x": 0, "y": 0,
          "properties": [ {{ "name": "z", "type": "float", "value": -2 }} ], "data": [{}] }} ] }},
     {{ "type": "objectgroup", "id": 6, "name": "spawns", "opacity": 1, "visible": true, "objects": [
@@ -433,6 +435,13 @@ fn a_map_imports_with_its_layers_tilesets_and_objects_exposed() {
     assert_eq!(layers[4]["z"], -2.0);
     assert_eq!(layers[4]["visible"], false);
     assert_eq!(layers[4]["kind"], "tiles");
+    // Parallax (2D staples item 3): a layer's own factors, a group's
+    // multiplied into its layers, and the map's origin in world units from
+    // its top-left corner (16, 8 px at 8 px a tile, y up).
+    assert_eq!(layers[0]["parallax"], serde_json::json!([1.0, 1.0]));
+    assert_eq!(layers[1]["parallax"], serde_json::json!([0.5, 0.25]));
+    assert_eq!(layers[4]["parallax"], serde_json::json!([2.0, 1.0]));
+    assert_eq!(j["parallax_origin"], serde_json::json!([2.0, -1.0]));
     let tl = j["tiled_layers"].as_array().unwrap();
     assert_eq!(tl[2]["tilesets"], serde_json::json!(["cave", "Deco items"]));
     assert_eq!(
