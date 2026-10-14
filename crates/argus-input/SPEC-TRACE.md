@@ -94,6 +94,12 @@ In the daemon: `Daemon::device_input(events)` is the one entry point; `poll_devi
 |---|---|---|---|
 | What a script reads of the outside world is the run's input. | Done | `record_saves` journals a tick's read of the host's saves on `SAVES_CHANNEL` when the tick runs for the first time; a re-run reissues it into `saves_read` for that tick. Never a `host.message`, never counted toward a turn. | argus-daemon `tests/save_slots.rs` |
 
+## 2D staples, item 5: idle ticks in the journal
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| The time between turns is input. | Done | `Command::Idle {ticks}` (kind 8), journaled for the coming turn, one entry a gap (`record_idle` adds to the last when it is that turn's); `idle_due` counts those ahead of the journal's place, which a re-run turn owes. Idling after a seek back branches the run, as a key does. | argus-daemon `tests/between_turns.rs` |
+
 ## Known limitations, stated so they are decisions
 
 - Keyboard and mouse arrive only through the daemon's window; gamepads are polled only while a window is open.

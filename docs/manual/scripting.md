@@ -105,6 +105,7 @@ From `examples/swarm/systems/bullets.luau`. The keys:
 | `rng` | | The name of its random stream, for `q:rng()`. |
 | `clock` | | `continuous` or `discrete`, in a scene that has both; by default the scene's own clock. |
 | `unfrozen` | | `true` runs it on ticks that `q:freeze()` stopped (a pause menu, the UI). |
+| `between_turns` | | `true`: in a turn-based scene it also runs on the idle ticks between turns, and takes no time on a turn (`q.dt` 0). For what should move while the game waits. |
 | `on_load` | | `true` also runs it once when the scene loads, before the first tick (a generated floor). |
 
 Two rules about declarations catch people out:

@@ -109,6 +109,7 @@ pub(crate) fn install(
     });
     let mut desc = SystemDesc::new(SYSTEM, Stage::Late)
         .on_load()
+        .between_turns()
         .after(argus_anim::SYSTEM)
         .writes(ids.skeleton)
         .writes(ids.part)

@@ -413,6 +413,13 @@ fn assemble_layers(
                 clock.kind == ClockKind::Discrete,
             )));
             argus_input::install(&mut world, &mut sched, state.clone())?;
+            // Idle ticks between turns are the run's input (2D staples
+            // item 5): recorded live, run again before a re-run turn.
+            let (due, rec) = (state.clone(), state.clone());
+            sched.on_idle(
+                Box::new(move |turn| due.borrow().idle_due(turn)),
+                Box::new(move |turn, n| rec.borrow_mut().record_idle(turn, n)),
+            );
             Some(state)
         }
         None => None,

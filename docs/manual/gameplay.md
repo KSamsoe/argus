@@ -114,7 +114,11 @@ On a **continuous** clock (`continuous@60`, the default) the sim ticks 60 times 
 
 On a **discrete** clock (`clock = "discrete"`, as in Delve) the sim stands still until something asks for a turn. While the game is playing, each press of a bound key passes one turn, and that turn's systems see the press. A release passes no turn, and neither does a key that is bound to nothing. A mouse move passes no turn either: the `pointer` holds its place, and the next turn (a click's, or a key's) reads it there. The page and the window take the mouse's moves over the game whatever has the keyboard's focus. A scenario's `t:advance`, `argus run turns=1`, and `sim.advance` also pass turns. `argus input inject` on a discrete clock only queues the action for the next turn; it does not pass one by itself.
 
-On a discrete clock `q.dt` is 1 and `q.time` counts turns. Anything measured in seconds (a tween's duration, a post effect's decay) moves one second per turn.
+On a discrete clock `q.dt` is 1 and `q.time` counts turns.
+
+**Between turns.** A turn-based game still moves while it waits. Animators, particles, tweens, the camera, timelines, and the post effects move *between* turns. A script's system joins them with `between_turns = true`. On a turn these systems react to what the turn changed, but no time passes for them (`q.dt` is 0). Between turns, while the game is playing in a window or a browser, idle ticks run at the clock's rate (60 a second): only these systems run, with `q.dt` 1/60, and no turn passes. So a slide that a turn starts plays out after the turn, and the hero idles while the player thinks.
+
+Idle ticks are part of the run. The ones between two turns are recorded with the input, so a seek back, a replay, or a bug report runs the same ones before the turn, and the game's world comes out the same. A headless run (a test, an agent's `argus run turns=1`) has no time between turns unless it asks: `t:idle(seconds)` in a scenario, `sim.idle {seconds}` from outside. Keep gameplay off what moves between turns, since how long a player waits is theirs: a turn's outcome should not depend on whether a slide finished.
 
 A press the game should not count as a turn (the one that opens a menu) is handled with `q:freeze()`. From `examples/delve/systems/menu.luau`:
 
@@ -468,7 +472,7 @@ Luau's own `math.random` is switched off (calling it fails, and the error says t
 
 ### Time
 
-A system reads time from `q`: `q.dt` is the seconds this tick covers (1/60 on `continuous@60`, 1 on a discrete clock), `q.time` the sim seconds since the run began, and `q.tick` the tick number. A game with days sets `[time] day` in `argus.toml` and reads `q.day`, `q.day_time` (0 to 1), and `q.day_length`. Gameplay never reads the wall clock.
+A system reads time from `q`: `q.dt` is the seconds this tick covers (1/60 on `continuous@60`, 1 on a discrete clock, and for a system that moves between turns 0 on a turn and 1/60 between turns), `q.time` the sim seconds since the run began, and `q.tick` the tick number. A game with days sets `[time] day` in `argus.toml` and reads `q.day`, `q.day_time` (0 to 1), and `q.day_length`. Gameplay never reads the wall clock.
 
 ### Timers
 

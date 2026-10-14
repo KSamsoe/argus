@@ -50,6 +50,7 @@ pub const CHANGES: &[&str] = &[
     "sim.stop",
     "sim.step",
     "sim.advance",
+    "sim.idle",
     "sim.speed",
     "sim.threads",
     "sim.run_until",

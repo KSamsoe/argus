@@ -33,6 +33,7 @@ pub(crate) fn install(
     let tr = world.component_id_of::<Transform>();
     let gt = world.component_id_of::<GlobalTransform>();
     let mut desc = SystemDesc::new(SYSTEM, Stage::Late)
+        .between_turns()
         .writes(em)
         .rng("particles")
         .last()

@@ -475,6 +475,16 @@ impl Game {
                 self.p.step(n as u64).map_err(|e| e.message)?;
                 self.saves_and_loads();
             }
+        } else if self.prompt.is_none() && kind == ClockKind::Discrete {
+            // Between turns the game moves (2D staples item 5): idle ticks
+            // at the continuous clock's rate, recorded with the input.
+            let hz = self.p.sched.config().hz.max(1.0);
+            self.owed = (self.owed + dt * hz).min(5.0);
+            let n = self.owed.floor();
+            self.owed -= n;
+            if n > 0.0 {
+                self.p.idle(n as u64).map_err(|e| e.message)?;
+            }
         }
         let _ = self.p.sched.present(&mut self.p.world);
         // The game's settings say whether the window fills the screen.

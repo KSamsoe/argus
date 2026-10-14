@@ -483,6 +483,17 @@ impl WebPlayer {
             if n > 0.0 {
                 self.p.step(n as u64).map_err(js)?;
             }
+        } else if run && self.p.sched.driving().kind == argus_sim::ClockKind::Discrete {
+            // Between turns the game moves (2D staples item 5): idle ticks
+            // at the continuous clock's rate, recorded with the input.
+            let dt = self.last_ms.map(|l| (now_ms - l) / 1000.0).unwrap_or(0.0);
+            let hz = self.p.sched.config().hz.max(1.0);
+            self.owed = (self.owed + dt * hz).min(5.0);
+            let n = self.owed.floor();
+            self.owed -= n;
+            if n > 0.0 {
+                self.p.idle(n as u64).map_err(js)?;
+            }
         }
         self.last_ms = Some(now_ms);
         let _ = self.p.sched.present(&mut self.p.world);

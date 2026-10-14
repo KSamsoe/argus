@@ -29,6 +29,7 @@ pub(crate) fn install(
     // tick, so the first frame (and a HUD naming the state) shows it.
     let mut desc = SystemDesc::new(SYSTEM, Stage::Late)
         .on_load()
+        .between_turns()
         .writes(anim)
         .source("argus-anim:update")
         .doc("Runs every Animator's state machine: transitions as field comparisons, clip frames at their rates with anticipation and holds, events by frame, crossfades; writes Sprite.frame. It declares a read of each component its animator files' conditions name once it has compiled them.");

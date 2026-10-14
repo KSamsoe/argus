@@ -56,6 +56,7 @@ pub(crate) fn install(
     };
     let desc = SystemDesc::new(UPDATE, Stage::Late)
         .first()
+        .between_turns()
         .writes(ids.timeline)
         .writes(ids.part)
         .writes(ids.cut)

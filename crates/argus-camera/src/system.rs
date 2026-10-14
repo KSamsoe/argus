@@ -42,6 +42,7 @@ pub(crate) fn install(
         .last()
         .on_load()
         .unfrozen()
+        .between_turns()
         .writes(cam)
         .writes(shake)
         .writes(tr)

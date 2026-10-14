@@ -140,6 +140,11 @@ pub struct SystemDesc {
     /// effects that play during the stop. Every other system skips a
     /// frozen tick.
     pub unfrozen: bool,
+    /// Moves between turns (2D staples item 5): in a turn-based scene it
+    /// runs on the idle ticks between turns ([`crate::Scheduler::idle`]),
+    /// and on a turn it takes no time (its dt is 0). Animators, particles,
+    /// tweens, the camera.
+    pub between_turns: bool,
     /// May change the world in any way through [`SystemCtx::world_mut`]:
     /// a loader that spawns and despawns whole rooms (phase 3 item 6). It
     /// declares what it wrote as it goes ([`SystemCtx::declare`]).
@@ -171,6 +176,7 @@ impl SystemDesc {
             on_load: false,
             first: false,
             unfrozen: false,
+            between_turns: false,
             exclusive: false,
             parallel: false,
             spawns: Vec::new(),
@@ -199,6 +205,12 @@ impl SystemDesc {
     /// Keep running while the sim is frozen.
     pub fn unfrozen(mut self) -> Self {
         self.unfrozen = true;
+        self
+    }
+
+    /// Move between turns in a turn-based scene ([`SystemDesc::between_turns`]).
+    pub fn between_turns(mut self) -> Self {
+        self.between_turns = true;
         self
     }
 

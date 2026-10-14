@@ -185,6 +185,12 @@ Phase 0 item 2, "scheduler with stages, declared write sets, and both clock driv
 |---|---|---|---|
 | Debug shapes are not part of the world. | Done | `draw::Draws`: each system's shapes by name, kept beside the world, never in it, so no digest, keyframe, replay, or save holds them. Off by default; a system keeps at most `MAX_SHAPES` a run, the rest counted. | `draw` units |
 
+## 2D staples, item 5: between turns
+
+| Spec | Status | Where | Test |
+|---|---|---|---|
+| A turn-based game's animators, particles, and tweens move while it waits for a turn; idle time is in the run (Kevin). | Done | `SystemDesc::between_turns`; `Scheduler::idle` and `run_idle_tick` (only those systems, the continuous clock, no frame end); on a turn they get dt 0; `on_idle` connects the host's journal: `run_tick` runs the recorded idle ticks still owed before a turn, and live ones are recorded. `frame` runs one a frame while a turn-based scene plays. | argus-daemon `tests/between_turns.rs` |
+
 ## Known limitations, stated so they are decisions
 
 - One scheduler per world; forks need their own scheduler built from the same system list. The daemon piece owns that pairing.

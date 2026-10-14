@@ -193,6 +193,9 @@ pub struct SystemDecl {
     pub on_load: bool,
     /// `unfrozen = true`: keep running during a hit-stop.
     pub unfrozen: bool,
+    /// `between_turns = true`: in a turn-based scene, run on the idle ticks
+    /// between turns, and take no time on a turn (2D staples item 5).
+    pub between_turns: bool,
     /// The `run` function.
     pub run: RegistryKey,
     /// `file:line`.
@@ -232,9 +235,20 @@ fn bad(msg: impl Into<String>, hint: &str, source: Option<String>) -> mlua::Erro
 }
 
 /// The keys a `system "name" { ... }` declaration takes.
-pub(crate) const SYSTEM_KEYS: [&str; 12] = [
-    "stage", "run", "after", "before", "reads", "writes", "spawns", "clock", "rng", "doc",
-    "on_load", "unfrozen",
+pub(crate) const SYSTEM_KEYS: [&str; 13] = [
+    "stage",
+    "run",
+    "after",
+    "before",
+    "reads",
+    "writes",
+    "spawns",
+    "clock",
+    "rng",
+    "doc",
+    "on_load",
+    "unfrozen",
+    "between_turns",
 ];
 
 fn here(lua: &Lua) -> String {
@@ -628,6 +642,7 @@ pub(crate) fn install_globals(lua: &Lua) -> LuaResult<()> {
                     doc: spec.get::<Option<String>>("doc")?.unwrap_or_default(),
                     on_load: spec.get::<Option<bool>>("on_load")?.unwrap_or(false),
                     unfrozen: spec.get::<Option<bool>>("unfrozen")?.unwrap_or(false),
+                    between_turns: spec.get::<Option<bool>>("between_turns")?.unwrap_or(false),
                     run: lua.create_registry_value(run)?,
                     source: source.clone(),
                     file: lua

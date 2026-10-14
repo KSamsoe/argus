@@ -40,6 +40,10 @@ Built (2026-10-14): `q:saves()`, `q:delete_save(name)`, and `q:save(name, summar
 
 - In a turn-based game, animators, particles, and tweens move while the game waits for the next turn, not only on turns. Decided with Kevin before it is built: what this does to determinism, replays, and digests.
 
+Kevin, 2026-10-14: idle time is in the run. Between turns the continuous clock ticks for what moves between turns, the sim frozen, and those ticks are recorded with the input, one entry a gap, so replays, seeks, and reports match and digests stay whole; a headless run sees no idle time unless it asks. (The other choices were the renderer animating on wall time outside the run, or leaving it frozen.)
+
+Built (2026-10-14): `SystemDesc::between_turns` (and a script's `between_turns = true`) on the animators, particles, tweens, the camera, skeletons, timelines, and the post effects. `Scheduler::idle` runs idle ticks: only those systems, on the continuous clock, the world's frame and the turn count kept; on a turn they get dt 0. The input journal records each gap (`Command::Idle`, coalesced); before a turn the scheduler asks how many recorded idle ticks are ahead of the journal's place and runs them, so every path that re-runs turns (a seek, a keyframe check, a replay, `run_until`) runs them. The daemon runs one a frame while a turn-based scene plays (`wants_frames`), and answers `sim.idle {ticks | seconds}`; a release build and the web page run them from wall time; a scenario has `t:idle(seconds)`. Tests: argus-daemon `tests/between_turns.rs` (a turn takes no time, a slide plays between turns, a script's system counts idle ticks, a seek back runs the recorded half second again).
+
 ## Docs
 
 - The gameplay chapter (queries, colliders, saves), the presentation chapter (debug drawing, parallax), the references, and the file formats.

@@ -501,6 +501,12 @@ local function make_t(ctx, spec, seed)
   end
   function t:run_until(opts) return run_until(ctx, opts) end
   function t:advance(opts) return advance(ctx, opts) end
+  -- The time between a turn-based game's turns (2D staples item 5): what
+  -- moves between turns moves; no turn passes.
+  function t:idle(seconds)
+    ctx.ran_any = true
+    return callm("sim.idle", { seconds = seconds or 1 })
+  end
   function t:step(n) return run_until(ctx, { frames = n or 1 }) end
   function t:call(method, params) return callm(method, params) end
   function t:log(msg) table.insert(self.messages, tostring(msg)) end

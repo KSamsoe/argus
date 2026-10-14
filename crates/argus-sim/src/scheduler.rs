@@ -439,6 +439,8 @@ pub struct SystemInfo {
     pub first: bool,
     /// Runs while the sim is frozen.
     pub unfrozen: bool,
+    /// Moves between turns (2D staples item 5).
+    pub between_turns: bool,
 }
 
 /// Runs systems over a world on two clocks.
@@ -460,6 +462,14 @@ pub struct Scheduler {
     quiet: bool,
     /// A system froze the rest of the tick being run (`SystemCtx::freeze`).
     frozen: bool,
+    /// An idle tick is running: only the systems that move between turns.
+    idling: bool,
+    /// How many recorded idle ticks are owed before a turn, and not yet run
+    /// (a seek's or a replay's), from the host's journal.
+    idle_due: Option<IdleDue>,
+    /// Where idle ticks run live are recorded: the turn they come before,
+    /// and how many.
+    idle_record: Option<IdleRecord>,
     /// Threads a batch may use, resolved from the config.
     threads: usize,
     /// How much a batch must promise to save to run on threads.
@@ -501,6 +511,13 @@ pub struct BatchInfo {
 /// the scheduler, so it can take the sim state: the daemon's keyframes.
 pub type TickEnd = Box<dyn FnMut(&World, &Scheduler)>;
 
+/// How many recorded idle ticks come before turn `t` and have not run yet
+/// (2D staples item 5); the host's journal answers, and counts them run.
+pub type IdleDue = Box<dyn FnMut(u64) -> u64>;
+
+/// Idle ticks run live: the turn they come before, and how many.
+pub type IdleRecord = Box<dyn FnMut(u64, u64)>;
+
 /// What one tick collects while it runs.
 struct TickSamples {
     timings: Vec<SystemSample>,
@@ -528,6 +545,9 @@ impl Scheduler {
             tick_end: None,
             quiet: false,
             frozen: false,
+            idling: false,
+            idle_due: None,
+            idle_record: None,
             threads,
             parallel_floor: PARALLEL_FLOOR,
             threaded: Vec::new(),
@@ -673,6 +693,69 @@ impl Scheduler {
     /// Call `f` at the end of every tick, after the clock counts it.
     pub fn on_tick_end(&mut self, f: TickEnd) {
         self.tick_end = Some(f);
+    }
+
+    /// The host's journal of idle ticks (2D staples item 5): `due` says how
+    /// many recorded idle ticks come before a turn and have not run (a
+    /// seek or a replay runs them first), `record` keeps the ones run live.
+    pub fn on_idle(&mut self, due: IdleDue, record: IdleRecord) {
+        self.idle_due = Some(due);
+        self.idle_record = Some(record);
+    }
+
+    /// Idle ticks (2D staples item 5): in a turn-based scene, `n` ticks of
+    /// the continuous clock between turns in which only the systems that
+    /// move between turns run (animators, particles, tweens, the camera),
+    /// so the game moves while it waits. No turn passes and the world's
+    /// frame stays. They are recorded for the coming turn, so a seek or a
+    /// replay runs the same before it. A continuous scene has none.
+    pub fn idle(&mut self, world: &mut World, n: u64) -> Result<()> {
+        if self.config.driving != ClockKind::Discrete || n == 0 {
+            return Ok(());
+        }
+        for _ in 0..n {
+            self.run_idle_tick(world)?;
+        }
+        let turn = self.discrete.tick;
+        if let Some(f) = self.idle_record.as_mut() {
+            f(turn, n);
+        }
+        Ok(())
+    }
+
+    /// Ticks of the continuous clock run between turns so far.
+    pub fn idle_ticks(&self) -> u64 {
+        self.continuous.tick
+    }
+
+    fn run_idle_tick(&mut self, world: &mut World) -> Result<()> {
+        self.ensure_order()?;
+        let kind = ClockKind::Continuous;
+        let tick = self.continuous.tick;
+        let dt = self.continuous.timestep;
+        let time = self.continuous.time();
+        let mut samples = TickSamples {
+            timings: Vec::new(),
+            spans: Vec::new(),
+        };
+        self.frozen = false;
+        self.skipped.clear();
+        self.idling = true;
+        for stage in [Stage::Input, Stage::Sim, Stage::Late] {
+            self.run_stage(world, stage, kind, tick, time, dt, &mut samples);
+        }
+        let propagated = argus_ecs::hierarchy::propagate_all(world);
+        if propagated.is_ok() {
+            self.run_stage(world, Stage::Hierarchy, kind, tick, time, dt, &mut samples);
+        }
+        self.idling = false;
+        propagated?;
+        // Dead references nulled, as at a frame's end, without ending the
+        // frame: a turn is a frame.
+        world.maintain();
+        world.rebuild_broadphase();
+        self.continuous.tick += 1;
+        Ok(())
     }
 
     /// Whether the last tick was frozen by a system (a hit-stop).
@@ -937,6 +1020,7 @@ impl Scheduler {
                     on_load: s.desc.on_load,
                     first: s.desc.first,
                     unfrozen: s.desc.unfrozen,
+                    between_turns: s.desc.between_turns,
                     parallel: s.desc.parallel,
                     batch: (s.batch != NO_BATCH).then_some(s.batch),
                 });
@@ -1242,6 +1326,11 @@ impl Scheduler {
             }
             report.sim_ticks = n;
         }
+        // A turn-based scene in play moves between turns (2D staples item
+        // 5): an idle tick a frame.
+        if self.playing && !self.paused && self.config.driving == ClockKind::Discrete {
+            self.idle(world, 1)?;
+        }
         report.presented = self.present(world)?;
         Ok(report)
     }
@@ -1326,6 +1415,15 @@ impl Scheduler {
 
     fn run_tick(&mut self, world: &mut World, kind: ClockKind) -> Result<()> {
         self.ensure_order()?;
+        // A turn re-run by a seek or a replay: the idle ticks recorded
+        // before it first (2D staples item 5).
+        if kind == ClockKind::Discrete && self.config.driving == ClockKind::Discrete {
+            let turn = self.discrete.tick;
+            let owed = self.idle_due.as_mut().map_or(0, |f| f(turn));
+            for _ in 0..owed {
+                self.run_idle_tick(world)?;
+            }
+        }
         let started = Instant::now();
         let (a0, b0) = alloc::counters();
         let tick = self.clock(kind).tick;
@@ -1527,11 +1625,28 @@ impl Scheduler {
     ) {
         let order = self.order[stage.index()].clone();
         let keep = |s: &Scheduler, i: usize| {
+            if s.idling {
+                return s.systems[i].enabled && s.systems[i].desc.between_turns;
+            }
             s.systems[i].enabled && s.binds(i, kind) && (!s.frozen || s.systems[i].desc.unfrozen)
         };
         // Would have run but for a freeze: what is held over is for these.
         let frozen_out = |s: &Scheduler, i: usize| {
-            s.frozen && s.systems[i].enabled && s.binds(i, kind) && !s.systems[i].desc.unfrozen
+            !s.idling
+                && s.frozen
+                && s.systems[i].enabled
+                && s.binds(i, kind)
+                && !s.systems[i].desc.unfrozen
+        };
+        // On a turn, what moves between turns takes no time (2D staples
+        // item 5): its time passes on the idle ticks.
+        let turn = kind == ClockKind::Discrete && self.config.driving == ClockKind::Discrete;
+        let dt_of = |s: &Scheduler, i: usize| {
+            if turn && s.systems[i].desc.between_turns {
+                0.0
+            } else {
+                dt
+            }
         };
         let mut at = 0;
         while at < order.len() {
@@ -1564,6 +1679,7 @@ impl Scheduler {
             }
             let t = Instant::now();
             let (a0, b0) = alloc::counters();
+            let dt = dt_of(self, i);
             self.run_system(i, world, stage, kind, tick, time, dt);
             let (a1, b1) = alloc::counters();
             let name = self.systems[i].name.clone();

@@ -190,7 +190,7 @@ pub const TOOLS: &[ToolDoc] = &[
             opt("load", STRING, "a save's name, loaded before anything else"),
             opt("save", STRING, "save the game under this name, after everything else"),
         ],
-        calls: &["sim.load", "sim.stop", "sim.play", "sim.pause", "sim.speed", "timeline.play", "sim.step", "sim.run_until", "sim.advance", "sim.save", "sim.status"],
+        calls: &["sim.load", "sim.stop", "sim.play", "sim.pause", "sim.speed", "timeline.play", "sim.step", "sim.run_until", "sim.advance", "sim.idle", "sim.save", "sim.status"],
     },
     ToolDoc {
         name: "seek",
@@ -1161,6 +1161,15 @@ pub const METHODS: &[MethodDoc] = &[
             opt("n", INTEGER, "default 1"),
         ],
         returns: "sim.status",
+    },
+    MethodDoc {
+        name: "sim.idle",
+        doc: "A turn-based scene's time between turns (2D staples item 5): idle ticks of the continuous clock in which only the systems that move between turns run (animators, particles, tweens, the camera, timelines, and scripts' systems with between_turns = true). No turn passes. They are recorded for the coming turn, so a seek or a replay runs them again; a window in play runs one a frame. A headless run has none unless it asks.",
+        params: &[
+            opt("ticks", INTEGER, "how many; default 1"),
+            opt("seconds", NUMBER, "instead of ticks: that long at the clock's rate"),
+        ],
+        returns: "sim.status, with idled (ticks run) and idle_ticks (all so far)",
     },
     MethodDoc {
         name: "sim.speed",

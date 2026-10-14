@@ -94,6 +94,7 @@ With neither `seed` nor `seeds`, the scene's own seed is used (`seed` in its `sc
 | `t:run_until { event = "player.fell", max_frames = 120 }` | Run until that event happens, at most `max_frames` ticks (100,000 by default). |
 | `t:run_until { sim_time = days(7) }` | Run until the sim clock reaches that time. |
 | `t:advance { by = "turn", n = 1 }` | On a discrete (turn-based) clock, pass n turns. |
+| `t:idle(seconds)` | On a discrete clock, let that much time pass between turns (one second by default): animations, particles, tweens, and the camera move, and no turn passes. A test has no time between turns unless it asks. |
 | `t:status()` | The sim's status now: tick, time, clock, seed, and more. |
 
 `t:run_until` returns a table with `hit` and `ticks`. An event that never comes does **not** fail the run by itself, so check it:

@@ -803,6 +803,31 @@ impl Daemon {
                 self.pump_ticks();
                 Ok(self.sim_status())
             }
+            "sim.idle" => {
+                if self.sched.driving().kind != ClockKind::Discrete {
+                    return Err(ArgusError::new(
+                        argus_sim::codes::WRONG_CLOCK,
+                        "sim.idle is for a turn-based scene",
+                    )
+                    .hint("A continuous scene moves with sim.step; idle ticks are the time between a turn-based game's turns."));
+                }
+                let hz = self.sched.config().hz.max(1.0);
+                let n = match (params.get("ticks"), params.get("seconds")) {
+                    (Some(_), _) => json::u64_param(params, "ticks", 1)?,
+                    (None, Some(_)) => {
+                        (json::f64_param(params, "seconds", 0.0)?.max(0.0) * hz).round() as u64
+                    }
+                    (None, None) => 1,
+                };
+                self.before_ticks();
+                self.sched.idle(&mut self.world, n)?;
+                self.input_branched();
+                self.pump_ticks();
+                let mut out = self.sim_status();
+                out["idled"] = json!(n);
+                out["idle_ticks"] = json!(self.sched.idle_ticks());
+                Ok(out)
+            }
             "sim.speed" => {
                 let x = json::f64_param(params, "x", 1.0)?;
                 let before = self.sched.speed();
@@ -891,12 +916,15 @@ impl Daemon {
         r
     }
 
-    /// One real-time frame while playing on the continuous clock. The
-    /// server calls this at the clock rate; `present` runs every frame.
+    /// One real-time frame while playing: the continuous clock's ticks, or
+    /// a turn-based scene's idle tick between turns (2D staples item 5).
+    /// The server calls this at the clock rate; `present` runs every frame.
     pub fn frame(&mut self) -> Result<()> {
         if self.session.is_some() {
             self.before_ticks();
             self.sched.frame(&mut self.world)?;
+            // An idle tick after a seek back branches the run, as a key does.
+            self.input_branched();
             self.pump_ticks();
         }
         Ok(())
@@ -1027,10 +1055,9 @@ impl Daemon {
 
     /// True while the continuous clock should be driven in real time.
     pub fn wants_frames(&self) -> bool {
-        self.session.is_some()
-            && self.sched.is_playing()
-            && !self.sched.is_paused()
-            && self.sched.config().driving == ClockKind::Continuous
+        // A turn-based scene in play too: it moves between turns (2D
+        // staples item 5).
+        self.session.is_some() && self.sched.is_playing() && !self.sched.is_paused()
     }
 
     /// Seconds per real-time frame.

@@ -1140,6 +1140,9 @@ impl ScriptHost {
         if s.unfrozen {
             desc = desc.unfrozen();
         }
+        if s.between_turns {
+            desc = desc.between_turns();
+        }
         let run: Function = self.lua.registry_value(&s.run).map_err(to_argus)?;
         let lua = self.lua.clone();
         let budget = self.budget.clone();

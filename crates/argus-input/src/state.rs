@@ -275,6 +275,14 @@ pub enum Command {
         text: String,
     },
     /// Text a slot typed while typing (issue 23).
+    /// Idle ticks run before this turn (2D staples item 5): a turn-based
+    /// game moving between turns, journaled so a seek or a replay runs the
+    /// same before the turn.
+    Idle {
+        /// How many.
+        ticks: u64,
+    },
+    /// Text typed: what `slot` typed for this tick (issue 23).
     Text {
         /// Player slot.
         slot: u8,
@@ -1225,7 +1233,43 @@ impl InputState {
             Command::Text { slot, text } => {
                 let _ = self.text_raw(now, *slot, text);
             }
+            // The scheduler runs them, asking `idle_due` before the turn.
+            Command::Idle { .. } => {}
         }
+    }
+
+    /// Idle ticks run live before `turn` (2D staples item 5): journaled,
+    /// one entry a gap between turns. After a seek back, the run branches
+    /// here as it does at any live input.
+    pub fn record_idle(&mut self, turn: u64, ticks: u64) {
+        if self.cursor == self.journal.len() {
+            if let Some(JournalEntry {
+                now,
+                command: Command::Idle { ticks: t },
+            }) = self.journal.last_mut()
+            {
+                if *now == turn {
+                    *t += ticks;
+                    return;
+                }
+            }
+        }
+        self.journal_live(turn, Command::Idle { ticks });
+    }
+
+    /// The recorded idle ticks before `turn` not yet run: those of a run
+    /// being replayed, ahead of the journal's place. A turn run live has
+    /// its idle ticks behind it.
+    pub fn idle_due(&self, turn: u64) -> u64 {
+        self.journal[self.cursor.min(self.journal.len())..]
+            .iter()
+            .take_while(|e| e.now <= turn)
+            .filter(|e| e.now == turn)
+            .map(|e| match e.command {
+                Command::Idle { ticks } => ticks,
+                _ => 0,
+            })
+            .sum()
     }
 
     fn rewrite_recording(&mut self) {
@@ -1805,6 +1849,10 @@ impl JournalEntry {
                 w.u8(*slot);
                 w.str(text);
             }
+            Command::Idle { ticks } => {
+                w.u8(8);
+                w.u64(*ticks);
+            }
         }
     }
 
@@ -1871,6 +1919,7 @@ impl JournalEntry {
                 slot: r.u8()?,
                 text: r.str()?,
             },
+            8 => Command::Idle { ticks: r.u64()? },
             k => return Err(r.bad(format!("input command kind {k}"))),
         };
         Ok(JournalEntry { now, command })

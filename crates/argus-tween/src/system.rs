@@ -33,6 +33,7 @@ pub(crate) fn install(world: &mut World, sched: &mut Scheduler) -> Result<()> {
     let mut st = State::default();
     sched.add_system(
         SystemDesc::new(SYSTEM, Stage::Late)
+            .between_turns()
             .writes(tw)
             .source("argus-tween:update")
             .doc("Advances every Tween by sim time and writes its eased value into its target's field; emits its on_complete event and despawns it when done. Declares a write of each component a tween targets the first time it touches it."),

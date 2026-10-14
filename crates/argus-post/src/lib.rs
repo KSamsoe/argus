@@ -426,6 +426,7 @@ pub fn install(world: &mut World, sched: &mut Scheduler) -> Result<()> {
         SystemDesc::new("post.update", Stage::Late)
             .last()
             .unfrozen()
+            .between_turns()
             .writes(shake)
             .writes(flash)
             .writes(stop)

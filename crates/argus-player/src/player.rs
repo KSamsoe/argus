@@ -339,6 +339,16 @@ impl Player {
         Ok(())
     }
 
+    /// Idle ticks between turns (2D staples item 5): in a turn-based game,
+    /// `n` ticks of the continuous clock in which what moves between turns
+    /// moves; recorded with the input for the coming turn. A host runs them
+    /// as real time passes while it waits for a turn.
+    pub fn idle(&mut self, n: u64) -> Result<()> {
+        self.sched.idle(&mut self.world, n)?;
+        self.pump();
+        Ok(())
+    }
+
     /// Keep the bounded recorder from now on (§15): what a report key or a
     /// crash saves. A release build and the web page start it at open.
     pub fn record(&mut self) {
