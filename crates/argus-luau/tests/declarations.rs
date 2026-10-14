@@ -299,6 +299,28 @@ fn conflicting_redeclaration_is_reported_with_a_hint() {
     ));
 }
 
+/// A game's own component by an engine component's name says the name is
+/// taken, not that a migration would help (the platformer template's
+/// Parallax met the engine's).
+#[test]
+fn a_component_by_an_engine_name_is_told_the_name_is_taken() {
+    let (mut h, mut w, mut s) = host();
+    w.register::<argus_ecs::Transform>().unwrap();
+    assert!(!h.load_source(
+        &mut w,
+        &mut s,
+        "components/looks.luau",
+        "return component \"Transform\" { follow = field.f32 {} }"
+    ));
+    let e = h.errors()[0].clone();
+    assert!(e.message.contains("engine's own"), "{}", e.message);
+    assert!(
+        !e.message.contains("migration") && e.message.contains("Rename yours"),
+        "{}",
+        e.message
+    );
+}
+
 #[test]
 fn globals_are_frozen_and_the_sandbox_holds() {
     let (mut h, mut w, mut s) = host();

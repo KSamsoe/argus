@@ -11,7 +11,7 @@
 --   and along the underside where no other block covers it, grass curled
 --   over its top corners. A one-way platform gets wooden planks instead.
 --   So a block you add, of any size, is dressed the tick it appears.
--- - The backdrop. Each Parallax layer (scenes/level/clouds.toml,
+-- - The backdrop. Each Backdrop layer (scenes/level/clouds.toml,
 --   hills.far.toml, hills.near.toml) keeps `follow` of the camera's
 --   movement, so far hills slide by slower than near ones.
 -- - The hero faces the way it moves (assets/anim/hero.toml picks its
@@ -186,7 +186,7 @@ end
 local function place_backdrop(q)
   local cam = q:entity("@camera"):get("Camera")
   local x = (cam.view_min.x + cam.view_max.x) / 2
-  for _, p, t in q:each("Parallax", "Transform") do
+  for _, p, t in q:each("Backdrop", "Transform") do
     p.slid = (p.slid + p.drift * q.dt) % p.width
     -- Where the layer would be, then moved a whole number of widths so it
     -- and its copy (width to the right) cover the view.
@@ -201,9 +201,9 @@ return system "late.looks" {
   after = { "camera.update" },
   -- Once when the level loads too, so the very first picture is dressed.
   on_load = true,
-  reads = { "KinematicBody", "Collider", "Transform", "Sprite", "Camera", "Parallax" },
-  writes = { "Sprite", "Transform", "GlobalTransform", "Parent", "Parallax" },
-  doc = "Presentation only: dresses every solid block still drawn as a plain rect with tiles of assets/sprites (grass, earth, edges; planks when one-way) as its children; slides the Parallax layers with the camera; turns the hero to face the way it moves; bursts dust (@dust) where it jumps and lands and sparkles (@sparkle) where a coin is taken and at the flag. Writes nothing gameplay reads.",
+  reads = { "KinematicBody", "Collider", "Transform", "Sprite", "Camera", "Backdrop" },
+  writes = { "Sprite", "Transform", "GlobalTransform", "Parent", "Backdrop" },
+  doc = "Presentation only: dresses every solid block still drawn as a plain rect with tiles of assets/sprites (grass, earth, edges; planks when one-way) as its children; slides the Backdrop layers with the camera; turns the hero to face the way it moves; bursts dust (@dust) where it jumps and lands and sparkles (@sparkle) where a coin is taken and at the flag. Writes nothing gameplay reads.",
   run = function(q)
     dress_blocks(q)
     place_backdrop(q)

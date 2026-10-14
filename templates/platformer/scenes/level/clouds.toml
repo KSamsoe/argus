@@ -13,7 +13,7 @@ frame = 1
 size = [24.0, 4.0]
 z = -9.5
 
-[Parallax]
+[Backdrop]
 follow = 0.9
 width = 24.0
 drift = 0.25

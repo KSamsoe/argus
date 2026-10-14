@@ -425,6 +425,20 @@ impl Registry {
             if existing.fields == schema.fields && existing.size == schema.size {
                 return Ok(id);
             }
+            // A game's own component by a name the engine has (0.0.9 added
+            // Parallax, which the platformer template had made its own):
+            // no migration helps, the name is taken.
+            if existing.rust_type.is_some() && schema.rust_type.is_none() {
+                return Err(ArgusError::new(
+                    codes::BAD_SCHEMA,
+                    format!(
+                        "component {:?} is one of the engine's own, so a game cannot declare its own by that name",
+                        schema.name
+                    ),
+                )
+                .hint("Rename yours, here and wherever its scenes, prefabs, and systems name it. A newer engine may add a component by a name a game already uses; the engine's components are in its reference (`argus docs`).")
+                .at(schema.source.clone()));
+            }
             return Err(ArgusError::new(
                 codes::BAD_SCHEMA,
                 format!(

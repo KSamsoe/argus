@@ -11,7 +11,7 @@ frame = 3
 size = [24.0, 8.0]
 z = -8.0
 
-[Parallax]
+[Backdrop]
 follow = 0.5
 width = 24.0
 
