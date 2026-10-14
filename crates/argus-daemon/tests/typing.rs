@@ -98,6 +98,42 @@ fn field(d: &mut argus_daemon::Daemon, path: &str) -> Json {
     q["rows"][0][0].clone()
 }
 
+/// Issue 35: a text the semantic frame cuts says it was cut.
+#[test]
+fn a_text_cut_in_the_semantic_frame_says_so() {
+    let t = temp("typing-cut");
+    project(t.path());
+    let mut d = open(t.path());
+    let hint = |d: &mut argus_daemon::Daemon, text: String| {
+        commit(
+            d,
+            "test",
+            "the hint",
+            &[(
+                "edit.set",
+                json!({ "entity": "@field", "path": "UiTextBox.hint", "value": text }),
+            )],
+        );
+        ok(d, "sim.step", json!({ "n": 1 }));
+        let frame = ok(d, "obs.frame", json!({ "format": "semantic" }));
+        frame["ui"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|u| u["textbox"] == true)
+            .cloned()
+            .unwrap_or_else(|| panic!("{frame}"))
+    };
+    let tb = hint(&mut d, "word ".repeat(60));
+    assert_eq!(tb["cut"], true, "{tb}");
+    let text = tb["text"].as_str().unwrap();
+    assert!(text.ends_with('\u{2026}'), "{text}");
+    assert_eq!(text.chars().count(), 200, "{text}");
+    let tb = hint(&mut d, "a short one".to_string());
+    assert!(tb.get("cut").is_none(), "{tb}");
+    assert_eq!(tb["text"], "a short one");
+}
+
 #[test]
 fn typed_text_is_journaled_and_a_seek_types_it_again() {
     let t = temp("typing");

@@ -84,6 +84,9 @@ pub struct UiSeen {
     pub disabled: bool,
     /// A text box (issue 23): `text` is what is in it, or its hint.
     pub textbox: bool,
+    /// Its words were longer than the frame keeps (200 characters) and
+    /// end with an ellipsis (issue 35).
+    pub cut: bool,
 }
 
 /// A view: centre, half extents in world units, roll in radians.
@@ -209,6 +212,9 @@ impl SemanticFrame {
                 }
                 if u.textbox {
                     o["textbox"] = json!(true);
+                }
+                if u.cut {
+                    o["cut"] = json!(true);
                 }
                 o
             }).collect::<Vec<_>>(),
@@ -917,9 +923,11 @@ fn ui_seen(world: &World, spec: &FrameSpec) -> Vec<UiSeen> {
             }
             None => text,
         };
+        let cut = text.chars().count() > TEXT_CAP;
         out.push(UiSeen {
             entity: *e,
             id: entity_id(world, *e),
+            cut,
             text: cap(text),
             bounds,
             button: b.is_some(),

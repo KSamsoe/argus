@@ -667,7 +667,7 @@ pub const METHODS: &[MethodDoc] = &[
         params: &[
             opt("force", BOOLEAN, "default false"),
         ],
-        returns: "{imported: [name], unchanged, removed: [name], failed: [{name, message, at}], ms}",
+        returns: "{imported: [name], imported_since: [name] (what the watcher imported since the last asset.import, as the files were saved: an art change saved before argus reload is here, not in imported), unchanged, removed: [name], failed: [{name, message, at}], ms}",
     },
     MethodDoc {
         name: "edit.def_row",
@@ -744,6 +744,7 @@ pub const METHODS: &[MethodDoc] = &[
             opt("frames", STRING, "one frame, 40, or a range, 37..51; default all"),
             opt("columns", INTEGER, "frames to a row; default 12"),
             opt("scale", INTEGER, "pixels a pixel; default to about 384 tall, at most 8"),
+            opt("path", STRING, "where to write it, project-relative or absolute; default .argus/previews/<name>.png, which the next preview of the sprite replaces"),
         ],
         returns: "{name, path, frames, shown: [from, to], of, columns, scale, clips}",
     },
@@ -1610,7 +1611,7 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "obs.frame",
-        doc: "What the player sees. format \"semantic\" (section 8 L4) is data, about 3 KB, and needs no GPU: the camera and the world rect it shows; hud, the lines of entities on the screen rather than in the world; ui, the UI tree's text and buttons in reading order (id, text, bounds, and button, focused, disabled where they hold): a HUD built of UI nodes is here, not in hud; entities, the described and named ones in view with their Describe text filled in, bounds in pixels (x0, y0, x1, y1, y down) of a width x height frame, z, and how they are drawn, in reading order; groups, everything else by kind (their game components, else their name or look) with a count, bounds, and the first ids; effects on screen (camera shake, post passes, particles, materials); lighting, when the drawing camera has Lighting (phase 5 item 3): the ambient light and its level, and each Light reaching the view with where it is on the screen, how far it reaches in pixels, its colour and strength, a cone's direction and angle; tiles, what the tilemaps in view collide with, a character a cell; debug, the shapes systems drew (q:draw_line and the rest) in pixels, each with the system that drew it; and bytes. The same frame is a screen-reader feed. format \"png\" (section 8 L5) renders the world as it is now and writes a PNG; with annotate: true the ids and bounds of the semantic frame are drawn over it (yellow for entities, cyan for groups) and returned as marks. Sprites come from the world and the view from the drawing camera (the active Camera with the highest priority, its shake included); described shapes need no asset.",
+        doc: "What the player sees. format \"semantic\" (section 8 L4) is data, about 3 KB, and needs no GPU: the camera and the world rect it shows; hud, the lines of entities on the screen rather than in the world; ui, the UI tree's text and buttons in reading order (id, text, bounds, and button, focused, disabled, cut where they hold; a text over 200 characters is cut there with an ellipsis, and cut says so: read UiText.text for all of it): a HUD built of UI nodes is here, not in hud; entities, the described and named ones in view with their Describe text filled in, bounds in pixels (x0, y0, x1, y1, y down) of a width x height frame, z, and how they are drawn, in reading order; groups, everything else by kind (their game components, else their name or look) with a count, bounds, and the first ids; effects on screen (camera shake, post passes, particles, materials); lighting, when the drawing camera has Lighting (phase 5 item 3): the ambient light and its level, and each Light reaching the view with where it is on the screen, how far it reaches in pixels, its colour and strength, a cone's direction and angle; tiles, what the tilemaps in view collide with, a character a cell; debug, the shapes systems drew (q:draw_line and the rest) in pixels, each with the system that drew it; and bytes. The same frame is a screen-reader feed. format \"png\" (section 8 L5) renders the world as it is now and writes a PNG; with annotate: true the ids and bounds of the semantic frame are drawn over it (yellow for entities, cyan for groups) and returned as marks. Sprites come from the world and the view from the drawing camera (the active Camera with the highest priority, its shake included); described shapes need no asset.",
         params: &[
             opt("format", STRING, "\"png\" (default; the observe tool's default is \"semantic\") | \"semantic\""),
             opt("width", INTEGER, "default 640"),

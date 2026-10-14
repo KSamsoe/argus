@@ -180,7 +180,7 @@ pub fn editor() -> String {
 
 /// Help for `argus docs`.
 pub fn docs_help() -> String {
-    "usage: argus docs --for-agent [--out <file>]   the project's ARGUS.md, from the live daemon\n       argus docs                                 the engine's reference: the tools and every method\n\nARGUS.md (section 16) holds the component schemas with their docs, the systems with their stages\nand write sets, the prefab catalog, and each scene's summary, regenerated on demand so it never\ndrifts; a coding agent's project instructions point at it. --out defaults to <project>/ARGUS.md.\n".to_string()
+    "usage: argus docs --for-agent [--out <file>]   the project's ARGUS.md, from the live daemon\n       argus docs                                 the engine's reference: the tools and every method\n\nARGUS.md (section 16) holds the component schemas with their docs, the systems with their stages\nand write sets, the prefab catalog, and each scene's summary, regenerated on demand so it never\ndrifts; a coding agent's project instructions point at it. --out defaults to <project>/ARGUS.md.\nIf it had to start a daemon, it stops it afterwards, unless another client has connected meanwhile.\n".to_string()
 }
 
 /// Help for `argus build`.

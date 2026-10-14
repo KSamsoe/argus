@@ -54,7 +54,7 @@ A field left out takes its default. A `ref` field must name a row that exists (`
 
 ### Reading rows from a script
 
-`q:def("item:meal")` gives one row and `q:defs("recipes")` every row of a table in file order. Rows are read-only. Besides its fields, a row has `key` (`"meal"`) and `ref` (`"item:meal"`). From `examples/outpost/systems/kitchen.luau`:
+`q:def("item:meal")` gives one row and `q:defs("recipes")` every row of a table in file order. Rows are read-only. Besides its fields, a row has `key` (`"meal"`) and `ref` (`"item:meal"`). A `ref` field reads as the reference it holds, a string (`r.output` is `"item:meal"`), so `q:def(r.output)` is the row it names. From `examples/outpost/systems/kitchen.luau`:
 
 ```lua
 local r = q:def(st.recipe)

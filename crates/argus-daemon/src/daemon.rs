@@ -256,6 +256,10 @@ pub struct Daemon {
     load_request: Option<String>,
     /// Saves ticks asked to delete (`q:delete_save`), done after the step.
     delete_requests: Vec<String>,
+    /// Assets the watcher imported since the last `asset.import` (issue
+    /// 35: a reload after an art change answered `imported: []`, since
+    /// the watcher had already imported it when it was saved).
+    watched: Vec<String>,
     /// A trial's parked world is catching up: no sound, no notifications.
     backstage: bool,
     /// The tuning session open, if any (phase 2 item 5).
@@ -345,6 +349,7 @@ impl Daemon {
             trial: None,
             load_request: None,
             delete_requests: Vec::new(),
+            watched: Vec::new(),
             backstage: false,
             tuning: None,
             tune_committing: false,
@@ -645,7 +650,9 @@ impl Daemon {
                 let force = json::bool_param(params, "force", false)?;
                 let ses = self.session.as_mut().expect("session");
                 let report = if force { ses.assets.rescan_all() } else { ses.assets.scan() };
-                Ok(self.apply_asset_report(report))
+                let mut out = self.apply_asset_report(report);
+                out["imported_since"] = json!(std::mem::take(&mut self.watched));
+                Ok(out)
             }
             "scene.list" => self.scene_list(),
             "scene.load" => self.scene_load(params),
@@ -1963,6 +1970,11 @@ impl Daemon {
             return;
         };
         if let Some(report) = ses.assets.poll() {
+            for n in &report.imported {
+                if !self.watched.contains(n) {
+                    self.watched.push(n.clone());
+                }
+            }
             self.apply_asset_report(report);
         }
     }
@@ -7086,10 +7098,19 @@ impl Daemon {
             }
             out = img.rgba;
         }
-        let path = root
-            .join(".argus")
-            .join("previews")
-            .join(format!("{}.png", name.replace('/', "_")));
+        // Where it goes: path, else the previews folder, one a sprite.
+        let path = match json::opt_str(params, "path")? {
+            Some(p) if Path::new(p).is_absolute() => PathBuf::from(p),
+            Some(p) => root.join(p),
+            None => root
+                .join(".argus")
+                .join("previews")
+                .join(format!("{}.png", name.replace('/', "_"))),
+        };
+        if let Some(d) = path.parent() {
+            std::fs::create_dir_all(d)
+                .map_err(|e| ArgusError::new(codes::BAD_PARAMS, format!("{}: {e}", d.display())))?;
+        }
         argus_assets::encode_png(&path, w, h, &out)?;
         Ok(json!({
             "name": name,

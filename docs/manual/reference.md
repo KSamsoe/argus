@@ -31,7 +31,7 @@ argus docs --for-agent         # write the project's ARGUS.md from its daemon
 
 ## In a project
 
-Every project has an `ARGUS.md`, written by `argus new` and rewritten by `argus docs --for-agent`. It holds the project's own parts (components, systems, prefabs, def tables, scenes) as the running game has them, then the scripting API, the scenario API, and the files reference. Regenerate it after changing components, systems, prefabs, or scenes; it is never edited by hand.
+Every project has an `ARGUS.md`, written by `argus new` and rewritten by `argus docs --for-agent`. It holds the project's own parts (components, systems, prefabs, def tables, scenes) as the running game has them, then the scripting API, the scenario API, and the files reference. Regenerate it after changing components, systems, prefabs, or scenes; it is never edited by hand. If no daemon was running, it starts one to write it and stops it afterwards (unless another client has connected meanwhile), so a script can go straight on to something that will not share the project with a daemon. A daemon that was already running stays up.
 
 `AGENTS.md` and `CLAUDE.md` beside it are short: they tell an agent what Argus is and to read `ARGUS.md` first.
 

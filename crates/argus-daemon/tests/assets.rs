@@ -122,6 +122,19 @@ fn assets_import_on_open_report_as_events_and_hot_swap() {
     // Nothing changed: no events.
     d.refresh_assets();
     assert_eq!(events(&mut d, "asset.imported").len(), 1);
+    // Issue 35: what the watcher imported as it was saved is in the next
+    // asset.import's answer, which imports nothing itself.
+    let r = ok(&mut d, "asset.import", json!({}));
+    assert_eq!(r["imported"], json!([]), "{r}");
+    assert!(
+        r["imported_since"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("sprites/hero")),
+        "{r}"
+    );
+    let r = ok(&mut d, "asset.import", json!({}));
+    assert_eq!(r["imported_since"], json!([]), "told once: {r}");
     // Fix the broken one and force a full rescan.
     write(t.path(), "assets/broken.toml", "kind = \"circle\"\n");
     let r = ok(&mut d, "asset.import", json!({ "force": true }));
@@ -182,4 +195,17 @@ fn a_preview_shows_a_range_of_frames_in_rows_with_their_numbers() {
         json!({ "name": "sheet", "frames": "6..9" }),
     );
     assert!(e.message.contains("frames 0 to 7"), "{}", e.message);
+    // Issue 35: a path of its own, so it does not replace the last one.
+    let q = ok(
+        &mut d,
+        "asset.preview",
+        json!({ "name": "sheet", "frames": "0..1", "path": "shots/first two.png" }),
+    );
+    let at = t.path().join("shots").join("first two.png");
+    let (w, _, _) = argus_assets::decode_png(&at).unwrap_or_else(|e| panic!("{q}: {e}"));
+    assert!(w > 0);
+    assert!(
+        std::path::Path::new(p["path"].as_str().unwrap()).is_file(),
+        "the first is still there"
+    );
 }

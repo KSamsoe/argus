@@ -70,7 +70,10 @@ pub fn command(inv: &Invocation, out: &mut dyn Write, err: &mut dyn Write) -> i3
             return crate::EXIT_USAGE;
         }
     };
-    let mut client = match project::connect(inv, err) {
+    // A daemon this started stops after (issue 35): a script that writes
+    // ARGUS.md and then runs something that will not share the project
+    // with a daemon need not stop it in between.
+    let (mut client, started) = match project::connect_as_started(inv, err, None) {
         Ok(c) => c,
         Err(e) => {
             let _ = writeln!(err, "argus: {e}");
@@ -95,6 +98,9 @@ pub fn command(inv: &Invocation, out: &mut dyn Write, err: &mut dyn Write) -> i3
         path.to_string_lossy().trim_start_matches(r"\\?\"),
         md.lines().count()
     );
+    if started {
+        project::stop_if_alone(client, &root);
+    }
     crate::EXIT_OK
 }
 

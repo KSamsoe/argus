@@ -34,7 +34,7 @@ return scenario "the player walks right" {
 
 ### The file
 
-Each `.luau` file directly in `tests/` returns one scenario, or a table of them. Files in folders under `tests/` are not read as scenarios.
+Each `.luau` file directly in `tests/` makes scenarios, and every `scenario` it makes runs, whether the file returns it or not: the files here return one, or a table of them, out of habit, and what they return chooses nothing. A file that makes nine and returns one runs nine. To run one of them, name it (`argus test "the pit"`). Files in folders under `tests/` are not read as scenarios.
 
 Helpers several scenario files need go in a module in `tests/lib/`, a Luau file that returns them: `tests/lib/helpers.luau` is `require("helpers")`. A scenario's `require` looks in `tests/lib/` first, then in the game's own `lib/` ([Sharing code](scripting.md#sharing-code)), so a test can use the game's constants and pure functions instead of writing them out again. A module is evaluated once for the whole run and its value is read-only. `tests/lib/` stays out of a release build, with the rest of `tests/`.
 
@@ -173,7 +173,7 @@ Most checks give a number to compare:
 
 | Comparison | Passes when |
 |---|---|
-| `:eq(x)`, `:ne(x)` | Equal, or not. `eq` compares tables deeply too. |
+| `:eq(x)`, `:ne(x)` | Equal, or not. `eq` compares tables deeply too. An entity field compares as its protocol spelling: `t.expect:field("@start", "UiRoot.focus"):eq("@start.begin")`. |
 | `:lt(x)`, `:lte(x)`, `:gt(x)`, `:gte(x)` | Less, at most, greater, at least. |
 | `:near(x, eps)` | Within eps of x. |
 | `:between(lo, hi)` | From lo to hi, both included. |
@@ -207,7 +207,7 @@ Each seed is a fresh load of the scene. `--seeds` overrides every scenario's own
 argus test stairs --seeds 1..1000
 ```
 
-So a long sweep need not run every time: give the scenario a few seeds of its own for the everyday suite, and run the long one when you want it, `argus test --file tests/fuzz.luau --seeds 1..200`. A failing seed reruns alone with `--seeds 17..17`.
+So a long sweep need not run every time: give the scenario a few seeds of its own for the everyday suite, and run the long one when you want it, `argus test --file tests/fuzz.luau --seeds 1..200`. `--seeds` with `--file` gives every scenario in the file those seeds; to sweep one scenario of several, name it instead (`argus test "the fuzz" --seeds 1..200`). A failing seed reruns alone with `--seeds 17..17`.
 
 ## Goldens
 
@@ -264,6 +264,7 @@ argus test walks                          # those whose name contains "walks"
 argus test name="the pit puts the hero"   # a name with spaces, as a key
 argus test --seeds 1..50                  # every scenario on seeds 1 to 50
 argus test --file tests/move.luau         # one file
+argus test fuzz --seeds 1..200            # one scenario's long sweep (--file gives the seeds to all of a file's)
 argus test --update                       # rewrite goldens that no longer match
 argus test --json                         # the whole report as JSON
 argus test list                           # what there is, without running it
