@@ -367,9 +367,18 @@ pub struct Registry {
     schemas: Vec<ComponentSchema>,
     by_name: HashMap<String, ComponentId>,
     by_type: HashMap<TypeId, ComponentId>,
+    /// `Inactive` and `InactiveUnder`, once registered: every query asks
+    /// for them, so they are kept here rather than looked up by name.
+    inactive: (Option<ComponentId>, Option<ComponentId>),
 }
 
 impl Registry {
+    /// The ids of `Inactive` and `InactiveUnder` ([`crate::active`]), as
+    /// far as they are registered.
+    pub fn inactive_tags(&self) -> (Option<ComponentId>, Option<ComponentId>) {
+        self.inactive
+    }
+
     /// Register a schema. Registering the same name twice with an equal
     /// schema is a no-op returning the existing id; a different schema under
     /// an existing name is an error.
@@ -393,6 +402,11 @@ impl Registry {
             .at(schema.source.clone()));
         }
         let id = ComponentId(self.schemas.len() as u32);
+        match schema.name.as_str() {
+            "Inactive" => self.inactive.0 = Some(id),
+            "InactiveUnder" => self.inactive.1 = Some(id),
+            _ => {}
+        }
         self.by_name.insert(schema.name.clone(), id);
         if let Some(t) = schema.rust_type {
             self.by_type.insert(t, id);

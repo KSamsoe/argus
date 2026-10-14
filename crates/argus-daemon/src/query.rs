@@ -45,7 +45,10 @@ impl Source for WorldSource<'_> {
     }
 
     fn candidates(&self, has: &[String], not: &[String]) -> Result<Vec<u64>> {
-        let mut q = self.0.query();
+        // The world as it is, inactive entities too (issue 18), as the
+        // index has them: `not: ["Inactive", "InactiveUnder"]` leaves them
+        // out. A script's q:each, drawing, and the frame skip them.
+        let mut q = self.0.query().including_inactive();
         for c in has {
             q = q.has(self.0.registry().require(c)?);
         }

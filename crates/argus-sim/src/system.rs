@@ -534,6 +534,18 @@ impl<'a> SystemCtx<'a> {
         self.world.insert_default(e, c)
     }
 
+    /// Switch an entity on or off, and everything under it (issue 18);
+    /// requires a declared write of `Inactive`.
+    pub fn set_active(&mut self, e: Entity, active: bool) -> Result<()> {
+        argus_ecs::active::register(self.world)?;
+        let c = self
+            .world
+            .component_id_of::<argus_ecs::Inactive>()
+            .expect("registered");
+        self.check_write(c)?;
+        self.world.set_active(e, active)
+    }
+
     /// Remove a component; requires a declared write.
     pub fn remove(&mut self, e: Entity, c: ComponentId) -> Result<()> {
         self.check_write(c)?;

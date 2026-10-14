@@ -296,6 +296,21 @@ return system "sim.fire" {
 
 The bullet comes out with every component and field `prefabs/bullet.toml` gives it (its chain of base prefabs included), then the fields in the table. Its children come too, each a runtime entity under it, with a `Parent` and a `GlobalTransform`. Naming `"bullet"` in `spawns` grants all its components, so the system lists none of them in `writes`, and a component added to the prefab later needs no change to the system. The prefab is read as it is now: an edit to it (`argus edit` with a `prefab` op, or the editor) applies to the next bullet, though not to the ones already flying. A field in the table must belong to one of the prefab's own components, and a prefab's entity field may name an authored entity (`"@player"`) that is in the world when it spawns.
 
+### Switching entities off
+
+An entity can be switched off without despawning it: it stays in the world, keeping everything it had, but it is out of the game. `q:each` and `q:count` pass it by, it is not drawn, physics, the UI, and every engine system skip it, it is near nothing, and the semantic frame does not show it. Everything under it (its children, through `Parent`) is off with it. It is still saved, in the digest, and put back by a seek, so switching it on again is exact.
+
+```lua
+for e in q:each("room_b") do e:set_active(false) end   -- park room b
+for e in q:inactive("room_a") do e:set_active(true) end -- bring room a back
+```
+
+`e:set_active(on)` switches one, `e:active()` says whether it is in the game (not off, and not under one that is), and `q:inactive("A", ...)` goes over the entities with those components that are off, or under one that is. Switching writes the engine's `Inactive` component, so the system lists it: `writes = { "Inactive" }`. An entity file can start off with `tags = ["Inactive"]`.
+
+This is how a game keeps what it is not using now: a pool of bullets switched on as they are fired and off as they land instead of spawned and despawned, a menu built once and shown when opened, or the rooms of a floor a game makes at run time, each room's entities tagged with it and every room but the player's switched off. A child switched off by itself stays off when its parent comes back on.
+
+Agents and the editor see inactive entities: the protocol's `world.query` includes them (`"where": {"not": ["Inactive", "InactiveUnder"]}` leaves them out), and `InactiveUnder` marks the children of a switched-off entity.
+
 ### Reacting to an event
 
 One system emits; another, later in the tick, reads `q:events`. This one runs in `late`, so it sees every `sim` system's events:

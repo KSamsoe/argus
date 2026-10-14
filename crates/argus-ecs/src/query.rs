@@ -86,6 +86,20 @@ pub struct Query<'w> {
     access: Option<std::borrow::Cow<'w, Access>>,
     /// Set when a `with::<T>` names an unregistered type: matches nothing.
     impossible: bool,
+    /// Which entities by whether they are switched off ([`crate::active`]):
+    /// the active ones unless asked.
+    activity: Activity,
+}
+
+/// A query's entities by whether they are switched off.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Activity {
+    /// Only entities in the game (the default).
+    Active,
+    /// Every entity.
+    All,
+    /// Only entities switched off, or under one that is.
+    Inactive,
 }
 
 impl<'w> Query<'w> {
@@ -96,7 +110,21 @@ impl<'w> Query<'w> {
             not: Vec::new(),
             access: None,
             impossible: false,
+            activity: Activity::Active,
         }
+    }
+
+    /// Inactive entities too ([`crate::active`]): what the engine's own
+    /// bookkeeping (saves, the hierarchy) needs.
+    pub fn including_inactive(mut self) -> Self {
+        self.activity = Activity::All;
+        self
+    }
+
+    /// Only inactive entities: those switched off, and those under one.
+    pub fn only_inactive(mut self) -> Self {
+        self.activity = Activity::Inactive;
+        self
     }
 
     /// Require a component by id.
@@ -142,9 +170,18 @@ impl<'w> Query<'w> {
 
     /// True if the archetype satisfies the filter.
     pub fn matches(&self, arch: &Archetype) -> bool {
-        !self.impossible
-            && self.has.iter().all(|&c| arch.has(c))
-            && !self.not.iter().any(|&c| arch.has(c))
+        if self.impossible
+            || !self.has.iter().all(|&c| arch.has(c))
+            || self.not.iter().any(|&c| arch.has(c))
+        {
+            return false;
+        }
+        if self.activity == Activity::All {
+            return true;
+        }
+        let (a, b) = self.world.registry().inactive_tags();
+        let off = a.is_some_and(|c| arch.has(c)) || b.is_some_and(|c| arch.has(c));
+        off == (self.activity == Activity::Inactive)
     }
 
     /// Matching archetypes (including empty ones).

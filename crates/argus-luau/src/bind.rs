@@ -750,6 +750,23 @@ impl UserData for EntityRef {
         m.add_method("alive", |_, this, ()| {
             Ok(ctx(&this.link)?.is_alive(this.entity))
         });
+        // Switched off or on, with everything under it (issue 18): an
+        // inactive entity stays in the world but out of q:each, drawing,
+        // physics, and the frame. The system declares writes = { "Inactive" }.
+        m.add_method("set_active", |_, this, on: bool| {
+            ctx(&this.link)?.set_active(this.entity, on).map_err(|e| {
+                if e.code == codes::ACCESS_VIOLATION {
+                    argus_err(e.hint(
+                        "Add \"Inactive\" to the system's writes list: switching an entity on or off writes it.",
+                    ))
+                } else {
+                    argus_err(e)
+                }
+            })
+        });
+        m.add_method("active", |_, this, ()| {
+            Ok(ctx(&this.link)?.world().is_active(this.entity))
+        });
         m.add_method("has", |_, this, name: String| {
             let id = component_id(&this.link, &name)?;
             Ok(ctx(&this.link)?.has(this.entity, id))
@@ -938,6 +955,84 @@ pub struct QueryHandle {
     pub(crate) spawns: Rc<[String]>,
 }
 
+/// `q:each(...)` (the active entities with these components) and, with
+/// `inactive`, `q:inactive(...)` (those switched off, or under one that is;
+/// issue 18): an iterator over each entity and its components.
+fn each(
+    lua: &Lua,
+    this: &QueryHandle,
+    names: Variadic<String>,
+    inactive: bool,
+) -> LuaResult<mlua::Function> {
+    let link = this.link.clone();
+    let c = ctx(&link)?;
+    let mut ids = Vec::with_capacity(names.len());
+    for n in names.iter() {
+        let id = c.world().registry().require(n).map_err(argus_err)?;
+        if !c.access().allows_read(id) {
+            return Err(argus_err(
+                ArgusError::new(
+                    codes::ACCESS_VIOLATION,
+                    format!("system {} reads {n} without declaring it", c.name),
+                )
+                .hint(format!("Add {n:?} to the system's reads list.")),
+            ));
+        }
+        ids.push(id);
+    }
+    let mut q = c.world().query();
+    if inactive {
+        q = q.only_inactive();
+    }
+    for &id in &ids {
+        q = q.has(id);
+    }
+    // Snapshot the entity list so spawns and despawns during the loop are safe.
+    let entities = q.entities();
+    let refs: Vec<AnyUserData> = names
+        .iter()
+        .zip(&ids)
+        .map(|(n, &id)| {
+            lua.create_userdata(ComponentRef {
+                link: link.clone(),
+                comp: id,
+                name: Arc::from(n.as_str()),
+                entity: Cell::new(Entity::NULL),
+                writable: c.access().allows_write(id),
+            })
+        })
+        .collect::<LuaResult<_>>()?;
+    let entity_ud = lua.create_userdata(EntityRef {
+        entity: Entity::NULL,
+        link: link.clone(),
+    })?;
+    let mut i = 0usize;
+    let iter = lua.create_function_mut(move |_, ()| {
+        let c = ctx(&link)?;
+        while i < entities.len() {
+            let e = entities[i];
+            i += 1;
+            // Gone, changed, or switched on or off since the list was made.
+            if !c.is_alive(e)
+                || !ids.iter().all(|&id| c.has(e, id))
+                || c.world().is_active(e) == inactive
+            {
+                continue;
+            }
+            entity_ud.borrow_mut::<EntityRef>()?.entity = e;
+            let mut out = Vec::with_capacity(refs.len() + 1);
+            out.push(LuaValue::UserData(entity_ud.clone()));
+            for r in &refs {
+                r.borrow::<ComponentRef>()?.entity.set(e);
+                out.push(LuaValue::UserData(r.clone()));
+            }
+            return Ok(MultiValue::from_vec(out));
+        }
+        Ok(MultiValue::new())
+    })?;
+    Ok(iter)
+}
+
 impl UserData for QueryHandle {
     fn add_fields<F: mlua::UserDataFields<Self>>(f: &mut F) {
         f.add_field_method_get("tick", |_, this| Ok(ctx(&this.link)?.tick));
@@ -963,66 +1058,12 @@ impl UserData for QueryHandle {
     fn add_methods<M: UserDataMethods<Self>>(m: &mut M) {
         // for e, a, b in q:each("A", "B") do ... end
         m.add_method("each", |lua, this, names: Variadic<String>| {
-            let link = this.link.clone();
-            let c = ctx(&link)?;
-            let mut ids = Vec::with_capacity(names.len());
-            for n in names.iter() {
-                let id = c.world().registry().require(n).map_err(argus_err)?;
-                if !c.access().allows_read(id) {
-                    return Err(argus_err(
-                        ArgusError::new(
-                            codes::ACCESS_VIOLATION,
-                            format!("system {} reads {n} without declaring it", c.name),
-                        )
-                        .hint(format!("Add {n:?} to the system's reads list.")),
-                    ));
-                }
-                ids.push(id);
-            }
-            let mut q = c.world().query();
-            for &id in &ids {
-                q = q.has(id);
-            }
-            // Snapshot the entity list so spawns and despawns during the loop are safe.
-            let entities = q.entities();
-            let refs: Vec<AnyUserData> = names
-                .iter()
-                .zip(&ids)
-                .map(|(n, &id)| {
-                    lua.create_userdata(ComponentRef {
-                        link: link.clone(),
-                        comp: id,
-                        name: Arc::from(n.as_str()),
-                        entity: Cell::new(Entity::NULL),
-                        writable: c.access().allows_write(id),
-                    })
-                })
-                .collect::<LuaResult<_>>()?;
-            let entity_ud = lua.create_userdata(EntityRef {
-                entity: Entity::NULL,
-                link: link.clone(),
-            })?;
-            let mut i = 0usize;
-            let iter = lua.create_function_mut(move |_, ()| {
-                let c = ctx(&link)?;
-                while i < entities.len() {
-                    let e = entities[i];
-                    i += 1;
-                    if !c.is_alive(e) || !ids.iter().all(|&id| c.has(e, id)) {
-                        continue;
-                    }
-                    entity_ud.borrow_mut::<EntityRef>()?.entity = e;
-                    let mut out = Vec::with_capacity(refs.len() + 1);
-                    out.push(LuaValue::UserData(entity_ud.clone()));
-                    for r in &refs {
-                        r.borrow::<ComponentRef>()?.entity.set(e);
-                        out.push(LuaValue::UserData(r.clone()));
-                    }
-                    return Ok(MultiValue::from_vec(out));
-                }
-                Ok(MultiValue::new())
-            })?;
-            Ok(iter)
+            each(lua, this, names, false)
+        });
+        // The entities switched off, or under one that is, with these
+        // components: what a game switches on again (issue 18).
+        m.add_method("inactive", |lua, this, names: Variadic<String>| {
+            each(lua, this, names, true)
         });
         m.add_method("count", |_, this, names: Variadic<String>| {
             let c = ctx(&this.link)?;

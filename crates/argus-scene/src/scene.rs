@@ -1400,6 +1400,9 @@ impl Scene {
             });
         }
         self.fill_pending(world)?;
+        // The children of an entity written inactive (tags = ["Inactive"])
+        // are inactive before anything runs (issue 18).
+        world.settle_inactive()?;
         report.ms = start.elapsed().as_secs_f64() * 1000.0;
         Ok(report)
     }

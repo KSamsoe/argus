@@ -3431,6 +3431,9 @@ impl Daemon {
             }
         }
         inverse.reverse();
+        // An entity switched off by an edit (`add Inactive`) takes its
+        // children with it at once, as e:set_active does (issue 18).
+        self.world.settle_inactive()?;
         let id = self.edits.next_commit_id();
         let commit = Commit {
             id,

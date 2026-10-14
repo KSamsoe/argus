@@ -114,12 +114,13 @@ pub struct Parent {
     pub entity: Entity,
 }
 
-/// Register `Transform`, `GlobalTransform`, and `Parent`.
+/// Register `Transform`, `GlobalTransform`, and `Parent`, and the tags an
+/// inactive entity and its children carry ([`crate::active`]).
 pub fn register(world: &mut World) -> Result<()> {
     world.register::<Transform>()?;
     world.register::<GlobalTransform>()?;
     world.register::<Parent>()?;
-    Ok(())
+    crate::active::register(world)
 }
 
 /// Compute `GlobalTransform` for every entity that has `Transform` and
@@ -130,9 +131,12 @@ pub fn propagate(world: &mut World) -> Result<()> {
         register(world)?;
     }
 
+    // Inactive entities' transforms are kept too, so one switched on is
+    // where its parent is (issue 18).
     // Roots: a straight copy, one archetype at a time.
     world
         .query()
+        .including_inactive()
         .with::<Transform>()
         .with::<GlobalTransform>()
         .without::<Parent>()
@@ -144,6 +148,7 @@ pub fn propagate(world: &mut World) -> Result<()> {
     let mut children: Vec<(Entity, Entity)> = Vec::new();
     world
         .query()
+        .including_inactive()
         .with::<Transform>()
         .with::<GlobalTransform>()
         .each::<&Parent>(|e, p| children.push((e, p.entity)))?;
@@ -229,4 +234,12 @@ pub fn propagate(world: &mut World) -> Result<()> {
         world.emit(Event::HierarchyCycle { entity: e });
     }
     Ok(())
+}
+
+/// The hierarchy stage's whole work: who is under an inactive entity
+/// (after this tick's reparenting and spawns), then every
+/// `GlobalTransform`.
+pub fn propagate_all(world: &mut World) -> Result<()> {
+    world.settle_inactive()?;
+    propagate(world)
 }

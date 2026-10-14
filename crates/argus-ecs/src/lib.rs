@@ -25,6 +25,7 @@
 
 extern crate self as argus_ecs;
 
+pub mod active;
 pub mod archetype;
 pub mod codec;
 pub mod column;
@@ -43,6 +44,7 @@ pub mod text;
 pub mod value;
 pub mod world;
 
+pub use active::{Inactive, InactiveUnder};
 pub use archetype::{Archetype, ArchetypeId, ArchetypeStat};
 pub use column::{ColMut, ColRef, Column};
 pub use entity::Entity;

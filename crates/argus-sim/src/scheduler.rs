@@ -1348,7 +1348,7 @@ impl Scheduler {
         {
             let t = Instant::now();
             let (pa, pb) = alloc::counters();
-            argus_ecs::propagate(world)?;
+            argus_ecs::hierarchy::propagate_all(world)?;
             let (qa, qb) = alloc::counters();
             self.sample(
                 &mut samples,
@@ -1758,7 +1758,7 @@ impl Scheduler {
             }
         }
         if ran > 0 {
-            argus_ecs::propagate(world)?;
+            argus_ecs::hierarchy::propagate_all(world)?;
             world.rebuild_broadphase();
         }
         Ok(ran)
