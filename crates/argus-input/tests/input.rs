@@ -1031,3 +1031,76 @@ devices = ["keyboard", "mouse"]
         reserved.message
     );
 }
+
+/// Issue 33: a mouse binding with a modifier is an action of its own.
+/// Ctrl held is no turn; Ctrl and a left click is the tag, not a click;
+/// a left click alone is a click. A modifier no one knows is refused.
+#[test]
+fn ctrl_and_a_click_is_an_action_of_its_own_and_ctrl_alone_no_turn() {
+    const MAP: &str = r#"
+[actions.click]
+type = "button"
+[actions.click.bindings]
+mouse = ["left"]
+
+[actions.tag]
+type = "button"
+[actions.tag.bindings]
+mouse = ["ctrl+left", "right"]
+
+[slots.1]
+devices = ["keyboard", "mouse"]
+"#;
+    let mut w = World::new();
+    let mut s = Scheduler::new(SchedulerConfig::discrete());
+    let map = ActionMap::parse("input.toml", MAP).unwrap();
+    let label = argus_input::glyphs::prompt(&map, "tag", argus_input::glyphs::Family::Keyboard)
+        .map(|(_, l)| l);
+    assert_eq!(label.as_deref(), Some("Ctrl+Left click"));
+    let st = Rc::new(RefCell::new(InputState::new(map, true)));
+    install(&mut w, &mut s, st.clone()).unwrap();
+    let p = w.spawn_authored("p1").unwrap();
+    w.insert(p, PlayerSlot { slot: 1 }).unwrap();
+    w.insert_by_name(p, "Actions").unwrap();
+    let mut d = Devices::default();
+    let key = |name: &str, pressed: bool| DeviceInput::Key {
+        name: name.into(),
+        pressed,
+    };
+    let left = |pressed: bool| DeviceInput::Mouse {
+        button: "left".into(),
+        pressed,
+    };
+
+    d.apply(&key("ControlLeft", true));
+    assert_eq!(
+        st.borrow_mut().apply_devices(s.tick(), &mut d),
+        0,
+        "Ctrl alone is no turn"
+    );
+    d.apply(&left(true));
+    assert_eq!(st.borrow_mut().apply_devices(s.tick(), &mut d), 1);
+    s.advance(&mut w, 1).unwrap();
+    assert_eq!(w.get_field(p, "Actions.tag").unwrap(), Value::Bool(true));
+    assert_eq!(
+        w.get_field(p, "Actions.click").unwrap(),
+        Value::Bool(false),
+        "not also a click"
+    );
+    d.apply(&left(false));
+    d.apply(&key("ControlLeft", false));
+    st.borrow_mut().apply_devices(s.tick(), &mut d);
+    s.advance(&mut w, 1).unwrap();
+    d.apply(&left(true));
+    st.borrow_mut().apply_devices(s.tick(), &mut d);
+    s.advance(&mut w, 1).unwrap();
+    assert_eq!(w.get_field(p, "Actions.click").unwrap(), Value::Bool(true));
+    assert_eq!(w.get_field(p, "Actions.tag").unwrap(), Value::Bool(false));
+
+    for bad in ["hyper+left", "ctrl+lft"] {
+        let text = format!(
+            "[actions.tag]\ntype = \"button\"\n[actions.tag.bindings]\nmouse = [\"{bad}\"]\n"
+        );
+        assert!(ActionMap::parse("input.toml", &text).is_err(), "{bad} read");
+    }
+}

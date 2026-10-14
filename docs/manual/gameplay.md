@@ -45,7 +45,7 @@ The `doc` string shows in the project's ARGUS.md and in a controls menu.
 Each action's `bindings` table has a list per device:
 
 - `keyboard`: key names such as `a` to `z`, `0` to `9`, `space`, `enter`, `escape`, `up`, `shiftleft`, `f1`. An `axis2` also takes `wasd`, `arrows`, `ijkl`, or four keys in the order up, left, down, right. An `axis` takes `"neg/pos"`, for example `"minus/equal"`.
-- `mouse`: `left`, `right`, `middle`, `back`, `forward` for a button; `position` for a pointer.
+- `mouse`: `left`, `right`, `middle`, `back`, `forward` for a button; `position` for a pointer. A button may carry modifiers: `mouse = ["ctrl+left"]` is pressed by a left click with Ctrl held (`ctrl`, `shift`, `alt`, `meta`, joined with `+`). While it is pressed, a plain `left` binding stands down, so Ctrl and a click is one action, not two, and the Ctrl key need not be bound (on a discrete clock it takes no turn).
 - `gamepad`: `south`, `east`, `west`, `north` (A, B, X, Y on an Xbox pad), `lb`, `rb`, `lt`, `rt`, `start`, `select`, the d-pad buttons, and for axes `left_x`, `left_stick`, `dpad`, and so on.
 - `platform`: `overlay`, held while the platform's overlay (Steam's Shift+Tab) is open. Hollow binds its pause to it.
 

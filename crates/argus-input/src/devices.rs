@@ -13,7 +13,10 @@
 //! - keyboard: a key name (`w`, `space`, `enter`, `left`, `1`, `period`,
 //!   `shiftleft`, `f1`); for an `axis`, a pair `neg/pos` (`a/d`); for an
 //!   `axis2`, `wasd`, `arrows`, `ijkl`, or four names `up,left,down,right`.
-//! - mouse: `left`, `right`, `middle`, `back`, `forward`.
+//! - mouse: `left`, `right`, `middle`, `back`, `forward`, each with any
+//!   modifiers before it (`ctrl+left`, `shift+alt+right`; issue 33): held
+//!   modifiers make it a binding of its own, and a plain `left` stands
+//!   down while a `ctrl+left` of the slot's is pressed.
 //! - gamepad: `south`, `east`, `west`, `north`, `lb`, `rb`, `lt`, `rt`,
 //!   `select`, `start`, `mode`, `lthumb`, `rthumb`, `dpad_up`,
 //!   `dpad_down`, `dpad_left`, `dpad_right`; axes `left_x`, `left_y`,
@@ -411,6 +414,30 @@ impl Devices {
         let keyboard = has("keyboard");
         let mouse = has("mouse");
         let pads = self.pads_for(&s.devices);
+        // A mouse binding with modifiers (issue 33), pressed with them held:
+        // its button is that binding's, and a plain binding of the same
+        // button stands down, so Ctrl and a click is not also a click.
+        let held = |m: &str| {
+            MODIFIERS
+                .iter()
+                .find(|(n, _)| *n == m)
+                .is_some_and(|(_, keys)| keys.iter().any(|k| self.key(k)))
+        };
+        let pressed = |b: &str| -> bool {
+            let (mods, button) = mouse_parts(b);
+            self.mouse.contains(&button) && mods.iter().all(|m| held(m))
+        };
+        let mut taken: BTreeSet<String> = BTreeSet::new();
+        if mouse {
+            for a in &map.actions {
+                for b in a.bindings.get("mouse").into_iter().flatten() {
+                    let (mods, button) = mouse_parts(b);
+                    if !mods.is_empty() && pressed(b) {
+                        taken.insert(button);
+                    }
+                }
+            }
+        }
         let mut out = Vec::new();
         for a in &map.actions {
             if a.name == DEVICE_ACTION {
@@ -435,7 +462,8 @@ impl Devices {
                         on |= self.key(b);
                     }
                     for b in ms.into_iter().flatten() {
-                        on |= self.mouse.contains(&b.to_ascii_lowercase());
+                        let (mods, button) = mouse_parts(b);
+                        on |= pressed(b) && (!mods.is_empty() || !taken.contains(&button));
                     }
                     for b in gp.into_iter().flatten() {
                         on |= pads.iter().any(|p| Self::pad_button(p, b));
@@ -559,6 +587,36 @@ pub const PAD_NAMES: &[&str] = &[
 
 /// Mouse names this module understands.
 pub const MOUSE_NAMES: &[&str] = &["left", "right", "middle", "back", "forward"];
+
+/// Modifier keys a mouse binding may carry (issue 33), and the keys that
+/// hold each.
+pub const MODIFIERS: &[(&str, &[&str])] = &[
+    ("ctrl", &["controlleft", "controlright"]),
+    ("shift", &["shiftleft", "shiftright"]),
+    ("alt", &["altleft", "altright"]),
+    (
+        "meta",
+        &["metaleft", "metaright", "superleft", "superright"],
+    ),
+];
+
+/// A mouse binding's modifiers and button: `ctrl+shift+left` is
+/// `(["ctrl", "shift"], "left")`.
+pub fn mouse_parts(b: &str) -> (Vec<String>, String) {
+    let mut parts: Vec<String> = b
+        .split('+')
+        .map(|p| p.trim().to_ascii_lowercase())
+        .collect();
+    let button = parts.pop().unwrap_or_default();
+    (parts, button)
+}
+
+/// Whether a mouse button binding reads: a button, with known modifiers.
+pub fn mouse_button_ok(b: &str) -> bool {
+    let (mods, button) = mouse_parts(b);
+    MOUSE_NAMES.contains(&button.as_str())
+        && mods.iter().all(|m| MODIFIERS.iter().any(|(n, _)| n == m))
+}
 
 /// The platform's names: its overlay, held while it is open.
 pub const PLATFORM_NAMES: &[&str] = &["overlay"];

@@ -201,12 +201,24 @@ pub fn prompt(map: &ActionMap, action: &str, family: Family) -> Option<(String, 
     let b = a.bindings.get(family.device()).and_then(|v| v.first());
     if b.is_none() && family == Family::Keyboard {
         if let Some(m) = a.bindings.get("mouse").and_then(|v| v.first()) {
-            let l = match m.as_str() {
+            let (mods, button) = crate::devices::mouse_parts(m);
+            let click = match button.as_str() {
                 "left" => "Left click".to_string(),
                 "right" => "Right click".to_string(),
                 "middle" => "Middle click".to_string(),
                 other => format!("Mouse {other}"),
             };
+            // Ctrl+Left click (issue 33).
+            let mut l = String::new();
+            for md in &mods {
+                let mut c = md.chars();
+                if let Some(f) = c.next() {
+                    l.push_str(&f.to_uppercase().collect::<String>());
+                    l.push_str(c.as_str());
+                }
+                l.push('+');
+            }
+            l.push_str(&click);
             return Some((format!("mouse_{m}"), l));
         }
     }

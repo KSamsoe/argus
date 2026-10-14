@@ -216,10 +216,16 @@ impl ActionMap {
                             "platform" => crate::devices::PLATFORM_NAMES,
                             _ => &[],
                         };
+                        // A mouse button may carry modifiers (issue 33).
+                        let fine = |i: &String| {
+                            if dev == "mouse" && kind == ActionKind::Button {
+                                crate::devices::mouse_button_ok(i)
+                            } else {
+                                known.contains(&i.as_str())
+                            }
+                        };
                         if !known.is_empty() {
-                            if let Some(bad_name) =
-                                items.iter().find(|i| !known.contains(&i.as_str()))
-                            {
+                            if let Some(bad_name) = items.iter().find(|i| !fine(i)) {
                                 return Err(bad(
                                     format!("actions.{name}.bindings.{dev}: unknown {dev} input {bad_name:?}; known: {}", known.join(", ")),
                                     tomlv::item_ref(file, text, list),
@@ -320,10 +326,14 @@ impl ActionMap {
             "platform" => crate::devices::PLATFORM_NAMES,
             _ => &[],
         };
-        if let Some(bad_name) = names
-            .iter()
-            .find(|n| !known.is_empty() && !known.contains(&n.as_str()))
-        {
+        let fine = |n: &String| {
+            if device == "mouse" && kind == ActionKind::Button {
+                crate::devices::mouse_button_ok(n)
+            } else {
+                known.contains(&n.as_str())
+            }
+        };
+        if let Some(bad_name) = names.iter().find(|n| !known.is_empty() && !fine(n)) {
             return Err(ArgusError::new(
                 codes::BAD_MAP,
                 format!(
