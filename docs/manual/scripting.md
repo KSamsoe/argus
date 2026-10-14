@@ -449,6 +449,7 @@ How modules behave:
 - **Reload follows it.** `argus reload` with a module changed reloads every file that uses it, directly or through another module, even files that did not change; the answer's `modules` names the changed modules and `reloaded` every file evaluated again. A module that no longer compiles keeps its users on their last version, with its error in `argus script errors`.
 - **Mods add, not replace.** A mod's files look in its own `mods/<id>/lib/` first, then in the game's `lib/`; the game's files look only in the game's. A mod can add modules of its own, but cannot change one the game's systems use.
 - **Release builds carry it.** `argus build` compiles `lib/` into the packs with the other scripts.
+- **Each file has its own 200 locals.** Luau allows about 200 local names at a file's top level, its `local function`s included (constants it can fold away do not count). A file past it does not load: `argus script errors` names it and the line ("Out of local registers"), and a system that runs after one of its systems is refused with that file's error. A module's top level has its own 200, so moving helpers into `lib/` makes room. A file that copies a module's functions into locals (`local base_at = room.base_at`) spends a local on each; calling through the module (`room.base_at(...)`) spends none.
 
 Scenarios can share code too: their `require` looks in `tests/lib/` first, then in the game's `lib/`, so a test can use the game's constants instead of copying them ([Testing](testing.md#the-file)).
 
@@ -479,7 +480,7 @@ An error never crashes the daemon. Every one comes back with a code, a sentence,
 | a stale handle | 4502 "handle used outside its system's run" | that system is switched off |
 | a runaway loop | 4503 "instruction budget exceeded" | that system is switched off |
 
-A system switched off by a fault is listed under `disabled` in `argus summary`, and the fault is a `system.fault` event. Find them with:
+A system switched off by a fault is listed under `disabled` in `argus summary`, and the fault is a `system.fault` event. A file that did not load is in `argus summary`'s `script_errors`, with the first few errors, and every answer that runs the game (`argus run`, `sim.step`) counts them in its `script_errors`. A system that runs after one in a file that did not load is refused with that file's error, not its own. Find them all with:
 
 ```sh
 argus script errors

@@ -541,6 +541,12 @@ fn assemble_layers(
     // does not compile is.
     let plugins =
         argus_plugins::load_all(root, &cfg.plugins, &opts.plugins, &mut world, &mut sched);
+    // A script that did not load is left out, as a plugin that did not
+    // build is: what runs after its systems runs without that order, and
+    // the file's own error says why (issue 30).
+    if host.has_load_errors() {
+        sched.tolerate_missing(true);
+    }
     apply_system_groups(
         &mut sched,
         &scene_doc.enable,

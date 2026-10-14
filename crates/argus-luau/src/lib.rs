@@ -1236,7 +1236,8 @@ impl ScriptHost {
     /// `script.errors` until a reload orders them (found at the phase 5
     /// gate: a missing `after` target was in the reload's answer only).
     pub fn set_order_error(&mut self, e: Option<&ArgusError>) {
-        self.order = e.map(|e| {
+        let e = e.map(|e| self.explain(e.clone()));
+        self.order = e.as_ref().map(|e| {
             let at = e.r#ref.clone().unwrap_or_default();
             let (file, line) = match at.rsplit_once(':') {
                 Some((f, l)) if l.parse::<u32>().is_ok() => (f.to_string(), l.parse().ok()),
@@ -1249,6 +1250,73 @@ impl ScriptHost {
                 phase: ErrorPhase::Declaration,
             }
         });
+    }
+
+    /// An error about a system that is not registered, told as the error of
+    /// the file that declares it and did not load (issue 30: a file past
+    /// Luau's 200 locals showed only as "sim.big is not registered" from the
+    /// file that ran after it). Any other error as it is.
+    pub fn explain(&self, e: ArgusError) -> ArgusError {
+        if e.code != argus_sim::codes::UNKNOWN_SYSTEM {
+            return e;
+        }
+        let Some(name) = e.message.split('"').nth(1).map(str::to_string) else {
+            return e;
+        };
+        match self.failed_declaring(&name) {
+            Some((at, rel, why)) => ArgusError::new(
+                e.code,
+                format!("{at} did not load: {why}. It declares {name:?}, so {}", e.message),
+            )
+            .hint(format!(
+                "Fix {rel} first; the system that names {name:?} is fine. `argus script errors` lists every file's errors."
+            ))
+            .at(Some(at)),
+            None => e,
+        }
+    }
+
+    /// Whether some script loaded, or none had an error: what a host needs
+    /// to know to let a system's `after` name one that a file that did not
+    /// load declares (issue 30), as it does a plugin that did not build.
+    pub fn has_load_errors(&self) -> bool {
+        self.errors.values().any(|v| !v.is_empty())
+    }
+
+    /// The file that declares system `name` and did not load: its place
+    /// (`file:line`), its path, and its first error.
+    pub fn failed_declaring(&self, name: &str) -> Option<(String, String, String)> {
+        for (rel, errs) in &self.errors {
+            let Some(first) = errs.first() else { continue };
+            let Some(src) = self
+                .root
+                .as_ref()
+                .and_then(|r| std::fs::read_to_string(r.join(rel)).ok())
+            else {
+                continue;
+            };
+            let declares = [
+                format!("system \"{name}\""),
+                format!("system '{name}'"),
+                format!("system(\"{name}\""),
+                format!("system('{name}'"),
+            ]
+            .iter()
+            .any(|d| src.contains(d.as_str()));
+            if !declares {
+                continue;
+            }
+            let at = match first.line {
+                Some(l) => format!("{rel}:{l}"),
+                None => rel.clone(),
+            };
+            return Some((
+                at,
+                rel.clone(),
+                first.message.trim_end_matches('.').to_string(),
+            ));
+        }
+        None
     }
 
     /// Components declared from script.

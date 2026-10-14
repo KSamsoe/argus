@@ -392,7 +392,14 @@ impl Daemon {
     pub fn call(&mut self, conn: ConnId, method: &str, params: &Json) -> Result<Json> {
         self.call_depth += 1;
         let started = std::time::Instant::now();
-        let r = self.call_fed(conn, method, params);
+        let mut r = self.call_fed(conn, method, params);
+        // A system no file registered because its own file did not load is
+        // that file's error (issue 30).
+        if let (Err(e), Some(ses)) = (&r, &self.session) {
+            if e.code == argus_sim::codes::UNKNOWN_SYSTEM {
+                r = Err(ses.host.explain(e.clone()));
+            }
+        }
         self.call_depth -= 1;
         if self.call_depth == 0 {
             self.time_call(method, &r, started.elapsed());
@@ -1679,7 +1686,23 @@ impl Daemon {
                 "ms": r.ms,
             });
         }
-        out["script_errors"] = json!(self.script_error_count());
+        let n = self.script_error_count();
+        out["script_errors"] = json!(n);
+        // Said in the log too: a file that did not load leaves the game
+        // short of what it declares (issue 30).
+        if n > 0 {
+            if let Ok(errs) = self.script_errors() {
+                if let Some(r) = errs["rows"].as_array().and_then(|a| a.first()) {
+                    eprintln!(
+                        "argusd: {n} script error{}; the first: {}:{} {} (argus script errors lists them)",
+                        if n == 1 { "" } else { "s" },
+                        r["file"].as_str().unwrap_or(""),
+                        r["line"].as_u64().map(|l| l.to_string()).unwrap_or_default(),
+                        r["message"].as_str().unwrap_or("")
+                    );
+                }
+            }
+        }
         if let Some(s) = &self.session {
             if !self.mods_asked.is_empty() || !s.mods.loaded.is_empty() {
                 out["mods"] = json!({
@@ -1821,7 +1844,37 @@ impl Daemon {
             pending_events: s.pending_events,
             source: "live",
         }
-        .to_json())
+        .to_json()
+        .as_object()
+        .cloned()
+        .map(|mut o| {
+            // What did not load or was switched off (issue 30): a game short
+            // of a system says so where an agent looks first.
+            if let Ok(errs) = self.script_errors() {
+                if errs["total"].as_u64().unwrap_or(0) > 0 {
+                    let rows: Vec<Json> = errs["rows"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .take(5)
+                        .map(|r| {
+                            let at = match r["line"].as_u64() {
+                                Some(l) => format!("{}:{l}", r["file"].as_str().unwrap_or("")),
+                                None => r["file"].as_str().unwrap_or("").to_string(),
+                            };
+                            let m = r["message"].as_str().unwrap_or("");
+                            json!(if at.is_empty() { m.to_string() } else { format!("{at}: {m}") })
+                        })
+                        .collect();
+                    o.insert(
+                        "script_errors".into(),
+                        json!({ "total": errs["total"], "first": rows, "more": "argus script errors" }),
+                    );
+                }
+            }
+            Json::Object(o)
+        })
+        .expect("an object"))
     }
 
     /// Which scene a read should be served from the index for: an explicit
@@ -4371,6 +4424,9 @@ impl Daemon {
             "seed": self.session.as_ref().map(|s| s.seed).unwrap_or(self.sched.seed()),
             "end": self.session.as_ref().map(|s| s.ring.borrow().end),
             "fork": self.active,
+            // Files that did not load, or systems switched off, say so in
+            // every answer that ran the game (issue 30).
+            "script_errors": self.script_error_count(),
         })
     }
 
@@ -4935,6 +4991,12 @@ impl Daemon {
             .reresolve(&ses.project.ctx(&registry));
         // An order the systems cannot take is an error of the scripts too,
         // listed in script.errors until a reload fixes it.
+        // A file that did not load leaves its systems out, as a plugin that
+        // did not build does (issue 30): what runs after them runs unordered.
+        if let Some(ses) = self.session.as_ref() {
+            let leave_out = ses.host.has_load_errors() || !ses.plugins.errors.is_empty();
+            self.sched.tolerate_missing(leave_out);
+        }
         let order = self.sched.validate();
         if let Some(ses) = self.session.as_mut() {
             ses.host.set_order_error(order.as_ref().err());
@@ -5076,10 +5138,15 @@ impl Daemon {
         // A system ordered after one that is missing, since the plugin it
         // is in did not build (phase 5 item 6): it runs, unordered there.
         for (system, name) in self.sched.dangling_after() {
+            // A script's system, whose file did not load (issue 30).
+            let why = match ses.host.failed_declaring(name) {
+                Some((at, _, why)) => format!(", since {at} did not load ({why})"),
+                None => String::new(),
+            };
             rows.push(json!({
                 "file": "",
                 "line": null,
-                "message": format!("{system} runs after {name}, which is not registered; it runs without that order until {name} is"),
+                "message": format!("{system} runs after {name}, which is not registered{why}; it runs without that order until {name} is"),
                 "phase": "order",
                 "ref": "",
                 "system": system,
