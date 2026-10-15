@@ -239,10 +239,38 @@ impl TextItem {
         if let Some((_, s)) = self.memo.borrow().iter().find(|(m, _)| *m == max) {
             return *s;
         }
-        let s = size_of(self.font.as_ref(), &self.shown, self.size, max);
+        // Rich text measures piece by piece (reaching players item 3).
+        let s = if crate::rich::has_markup(&self.shown) {
+            let (spans, _) = crate::rich::parse(&self.shown);
+            crate::rich::size_of(self.font.as_ref(), &spans, self.size, max)
+        } else {
+            size_of(self.font.as_ref(), &self.shown, self.size, max)
+        };
         self.memo.borrow_mut().push((max, s));
         s
     }
+}
+
+/// What rich text's `[glyph=action]` shows (reaching players item 3): the
+/// player's own input for the action on the device their slot last used
+/// (its recorded `Actions.device`), as an `InputGlyph` shows it.
+fn glyph_label(world: &World, shared: &Shared, action: &str, slot: u8) -> Option<String> {
+    let st = shared.input.as_ref()?.try_borrow().ok()?;
+    let mut family = argus_input::Family::Keyboard;
+    if let Some(ps) = world.component_id_of::<argus_input::PlayerSlot>() {
+        for e in world.query().has(ps).entities() {
+            if world
+                .get::<argus_input::PlayerSlot>(e)
+                .is_ok_and(|p| p.slot == slot)
+            {
+                if let Ok(argus_ecs::Value::Float(f)) = world.get_field(e, "Actions.device") {
+                    family = argus_input::Family::from_index(f as f32);
+                }
+                break;
+            }
+        }
+    }
+    argus_input::glyphs::prompt(st.map(), action, family).map(|(_, l)| l)
 }
 
 /// A node's taffy style: `top` for a tree's top (never absolutely placed to
@@ -553,6 +581,34 @@ fn layout(
                 }
             }
         };
+        // Rich text (reaching players item 3): a [glyph] is the player's own
+        // input, looked up again each layout as a hole is, so it follows the
+        // device; markup that does not read is said, as a hole is.
+        let (shown, same) = if shown.contains("[glyph=") {
+            let mut said = Vec::new();
+            let s = crate::rich::resolve_glyphs(
+                &shown,
+                |a, slot| glyph_label(world, shared, a, slot),
+                &mut said,
+            );
+            for p in said {
+                let p = format!("{}: {p}", argus_ecs::text::entity_id(world, it.e));
+                if !problems.contains(&p) {
+                    problems.push(p);
+                }
+            }
+            (Rc::from(s), None)
+        } else {
+            (shown, same)
+        };
+        if crate::rich::has_markup(&shown) {
+            for p in crate::rich::parse(&shown).1 {
+                let p = format!("{}: {p}", argus_ecs::text::entity_id(world, it.e));
+                if !problems.contains(&p) {
+                    problems.push(p);
+                }
+            }
+        }
         let size = if t.size > 0.0 {
             t.size
         } else {

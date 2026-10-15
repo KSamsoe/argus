@@ -20,6 +20,7 @@ pub mod components;
 pub mod draw;
 pub mod input;
 pub mod layout;
+pub mod rich;
 pub mod strings;
 pub mod text;
 pub mod theme;
@@ -292,6 +293,9 @@ pub struct Shared {
     /// The project's string tables (phase 3 item 4): what a `UiText.key`
     /// and a script's `q:text` read.
     pub strings: Strings,
+    /// The players' input, when the game has an action map: what rich
+    /// text's `[glyph=jump]` shows for an action (reaching players item 3).
+    pub input: Option<Rc<RefCell<argus_input::InputState>>>,
 }
 
 /// How the canvas sits in a window: scaled to fit whole, centred. The

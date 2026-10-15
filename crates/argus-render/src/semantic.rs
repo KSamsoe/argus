@@ -890,10 +890,12 @@ fn ui_seen(world: &World, spec: &FrameSpec) -> Vec<UiSeen> {
         }
     }
     nodes.sort_by_key(|n| (n.0, n.1));
+    // The plain words: rich text's tags left out, a key's words kept
+    // (reaching players item 3), as the screen reader says them.
     let words = |e: Entity| {
         world
             .get::<UiText>(e)
-            .map(|t| world.strings().resolve(t.shown).to_string())
+            .map(|t| argus_ui::rich::plain(&world.strings().resolve(t.shown)))
             .unwrap_or_default()
     };
     // The button a node is inside, if any.

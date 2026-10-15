@@ -1960,14 +1960,25 @@ impl Renderer {
             let (atlas, frame, sub, material) = match &q.paint {
                 Paint::Flat => ("rect", 0u32, full, 0usize),
                 Paint::Image { sprite, frame, sub } => (&**sprite, *frame, *sub, 0),
-                Paint::Glyph { atlas, frame, sdf } => (
+                Paint::Glyph {
+                    atlas,
+                    frame,
+                    sdf,
+                    bold,
+                    ..
+                } => (
                     &**atlas,
                     *frame,
                     full,
-                    if *sdf {
-                        self.gpu.material_index("sdf_text").unwrap_or(0)
-                    } else {
-                        0
+                    match (*sdf, *bold) {
+                        (true, false) => self.gpu.material_index("sdf_text").unwrap_or(0),
+                        // Rich text's bold (reaching players item 3).
+                        (true, true) => self
+                            .gpu
+                            .material_index("sdf_text_bold")
+                            .or_else(|| self.gpu.material_index("sdf_text"))
+                            .unwrap_or(0),
+                        (false, _) => 0,
                     },
                 ),
             };
@@ -2008,7 +2019,11 @@ impl Renderer {
                     q.color[3],
                 ],
                 extra: [0.0; 4],
-                tile: ONCE,
+                // Italic text leans (reaching players item 3).
+                tile: match q.paint {
+                    Paint::Glyph { slant, .. } if slant != 0.0 => [1.0, 1.0, slant, 0.0],
+                    _ => ONCE,
+                },
             });
             let tl = fit.to_window([q.clip[0], q.clip[1]]);
             let br = fit.to_window([q.clip[2], q.clip[3]]);

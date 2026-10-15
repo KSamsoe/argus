@@ -463,6 +463,8 @@ fn assemble_layers(
     // so a system may read or write the UI's components.
     let ui = Rc::new(RefCell::new(argus_ui::Shared {
         theme: argus_ui::Theme::load(root)?,
+        // Rich text's [glyph] reads the action map (reaching players 3).
+        input: input.clone(),
         ..Default::default()
     }));
     argus_ui::install(&mut world, &mut sched, ui.clone())?;

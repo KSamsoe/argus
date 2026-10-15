@@ -498,6 +498,29 @@ align = "center"
 
 Focus moves between buttons with `ui_move`, to the nearest in that direction (or where a button's `up`, `down`, `left`, `right` say). `ui_confirm` presses the focused button, and `ui_click` the one under the pointer. A menu that appears with nothing focused gets its first button. A press emits `ui.pressed {entity, event, by}` and the button's own event (`pause.resume` above), which a system reacts to with `q:events`. `ui_cancel` emits `ui.cancel {root}`. The UI systems run `unfrozen`, so a menu works while the game is frozen. Pages are subtrees whose `visible` a system switches (`examples/hollow/systems/pause_menu.luau`).
 
+### Rich text
+
+A `UiText`'s words take markup, so one line can carry a colour, a weight, a size, the player's own key, and a picture:
+
+```toml
+[UiText]
+text = "Press [glyph=drink] to [color=accent][b]drink a potion[/b][/color], [i]if you dare[/i]. [img=sprites/potion]"
+```
+
+| Markup | What it draws |
+|---|---|
+| `[color=accent]words[/color]` | In a theme colour (`ui.toml`'s names) or `#RRGGBB` (`AA`). |
+| `[b]words[/b]` | Bold: a font asset's strokes thicker; the pixel font's glyphs drawn twice, a pixel apart. |
+| `[i]words[/i]` | Italic: leaning right. |
+| `[size=24]words[/size]` | At that size, in canvas pixels. A line is as tall as its largest words, and the rest stand on its foot. |
+| `[glyph=jump]` | What the player presses for the action, on the device they use now, on a plate: Space on the keyboard, A on an Xbox pad, the touch button's words under a finger. It changes when they pick up another device. `[glyph=jump:2]` is slot 2's. |
+| `[img=icons:3]` | A sprite's frame (frame 0 without the number), as tall as the words and as wide. |
+| `[[` | A bracket. |
+
+Anything else in brackets is words as written, so `[E] Talk` still reads `[E] Talk`. Markup that names a tag but does not read (a size that is not a number, a `[/b]` with no `[b]`, a `[glyph]` for an action with nothing bound) is shown as written and said under the semantic frame's `problems`, with the node, as a hole that names nothing is. Holes and string tables work as before, and markup may stand in a table's text and around a hole: `"[b]{Gold.count}[/b] gold"`.
+
+The semantic frame, the screen reader, and the web page's reader get the plain words: no tags, a key's words (`Press Q to drink a potion`), nothing for a picture. `UiText.shown` keeps the markup, with each `[glyph]` already made the key it shows.
+
 ### A text box
 
 A `UiTextBox` is a button the player types into. It goes on a node with a `UiButton` (to take the focus and be pressed) and a `UiText` (which shows it):

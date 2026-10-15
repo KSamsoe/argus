@@ -35,6 +35,12 @@ pub enum Paint {
         frame: u32,
         /// The atlas holds distances (the SDF material draws it).
         sdf: bool,
+        /// Bold (rich text's `[b]`): an SDF font's edge further in; a pixel
+        /// font's glyph drawn twice, a pixel apart.
+        bold: bool,
+        /// Italic (`[i]`): how far right the top leans, a fraction of the
+        /// height; 0 upright.
+        slant: f32,
     },
 }
 
@@ -214,8 +220,80 @@ pub fn draw_list(
                 color(t.color, "text")
             };
             let Some(c) = c else { continue };
-            let l = lines(font.as_ref(), &shown, tsize, t.wrap.then_some(width));
             let align = world.strings().resolve(t.align).to_string();
+            // Rich text (reaching players item 3): pieces of their own
+            // colour, size, weight, and slant; keys on a plate; pictures.
+            if crate::rich::has_markup(&shown) {
+                let (spans, _) = crate::rich::parse(&shown);
+                let ls = crate::rich::lines(font.as_ref(), &spans, tsize, t.wrap.then_some(width));
+                let plate = theme
+                    .color("accent", contrast)
+                    .map(|a| [a[0], a[1], a[2], 0.3]);
+                let mut y0 = inner[1];
+                for line in &ls {
+                    let x0 = match align.as_str() {
+                        "center" => inner[0] + (width - line.width) * 0.5,
+                        "right" => inner[0] + width - line.width,
+                        _ => inner[0],
+                    };
+                    for p in &line.pieces {
+                        // Each piece stands on the line's foot.
+                        let box_h = p.size * crate::text::LINE;
+                        let top = y0 + line.height - box_h;
+                        let pc = p
+                            .style
+                            .color
+                            .as_deref()
+                            .filter(|_| !disabled)
+                            .and_then(|n| theme.color(n, contrast))
+                            .unwrap_or(c);
+                        match &p.kind {
+                            crate::rich::Kind::Img { sprite, frame } => push(
+                                [x0 + p.x, top + (box_h - p.size) * 0.5],
+                                [p.size, p.size],
+                                Paint::Image {
+                                    sprite: Rc::from(sprite.as_str()),
+                                    frame: *frame,
+                                    sub: [0.0, 0.0, 1.0, 1.0],
+                                },
+                                fade([1.0, 1.0, 1.0, c[3]]),
+                            ),
+                            crate::rich::Kind::Text(words) => {
+                                if let (true, Some(pl)) = (p.style.key, plate) {
+                                    push([x0 + p.x, top], [p.width, box_h], Paint::Flat, fade(pl));
+                                }
+                                let slant = if p.style.italic { 0.2 } else { 0.0 };
+                                let bold = p.style.bold;
+                                // A pixel font has no weight: bold is the
+                                // glyph again, a font pixel to the right.
+                                let twice = bold && !font.sdf();
+                                glyphs(font.as_ref(), words, p.size, |g| {
+                                    let at = [x0 + p.x + g.x, top + g.y];
+                                    let paint = Paint::Glyph {
+                                        atlas: font.atlas(),
+                                        frame: g.frame,
+                                        sdf: font.sdf(),
+                                        bold,
+                                        slant,
+                                    };
+                                    if twice {
+                                        push(
+                                            [at[0] + p.size / 8.0, at[1]],
+                                            [g.w, g.h],
+                                            paint.clone(),
+                                            fade(pc),
+                                        );
+                                    }
+                                    push(at, [g.w, g.h], paint, fade(pc));
+                                });
+                            }
+                        }
+                    }
+                    y0 += line.height;
+                }
+                continue;
+            }
+            let l = lines(font.as_ref(), &shown, tsize, t.wrap.then_some(width));
             for (row, line) in l.lines.iter().enumerate() {
                 let x0 = match align.as_str() {
                     "center" => inner[0] + (width - line.width) * 0.5,
@@ -231,6 +309,8 @@ pub fn draw_list(
                             atlas: font.atlas(),
                             frame: g.frame,
                             sdf: font.sdf(),
+                            bold: false,
+                            slant: 0.0,
                         },
                         fade(c),
                     )
@@ -288,6 +368,8 @@ pub fn bar(shared: &Shared, text: &str, color: Rgba) -> Vec<Quad> {
                     atlas: font.atlas(),
                     frame: g.frame,
                     sdf: font.sdf(),
+                    bold: false,
+                    slant: 0.0,
                 },
                 color,
                 clip,
@@ -362,6 +444,8 @@ pub fn touch(shared: &Shared, controls: &[argus_input::TouchShown]) -> Vec<Quad>
                                 atlas: font.atlas(),
                                 frame: g.frame,
                                 sdf: font.sdf(),
+                                bold: false,
+                                slant: 0.0,
                             },
                             color: alpha(text, 0.9),
                             clip,
@@ -409,6 +493,8 @@ pub fn label(
                     atlas: font.atlas(),
                     frame: g.frame,
                     sdf: font.sdf(),
+                    bold: false,
+                    slant: 0.0,
                 },
                 color,
                 clip,

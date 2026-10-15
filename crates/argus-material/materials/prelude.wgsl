@@ -76,7 +76,11 @@ fn vs_main(@builtin(vertex_index) vi: u32, inst: Inst) -> VOut {
     let sn = sin(r);
     // The pivot (a fraction of the frame, y up) sits on the position.
     let pivot = inst.rot_z.zw;
-    let local = vec2<f32>((c.x + 0.5 - pivot.x) * size.x, (c.y + 0.5 - pivot.y) * size.y);
+    let upright = vec2<f32>((c.x + 0.5 - pivot.x) * size.x, (c.y + 0.5 - pivot.y) * size.y);
+    // A slant (tile.z, 0 for all but italic text): the quad leans right as
+    // it goes up, its foot where it stood, as italic does.
+    let rise = (c.y + 0.5) * size.y;
+    let local = vec2<f32>(upright.x + rise * inst.tile.z, upright.y);
     let world = pos + vec2<f32>(local.x * cs - local.y * sn, local.x * sn + local.y * cs);
     out.world = world;
     let rel = world - view.center;

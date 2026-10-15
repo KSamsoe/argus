@@ -42,9 +42,17 @@ pub mod codes {
 pub const PRELUDE: &str = include_str!("../materials/prelude.wgsl");
 
 /// The shipped library, by name.
-pub const BUILTIN_NAMES: [&str; 6] = ["unlit", "lit", "palette", "dissolve", "outline", "sdf_text"];
+pub const BUILTIN_NAMES: [&str; 7] = [
+    "unlit",
+    "lit",
+    "palette",
+    "dissolve",
+    "outline",
+    "sdf_text",
+    "sdf_text_bold",
+];
 
-const BUILTIN_FILES: [(&str, &str, &str); 6] = [
+const BUILTIN_FILES: [(&str, &str, &str); 7] = [
     (
         "unlit",
         include_str!("../materials/unlit.toml"),
@@ -73,6 +81,13 @@ const BUILTIN_FILES: [(&str, &str, &str); 6] = [
     (
         "sdf_text",
         include_str!("../materials/sdf_text.toml"),
+        include_str!("../materials/sdf_text.wgsl"),
+    ),
+    // Rich text's bold (reaching players item 3): the same shader, its
+    // edge further in.
+    (
+        "sdf_text_bold",
+        include_str!("../materials/sdf_text_bold.toml"),
         include_str!("../materials/sdf_text.wgsl"),
     ),
 ];

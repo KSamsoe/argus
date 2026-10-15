@@ -67,9 +67,10 @@ fn materials_draw_reload_and_report_their_errors_with_lines() {
     project(t.path());
     let mut d = open(t.path());
 
-    // The project's material and the library's six.
+    // The project's material and the library's seven (rich text's bold,
+    // reaching players item 3, the seventh).
     let list = ok(&mut d, "asset.list", json!({ "kind": "material" }));
-    assert_eq!(list["total"], 7, "{list}");
+    assert_eq!(list["total"], 8, "{list}");
     let names: Vec<&str> = list["rows"]
         .as_array()
         .unwrap()

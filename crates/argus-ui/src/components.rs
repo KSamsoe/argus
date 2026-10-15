@@ -261,7 +261,7 @@ pub struct UiRect {
 #[derive(Component, Clone, Copy, Debug, PartialEq)]
 #[repr(C)]
 #[argus(
-    doc = "Words in a UI node, wrapped to its width: text, or a string table's (key, in the current language), which may hold {Component.field} and {@id:Component.field} holes, filled each layout. size, color, and font default to the theme's (ui.toml)"
+    doc = "Words in a UI node, wrapped to its width: text, or a string table's (key, in the current language), which may hold {Component.field} and {@id:Component.field} holes, filled each layout, and rich text's markup: [color=accent]..[/color], [b]..[/b], [i]..[/i], [size=24]..[/size], [glyph=jump] (the player's own key or button for the action), [img=icons:3] (a sprite's frame), [[ for a bracket. size, color, and font default to the theme's (ui.toml)"
 )]
 pub struct UiText {
     /// The words.
