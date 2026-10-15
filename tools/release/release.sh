@@ -140,7 +140,11 @@ if [ "$PUBLISH" = 1 ]; then
   echo "== a draft release on GitHub"
   # The release's notes are docs/releases/<version>.md when it has some.
   NOTES=(--notes "Argus $VERSION ($REV). Install: install.ps1 (Windows) or install.sh (Linux and macOS) from the archive, or with a GitHub token from this release; see docs/install.md. The macOS build is cross-built and universal (Apple Silicon and Intel); docs/mac-testing.md checks it on a Mac. To play the example games with nothing installed: example-games-$VERSION for Windows, Linux, or macOS (its README.txt has the controls).")
-  [ -f "docs/releases/$VERSION.md" ] && NOTES=(--notes-file "docs/releases/$VERSION.md")
+  if [ -f "docs/releases/$VERSION.md" ]; then
+    # Without its heading, which the release's title already is.
+    sed '1{/^# /d}' "docs/releases/$VERSION.md" | sed '1{/^$/d}' > "target/release/notes-$VERSION.md"
+    NOTES=(--notes-file "target/release/notes-$VERSION.md")
+  fi
   gh release create "v$VERSION" "$OUT"/argus-* "$OUT"/example-games-* "$OUT"/install.* "$OUT/SHA256SUMS" \
     --draft --target "$SHA" --title "Argus $VERSION" "${NOTES[@]}"
 fi
