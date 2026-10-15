@@ -22,6 +22,7 @@ fn rig() -> Rig {
     let actions = SchemaBuilder::new("Actions")
         .field("pan", FieldType::Vec2)
         .field("zoom", FieldType::F32)
+        .field("device", FieldType::F32)
         .build()
         .unwrap();
     world.register_schema(actions).unwrap();
@@ -249,6 +250,61 @@ fn room_bounds_keep_the_view_inside_and_a_new_room_slides_in() {
     r.go(t, 100.0, 50.0);
     r.tick(120);
     assert!(close(r.at(cam).x, 100.0) && close(r.at(cam).y, 50.0));
+}
+
+#[test]
+fn played_by_touch_the_target_is_framed_clear_of_the_thumbs() {
+    let mut r = rig();
+    r.zones.borrow_mut().rects = vec![("a".into(), [0.0, 0.0, 20.0, 14.0])];
+    // A player standing on the room's floor, its Actions saying which kind
+    // of device it plays with (the input stage writes it; 0 the keyboard).
+    let t = r.body(10.0, 1.0);
+    let actions = r.world.component_id("Actions").unwrap();
+    r.world.insert_default(t, actions).unwrap();
+    let cam = r.camera(
+        0.0,
+        0.0,
+        Camera {
+            touch_offset: Vec2::new(0.0, -4.0),
+            smoothing: Vec2::new(0.1, 0.1),
+            ..exact(t)
+        },
+    );
+    r.tick(1);
+    // On the keyboard the view stops at the floor (height 10: centre 5), and
+    // the player is drawn near the bottom of the screen.
+    assert!(close(r.at(cam).y, 5.0), "{:?}", r.at(cam));
+    // By touch the aim is 4 lower and the view may pass the floor by 4: the
+    // player is in the middle, over a strip below the room. It glides there.
+    r.world
+        .set_field(t, "Actions.device", argus_camera::TOUCH_DEVICE)
+        .unwrap();
+    let mut last = r.at(cam).y;
+    for _ in 0..120 {
+        r.tick(1);
+        let y = r.at(cam).y;
+        assert!(y <= last + 1e-4 && last - y < 1.0, "glides: {last} to {y}");
+        last = y;
+    }
+    assert!(close(r.at(cam).y, 1.0), "{:?}", r.at(cam));
+    assert!(close(r.cam(cam).view_min.y, -4.0), "{:?}", r.cam(cam));
+    // Never further than the touch offset: a player in a pit below the floor
+    // still sees the view stop 4 under it.
+    r.go(t, 10.0, -6.0);
+    r.tick(120);
+    assert!(close(r.cam(cam).view_min.y, -4.0), "{:?}", r.cam(cam));
+    // Back on the keyboard, the framing and bounds are as before.
+    r.go(t, 10.0, 1.0);
+    r.world.set_field(t, "Actions.device", 0.0f32).unwrap();
+    r.tick(120);
+    assert!(close(r.at(cam).y, 5.0), "{:?}", r.at(cam));
+    // A camera with no touch offset frames the same on any device.
+    let plain = r.camera(0.0, 0.0, exact(t));
+    r.world
+        .set_field(t, "Actions.device", argus_camera::TOUCH_DEVICE)
+        .unwrap();
+    r.tick(2);
+    assert!(close(r.at(plain).y, 5.0), "{:?}", r.at(plain));
 }
 
 #[test]

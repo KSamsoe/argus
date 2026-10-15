@@ -32,6 +32,11 @@ use std::rc::Rc;
 
 pub use system::SYSTEM;
 
+/// The `device` action's value while a player plays by touch
+/// (`argus_input::glyphs::Family::Touch`), which turns on
+/// [`Camera::touch_offset`].
+pub const TOUCH_DEVICE: f32 = 5.0;
+
 /// A camera: the view from its entity's position, and how it moves.
 #[derive(Component, Clone, Copy, Debug, PartialEq)]
 #[repr(C)]
@@ -67,6 +72,12 @@ pub struct Camera {
         tune
     )]
     pub offset: Vec2,
+    /// Framing added while the player plays by touch.
+    #[argus(
+        doc = "Added to offset while the player plays by touch (the device action, of the camera's Actions or else its target's, is 5), and the room's bounds stretch by as much that way, so the target stands clear of the thumbs: [0, -4] draws it 4 units higher, over up to 4 units below the room's floor",
+        tune
+    )]
+    pub touch_offset: Vec2,
     /// Half size of the dead zone.
     #[argus(
         doc = "Half size of the box around the aim the target moves in without moving the camera, in world units",
@@ -181,6 +192,7 @@ impl Default for Camera {
             aspect: 16.0 / 9.0,
             target: Entity::NULL,
             offset: Vec2::ZERO,
+            touch_offset: Vec2::ZERO,
             dead_zone: Vec2::new(1.0, 1.0),
             lookahead: Vec2::new(0.25, 0.0),
             lookahead_max: Vec2::new(3.0, 0.0),

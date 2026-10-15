@@ -211,6 +211,20 @@ fn run(
         ];
         let follow = !c.target.is_null() && c.target != e && ctx.is_alive(c.target);
         let pan = has_actions && c.pan_action != StrId::EMPTY;
+        // Played by touch (the device action of the camera's own Actions,
+        // else its target's): the touch framing, and the room's bounds
+        // stretched as far that way, so the target stands clear of the thumbs.
+        let touch = follow && c.touch_offset != Vec2::ZERO && {
+            let device = |who: Entity| {
+                actions
+                    .filter(|&a| ctx.has(who, a))
+                    .and_then(|_| ctx.get_field(who, "Actions.device").ok())
+                    .as_ref()
+                    .and_then(num)
+            };
+            device(e).or_else(|| device(c.target)) == Some(crate::TOUCH_DEVICE)
+        };
+        let shift = if touch { c.touch_offset } else { Vec2::ZERO };
         let has_t = ctx.has(e, tr);
         let mut pos = position(ctx.world(), e).unwrap_or([0.0, 0.0]);
         if moving && has_t && (follow || pan) {
@@ -246,8 +260,8 @@ fn run(
                     )
                 };
                 let aim = [
-                    tp[0] + c.offset.x + c.ahead.x,
-                    tp[1] + c.offset.y + c.ahead.y,
+                    tp[0] + c.offset.x + shift.x + c.ahead.x,
+                    tp[1] + c.offset.y + shift.y + c.ahead.y,
                 ];
                 let want = if snap {
                     aim
@@ -286,9 +300,13 @@ fn run(
                             ],
                         ));
                     }
+                    let (lo, hi) = (
+                        [r[0] + shift.x.min(0.0), r[1] + shift.y.min(0.0)],
+                        [r[2] + shift.x.max(0.0), r[3] + shift.y.max(0.0)],
+                    );
                     want = [
-                        clamp_axis(want[0], half[0], r[0], r[2]),
-                        clamp_axis(want[1], half[1], r[1], r[3]),
+                        clamp_axis(want[0], half[0], lo[0], hi[0]),
+                        clamp_axis(want[1], half[1], lo[1], hi[1]),
                     ];
                 }
             }

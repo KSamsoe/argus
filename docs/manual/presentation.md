@@ -339,11 +339,14 @@ A `Camera` frames the scene from its entity's position; `height` is how many wor
 height = 12.0
 target = "@player"
 offset = [0.0, 1.5]
+touch_offset = [0.0, -4.0]
 dead_zone = [1.5, 1.0]
 blend = 0.8
 ```
 
 **Bounds.** With `bounded = true` (the default) the view stays inside the current room's bounds, or the scene's `bounds = [x0, y0, x1, y1]` in `scene.toml`. `aspect` (16:9 by default) is the view's shape for these bounds.
+
+**Played by touch.** On a phone, the player's thumbs rest on the [touch controls](gameplay.md#touch), usually low on the screen, and can hide a hero drawn there. `touch_offset` is added to `offset` while the player plays by touch, and the view may then pass the room's edge by the same amount in that direction. Hollow's `[0.0, -4.0]` aims 4 units lower. A hero standing on a room's floor is then drawn near the middle of the screen, with up to 4 units of the dark below the floor under the thumbs, instead of at the bottom edge. The camera glides to the new framing when the player picks up the phone, and back when they press a key. It is zero by default, which frames the same on every device.
 
 **Free pan and zoom.** With no target, `pan_action` and `zoom_action` name actions a player moves it with; `zoom_min` and `zoom_max` limit the zoom. Outpost's camera, which `examples/outpost/systems/found.luau` builds in Luau, as an entity file would write it:
 
