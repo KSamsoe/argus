@@ -408,6 +408,27 @@ try {
     import("./" + pageScript).catch((e) => console.error(`${pageScript}: ${e}`));
   }
 
+  // The drawing buffer as big as the canvas is on the screen, in the
+  // screen's own pixels (at most two to a CSS pixel, and about 1920 by 1080
+  // in all, for a phone's sake): sharp on a phone or a high-density
+  // display, and as wide as a wide screen, where the world shows more at
+  // the sides, the UI keeps to the game's canvas in the middle, and the
+  // touch controls go to the edges. Looked at every frame, so turning a
+  // phone or leaving fullscreen takes effect at once.
+  const fitBuffer = () => {
+    const r = canvas.getBoundingClientRect();
+    if (r.width < 1 || r.height < 1) return;
+    let k = Math.min(window.devicePixelRatio || 1, 2);
+    const most = 1920 * 1080;
+    if (r.width * r.height * k * k > most) k = Math.sqrt(most / (r.width * r.height));
+    const w = Math.round(r.width * k);
+    const h = Math.round(r.height * k);
+    if (w === canvas.width && h === canvas.height) return;
+    canvas.width = w;
+    canvas.height = h;
+    player.resize(w, h);
+  };
+
   // The game's settings say whether it fills the screen (phase 3 item 1).
   // A browser allows that only shortly after a key press or a click, which
   // the one that pressed the setting's button is; asked once per change.
@@ -481,6 +502,7 @@ try {
   let n = 0;
   const frame = (t) => {
     try {
+      fitBuffer();
       player.frame(t, run);
       savesAndLoads();
       fitScreen();

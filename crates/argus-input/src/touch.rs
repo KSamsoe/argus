@@ -104,7 +104,7 @@ pub struct TouchArea {
     pub centre: (f32, f32),
     /// Half its size.
     pub radius: f32,
-    /// A floating stick's half of the canvas: x0, y0, x1, y1.
+    /// A floating stick's half of the screen: x0, y0, x1, y1.
     pub floating: Option<[f32; 4]>,
     /// Its words.
     pub label: String,
@@ -142,27 +142,31 @@ impl TouchArea {
     }
 }
 
-/// Lay controls out on a canvas `[width, height]`.
-pub fn layout(controls: &[TouchControl], canvas: [f32; 2]) -> Vec<TouchArea> {
-    let [w, h] = canvas;
+/// Lay controls out on the screen `[x0, y0, x1, y1]`, in UI canvas pixels:
+/// the canvas itself (`[0, 0, width, height]`), or more when the window is
+/// wider or taller than the canvas, so the controls sit at the screen's
+/// own edges.
+pub fn layout(controls: &[TouchControl], screen: [f32; 4]) -> Vec<TouchArea> {
+    let [x0, y0, x1, y1] = screen;
+    let (mx, my) = ((x0 + x1) / 2.0, (y0 + y1) / 2.0);
     controls
         .iter()
         .map(|c| {
             let [ax, ay] = c.at;
             let (x, side) = match c.anchor.as_str() {
-                "top-left" | "left" | "bottom-left" => (ax, -1),
-                "top-right" | "right" | "bottom-right" => (w - ax, 1),
-                _ => (w / 2.0 + ax, 0),
+                "top-left" | "left" | "bottom-left" => (x0 + ax, -1),
+                "top-right" | "right" | "bottom-right" => (x1 - ax, 1),
+                _ => (mx + ax, 0),
             };
             let y = match c.anchor.as_str() {
-                "top-left" | "top" | "top-right" => ay,
-                "bottom-left" | "bottom" | "bottom-right" => h - ay,
-                _ => h / 2.0 + ay,
+                "top-left" | "top" | "top-right" => y0 + ay,
+                "bottom-left" | "bottom" | "bottom-right" => y1 - ay,
+                _ => my + ay,
             };
-            let floating = (c.kind == TouchKind::Stick && c.floating).then(|| match side {
-                -1 => [0.0, 0.0, w / 2.0, h],
-                1 => [w / 2.0, 0.0, w, h],
-                _ => [0.0, 0.0, w, h],
+            let floating = (c.kind == TouchKind::Stick && c.floating).then_some(match side {
+                -1 => [x0, y0, mx, y1],
+                1 => [mx, y0, x1, y1],
+                _ => [x0, y0, x1, y1],
             });
             TouchArea {
                 name: c.name.clone(),

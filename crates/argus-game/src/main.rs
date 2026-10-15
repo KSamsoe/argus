@@ -526,6 +526,8 @@ impl Game {
         self.r.set_time(self.p.sched.time() as f32);
         // The player's UI (a load replaces the player, and its UI with it).
         self.r.set_ui(Some(self.p.ui.clone()));
+        // A window wider than the canvas: the touch controls at its edges.
+        self.p.set_screen(self.r.ui_fit().and_then(|f| f.screen()));
         let store = self.p.particles.borrow();
         let tick = self.p.sched.tick();
         // On a discrete clock a frame draws the latest turn (no time owed

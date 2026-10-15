@@ -31,6 +31,9 @@ pub struct Player {
     pub seed: u64,
     input: Option<Rc<RefCell<InputState>>>,
     devices: Devices,
+    /// The window in UI canvas pixels when it shows more than the canvas
+    /// ([`Player::set_screen`]).
+    screen: Option<[f32; 4]>,
     tiles: Rc<RefCell<argus_tiles::MapStore>>,
     /// Navigation grids and searches (phase 3 item 2).
     pub nav: Rc<RefCell<argus_nav::NavStore>>,
@@ -165,6 +168,7 @@ impl Player {
             seed: a.seed,
             input: a.input,
             devices: Devices::default(),
+            screen: None,
             tiles: a.tiles,
             nav: a.nav,
             particles: a.particles,
@@ -458,6 +462,22 @@ impl Player {
     /// pixels (reaching players item 1). Returns the turns it took.
     pub fn touch(&mut self, id: u64, phase: argus_input::TouchPhase, x: f32, y: f32) -> u64 {
         self.devices(&[DeviceInput::Touch { id, phase, x, y }])
+    }
+
+    /// The window the host draws into, in UI canvas pixels, when it is
+    /// another shape than the canvas (`argus_ui::Fit::screen`): the touch
+    /// controls go to its edges. A host says it every frame; a change (a
+    /// phone turned) moves the controls at once.
+    pub fn set_screen(&mut self, screen: Option<[f32; 4]>) {
+        if screen == self.screen {
+            return;
+        }
+        self.screen = screen;
+        if let Some(st) = &self.input {
+            st.borrow_mut().set_screen(screen);
+            let layout = st.borrow().touch_layout();
+            self.devices.set_touch_layout(&layout);
+        }
     }
 
     /// The touch controls to draw over the game now: none unless touch is

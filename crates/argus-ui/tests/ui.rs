@@ -971,3 +971,28 @@ fn a_font_asset_lays_out_by_its_advances_and_draws_from_its_field() {
     u.step(1);
     assert_eq!(u.at(label)[2], 11.0 * 15.0, "11 pixel-font cells of 15");
 }
+
+#[test]
+fn a_window_of_another_shape_is_the_screen_around_the_canvas() {
+    // 960 by 540 in a 20:9 window (2340 by 1053): the canvas sits in the
+    // middle at 1.95 times, with 120 canvas pixels of window either side.
+    let fit = argus_ui::Fit::new([960.0, 540.0], [2340.0, 1053.0]);
+    let s = fit.screen().unwrap();
+    assert!(
+        (s[0] + 120.0).abs() < 0.01 && (s[2] - 1080.0).abs() < 0.01,
+        "{s:?}"
+    );
+    assert!(s[1].abs() < 0.01 && (s[3] - 540.0).abs() < 0.01, "{s:?}");
+    // The window's corners are the screen's.
+    let tl = fit.to_canvas([0.0, 0.0]);
+    assert!((tl[0] - s[0]).abs() < 0.01 && (tl[1] - s[1]).abs() < 0.01);
+    // The canvas's own shape, at any size: no screen beyond it.
+    assert_eq!(
+        argus_ui::Fit::new([960.0, 540.0], [1920.0, 1080.0]).screen(),
+        None
+    );
+    assert_eq!(
+        argus_ui::Fit::new([960.0, 540.0], [1000.0, 563.0]).screen(),
+        None
+    );
+}

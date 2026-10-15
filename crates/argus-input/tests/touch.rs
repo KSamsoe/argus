@@ -272,3 +272,24 @@ fn a_control_is_placed_from_its_anchor_on_the_canvas() {
         "right: from the right edge, at mid height"
     );
 }
+
+#[test]
+fn on_a_screen_wider_than_the_canvas_the_controls_go_to_its_edges() {
+    // A phone at 20:9 shows the 960 by 540 canvas in its middle, with 120
+    // canvas pixels of the world either side: the controls go to the
+    // screen's own corners, where the thumbs are, and a floating stick
+    // takes its half of the whole screen.
+    let map = ActionMap::parse("input.toml", MAP).unwrap();
+    let mut st = InputState::new(map, false);
+    st.set_canvas([960.0, 540.0]);
+    st.set_screen(Some([-120.0, 0.0, 1080.0, 540.0]));
+    let l = st.touch_layout();
+    let find = |n: &str| l.iter().find(|c| c.name == n).unwrap();
+    assert_eq!(find("stick").centre, (20.0, 400.0));
+    assert_eq!(find("jump").centre, (980.0, 440.0));
+    assert_eq!(find("aim").centre, (880.0, 270.0));
+    assert_eq!(find("aim").floating, Some([480.0, 0.0, 1080.0, 540.0]));
+    // Back to the canvas: where they were.
+    st.set_screen(None);
+    assert_eq!(st.touch_layout()[0].centre, (140.0, 400.0));
+}

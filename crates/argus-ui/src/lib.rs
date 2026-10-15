@@ -340,6 +340,17 @@ impl Fit {
             p[1] * self.scale + self.offset[1],
         ]
     }
+
+    /// The whole window in canvas pixels, `[x0, y0, x1, y1]`, when it is
+    /// another shape than the canvas (a phone wider than 16:9 shows world
+    /// beyond the canvas's sides); `None` when the canvas fills it to
+    /// within a pixel. Where a host's touch controls go
+    /// (`argus_input::InputState::set_screen`).
+    pub fn screen(&self) -> Option<[f32; 4]> {
+        let (dx, dy) = (self.offset[0] / self.scale, self.offset[1] / self.scale);
+        (dx.abs() >= 1.0 || dy.abs() >= 1.0)
+            .then(|| [-dx, -dy, self.canvas[0] + dx, self.canvas[1] + dy])
+    }
 }
 
 /// Register the UI's components (for a world that only reads them).

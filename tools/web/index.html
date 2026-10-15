@@ -8,7 +8,12 @@
      finger on it is the game's, not the page's to scroll, zoom, or select
      (reaching players item 1). */
   canvas { display: block; margin: 12px auto 0; width: min(960px, 100vw, calc(100vh * 16 / 9)); width: min(960px, 100vw, calc(100dvh * 16 / 9)); height: auto; aspect-ratio: 16 / 9; outline: none; background: #000; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
-  @media (pointer: coarse) { canvas { margin-top: 0; } }
+  /* A phone or a tablet: the whole screen, when it is wider than 16:9 (a
+     phone on its side shows more of the world at the sides, the game's
+     words and menus in the middle, and its touch controls at the screen's
+     edges); a narrower one, as a phone held upright, the game's own shape
+     across its width. */
+  @media (pointer: coarse) { canvas { margin-top: 0; width: 100vw; height: min(100vh, 56.25vw); height: min(100dvh, 56.25vw); aspect-ratio: auto; } }
   p, form { max-width: 960px; margin: 8px auto; padding: 0 12px; }
   form { display: flex; gap: 8px; }
   /* An author's display beats the hidden attribute's own (the browser's

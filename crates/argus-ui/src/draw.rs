@@ -432,7 +432,9 @@ pub fn touch(shared: &Shared, controls: &[argus_input::TouchShown]) -> Vec<Quad>
         .color("panel", contrast)
         .unwrap_or([0.1, 0.1, 0.12, 1.0]);
     let accent = theme.color("accent", contrast).unwrap_or(text);
-    let clip = [0.0, 0.0, theme.width, theme.height];
+    // Not kept to the canvas: on a screen wider than it the controls sit at
+    // the screen's own edges, outside it (InputState::set_screen).
+    let clip = [-1.0e6, -1.0e6, 1.0e6, 1.0e6];
     let alpha = |c: Rgba, a: f32| [c[0], c[1], c[2], a];
     let disc = |c: (f32, f32), r: f32, color: Rgba| Quad {
         pos: [c.0 - r, c.1 - r],

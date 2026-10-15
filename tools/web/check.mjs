@@ -15,7 +15,9 @@
 // menu opened by a real key, a button focused by the real mouse and pressed
 // by a click), the same picture with WebGL2 forced, and the game played
 // by touch (a tap shows the controls, a thumb on the stick walks, a finger
-// on Jump jumps; reaching players item 1). First, a cold load
+// on Jump jumps; reaching players item 1), and on a phone on its side,
+// wider than 16:9 (the game fills the screen, Jump at the screen's own
+// corner jumps). First, a cold load
 // over a playtester's link (phase 5 item 0, section 17: under 5 s on 20
 // Mbit). It exits 1 when anything failed (CI gates on it). It cannot hang
 // or meet another run (phase 5 item 1: a CI run waited two hours here): its
@@ -141,6 +143,12 @@ function verdict() {
     if (!report.touch.controls?.includes("jump")) failures.push(`a tap did not show the touch controls: ${JSON.stringify(report.touch.controls)}`);
     if (!(report.touch.walked > 0.5)) failures.push(`a thumb on the stick walked the hero ${report.touch.walked}, not right`);
     if (!(report.touch.rose > 0.3)) failures.push(`a finger on Jump rose the hero ${report.touch.rose}`);
+  }
+  if (report.phone) {
+    const p = report.phone;
+    if (!p.filled) failures.push(`on a phone on its side the game is ${JSON.stringify(p.canvas)} of the screen's ${JSON.stringify(p.screen)}`);
+    if (!(p.jump_from_edge < 50)) failures.push(`on a phone on its side Jump is ${p.jump_from_edge} CSS pixels in from the screen's edge`);
+    if (!(p.rose > 0.3)) failures.push(`on a phone on its side a finger on Jump rose the hero ${p.rose}`);
   }
   const walk = (v, at) => {
     if (v && typeof v === "object") {
@@ -466,6 +474,51 @@ try {
     screenshot: await screenshot("touch.png"),
   };
   await touch("touchEnd", []);
+
+  stage = "8. a phone on its side";
+  // 8. A phone on its side, wider than 16:9 (844 by 390 CSS pixels, three
+  // device pixels to one): the game fills the screen, its drawing buffer
+  // at two to a CSS pixel; the world shows more at the sides; Jump sits at
+  // the screen's own corner, not the 16:9 canvas's; and a finger there jumps.
+  await send("Emulation.setDeviceMetricsOverride", { width: 844, height: 390, deviceScaleFactor: 3, mobile: true });
+  await open(base);
+  await sleep(800);
+  const pbox = JSON.parse(await evaluate("JSON.stringify(document.getElementById('game').getBoundingClientRect())"));
+  const psize = JSON.parse(await evaluate("JSON.stringify([document.getElementById('game').width, document.getElementById('game').height])"));
+  const pcss = (fx, fy) => [pbox.left + fx * (pbox.width / psize[0]), pbox.top + fy * (pbox.height / psize[1])];
+  const [qx, qy] = pcss(psize[0] * 0.6, psize[1] * 0.3);
+  await touch("touchStart", [{ x: qx, y: qy, id: 1 }]);
+  await sleep(100);
+  await touch("touchEnd", []);
+  await sleep(300);
+  const pjump = (JSON.parse(await evaluate("argus.player.semantic()")).touch ?? []).find((c) => c.name === "jump")?.bounds;
+  let prose = null;
+  let fromEdge = null;
+  if (pjump) {
+    const [jx, jy] = pcss((pjump[0] + pjump[2]) / 2, (pjump[1] + pjump[3]) / 2);
+    fromEdge = Math.round(pbox.left + pbox.width - pcss(pjump[2], 0)[0]);
+    const y0 = (await status()).player[1];
+    await touch("touchStart", [{ x: jx, y: jy, id: 4 }]);
+    let top = y0;
+    for (let i = 0; i < 12; i++) {
+      await sleep(40);
+      top = Math.max(top, (await status()).player[1]);
+    }
+    prose = top - y0;
+    await touch("touchEnd", []);
+  }
+  const shot = await send("Page.captureScreenshot", { format: "png" });
+  writeFileSync(join(out, "phone.png"), Buffer.from(shot.data, "base64"));
+  report.phone = {
+    screen: [844, 390],
+    canvas: [Math.round(pbox.width), Math.round(pbox.height)],
+    buffer: psize,
+    filled: pbox.width >= 842 && pbox.height >= 388,
+    jump_from_edge: fromEdge,
+    rose: prose,
+    screenshot: join(out, "phone.png"),
+  };
+  await send("Emulation.clearDeviceMetricsOverride");
 } catch (e) {
   report.error = `${stage}: ${e.stack ?? e}`;
 } finally {

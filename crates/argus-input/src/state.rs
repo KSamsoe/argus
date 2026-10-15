@@ -396,6 +396,9 @@ pub struct InputState {
     /// The UI canvas's size, which touch controls are placed on
     /// (reaching players item 1).
     canvas: [f32; 2],
+    /// The window in canvas pixels when it shows more than the canvas (a
+    /// phone wider than the game's 16:9): the touch controls go to its edges.
+    screen: Option<[f32; 4]>,
 }
 
 /// An action waiting for a key.
@@ -447,6 +450,7 @@ impl InputState {
             saves_now: None,
             fresh_now: false,
             canvas: [960.0, 540.0],
+            screen: None,
             current: BTreeMap::new(),
             pressed: Vec::new(),
             released: Vec::new(),
@@ -697,9 +701,21 @@ impl InputState {
         self.canvas = canvas;
     }
 
-    /// The touch controls laid out on the canvas.
+    /// The window, `[x0, y0, x1, y1]` in canvas pixels, when the host draws
+    /// the canvas into one of another shape: the world fills it and the UI
+    /// keeps to the canvas in its middle, but the touch controls go to the
+    /// window's edges, where the thumbs are. `None` is the canvas. Only the
+    /// host's layout changes: what a finger presses is recorded as actions,
+    /// so a run plays back the same on any screen.
+    pub fn set_screen(&mut self, screen: Option<[f32; 4]>) {
+        self.screen = screen;
+    }
+
+    /// The touch controls laid out on the screen (the canvas, unless
+    /// [`InputState::set_screen`] said more).
     pub fn touch_layout(&self) -> Vec<crate::touch::TouchArea> {
-        crate::touch::layout(&self.map.touch, self.canvas)
+        let [w, h] = self.canvas;
+        crate::touch::layout(&self.map.touch, self.screen.unwrap_or([0.0, 0.0, w, h]))
     }
 
     /// The map, to set a run's starting bindings and toggles (a player's
@@ -1341,6 +1357,7 @@ impl InputState {
             saves_now: self.saves_now.clone(),
             fresh_now: self.fresh_now,
             canvas: self.canvas,
+            screen: self.screen,
         }
     }
 

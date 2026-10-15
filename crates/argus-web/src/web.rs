@@ -222,6 +222,17 @@ impl WebPlayer {
         self.p.text(text) as u32
     }
 
+    /// The canvas element's drawing buffer is now `width` by `height`
+    /// pixels (the page sizes it to the element at the screen's own pixel
+    /// density). The world's view is as wide as the buffer at the camera's
+    /// height, the UI's canvas is fitted in its middle, and the touch
+    /// controls go to the buffer's edges.
+    pub fn resize(&mut self, width: u32, height: u32) {
+        if let Some(r) = self.renderer.as_mut() {
+            r.gpu_mut().resize(width, height);
+        }
+    }
+
     /// The mouse wheel turned, lines up positive (issue 23).
     pub fn wheel(&mut self, lines: f32) -> u32 {
         self.p.wheel(lines) as u32
@@ -537,6 +548,8 @@ impl WebPlayer {
         };
         r.set_time(self.p.sched.time() as f32);
         r.set_ui(Some(self.p.ui.clone()));
+        // A screen wider than the canvas: the touch controls at its edges.
+        self.p.set_screen(r.ui_fit().and_then(|f| f.screen()));
         r.set_touch(self.p.touch_shown());
         let store = self.p.particles.borrow();
         let tick = self.p.sched.tick();

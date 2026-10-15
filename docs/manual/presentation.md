@@ -330,7 +330,7 @@ Limits: shadows are hard, a slope occludes as a whole tile, a sprite's occluder 
 
 ## The camera
 
-A `Camera` frames the scene from its entity's position; `height` is how many world units show top to bottom. The active camera with the highest `priority` draws.
+A `Camera` frames the scene from its entity's position; `height` is how many world units show top to bottom. The active camera with the highest `priority` draws. A window wider than the camera's `aspect` (16:9 by default), such as a phone on its side, shows more of the world at the sides at the same height. A narrower one keeps the camera's width and shows more above and below. Either way, a screen never shows less than the game was made for. Only the picture changes: the camera, its room bounds, and its `view_min` and `view_max` stay the game's own shape, so a run plays the same on any screen.
 
 **Following.** With a `target`, it follows: the target moves inside the `dead_zone` without moving the camera, `lookahead` looks ahead the way it moves, and `smoothing` is how long the camera takes to catch up. From Hollow's camera:
 
@@ -394,7 +394,7 @@ Parallax is drawing only. A parallax sprite still collides and overlaps where it
 
 ## UI
 
-The UI is entities too, laid out on a canvas of UI pixels (960 x 540 by default, y down) that is scaled to fit the window. `ui.toml` at the project's root sets the canvas, the font, the text size, and the colour tokens. From `examples/delve/ui.toml`:
+The UI is entities too, laid out on a canvas of UI pixels (960 x 540 by default, y down) that is scaled to fit the window. In a window of another shape the canvas sits in the middle at its own shape, with the world drawn around it, and the touch controls go to the window's own edges ([Gameplay](gameplay.md#touch)). `ui.toml` at the project's root sets the canvas, the font, the text size, and the colour tokens. From `examples/delve/ui.toml`:
 
 ```toml
 font = "fonts/LiberationSans-Regular"
