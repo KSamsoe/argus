@@ -344,19 +344,16 @@ pub fn shake(world: &World, e: Entity) -> ([f32; 2], f32) {
 }
 
 /// What the drawing camera shows on a target `aspect` wide per unit of
-/// height: its position plus shake. `None` without a camera. A target
-/// wider than the camera's `aspect` (a phone's screen) shows more width at
-/// the camera's height; a narrower one (a 4:3 screen filled) keeps the
-/// width the game was made for and shows more height, so a screen never
-/// shows less of the world than the game's own shape does.
+/// height: its position plus shake. `None` without a camera. The camera's
+/// height fills the target, so a target wider than the camera's `aspect`
+/// (a phone on its side) shows more at the sides.
 pub fn view(world: &World, aspect: f32) -> Option<View> {
     let e = current(world)?;
     let c = world.get::<Camera>(e).ok()?;
     let p = position(world, e).unwrap_or([0.0, 0.0]);
     let (o, angle) = shake(world, e);
     let (center, height) = blended(&c, [p[0] + o[0], p[1] + o[1]], c.height);
-    let taller = (c.aspect / aspect.max(1e-6)).max(1.0);
-    let h = height.max(0.01) * 0.5 * taller;
+    let h = height.max(0.01) * 0.5;
     Some(View {
         camera: e,
         center,

@@ -604,20 +604,18 @@ fn a_camera_with_a_blend_glides_from_the_view_before() {
 }
 
 #[test]
-fn a_screen_of_another_shape_shows_more_never_less() {
-    // The camera is made for 2:1, 10 tall. A wider screen shows more width
-    // at that height; a narrower one keeps the 20 wide and shows more
-    // height. The camera itself (its view rect, the world's) is unchanged.
+fn the_camera_height_fills_a_screen_of_any_shape() {
+    // The camera is made for 2:1, 10 tall. A wider screen (a phone on its
+    // side) shows more at the sides at that height, and a narrower one less.
+    // The camera itself (its view rect, the world's) is unchanged.
     let mut r = rig();
     let t = r.body(0.0, 0.0);
-    r.camera(0.0, 0.0, exact(t));
+    let cam = r.camera(0.0, 0.0, exact(t));
     r.tick(1);
     let half = |aspect: f32| argus_camera::view(&r.world, aspect).unwrap().half;
     assert_eq!(half(2.0), [10.0, 5.0]);
     assert_eq!(half(3.0), [15.0, 5.0]);
-    let narrow = half(1.0);
-    assert!(
-        close(narrow[0], 10.0) && close(narrow[1], 10.0),
-        "{narrow:?}"
-    );
+    assert_eq!(half(1.0), [5.0, 5.0]);
+    let c = r.cam(cam);
+    assert_eq!(c.view_max.x - c.view_min.x, 20.0);
 }

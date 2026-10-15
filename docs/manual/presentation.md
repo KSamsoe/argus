@@ -330,7 +330,7 @@ Limits: shadows are hard, a slope occludes as a whole tile, a sprite's occluder 
 
 ## The camera
 
-A `Camera` frames the scene from its entity's position; `height` is how many world units show top to bottom. The active camera with the highest `priority` draws. A window wider than the camera's `aspect` (16:9 by default), such as a phone on its side, shows more of the world at the sides at the same height. A narrower one keeps the camera's width and shows more above and below. Either way, a screen never shows less than the game was made for. Only the picture changes: the camera, its room bounds, and its `view_min` and `view_max` stay the game's own shape, so a run plays the same on any screen.
+A `Camera` frames the scene from its entity's position; `height` is how many world units show top to bottom. The active camera with the highest `priority` draws. The height always fills the window, so a window wider than the camera's `aspect` (16:9 by default), such as a phone on its side, shows more of the world at the sides, and a narrower one shows less. Only the picture changes: the camera, its room bounds, and its `view_min` and `view_max` stay the game's own shape, so a run plays the same on any screen.
 
 **Following.** With a `target`, it follows: the target moves inside the `dead_zone` without moving the camera, `lookahead` looks ahead the way it moves, and `smoothing` is how long the camera takes to catch up. From Hollow's camera:
 

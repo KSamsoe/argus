@@ -557,7 +557,8 @@ fn a_material_imports_checked_and_its_shader_errors_have_lines() {
         panic!()
     };
     assert_eq!(fx.material.as_deref(), Some("materials/tint"));
-    // Every material: the project's three and the library's six.
+    // Every material: the project's three and the library's seven (bold
+    // text's since reaching players item 3).
     let names: Vec<&str> = imp.materials().iter().map(|(n, _)| *n).collect();
     assert_eq!(
         names,
@@ -570,7 +571,8 @@ fn a_material_imports_checked_and_its_shader_errors_have_lines() {
             "palette",
             "dissolve",
             "outline",
-            "sdf_text"
+            "sdf_text",
+            "sdf_text_bold"
         ]
     );
 
