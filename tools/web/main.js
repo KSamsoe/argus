@@ -278,6 +278,32 @@ try {
   });
 
   canvas.addEventListener("pointerdown", openAudio);
+  // The keys the game holds down, as this page told it. A click, a move,
+  // or the wheel also says which modifiers are held: Ctrl pressed while
+  // something else on the page had the focus never reached the game, so the
+  // event's own flags are passed on as that key, and let go again when they
+  // say it is up (reaching players item 0), and a ctrl+left binding works
+  // whatever had the focus.
+  const held = new Set();
+  const MODS = [
+    ["ctrlKey", "ControlLeft", "ControlRight"],
+    ["shiftKey", "ShiftLeft", "ShiftRight"],
+    ["altKey", "AltLeft", "AltRight"],
+    ["metaKey", "MetaLeft", "MetaRight"],
+  ];
+  const syncMods = (e) => {
+    for (const [flag, left, right] of MODS) {
+      const down = held.has(left) || held.has(right);
+      if (e[flag] && !down) {
+        held.add(left);
+        player.key(left, true);
+      } else if (!e[flag] && down) {
+        for (const k of [left, right]) {
+          if (held.delete(k)) player.key(k, false);
+        }
+      }
+    }
+  };
   canvas.addEventListener("keydown", (e) => {
     openAudio();
     e.preventDefault();
@@ -285,13 +311,17 @@ try {
       if (!e.repeat) openReport();
       return;
     }
-    if (!e.repeat) player.key(e.code, true);
+    if (!e.repeat) {
+      held.add(e.code);
+      player.key(e.code, true);
+    }
     // What a text box takes: the character, or Backspace, Enter, and
     // Escape as their control characters (held ones repeat).
     const typed = { Backspace: "\b", Enter: "\r", Escape: "\u001b" }[e.key] ?? (e.key.length === 1 ? e.key : "");
     if (typed && !e.ctrlKey && !e.metaKey) player.text(typed);
   });
   canvas.addEventListener("keyup", (e) => {
+    held.delete(e.code);
     player.key(e.code, false);
     e.preventDefault();
   });
@@ -302,13 +332,18 @@ try {
     const r = canvas.getBoundingClientRect();
     player.pointer(e.clientX - r.left, e.clientY - r.top, r.width, r.height);
   };
-  canvas.addEventListener("pointermove", point);
+  canvas.addEventListener("pointermove", (e) => {
+    syncMods(e);
+    point(e);
+  });
   canvas.addEventListener("pointerdown", (e) => {
     canvas.focus();
+    syncMods(e);
     point(e);
     if (buttons[e.button]) player.mouse(buttons[e.button], true);
   });
   canvas.addEventListener("pointerup", (e) => {
+    syncMods(e);
     point(e);
     if (buttons[e.button]) player.mouse(buttons[e.button], false);
   });
@@ -318,12 +353,16 @@ try {
     "wheel",
     (e) => {
       e.preventDefault();
+      syncMods(e);
       const lines = e.deltaMode === 0 ? -e.deltaY / 40 : -e.deltaY;
       if (lines) player.wheel(lines);
     },
     { passive: false },
   );
-  canvas.addEventListener("blur", () => player.release_all());
+  canvas.addEventListener("blur", () => {
+    held.clear();
+    player.release_all();
+  });
   canvas.focus();
 
   // What the headless checks reach for.

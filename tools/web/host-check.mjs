@@ -47,12 +47,50 @@ writeFileSync(
 }
 `,
 );
+// Ctrl and a click is its own action, a plain click another (reaching
+// players item 0: the page passes on the click's modifiers).
+writeFileSync(
+  join(project, "input.toml"),
+  readFileSync(join(project, "input.toml"), "utf8") +
+    `
+[actions.tag]
+type = "button"
+doc = "Ctrl and a click (the host check)"
+[actions.tag.bindings]
+mouse = ["ctrl+left"]
+
+[actions.click]
+type = "button"
+doc = "A click (the host check)"
+[actions.click.bindings]
+mouse = ["left"]
+`,
+);
+writeFileSync(
+  join(project, "systems/clicks.luau"),
+  `return system "sim.clicks" {
+  stage = "sim",
+  reads = { "Actions" },
+  doc = "Sends the host each tag and each click (the host check).",
+  run = function(q)
+    for _, a in q:each("Actions") do
+      if a.tag_pressed then q:send("input", "tag") end
+      if a.click_pressed then q:send("input", "click") end
+    end
+  end,
+}
+`,
+);
 mkdirSync(join(project, "web"));
 writeFileSync(
   join(project, "web/game.js"),
-  `// Sends the game a message and keeps what it sends back, for the check.
+  `// Sends the game a message and keeps what it sends back, for the check,
+// and puts a text box of its own on the page, as a game's page may.
 const { player } = window.argus;
 const turns = player.message("gm.ruling", "from the page");
+const box = document.createElement("input");
+box.id = "check-box";
+document.body.appendChild(box);
 window.hostCheck = { turns, sent: JSON.parse(player.take_sent()) };
 `,
 );
@@ -169,8 +207,30 @@ try {
   // The report form waits for F8: shown from the start, it was the page's
   // own style beating its hidden attribute (issue 3).
   report.report_form_shown = await evaluate("getComputedStyle(document.getElementById('report')).display !== 'none'").catch((e) => String(e));
+
+  // Ctrl pressed in the page's own box, so the canvas never hears it, then
+  // a click on the game: the click's flags say Ctrl is held, and the game
+  // sees ctrl+left (reaching players item 0). Then a plain click.
+  report.stage = "ctrl and a click";
+  await evaluate("argus.player.take_sent()");
+  await evaluate("document.getElementById('check-box').focus()");
+  await send("Input.dispatchKeyEvent", { type: "rawKeyDown", key: "Control", code: "ControlLeft", windowsVirtualKeyCode: 17, modifiers: 2 });
+  const at = await evaluate("(() => { const r = document.getElementById('game').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()");
+  const click = async (modifiers) => {
+    for (const type of ["mousePressed", "mouseReleased"]) {
+      await send("Input.dispatchMouseEvent", { type, x: at[0], y: at[1], button: "left", buttons: type === "mousePressed" ? 1 : 0, clickCount: 1, modifiers });
+    }
+    await sleep(300);
+    return JSON.parse(await evaluate("argus.player.take_sent()")).map((m) => m.text);
+  };
+  report.ctrl_click = await click(2);
+  await send("Input.dispatchKeyEvent", { type: "keyUp", key: "Control", code: "ControlLeft", windowsVirtualKeyCode: 17, modifiers: 0 });
+  report.plain_click = await click(0);
+
   const sent = report.page?.sent ?? [];
   const failures = [];
+  if (JSON.stringify(report.ctrl_click) !== '["tag"]') failures.push(`Ctrl and a click, Ctrl pressed in the page's box, sent ${JSON.stringify(report.ctrl_click)}, not ["tag"]`);
+  if (JSON.stringify(report.plain_click) !== '["click"]') failures.push(`a plain click sent ${JSON.stringify(report.plain_click)}, not ["click"]`);
   if (report.report_form_shown !== false) failures.push(`the report form shows before F8 (${report.report_form_shown})`);
   if (!report.page) failures.push("web/game.js did not run");
   else {

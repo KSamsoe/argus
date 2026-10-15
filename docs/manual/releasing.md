@@ -137,7 +137,7 @@ What else a page script has:
 | `player.semantic()` | What is on screen now, as JSON: the semantic frame an agent reads with `argus observe` and a screen reader is given (the UI's text and buttons in reading order, and the entities in view with a `Describe`). What a player sees. |
 | `player.status()` | JSON: the tick, entity and event counts, the world's digest, frames drawn. |
 | `player.key(code, pressed)` | A key down or up, by `KeyboardEvent.code` (`"KeyW"`, `"ControlLeft"`), as the page feeds the game its keys. Returns the turns it took. |
-| `player.mouse(button, pressed)` | A mouse button (`"left"`, `"right"`, `"middle"`) down or up. A binding's modifiers are the keys held (`player.key("ControlLeft", true)` first for a `ctrl+left`). Returns the turns it took. |
+| `player.mouse(button, pressed)` | A mouse button (`"left"`, `"right"`, `"middle"`) down or up. A binding's modifiers are the keys held, so a script that clicks for a `ctrl+left` presses `player.key("ControlLeft", true)` first. Returns the turns it took. |
 | `player.pointer(x, y, css_w, css_h)` | The mouse at a place on the canvas element, in its CSS pixels, with the element's CSS size: the pointer, on the UI canvas. |
 | `player.wheel(lines)` | The wheel turned, lines up positive: it scrolls what is under the pointer. |
 | `player.text(text)` | Text typed, for a text box: characters, and Backspace, Enter, Escape as their control characters. |
@@ -147,6 +147,8 @@ What else a page script has:
 `player.digest_rows()` is the engine's own debug text for the digest checks, not for games to read.
 
 These are how a page script feeds the game input of its own, as the page's listeners do the player's. The page itself listens to the canvas for `PointerEvent`s and `KeyboardEvent`s, so a script may also dispatch synthetic `PointerEvent`s there (`button: 2` for a right click); a synthetic `MouseEvent` is not heard. Every one is input like a real one: the run records it, so a report replays it.
+
+The player's own Ctrl and click need nothing from a script. A pointer or wheel event says which of Ctrl, Shift, Alt, and Meta are held, and the page passes that on as the keys, so a `ctrl+left` binding works even when Ctrl was pressed while the page's own text box had the focus.
 
 The page's own elements are the canvas (`#game`), the report form (`#report`, `#note`, `#cancel`), the status lines (`#said`, `#status`, `#controls`, `#f8`), and the screen reader's (`#reader-buttons`, `#reader-said`, `#reader-hud`). A script's own elements go in `#page`, an empty `<div>` below the canvas; style them with the script's own `<style>` element, and give them ids of the game's own.
 
