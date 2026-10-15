@@ -131,6 +131,8 @@ A game with Rust plugins has no web build, since a page cannot load a library: `
 
 The page fits the game to the screen in either orientation, and a finger on it is the game's: the browser does not scroll, zoom, or select under it. Each finger goes to the game as a finger, so a game's touch controls work, and a game without them is played by tapping, a finger being the mouse ([Gameplay](gameplay.md#touch)). Turn the phone on its side for a game drawn wide. To try one, serve the build where the phone can reach it (a computer on the same network, or a tailnet, with `serve.mjs`'s address as the host's, [docs/playtest.md](../playtest.md)) and open its address in the phone's browser.
 
+Hollow's web build is a good first try (`tools/web/build.sh` makes it). Its stick and buttons appear the first time a finger touches the screen, and go away again when a key is pressed. CI plays it by touch in headless Chrome: a thumb on the stick walks the hero, and a second finger on Jump makes the hero jump.
+
 ### The game's own page script
 
 A project's `web/` folder goes into the build beside the page. When it has a `game.js`, the page imports it once the game is running, with `window.argus.player` set. That is where a game talks to the world outside it: a server, an AI model, the browser's own storage. The script trades text with the game ([Talking to the host](gameplay.md#talking-to-the-host)):

@@ -89,6 +89,8 @@ size = 120
 - A slot takes touch when its `devices` list `touch` or `mouse`.
 - What a finger presses is recorded as the actions it pressed, as a key is, so replays, seeks, and players' reports have it.
 
+Hollow is played this way on a phone. Its `input.toml` has a floating stick at the bottom left for `move`, Jump and Talk buttons at the bottom right, and a small Menu button at the top right that opens the pause menu. Its `tests/touch.luau` walks and jumps the hero with two fingers.
+
 To try it without a phone, send fingers with `argus input device events='[{touch: 1, phase: start, at: [130, 410]}]'` (the at is in the UI canvas's pixels), or from a scenario with `t.input:touch(1, "start", 130, 410)`. The semantic frame lists the controls on the screen under `touch`. A web build's page hands fingers to the game, and stops the browser scrolling or zooming under them; [Releasing](releasing.md) has how to play it on a phone.
 
 ### Slots and players

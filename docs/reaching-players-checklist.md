@@ -53,14 +53,13 @@ Built (2026-10-15). `argus_ui::rich`: markup parsed into styled spans (a stack o
   - Every example game built with its own icon, and a Mac `.app` for each one that has a Mac release.
   - Delve's log in rich text: damage and healing in colour, and the menu's prompts with the player's own keys inline.
 
-In progress (2026-10-15).
+Met (2026-10-15), except the phone, which is Kevin's to do by hand.
 - Done:
   - Delve. The log's harm is in the theme's `harm` colour and healing in `heal`. A kill's verb is bold. The menu has a hint line, `[glyph=ui_move] to choose, [glyph=ui_confirm] to press, [glyph=pause] to go back`. `tests/looks.luau` checks the words and keeps two pictures, the log and the menu.
   - Keys in rich text. A key filled with the accent colour was hard to read, so it is now an outline, like a keycap, in the theme's `border` colour, with the key's name in the text colour. Pieces side by side ("Arrow keys") share one outline.
   - Hollow touch. Hollow has touch controls: a floating stick, Jump, Talk, and Menu. `tests/touch.luau` walks and jumps the hero by touch.
   - The web check. `tools/web/check.mjs` has a seventh stage: in headless Chrome, a tap shows the controls, a thumb on the stick walks the hero, and a second finger on Jump lifts the hero off the ground. The first run walked 4.7 and rose 3.2.
   - Mac apps. Delve, Hollow, and Outpost (the games with a Mac release) were built for the Mac from 0.1.0's staged runtime. Each made `<Title>.app` with `icon.icns`, the packs in `Contents/Resources/data`, and an `Info.plist`, and passed the build's own check. This checked only the layout: 0.1.0's runtime predates the `Resources/data` fallback, so the next release's runtime is the one to play on a Mac.
-- Left:
-  - Every example built for Windows, with the icon read back from each executable.
-  - A phone playing Hollow's web build. This is Kevin's to do by hand.
-  - The manual's pages on touch and rich text pointing to Hollow and Delve.
+  - Windows builds. Every example game (Delve, Hollow, Outpost, Swarm, Toybox, and Puppet) was built for Windows with `argus build --target windows --release`, and each passed the build's own check. Windows itself read each executable back, with the same calls Explorer uses: each had its own icon and its own name and version, and each build had a `data/icon.png` for its window. Outpost's colonist looks small as an icon, because its sprite frame has empty space around the figure.
+  - The manual. Touch in [Gameplay](manual/gameplay.md#touch) points to Hollow's controls and test. Rich text in [Presentation](manual/presentation.md#rich-text) shows Delve's strings and explains the keycap outline. [Releasing](manual/releasing.md#on-a-phone-or-a-tablet) names Hollow's web build as the one to try on a phone.
+- Left, by hand: a phone playing Hollow's web build.

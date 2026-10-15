@@ -513,13 +513,27 @@ text = "Press [glyph=drink] to [color=accent][b]drink a potion[/b][/color], [i]i
 | `[b]words[/b]` | Bold: a font asset's strokes thicker; the pixel font's glyphs drawn twice, a pixel apart. |
 | `[i]words[/i]` | Italic: leaning right. |
 | `[size=24]words[/size]` | At that size, in canvas pixels. A line is as tall as its largest words, and the rest stand on its foot. |
-| `[glyph=jump]` | What the player presses for the action, on the device they use now, on a plate: Space on the keyboard, A on an Xbox pad, the touch button's words under a finger. It changes when they pick up another device. `[glyph=jump:2]` is slot 2's. |
+| `[glyph=jump]` | What the player presses for the action, on the device they use now, outlined like a key in the theme's `border` colour: Space on the keyboard, A on an Xbox pad, the touch button's words under a finger. It changes when they pick up another device. `[glyph=jump:2]` is slot 2's. |
 | `[img=icons:3]` | A sprite's frame (frame 0 without the number), as tall as the words and as wide. |
 | `[[` | A bracket. |
 
 Anything else in brackets is words as written, so `[E] Talk` still reads `[E] Talk`. Markup that names a tag but does not read (a size that is not a number, a `[/b]` with no `[b]`, a `[glyph]` for an action with nothing bound) is shown as written and said under the semantic frame's `problems`, with the node, as a hole that names nothing is. Holes and string tables work as before, and markup may stand in a table's text and around a hole: `"[b]{Gold.count}[/b] gold"`.
 
 The semantic frame, the screen reader, and the web page's reader get the plain words: no tags, a key's words (`Press Q to drink a potion`), nothing for a picture. `UiText.shown` keeps the markup, with each `[glyph]` already made the key it shows.
+
+Delve uses it in its string table (`examples/delve/strings/en.toml`). The log shows harm and healing in two colours that `ui.toml` adds (`harm` and `heal`, each with a brighter one for high contrast), and the menu's hint shows the player's own keys:
+
+```toml
+[menu]
+hint = "[glyph=ui_move] to choose, [glyph=ui_confirm] to press, [glyph=pause] to go back"
+
+[message]
+kill = "You [b]kill[/b] the {monster}."
+hurt = "The {monster} hits you for [color=harm]{amount}[/color]."
+potion_drunk = "You drink a potion and heal [color=heal]{amount}[/color], to {hp}/{max}."
+```
+
+On the keyboard the hint reads "Arrow keys to choose, Enter to press, Esc to go back", with each key outlined. Keys that sit side by side, like "Arrow keys", share one outline. Delve's `tests/looks.luau` checks those words and compares the log and the menu with saved pictures.
 
 ### A text box
 
