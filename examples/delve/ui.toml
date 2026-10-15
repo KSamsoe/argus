@@ -17,6 +17,10 @@ focus = "#FFB04A"
 accent = "#F0C878"
 button = "#3A3442"
 button_focus = "#6A5A52"
+# The log's numbers (reaching players item 3, rich text): harm done to the
+# hero, and health it gets back.
+harm = "#F07A64"
+heal = "#86D886"
 
 [high_contrast_colors]
 text = "#FFFFFF"
@@ -27,3 +31,5 @@ focus = "#FFD166"
 accent = "#FFFFFF"
 button = "#000000"
 button_focus = "#303030"
+harm = "#FF8A80"
+heal = "#A5FFA5"

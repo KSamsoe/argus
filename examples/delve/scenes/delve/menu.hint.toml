@@ -1,0 +1,16 @@
+# Under the buttons, how to use them with the player's own keys or
+# buttons, as their device names them (strings: menu.hint, rich text's
+# [glyph]): Arrow keys, Enter, and Esc on the keyboard; D-pad, A, and Menu
+# on an Xbox pad.
+[Parent]
+entity = "@menu.panel"
+
+[UiNode]
+margin = [0.0, 8.0]
+order = 9
+
+[UiText]
+key = "menu.hint"
+align = "center"
+color = "muted"
+size = 14.0

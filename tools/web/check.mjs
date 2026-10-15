@@ -13,7 +13,9 @@
 // sent the way the page's F8 sends one, through the server and back, and
 // replayed natively (phase 2 item 7), the UI (phase 3 item 1: the pause
 // menu opened by a real key, a button focused by the real mouse and pressed
-// by a click), and the same picture with WebGL2 forced. First, a cold load
+// by a click), the same picture with WebGL2 forced, and the game played
+// by touch (a tap shows the controls, a thumb on the stick walks, a finger
+// on Jump jumps; reaching players item 1). First, a cold load
 // over a playtester's link (phase 5 item 0, section 17: under 5 s on 20
 // Mbit). It exits 1 when anything failed (CI gates on it). It cannot hang
 // or meet another run (phase 5 item 1: a CI run waited two hours here): its
@@ -134,6 +136,11 @@ function verdict() {
     if (!(report.reader.buttons?.length >= 4)) failures.push("the screen reader sees no menu");
     if (!report.reader.said) failures.push("the screen reader is not told the focus");
     if (!report.reader.pressed_controls) failures.push("a screen reader's press did not reach the game");
+  }
+  if (report.touch) {
+    if (!report.touch.controls?.includes("jump")) failures.push(`a tap did not show the touch controls: ${JSON.stringify(report.touch.controls)}`);
+    if (!(report.touch.walked > 0.5)) failures.push(`a thumb on the stick walked the hero ${report.touch.walked}, not right`);
+    if (!(report.touch.rose > 0.3)) failures.push(`a finger on Jump rose the hero ${report.touch.rose}`);
   }
   const walk = (v, at) => {
     if (v && typeof v === "object") {
@@ -411,6 +418,54 @@ try {
   await sleep(1500);
   s = await status();
   report.webgl = { backend: s.backend, frames: s.frames, drawn: s.drawn, screenshot: await screenshot("webgl.png") };
+
+  stage = "7. touch";
+  // 7. Touch (reaching players item 1): on a touchscreen, a tap shows
+  // Hollow's controls (the semantic frame lists them), a thumb on the left
+  // half is the stick and walks the hero right, and a finger on Jump, while
+  // the thumb stays, jumps.
+  await send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
+  await open(base);
+  await sleep(800);
+  const tbox = JSON.parse(await evaluate("JSON.stringify(document.getElementById('game').getBoundingClientRect())"));
+  const tsize = JSON.parse(await evaluate("JSON.stringify([document.getElementById('game').width, document.getElementById('game').height])"));
+  const css = (fx, fy) => [tbox.left + fx * (tbox.width / tsize[0]), tbox.top + fy * (tbox.height / tsize[1])];
+  const touch = (type, points) => send("Input.dispatchTouchEvent", { type, touchPoints: points });
+  // A tap on the right half, above the buttons: touch is the device in use.
+  const [ax, ay] = css(tsize[0] * 0.6, tsize[1] * 0.3);
+  await touch("touchStart", [{ x: ax, y: ay, id: 1 }]);
+  await sleep(100);
+  await touch("touchEnd", []);
+  await sleep(300);
+  const controls = JSON.parse(await evaluate("argus.player.semantic()")).touch ?? [];
+  const jumpAt = controls.find((c) => c.name === "jump")?.bounds;
+  const p0 = (await status()).player;
+  // A thumb on the left half, then slid right: the stick, all the way.
+  const [sx, sy] = css(tsize[0] * 0.15, tsize[1] * 0.75);
+  const [sx2] = css(tsize[0] * 0.15 + 120, 0);
+  await touch("touchStart", [{ x: sx, y: sy, id: 2 }]);
+  await sleep(50);
+  await touch("touchMove", [{ x: sx2, y: sy, id: 2 }]);
+  await sleep(700);
+  const p1 = (await status()).player;
+  let rose = null;
+  if (jumpAt) {
+    const [jx, jy] = css((jumpAt[0] + jumpAt[2]) / 2, (jumpAt[1] + jumpAt[3]) / 2);
+    await touch("touchStart", [{ x: sx2, y: sy, id: 2 }, { x: jx, y: jy, id: 3 }]);
+    let top = p1[1];
+    for (let i = 0; i < 12; i++) {
+      await sleep(40);
+      top = Math.max(top, (await status()).player[1]);
+    }
+    rose = top - p1[1];
+  }
+  report.touch = {
+    controls: controls.map((c) => c.name),
+    walked: p1[0] - p0[0],
+    rose,
+    screenshot: await screenshot("touch.png"),
+  };
+  await touch("touchEnd", []);
 } catch (e) {
   report.error = `${stage}: ${e.stack ?? e}`;
 } finally {

@@ -4,6 +4,7 @@ doc = "Run left and right; down with jump drops through a plank"
 [actions.move.bindings]
 keyboard = ["wasd", "arrows"]
 gamepad = ["left_stick", "dpad"]
+touch = ["stick"]
 
 [actions.jump]
 type = "button"
@@ -11,6 +12,7 @@ doc = "Jump; hold for a higher one"
 [actions.jump.bindings]
 keyboard = ["space", "z"]
 gamepad = ["south"]
+touch = ["jump"]
 
 [actions.restart]
 type = "button"
@@ -25,6 +27,7 @@ doc = "Talk to someone near (the hermit)"
 [actions.talk.bindings]
 keyboard = ["e"]
 gamepad = ["north"]
+touch = ["talk"]
 
 [actions.pause]
 type = "button"
@@ -33,6 +36,7 @@ doc = "Open or close the pause menu; the platform's overlay opening (Steam's Shi
 keyboard = ["escape"]
 gamepad = ["start"]
 platform = ["overlay"]
+touch = ["menu"]
 
 # The menus' actions (the UI reads these names).
 [actions.ui_move]
@@ -70,3 +74,34 @@ mouse = ["position"]
 
 [slots.1]
 devices = ["keyboard", "mouse", "gamepad:0"]
+
+# Under a finger (reaching players item 1): a stick on the left half of the
+# screen, centred where the thumb lands; Jump at the bottom right, Talk
+# beside it, and the menu at the top right. A tap anywhere else is the
+# mouse, so the pause menu's buttons are tapped. The engine draws them while
+# touch is in use.
+[touch.stick]
+kind = "stick"
+anchor = "bottom-left"
+at = [150, 150]
+size = 180
+floating = true
+
+[touch.jump]
+kind = "button"
+anchor = "bottom-right"
+at = [110, 110]
+size = 130
+
+[touch.talk]
+kind = "button"
+anchor = "bottom-right"
+at = [250, 90]
+size = 90
+
+[touch.menu]
+kind = "button"
+anchor = "top-right"
+at = [50, 50]
+size = 64
+label = "Menu"

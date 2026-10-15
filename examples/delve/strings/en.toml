@@ -10,6 +10,9 @@ new = "New run"
 controls = "Controls"
 settings = "Settings"
 saves = "Saves"
+# Under the buttons: the player's own keys or buttons for the menu, as their
+# device names them (rich text's [glyph], reaching players item 3).
+hint = "[glyph=ui_move] to choose, [glyph=ui_confirm] to press, [glyph=pause] to go back"
 
 # The menu's controls page (phase 5 item 2): each line is an action and
 # what it is bound to.
@@ -49,15 +52,15 @@ line = "Floor {@player:Player.floor}, turn {Turn.n}. HP {@player:Health.cur}/{@p
 
 [message]
 hit = "You hit the {monster}."
-kill = "You kill the {monster}."
-hurt = "The {monster} hits you for {amount}."
+kill = "You [b]kill[/b] the {monster}."
+hurt = "The {monster} hits you for [color=harm]{amount}[/color]."
 died = "The {monster} kills you on floor {floor}, after {kills} kills."
 descend = "You take the stairs down."
 no_stairs = "There are no stairs here."
 wall = "A wall."
 potion_dropped = "The {monster} drops a potion."
 potion_picked = "You pick up a potion; you carry {count}."
-potion_drunk = "You drink a potion and heal {amount}, to {hp}/{max}."
+potion_drunk = "You drink a potion and heal [color=heal]{amount}[/color], to {hp}/{max}."
 potion_full = "You drink a potion, but you are already at full health."
 no_potions = "You have no potions to drink."
 

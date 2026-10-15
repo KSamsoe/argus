@@ -169,7 +169,7 @@ local drinking = scenario "drinking heals a set amount, never above the maximum,
     t.expect:field("@player", "Player.potions"):eq(2)
     t.expect:field("@turn", "Turn.n"):eq(turn + 1)
     if #events(t, "turn.end", from) ~= ends + 1 then error("the monsters did not act after the drink", 0) end
-    t.expect:field("@messages", "UiText.shown"):eq("You drink a potion and heal 4, to 7/10.")
+    t.expect:field("@messages", "UiText.shown"):eq("You drink a potion and heal [color=heal]4[/color], to 7/10.")
     if not has(shown(t, "@turn"), "HP 7/10. Potions 2.") then error("the HUD: " .. tostring(shown(t, "@turn")), 0) end
 
     -- Never above the maximum: 7 + 4 stops at 10.
@@ -177,7 +177,7 @@ local drinking = scenario "drinking heals a set amount, never above the maximum,
     t:advance { by = "turn", n = 1 }
     t.expect:field("@player", "Health.cur"):eq(10)
     t.expect:field("@player", "Player.potions"):eq(1)
-    t.expect:field("@messages", "UiText.shown"):eq("You drink a potion and heal 3, to 10/10.")
+    t.expect:field("@messages", "UiText.shown"):eq("You drink a potion and heal [color=heal]3[/color], to 10/10.")
 
     -- At full health it is drunk for nothing: no overheal, and the turn is
     -- still taken.
