@@ -156,7 +156,17 @@ fn run(args: Args) -> Result<(), String> {
     #[cfg(not(windows))]
     let exe = exe.canonicalize().unwrap_or(exe);
     let dir = exe.parent().unwrap_or(Path::new(".")).to_path_buf();
-    let data = args.data.clone().unwrap_or_else(|| dir.join("data"));
+    let data = args.data.clone().unwrap_or_else(|| {
+        // A Mac app keeps its data in the bundle's resources (reaching
+        // players item 2): Contents/MacOS/<game> and Contents/Resources/data.
+        let beside = dir.join("data");
+        let bundled = dir.join("..").join("Resources").join("data");
+        if !beside.is_dir() && bundled.is_dir() {
+            bundled
+        } else {
+            beside
+        }
+    });
     // The game's files live in memory, under a root that is not on disk.
     let root = dir.join("game");
     let packs = argus_player::pack::mount_dir(&data, &root, args.lang.as_deref())
@@ -206,7 +216,9 @@ fn run(args: Args) -> Result<(), String> {
     let platform_said = start_platform(&mut p);
     let key = cfg.mark_key.unwrap_or_else(|| "F8".to_string());
     let left_out = p.mods.left_out_line();
-    let mut game = Game::open(p, key, save, cfg.reports_url.clone(), settings)?;
+    // The window has the game's title and icon (reaching players item 2).
+    let look = (cfg.game.title.clone(), data.join("icon.png"));
+    let mut game = Game::open(p, key, save, cfg.reports_url.clone(), settings, look)?;
     // Reports that did not go last time go now.
     game.send_later();
     // Mods that did not load, or a load order that did not read; Steam
@@ -263,8 +275,12 @@ impl Game {
         save: Option<PathBuf>,
         reports: Option<String>,
         settings: argus_player::settings::Store,
+        (title, icon): (String, PathBuf),
     ) -> Result<Game, String> {
-        let host = WindowHost::open(&p.name, 1280, 720).map_err(|e| e.message)?;
+        let host = WindowHost::open(&title, 1280, 720).map_err(|e| e.message)?;
+        if let Ok((w, h, rgba)) = argus_assets::decode_png(&icon) {
+            host.set_icon(w, h, rgba);
+        }
         let window = host.window().ok_or("the window did not open")?;
         let mut r = Renderer::windowed(window, false).map_err(|e| e.message)?;
         r.load_catalog(&p.assets).map_err(|e| e.message)?;

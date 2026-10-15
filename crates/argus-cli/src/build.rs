@@ -434,8 +434,13 @@ fn build(inv: &Invocation, err: &mut dyn Write) -> Result<Json, String> {
         }
     }
 
+    // The game's own icon (reaching players item 2), from its sprite.
+    let icon = crate::identity::Icon::load(&root, &cfg.game)?;
     let mut report = json!({
         "game": cfg.name,
+        "title": cfg.game.title,
+        "version": cfg.game.version,
+        "icon": cfg.game.icon,
         "target": target.name(),
         "profile": profile,
         "out": plain(&out_dir),
@@ -454,7 +459,8 @@ fn build(inv: &Invocation, err: &mut dyn Write) -> Result<Json, String> {
         (Target::Web, Some(rt), _) => {
             crate::runtime::place_web(rt, &out_dir)?;
             packs_json(&out_dir, &built.packs, &code)?;
-            game_page(&out_dir, &root, &cfg.name)?;
+            game_page(&out_dir, &root, &cfg.name, &cfg.game.title)?;
+            crate::identity::web(&out_dir, &cfg.game, icon.as_ref())?;
             report["site"] = json!(plain(&out_dir));
         }
         (Target::Web, None, Some(engine)) => {
@@ -468,7 +474,8 @@ fn build(inv: &Invocation, err: &mut dyn Write) -> Result<Json, String> {
                 &cfg.modules,
                 err,
             )?;
-            game_page(&out_dir, &root, &cfg.name)?;
+            game_page(&out_dir, &root, &cfg.name, &cfg.game.title)?;
+            crate::identity::web(&out_dir, &cfg.game, icon.as_ref())?;
             report["site"] = json!(plain(&out_dir));
         }
         (_, rt, engine) => {
@@ -485,6 +492,31 @@ fn build(inv: &Invocation, err: &mut dyn Write) -> Result<Json, String> {
                     err,
                 )?,
                 (None, None) => unreachable!("a build has a runtime or the engine's source"),
+            };
+            // Its icon and name where the platform looks (reaching players
+            // item 2); the check below runs the executable so made.
+            crate::identity::data_icon(&data, icon.as_ref())?;
+            let exe = match target {
+                Target::Windows => {
+                    crate::identity::windows(&exe, &cfg.game, icon.as_ref())?;
+                    exe
+                }
+                Target::Linux => {
+                    crate::identity::linux(&exe, icon.as_ref())?;
+                    exe
+                }
+                Target::MacOs => {
+                    let exe =
+                        crate::identity::mac_app(&out_dir, &exe, &game, &cfg.game, icon.as_ref())?;
+                    report["app"] = json!(plain(
+                        exe.parent()
+                            .and_then(Path::parent)
+                            .and_then(Path::parent)
+                            .unwrap_or(&exe)
+                    ));
+                    exe
+                }
+                Target::Web => exe,
             };
             report["executable"] = json!(plain(&exe));
             if !native {
@@ -915,16 +947,19 @@ fn web(
 /// and each action's keyboard keys from its `input.toml`. The engine's page
 /// said Hollow's keys for every game (found on the public games site,
 /// 2026-10-10).
-fn game_page(out: &Path, root: &Path, name: &str) -> Result<(), String> {
+fn game_page(out: &Path, root: &Path, name: &str, title: &str) -> Result<(), String> {
     let file = out.join("index.html");
     let page = std::fs::read_to_string(&file).map_err(|e| format!("{}: {e}", file.display()))?;
     let controls = match argus_input::ActionMap::load(root) {
         Ok(Some(map)) => controls_line(&map),
         _ => String::new(),
     };
-    let mut title = name.to_string();
-    if let Some(c) = title.get_mut(..1) {
-        c.make_ascii_uppercase();
+    // `[game] title`; with none, the name with a capital.
+    let mut title = title.to_string();
+    if title == name {
+        if let Some(c) = title.get_mut(..1) {
+            c.make_ascii_uppercase();
+        }
     }
     let page = page.replacen(
         "<title>Argus</title>",

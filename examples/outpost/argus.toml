@@ -11,3 +11,10 @@ modules = ["steam"]
 # 2,000 ticks a second.
 [time]
 day = 60
+
+# What a player's machine shows of the game (reaching players item 2):
+# its title, and an icon from a frame of its sprites, Ada, the first colonist.
+[game]
+title = "Outpost"
+icon = "colonist"
+icon_frame = 0

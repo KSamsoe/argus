@@ -27,8 +27,24 @@ What the directory holds:
 | `data/lang-<code>.pack` | One pack per language other than the base: `strings/<code>.toml`, and anything under `lang/<code>/`. |
 | `plugins/` | The game's Rust plugins, built, when it has any. |
 | `steam_api64.dll` (`libsteam_api.so` on Linux) | Steam's library, when `argus.toml` lists `modules = ["steam"]`. |
+| `data/icon.png`, `<name>.png` on Linux | The game's icon, when it has one: the runtime puts it on the window. |
 | `build.json` | What was made, and the check's result. |
 
+A build for the Mac is `<title>.app` instead, which a player double-clicks: the executable and Steam's library in `Contents/MacOS`, the packs in `Contents/Resources/data`, and the icon and the app's details beside them.
+
+### The game's name and icon
+
+`argus.toml`'s `[game]` says what a player's machine shows of the game:
+
+```toml
+[game]
+title = "Hollow"     # the window's title, the web page's, the Mac app's name
+version = "1.2.0"    # on the Windows executable and the Mac app
+icon = "hero"        # a sprite: a PNG in assets/, or an art script's
+icon_frame = 0       # which of its frames
+```
+
+The icon is a frame of a sprite, so it is drawn the way the game's art is: a picture in `assets/`, or an art script, which can draw it at any size (an icon of its own is often a few lines more, as `examples/puppet/assets/icon.art.luau`). `argus build` puts it where each platform looks, with no compiler and no tools of Windows' or Apple's: in the Windows executable's resources, with the title and version (Explorer and the taskbar show them), on the window, in the Mac app as its `.icns`, beside a Linux executable, and on the web page with a manifest, so a phone's "Add to Home Screen" gives the game's name and icon. Square is best; a frame that is not sits in the middle of a clear square. It is scaled up by whole pixels, so a 16-pixel hero is a sharp icon at 256. Each template's icon is its hero's first frame, and every example game has one.
 The packs are built from the import cache, not copied from the folder. Sprites are packed onto texture pages, some of them compressed (BC7) where no pixel would show the difference. Entity files, prefabs, and def tables are in a binary form of the same data. WAV sounds are stored as Ogg Vorbis. Left out of the packs: `tests/`, `tools/`, `dist/`, `mods/`, `plugins/` (their source), the notes at the top for people and agents (`README.md`, `ARGUS.md`, `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `template.toml`), and anything whose name starts with a dot (`.argus/`, `.git/`). Also left out: whatever git ignores, when the project is in a git repository (a `node_modules/`, play sessions, a scratch folder), and whatever `[build] exclude` in `argus.toml` names:
 
 ```toml
@@ -175,7 +191,7 @@ argus build: the install has no linux standard runtime in <install>\runtime (it 
 
 Two limits. A game with Rust plugins is released on its own platform, since its plugins are compiled for the machine that builds them. And from source, a desktop build is made only on its own platform.
 
-The macOS runtime is new in 0.0.5. It is one universal program, for Apple Silicon and Intel Macs, made on Linux, so every install can release a game for the Mac. It had not run on a Mac when it shipped; [docs/mac-testing.md](../mac-testing.md) is how it is being tested. A Mac release is the game's executable beside its `data/`, run from Terminal; it is not yet an `.app`, and it is signed ad hoc, not notarised, so a player who downloads it with a browser clears the mark first: `xattr -dr com.apple.quarantine <folder>`.
+The macOS runtime is new in 0.0.5. It is one universal program, for Apple Silicon and Intel Macs, made on Linux, so every install can release a game for the Mac. It had not run on a Mac when it shipped; [docs/mac-testing.md](../mac-testing.md) is how it is being tested. A Mac release is an `.app` a player double-clicks. Its program is signed ad hoc and the app is not notarised (that needs an Apple developer account), so a Mac refuses a copy downloaded with a browser the first time. The player clears the mark once, `xattr -dr com.apple.quarantine <the app>`, or opens it from System Settings, Privacy & Security, Open Anyway. A copy that came another way (a USB stick, a store) opens at once.
 
 ## Patches
 

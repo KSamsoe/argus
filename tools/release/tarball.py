@@ -29,6 +29,8 @@ EXECUTABLE = [
     "*.so",
     "*.dylib",
     "install.sh",
+    # A Mac app's programs (reaching players item 2): hollow/Hollow.app.
+    "*.app/Contents/MacOS/*",
 ]
 
 

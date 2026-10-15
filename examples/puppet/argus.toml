@@ -2,3 +2,10 @@ name = "puppet"
 clock = "continuous@60"
 default_scene = "stage"
 plugins = []
+
+# What a player's machine shows of the game (reaching players item 2):
+# its title, and an icon from a frame of its sprites, a puppet's face, drawn by assets/icon.art.luau.
+[game]
+title = "Puppet"
+icon = "icon"
+icon_frame = 0

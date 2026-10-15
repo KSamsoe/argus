@@ -397,6 +397,18 @@ impl WindowHost {
         self.app.destroyed
     }
 
+    /// The window's icon, RGBA (the game's, reaching players item 2): the
+    /// title bar and the taskbar show it. Nothing where the system takes no
+    /// window icon (a Mac, which has the app's).
+    pub fn set_icon(&self, width: u32, height: u32, rgba: Vec<u8>) {
+        if let (Some(w), Ok(icon)) = (
+            &self.app.window,
+            winit::window::Icon::from_rgba(rgba, width, height),
+        ) {
+            w.set_window_icon(Some(icon));
+        }
+    }
+
     /// Fill the screen (borderless, on the window's monitor) or not; nothing
     /// when it already is as asked. The game's settings screen asks for it
     /// (`UiSettings.fullscreen`, phase 3 item 1).

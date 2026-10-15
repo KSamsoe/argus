@@ -98,7 +98,7 @@ argus build --target linux    # from Windows or a Mac: the Linux release, from t
 argus build --target macos    # the Mac's, from its runtime in the install (a game with Rust plugins is released on a Mac)
 ```
 
-A Mac release is the game's executable beside its data, run from Terminal; it is not yet a Mac app you double-click.
+A Mac release is an app you double-click, with the game's icon. It is not notarised, so a copy downloaded with a browser needs `xattr -dr com.apple.quarantine <the app>` once (or System Settings, Privacy & Security, Open Anyway).
 
 ## Update and uninstall
 

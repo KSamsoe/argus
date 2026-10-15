@@ -2,18 +2,18 @@ The Argus example games, for the Mac
 ====================================
 
 Three small games made with Argus, the 2D engine you build games in
-together with an AI. Each folder is a game as `argus build` released it:
-nothing to install. Each runs on Apple Silicon and Intel Macs, macOS 11
-or later. In Terminal, from this folder:
+together with an AI. Each folder holds a game as `argus build` released
+it, an app: nothing to install. Each runs on Apple Silicon and Intel
+Macs, macOS 11 or later. Double-click it:
 
-  ./hollow/hollow
-  ./delve/delve
-  ./outpost/outpost
+  hollow/Hollow.app
+  delve/Delve.app
+  outpost/Outpost.app
 
-These programs are signed, but not by an Apple developer account, so a
-Mac refuses them when they came from a browser ("cannot be opened",
-"Apple cannot check it for malicious software"). Clear the mark the
-download put on them, once, from this folder:
+These apps are signed, but not by an Apple developer account, so a Mac
+refuses them when they came from a browser ("cannot be opened", "Apple
+cannot check it for malicious software"). Clear the mark the download
+put on them, once, in Terminal from this folder:
 
   xattr -dr com.apple.quarantine .
 

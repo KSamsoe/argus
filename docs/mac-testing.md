@@ -244,11 +244,14 @@ These need the person to look and listen. Ask them each question and write down 
 ```sh
 mkdir -p ~/argus-mac-test/play && tar -xzf example-games-0.1.0-macos-universal.tar.gz -C ~/argus-mac-test/play
 ls ~/argus-mac-test/play/*/
-~/argus-mac-test/play/example-games-0.1.0-macos/hollow/hollow
+xattr -dr com.apple.quarantine ~/argus-mac-test/play
+open ~/argus-mac-test/play/example-games-0.1.0-macos/hollow/Hollow.app
 ```
 
 Ask the person:
-- Does a window open?
+- Does a window open, titled Hollow?
+- Does the Dock show Hollow's icon, the hero, and not a blank one? Does Finder show it on `Hollow.app`?
+- Quit it, then double-click `Hollow.app` in Finder: does it open the same way?
 - Is it sharp, not blurry, on their screen?
 - Does music play?
 - Do A/D or the arrow keys walk, and Space jump, with a sound?

@@ -5,3 +5,10 @@ plugins = []
 # The rigid-body module (Rapier): a physics toy, the example of the
 # engine's optional dynamic tier.
 modules = ["rigid"]
+
+# What a player's machine shows of the game (reaching players item 2):
+# its title, and an icon from a frame of its sprites, the pill.
+[game]
+title = "Toybox"
+icon = "pill"
+icon_frame = 0

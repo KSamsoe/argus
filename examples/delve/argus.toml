@@ -2,3 +2,10 @@ name = "delve"
 clock = "discrete"
 default_scene = "delve"
 plugins = []
+
+# What a player's machine shows of the game (reaching players item 2):
+# its title, and an icon from a frame of its sprites, the hero.
+[game]
+title = "Delve"
+icon = "sprites/hero"
+icon_frame = 0

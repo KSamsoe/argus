@@ -8,3 +8,10 @@ plugins = []
 # colony; the hunger and regrowth rules are per day, so they keep pace.
 [time]
 day = 60
+
+# The game's icon, on its executable, its window, the Mac app, and a
+# phone's home screen: a frame of its sprites, Ada, the first colonist. Its title is its
+# name unless [game] title says otherwise.
+[game]
+icon = "sprites/colonists"
+icon_frame = 0

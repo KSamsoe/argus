@@ -79,6 +79,28 @@ pub struct ProjectConfig {
     /// a folder leaves out what is in it. Beside the folders every build
     /// leaves out, and what git ignores (issue 6).
     pub build_exclude: Vec<String>,
+    /// `[game]`: what a player sees of the game outside it: its title,
+    /// version, and icon (reaching players item 2).
+    pub game: GameInfo,
+}
+
+/// `argus.toml`'s `[game]`: the game as a player's machine shows it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GameInfo {
+    /// `title`: its name as a player reads it, on the window, the web
+    /// page, the Mac app, and the executable's details. `name` when the
+    /// project does not say.
+    pub title: String,
+    /// `version`: its own version, numbers with dots (`1.2.0`), on the
+    /// executable and the Mac app. "1.0" when the project does not say.
+    pub version: String,
+    /// `icon`: a sprite asset whose frame is the game's icon (a PNG in
+    /// `assets/`, or an art script's sprite), square, best at 256 pixels
+    /// or a size that 256 is a whole number of. None: no icon of its own.
+    pub icon: Option<String>,
+    /// `icon_frame`: the frame of that sprite. 0 when the project does not
+    /// say.
+    pub icon_frame: u32,
 }
 
 /// A day, when a project does not say how long its days are.
@@ -248,6 +270,63 @@ impl ProjectConfig {
             None => Vec::new(),
             Some(i) => tomlv::string_list(i, "argus.toml [build] exclude", &at("build"))?,
         };
+        let game_t = t.get("game").and_then(|i| i.as_table_like());
+        let game_str = |k: &str| -> Result<Option<String>> {
+            match game_t.and_then(|g| g.get(k)) {
+                None => Ok(None),
+                Some(i) => match i.as_str().map(str::trim) {
+                    Some(s) if !s.is_empty() => Ok(Some(s.to_string())),
+                    _ => Err(ArgusError::new(
+                        codes::BAD_SCENE,
+                        format!("argus.toml [game] {k} must be a string, not empty"),
+                    )
+                    .at(Some(at("game")))),
+                },
+            }
+        };
+        if let Some(g) = game_t {
+            for (k, _) in g.iter() {
+                if !["title", "version", "icon", "icon_frame"].contains(&k) {
+                    return Err(ArgusError::new(
+                        codes::BAD_SCENE,
+                        format!("argus.toml [game] has no key {k:?}: it takes title, version, icon, and icon_frame"),
+                    )
+                    .at(Some(at("game"))));
+                }
+            }
+        }
+        let version = game_str("version")?.unwrap_or_else(|| "1.0".to_string());
+        if !version
+            .split('.')
+            .all(|p| !p.is_empty() && p.len() <= 5 && p.chars().all(|c| c.is_ascii_digit()))
+            || version.split('.').count() > 4
+        {
+            return Err(ArgusError::new(
+                codes::BAD_SCENE,
+                format!("argus.toml [game] version {version:?} must be up to four numbers with dots, like \"1.2.0\""),
+            )
+            .hint("A Windows executable and a Mac app carry it, which take numbers only.")
+            .at(Some(at("game"))));
+        }
+        let icon_frame = match game_t.and_then(|g| g.get("icon_frame")) {
+            None => 0,
+            Some(i) => match i.as_integer() {
+                Some(n) if (0..=u32::MAX as i64).contains(&n) => n as u32,
+                _ => {
+                    return Err(ArgusError::new(
+                        codes::BAD_SCENE,
+                        "argus.toml [game] icon_frame must be a frame number, 0 or more",
+                    )
+                    .at(Some(at("game"))))
+                }
+            },
+        };
+        let game = GameInfo {
+            title: game_str("title")?.unwrap_or_else(|| name.clone()),
+            version,
+            icon: game_str("icon")?,
+            icon_frame,
+        };
         Ok(ProjectConfig {
             name,
             clock,
@@ -262,6 +341,7 @@ impl ProjectConfig {
             mods_enabled,
             reports_url,
             build_exclude,
+            game,
         })
     }
 
@@ -387,6 +467,12 @@ impl Project {
                 mods_enabled: true,
                 reports_url: None,
                 build_exclude: Vec::new(),
+                game: GameInfo {
+                    title: name.to_string(),
+                    version: "1.0".to_string(),
+                    icon: None,
+                    icon_frame: 0,
+                },
             };
             argus_os::fs::write(&cfg, c.to_toml()).map_err(|e| {
                 ArgusError::new(codes::MISSING_FILE, format!("cannot write argus.toml: {e}"))

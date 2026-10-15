@@ -317,6 +317,9 @@ dependencies = [
  "argus-render",
  "argus-scene",
  "argus-sim",
+ "editpe",
+ "foldhash 0.2.0",
+ "indexmap",
  "interprocess",
  "serde_json",
 ]
@@ -416,6 +419,7 @@ dependencies = [
 name = "argus-game"
 version = "0.1.0"
 dependencies = [
+ "argus-assets",
  "argus-input",
  "argus-platform",
  "argus-player",
@@ -1425,6 +1429,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c87e182de0887fd5361989c677c4e8f5000cd9491d6d563161a8f3a5519fc7f"
 
 [[package]]
+name = "debug-ignore"
+version = "1.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ffe7ed1d93f4553003e20b629abe9085e1e81b1429520f897f8f8860bc6dfc21"
+
+[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1511,6 +1521,20 @@ checksum = "bc4feb366740ded31a004a0e4452fbf84e80ef432ecf8314c485210229672fd1"
 dependencies = [
  "bytemuck",
  "emath",
+]
+
+[[package]]
+name = "editpe"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "de488f8727e67269a918bcb5b35b1b9ee59b2ae2859743ffdd6288de9701c5e6"
+dependencies = [
+ "debug-ignore",
+ "foldhash 0.2.0",
+ "indexmap",
+ "log",
+ "thiserror 2.0.20",
+ "zerocopy",
 ]
 
 [[package]]

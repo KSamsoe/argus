@@ -2,3 +2,10 @@ name = "swarm"
 clock = "continuous@60"
 default_scene = "arena"
 plugins = ["swarm-hot"]
+
+# What a player's machine shows of the game (reaching players item 2):
+# its title, and an icon from a frame of its sprites, the hero.
+[game]
+title = "Swarm"
+icon = "sprites/swarm"
+icon_frame = 0

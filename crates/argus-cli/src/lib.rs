@@ -26,6 +26,7 @@ pub mod agentdoc;
 pub mod build;
 pub mod client;
 pub mod help;
+pub mod identity;
 pub mod install;
 pub mod jsonedit;
 pub mod manual;
