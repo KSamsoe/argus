@@ -53,7 +53,7 @@ Built (2026-10-15). `argus_ui::rich`: markup parsed into styled spans (a stack o
   - Every example game built with its own icon, and a Mac `.app` for each one that has a Mac release.
   - Delve's log in rich text: damage and healing in colour, and the menu's prompts with the player's own keys inline.
 
-Met (2026-10-15), except the phone, which is Kevin's to do by hand.
+Met (2026-10-15).
 - Done:
   - Delve. The log's harm is in the theme's `harm` colour and healing in `heal`. A kill's verb is bold. The menu has a hint line, `[glyph=ui_move] to choose, [glyph=ui_confirm] to press, [glyph=pause] to go back`. `tests/looks.luau` checks the words and keeps two pictures, the log and the menu.
   - Keys in rich text. A key filled with the accent colour was hard to read, so it is now an outline, like a keycap, in the theme's `border` colour, with the key's name in the text colour. Pieces side by side ("Arrow keys") share one outline.
@@ -62,4 +62,4 @@ Met (2026-10-15), except the phone, which is Kevin's to do by hand.
   - Mac apps. Delve, Hollow, and Outpost (the games with a Mac release) were built for the Mac from 0.1.0's staged runtime. Each made `<Title>.app` with `icon.icns`, the packs in `Contents/Resources/data`, and an `Info.plist`, and passed the build's own check. This checked only the layout: 0.1.0's runtime predates the `Resources/data` fallback, so the next release's runtime is the one to play on a Mac.
   - Windows builds. Every example game (Delve, Hollow, Outpost, Swarm, Toybox, and Puppet) was built for Windows with `argus build --target windows --release`, and each passed the build's own check. Windows itself read each executable back, with the same calls Explorer uses: each had its own icon and its own name and version, and each build had a `data/icon.png` for its window. Outpost's colonist looks small as an icon, because its sprite frame has empty space around the figure.
   - The manual. Touch in [Gameplay](manual/gameplay.md#touch) points to Hollow's controls and test. Rich text in [Presentation](manual/presentation.md#rich-text) shows Delve's strings and explains the keycap outline. [Releasing](manual/releasing.md#on-a-phone-or-a-tablet) names Hollow's web build as the one to try on a phone.
-- Left, by hand: a phone playing Hollow's web build.
+  - A phone. Kevin played Hollow's web build on a phone over the tailnet, served from this machine. The controls feel good. The hero is sometimes hard to see under a thumb: the camera draws the hero below the middle of the screen, where the thumbs rest, and at a room's edge the hero moves toward the corners, under the controls.
