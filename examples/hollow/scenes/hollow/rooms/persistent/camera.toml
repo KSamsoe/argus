@@ -14,6 +14,12 @@ touch_offset = [0.0, -4.0]
 dead_zone = [1.5, 1.0]
 blend = 0.8
 
+# Behind everything, the back wall's own colour (tiles/back), so where no
+# room is, past a room's floor or beyond its walls on a wide screen, the
+# hollow is as dark as the cave and not the engine's lighter grey.
+[Background]
+color = "#1E1B26"
+
 [CameraShake]
 
 # Falling into the pit is the slice's one impact: a red flash, a screen
