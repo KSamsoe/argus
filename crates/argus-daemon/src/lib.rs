@@ -51,6 +51,9 @@ pub mod codes {
     pub const BAD_PARAMS: u32 = 4704;
     /// Nothing to undo or redo for this author.
     pub const NOTHING_TO_UNDO: u32 = 4705;
+    /// A named commit cannot be undone alone: a later change still in
+    /// effect changed the same thing (reaching players item 0).
+    pub const UNDO_CONFLICT: u32 = 4718;
     /// A continuation cursor is not one this daemon issued.
     pub const BAD_CURSOR: u32 = 4706;
     /// The method name is not in the phase-0 set.

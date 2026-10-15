@@ -170,6 +170,7 @@ pub const TOOLS: &[ToolDoc] = &[
         params: &[
             opt("ops", ARRAY, "one of ops, undo; [{op, ...}]: set {entity, path, value}, add {entity, component}, remove {entity, component}, spawn {id, room, prefab, tags, components}, despawn {entity}, tiles {file, layer, rect, cells | tile | terrain | erase}, text {lang, key, text} (a string in strings/<lang>.toml; text null removes it), file {file, text} (a project file's whole text: a script, an entity file, a test; text null removes it), def {def, path, value} (a def table row's field), def_row {def, fields | remove} (a whole row: a timeline's cue), asset {asset, path, value | remove} (a value in an asset's sidecar), prefab {prefab, path, value | remove, child} (a prefab's field: every entity made from it changes, and the feed lists them)"),
             opt("undo", BOOLEAN, "one of ops, undo; undo the author's last transaction"),
+            opt("tx", INTEGER, "with undo, a transaction of the author's to take back instead of the last: its id, from the edit's answer or the feed; refused, naming them, when a later change still in effect changed the same thing"),
             opt("note", STRING, "why, for the change feed"),
             opt("author", STRING, "default \"agent:claude\""),
         ],
@@ -936,9 +937,10 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "edit.undo",
-        doc: "Undo the author's latest commit (as a new commit). Scoped per author: one party's undo never unwinds the other's work.",
+        doc: "Undo the author's latest commit, or the one tx names (as a new commit). Scoped per author: one party's undo never unwinds the other's work. A named commit is refused (4718) when a later change still in effect changed the same thing, which undoing it would take back too; the error names those changes.",
         params: &[
             req("author", STRING, ""),
+            opt("tx", INTEGER, "a commit of the author's to undo instead of the latest: its id, from the edit's answer or edit.feed"),
         ],
         returns: "the commit result",
     },

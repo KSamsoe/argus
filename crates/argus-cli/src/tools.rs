@@ -134,7 +134,10 @@ pub fn run(c: &mut dyn Caller, name: &str, args: &Json) -> Result<Json, Json> {
         }
         "edit" => {
             if flag(args, "undo") {
-                return c.call("edit.undo", json!({ "author": author(args) }));
+                // A named transaction, or the author's last.
+                let mut p = pick(args, &["tx"]);
+                p["author"] = json!(author(args));
+                return c.call("edit.undo", p);
             }
             let tx = transaction(c, args, "edit")?;
             // Ops are checked as they are queued and again at the commit.

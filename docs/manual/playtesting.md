@@ -251,7 +251,7 @@ Undo is per author: it takes back that author's latest commit, as a new commit, 
 argus edit undo=true author=human
 ```
 
-With nothing of that author's to undo, it says so (`error 4705: nothing to undo for agent:claude`). `argus edit redo author=human` redoes. Locks (`argus edit lock`) fence entities, fields, assets, or def rows for one author; see [Working with AI agents](agents.md).
+With nothing of that author's to undo, it says so (`error 4705: nothing to undo for agent:claude`). Name a commit to take back one of the author's other than the latest, by its id from the edit's answer or the feed: `argus edit undo=true tx=12`. That is refused while a later change still in effect changed the same thing (a field, or the component, entity, or file it is in), since undoing it would take that back too, and the error names those changes (`error 4718`). Undo them first, or make a new edit. `argus edit redo author=human` redoes. Locks (`argus edit lock`) fence entities, fields, assets, or def rows for one author; see [Working with AI agents](agents.md).
 
 ## Who did what
 

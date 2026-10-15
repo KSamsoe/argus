@@ -187,7 +187,71 @@ pub enum Op {
     },
 }
 
+/// What an op changes: a thing (an entity, a def row, a file, a layer) and
+/// a dotted path inside it, or none for all of it. See [`Op::scope`].
+pub type Scope = (String, Option<String>);
+
+/// Whether two ops' scopes meet: the same thing, and one path the other or
+/// a part of it (`Health` meets `Health.max`; `Health.max` and
+/// `Health.cur` do not), or either takes all of it.
+pub fn meets(a: &Scope, b: &Scope) -> bool {
+    let under = |long: &str, short: &str| {
+        long.len() > short.len() && long.starts_with(short) && long.as_bytes()[short.len()] == b'.'
+    };
+    a.0 == b.0
+        && match (&a.1, &b.1) {
+            (Some(x), Some(y)) => x == y || under(x, y) || under(y, x),
+            _ => true,
+        }
+}
+
 impl Op {
+    /// What this op changes (reaching players item 0: undoing a named
+    /// commit is refused when a later one still in effect changed the same
+    /// thing). `None` for an op whose thing has no name yet (a spawn without
+    /// an id, a respawn).
+    pub fn scope(&self) -> Option<Scope> {
+        let entity = |e: &str| format!("entity {}", e.trim_start_matches('@'));
+        Some(match self {
+            Op::Set {
+                entity: e, path, ..
+            } => (entity(e), Some(path.clone())),
+            Op::Add {
+                entity: e,
+                component,
+            }
+            | Op::Remove {
+                entity: e,
+                component,
+            }
+            | Op::Restore {
+                entity: e,
+                component,
+                ..
+            } => (entity(e), Some(component.clone())),
+            Op::Despawn { entity: e } => (entity(e), None),
+            Op::Spawn { id: Some(id), .. } => (entity(id), None),
+            Op::SpawnDoc { local, .. } => (entity(local), None),
+            Op::Spawn { id: None, .. } | Op::Respawn { .. } => return None,
+            Op::Tiles { file, layer, .. } | Op::Terrain { file, layer, .. } => {
+                (format!("tiles {file}#{layer}"), None)
+            }
+            Op::Text { lang, key, .. } => (format!("strings {lang}"), Some(key.clone())),
+            Op::Def { def, path, .. } => (format!("def {def}"), Some(path.clone())),
+            Op::DefRow { def, .. } => (format!("def {def}"), None),
+            Op::DefText { file, .. } | Op::File { file, .. } => (format!("file {file}"), None),
+            Op::Asset { asset, path, .. } => (format!("asset {asset}"), Some(path.clone())),
+            Op::AssetText { asset, .. } => (format!("asset {asset}"), None),
+            Op::Prefab {
+                prefab,
+                child,
+                path,
+                ..
+            } => (format!("prefab {prefab}"), Some(format!("{child}/{path}"))),
+            Op::PrefabText { prefab, .. } => (format!("prefab {prefab}"), None),
+        })
+    }
+
     /// The protocol call that queues this op (`edit.set` and its params),
     /// for the ops a proposal can hold; `None` for tile edits and inverses.
     pub fn as_call(&self) -> Option<(&'static str, Json)> {

@@ -4,7 +4,7 @@
 
 use crate::codes;
 use crate::docs;
-use crate::edit::{Commit, CommitKind, Editing, Op};
+use crate::edit::{self, Commit, CommitKind, Editing, Op};
 use crate::json::{self, bad_params};
 use crate::query;
 use crate::rpc;
@@ -3474,6 +3474,10 @@ impl Daemon {
 
     fn edit_undo(&mut self, params: &Json, redo: bool) -> Result<Json> {
         let author = json::str_param(params, "author")?.to_string();
+        if !redo && params.get("tx").is_some_and(|t| !t.is_null()) {
+            let tx = json::u64_param(params, "tx", 0)?;
+            return self.undo_named(&author, u32::try_from(tx).unwrap_or(u32::MAX));
+        }
         let stack = if redo {
             &mut self.edits.redo
         } else {
@@ -3497,6 +3501,65 @@ impl Daemon {
         };
         let note = format!("{} #{}: {}", if redo { "redo" } else { "undo" }, id, c.note);
         self.apply_commit(&author, &note, c.inverse, kind)
+    }
+
+    /// Undo one of the author's commits by its id, not only the latest
+    /// (reaching players item 0: an agent asked, since an edit between
+    /// changes what the latest is). Refused when a later change still in
+    /// effect changed the same thing, which undoing it would take back too.
+    fn undo_named(&mut self, author: &str, tx: u32) -> Result<Json> {
+        if !self.edits.undo.get(author).is_some_and(|s| s.contains(&tx)) {
+            let why = match self.edits.commit(tx) {
+                None => format!("there is no commit #{tx}"),
+                Some(c) if c.author != author => {
+                    format!("commit #{tx} is {}'s, and undo is scoped per author", c.author)
+                }
+                Some(_) => format!(
+                    "commit #{tx} is not one {author} can undo: it is undone already, or is not an edit"
+                ),
+            };
+            return Err(ArgusError::new(codes::NOTHING_TO_UNDO, why)
+                .hint("edit.feed lists the commits with their ids and authors; an undone one comes back with edit.redo."));
+        }
+        let c = self.edits.commit(tx).expect("commit exists").clone();
+        let mine: Vec<edit::Scope> = c.inverse.iter().filter_map(Op::scope).collect();
+        // The later changes still in effect, in order: an undo of one of
+        // them takes it out again; any other undo or redo is a change.
+        let mut live: Vec<(u32, Vec<edit::Scope>)> = Vec::new();
+        for later in self.edits.feed.iter().filter(|l| l.id > tx) {
+            match later.kind {
+                CommitKind::Undo(x) if live.iter().any(|(id, _)| *id == x) => {
+                    live.retain(|(id, _)| *id != x)
+                }
+                CommitKind::Normal | CommitKind::Undo(_) | CommitKind::Redo(_) => live.push((
+                    later.id,
+                    later.inverse.iter().filter_map(Op::scope).collect(),
+                )),
+                _ => {}
+            }
+        }
+        let clash: Vec<String> = live
+            .iter()
+            .filter(|(_, s)| s.iter().any(|b| mine.iter().any(|a| edit::meets(a, b))))
+            .filter_map(|(id, _)| self.edits.commit(*id))
+            .map(|l| format!("#{} by {} ({})", l.id, l.author, l.note))
+            .collect();
+        if !clash.is_empty() {
+            return Err(ArgusError::new(
+                codes::UNDO_CONFLICT,
+                format!(
+                    "commit #{tx} cannot be undone alone: {} changed what it changed after it, and undoing #{tx} would take that back too",
+                    clash.join(", ")
+                ),
+            )
+            .hint("Undo the later ones first, the latest first, or make a new edit that sets what you want."));
+        }
+        let note = format!("undo #{tx}: {}", c.note);
+        let row = self.apply_commit(author, &note, c.inverse, CommitKind::Undo(tx))?;
+        if let Some(s) = self.edits.undo.get_mut(author) {
+            s.retain(|&x| x != tx);
+        }
+        Ok(row)
     }
 
     /// Apply operations atomically: on failure the ones already applied
