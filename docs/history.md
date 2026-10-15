@@ -107,6 +107,12 @@ Phase 0, piece 10: the scenario test runner, in [crates/argus-test](../crates/ar
 
 Its trace is [crates/argus-test/SPEC-TRACE.md](../crates/argus-test/SPEC-TRACE.md).
 
+## Reaching players, and 0.1.1
+
+After 0.1.0, what games made on Argus need to reach people, chosen over online multiplayer: touch, so a web build plays on a phone or a tablet; a game's own name and icon on every platform, and a Mac app a player double-clicks; rich text in the UI; and two small fixes found making 0.1.0 (a web click's modifiers, undoing a named edit). Hollow plays by touch, every example game is built with its own icon, and Delve's log and menu use rich text. Kevin's play of Hollow on his phone led to two more: the camera framing the hero above the thumbs, and the page using the phone's whole screen. The plan and what each item built are in [docs/reaching-players-checklist.md](reaching-players-checklist.md).
+
+Version 0.1.1 shipped it, the first patch release under 0.1.0's promise not to break a game. Its notes are [docs/releases/0.1.1.md](releases/0.1.1.md).
+
 ## The 2D staples, and 0.1.0
 
 After 0.0.8, the staples a 2D game reaches for that Argus lacked or had thinly, found by comparing it with Godot, GameMaker, Defold, and Unity 2D: raycasts and shape queries over colliders and tile cells, on one exact geometry core; debug drawing from scripts; capsule and polygon colliders; parallax for sprites and tile layers; save slots; and turn-based games that animate between turns, with that idle time recorded as part of the run. Toybox, Hollow, and Delve each use some of them. The plan and what each item built are in [docs/2d-staples-checklist.md](2d-staples-checklist.md).

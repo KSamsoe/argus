@@ -42,11 +42,11 @@ gh --version && gh auth status
 If `gh` is missing, ask the person whether to install it (`brew install gh`, or from https://cli.github.com). Then:
 
 ```sh
-gh release download v0.1.0 --repo KSamsoe/argus \
+gh release download v0.1.1 --repo KSamsoe/argus \
   --pattern install.sh --pattern SHA256SUMS --pattern mac-expected.json --pattern mac-testing.md \
-  --pattern 'argus-0.1.0-macos-universal.tar.gz' --pattern 'example-games-0.1.0-macos-universal.tar.gz' \
-  --pattern 'argus-0.1.0-macos.mcpb'
-grep -E " (install.sh|argus-0.1.0-macos-universal.tar.gz|example-games-0.1.0-macos-universal.tar.gz|argus-0.1.0-macos.mcpb)$" SHA256SUMS | shasum -a 256 -c -
+  --pattern 'argus-0.1.1-macos-universal.tar.gz' --pattern 'example-games-0.1.1-macos-universal.tar.gz' \
+  --pattern 'argus-0.1.1-macos.mcpb'
+grep -E " (install.sh|argus-0.1.1-macos-universal.tar.gz|example-games-0.1.1-macos-universal.tar.gz|argus-0.1.1-macos.mcpb)$" SHA256SUMS | shasum -a 256 -c -
 ```
 
 **1.1** All four files are `OK`. (`mac-expected.json` and this file are not in `SHA256SUMS`.)
@@ -54,7 +54,7 @@ grep -E " (install.sh|argus-0.1.0-macos-universal.tar.gz|example-games-0.1.0-mac
 Then the source at that version. The example projects in section 5 come from it:
 
 ```sh
-gh api repos/KSamsoe/argus/tarball/v0.1.0 > source.tar.gz
+gh api repos/KSamsoe/argus/tarball/v0.1.1 > source.tar.gz
 mkdir -p source && tar -xzf source.tar.gz -C source --strip-components 1
 ls source/examples
 ```
@@ -64,12 +64,12 @@ ls source/examples
 ## 2. Installing
 
 ```sh
-sh install.sh --version 0.1.0
+sh install.sh --version 0.1.1
 export PATH="$HOME/.local/bin:$PATH"
 argus version
 ```
 
-**2.1** The installer ends `installed argus 0.1.0 (...)`, and `argus version` prints `argus 0.1.0 (<revision>, macos aarch64)` (`macos x86_64` on an Intel Mac).
+**2.1** The installer ends `installed argus 0.1.1 (...)`, and `argus version` prints `argus 0.1.1 (<revision>, macos aarch64)` (`macos x86_64` on an Intel Mac).
 
 If it fails, the words matter:
 - `Killed: 9` means the signature was refused;
@@ -103,7 +103,7 @@ It says `macos x86_64`. This is the part an Intel Mac runs.
 **2.4** A download from a browser. A browser marks what it downloads, and Gatekeeper refuses marked programs that Apple has not notarised (this build is not). The installer clears the mark, and this checks that it does:
 
 ```sh
-cp argus-0.1.0-macos-universal.tar.gz marked.tar.gz
+cp argus-0.1.1-macos-universal.tar.gz marked.tar.gz
 xattr -w com.apple.quarantine "0083;00000000;Safari;" marked.tar.gz
 sh install.sh --archive marked.tar.gz && argus version
 xattr -lr ~/.local/share/argus/app | grep -c quarantine
@@ -242,10 +242,10 @@ These need the person to look and listen. Ask them each question and write down 
 **8.1** A game. From the example games archive:
 
 ```sh
-mkdir -p ~/argus-mac-test/play && tar -xzf example-games-0.1.0-macos-universal.tar.gz -C ~/argus-mac-test/play
+mkdir -p ~/argus-mac-test/play && tar -xzf example-games-0.1.1-macos-universal.tar.gz -C ~/argus-mac-test/play
 ls ~/argus-mac-test/play/*/
 xattr -dr com.apple.quarantine ~/argus-mac-test/play
-open ~/argus-mac-test/play/example-games-0.1.0-macos/hollow/Hollow.app
+open ~/argus-mac-test/play/example-games-0.1.1-macos/hollow/Hollow.app
 ```
 
 Ask the person:
@@ -337,22 +337,22 @@ ls "$HOME/argus-mac-test/fake-home/Library/Application Support/Claude/"
 
 It writes `claude_desktop_config.json` there. Before this build it wrote under `~/.config`, which Claude Desktop on a Mac never reads.
 
-Then, if the person wants Argus in Claude Desktop, install the bundle. In Claude Desktop: Settings, Extensions, Advanced settings, Install Extension, then `argus-0.1.0-macos.mcpb`. In a new chat, ask it to list the Argus projects. **(person)** Did it?
+Then, if the person wants Argus in Claude Desktop, install the bundle. In Claude Desktop: Settings, Extensions, Advanced settings, Install Extension, then `argus-0.1.1-macos.mcpb`. In a new chat, ask it to list the Argus projects. **(person)** Did it?
 
 ## 11. Updating and removing (last)
 
 ```sh
-argus self-update 0.1.0 && argus version
+argus self-update 0.1.1 && argus version
 argus uninstall
 ls ~/.local/share/argus/app 2>&1; ls ~/.local/bin/argus 2>&1
 ls ~/argus-mac-test/games
 ```
 
-**11.1** The update reinstalls 0.1.0 and `argus version` still works.
+**11.1** The update reinstalls 0.1.1 and `argus version` still works.
 
 **11.2** Uninstalling removes the program and its links, and the games are still there.
 
-If the person wants to keep Argus, install it again: `sh install.sh --version 0.1.0`.
+If the person wants to keep Argus, install it again: `sh install.sh --version 0.1.1`.
 
 ## 12. Swarm and Rust plugins (only if the person agrees)
 
@@ -384,7 +384,7 @@ Write `~/argus-mac-test/report.md`:
 File it as an issue on the repository:
 
 ```sh
-gh issue create --repo KSamsoe/argus --title "Mac test: $(sysctl -n machdep.cpu.brand_string), macOS $(sw_vers -productVersion), Argus 0.1.0" --body-file ~/argus-mac-test/report.md
+gh issue create --repo KSamsoe/argus --title "Mac test: $(sysctl -n machdep.cpu.brand_string), macOS $(sw_vers -productVersion), Argus 0.1.1" --body-file ~/argus-mac-test/report.md
 ```
 
 Then zip the logs, runs, and pictures (too big for an issue). The person sends the zip to Kevin:
