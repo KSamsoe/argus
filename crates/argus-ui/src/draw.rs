@@ -226,9 +226,11 @@ pub fn draw_list(
             if crate::rich::has_markup(&shown) {
                 let (spans, _) = crate::rich::parse(&shown);
                 let ls = crate::rich::lines(font.as_ref(), &spans, tsize, t.wrap.then_some(width));
-                let plate = theme
-                    .color("accent", contrast)
-                    .map(|a| [a[0], a[1], a[2], 0.3]);
+                // A key is outlined, as a keycap, in the theme's border
+                // colour, its words in the text colour: readable on any
+                // panel, high contrast included.
+                let plate = theme.color("border", contrast);
+                let key_words = theme.color("text", contrast).unwrap_or(c);
                 let mut y0 = inner[1];
                 for line in &ls {
                     let x0 = match align.as_str() {
@@ -236,17 +238,57 @@ pub fn draw_list(
                         "right" => inner[0] + width - line.width,
                         _ => inner[0],
                     };
+                    // Each key outlined whole: a run of key pieces side by
+                    // side ("Arrow keys") is one keycap, with room inside.
+                    if let Some(pl) = plate {
+                        let mut caps: Vec<[f32; 4]> = Vec::new();
+                        let mut joined = false;
+                        for p in &line.pieces {
+                            if !p.style.key {
+                                joined = false;
+                                continue;
+                            }
+                            let h = p.size * crate::text::LINE;
+                            let (x, top) = (x0 + p.x, y0 + line.height - h);
+                            match caps.last_mut().filter(|_| joined) {
+                                Some(c) => {
+                                    c[2] = x + p.width;
+                                    c[1] = c[1].min(top);
+                                    c[3] = c[3].max(h);
+                                }
+                                None => caps.push([x, top, x + p.width, h]),
+                            }
+                            joined = true;
+                        }
+                        let k = (tsize / 14.0).max(1.0);
+                        for [l, top, r, h] in caps {
+                            let (x, w) = (l - 2.0 * k, r - l + 4.0 * k);
+                            for (at, size) in [
+                                ([x, top], [w, k]),
+                                ([x, top + h - k], [w, k]),
+                                ([x, top], [k, h]),
+                                ([x + w - k, top], [k, h]),
+                            ] {
+                                push(at, size, Paint::Flat, fade(pl));
+                            }
+                        }
+                    }
                     for p in &line.pieces {
                         // Each piece stands on the line's foot.
                         let box_h = p.size * crate::text::LINE;
                         let top = y0 + line.height - box_h;
+                        let own = if p.style.key && !disabled {
+                            key_words
+                        } else {
+                            c
+                        };
                         let pc = p
                             .style
                             .color
                             .as_deref()
                             .filter(|_| !disabled)
                             .and_then(|n| theme.color(n, contrast))
-                            .unwrap_or(c);
+                            .unwrap_or(own);
                         match &p.kind {
                             crate::rich::Kind::Img { sprite, frame } => push(
                                 [x0 + p.x, top + (box_h - p.size) * 0.5],
@@ -259,9 +301,6 @@ pub fn draw_list(
                                 fade([1.0, 1.0, 1.0, c[3]]),
                             ),
                             crate::rich::Kind::Text(words) => {
-                                if let (true, Some(pl)) = (p.style.key, plate) {
-                                    push([x0 + p.x, top], [p.width, box_h], Paint::Flat, fade(pl));
-                                }
                                 let slant = if p.style.italic { 0.2 } else { 0.0 };
                                 let bold = p.style.bold;
                                 // A pixel font has no weight: bold is the

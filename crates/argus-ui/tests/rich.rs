@@ -141,10 +141,13 @@ fn rich_text_is_drawn_in_pieces_and_its_key_follows_the_device() {
     assert!(qs.iter().any(
         |q| matches!(&q.paint, Paint::Image { sprite, frame: 2, .. } if &**sprite == "icons")
     ));
-    // The key on its plate.
-    assert!(qs
+    // The key outlined, as a keycap: four edges in the theme's border colour.
+    let border = argus_ui::Theme::default().color("border", false).unwrap();
+    let edges = qs
         .iter()
-        .any(|q| matches!(q.paint, Paint::Flat) && (q.color[3] - 0.3).abs() < 0.01));
+        .filter(|q| matches!(q.paint, Paint::Flat) && q.color == border)
+        .count();
+    assert_eq!(edges, 4);
 
     // A pad in use (the device action, as a pad press makes it): its button.
     let now = u.s.tick();
