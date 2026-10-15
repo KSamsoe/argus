@@ -117,6 +117,7 @@ That adds Argus to the tool's own settings. Set up once with `--scope user`, and
 - **[The manual](docs/manual/README.md)**: how Argus works and how to do everything in it, from a first game to a release.
 - **[Installing](docs/install.md)**: what a machine needs, every AI tool's setup, updating, and uninstalling.
 - **`argus docs`**: the full reference, generated from the engine itself: every tool, protocol method, script function, test function, project file, and engine component. Every project's `ARGUS.md` carries the parts for that game.
+- **Problems and ideas**: open an [issue](https://github.com/KSamsoe/argus/issues/new/choose) on this repository. Its templates ask for what helps: `argus version`, how to make it happen again, and a player's report if there is one. An agent that runs into something can write one too.
 - **[The design](docs/argus-engine-design-v0.3.html)**, **[how it was built](docs/history.md)**, and **[working on the engine](docs/developing.md)**, for changing Argus itself.
 
 Argus is young: version 0.1.0, the first release with a whole game made on it, in a private repository, on Windows, Linux, and macOS (cross-built on Linux, and tested on a Mac).
