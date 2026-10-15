@@ -673,6 +673,8 @@ pub struct Renderer {
     bar: Option<(String, argus_ui::Rgba)>,
     /// What systems drew for debugging (2D staples item 1).
     draws: Option<std::rc::Rc<std::cell::RefCell<argus_sim::Draws>>>,
+    /// The touch controls drawn over the game (reaching players item 1).
+    touch: Vec<argus_input::TouchShown>,
     /// Compiled materials by name.
     materials: HashMap<String, MatState>,
     /// Materials the GPU refused, with why (their last good version draws).
@@ -806,6 +808,7 @@ impl Renderer {
             ui: None,
             bar: None,
             draws: None,
+            touch: Vec::new(),
             materials: HashMap::new(),
             material_errors: BTreeMap::new(),
             compile_ms: 0.0,
@@ -1854,6 +1857,13 @@ impl Renderer {
         self.draws = draws;
     }
 
+    /// The touch controls to draw over the game and its UI this frame
+    /// (reaching players item 1): the host's input state's, while touch is
+    /// the device in use; none otherwise.
+    pub fn set_touch(&mut self, controls: Vec<argus_input::TouchShown>) {
+        self.touch = controls;
+    }
+
     /// The window's own bar (a mark's note being typed, a proposal on
     /// trial): drawn by the UI across the bottom of the canvas, over
     /// everything, in `rgba`; or none.
@@ -1913,6 +1923,9 @@ impl Renderer {
         } else {
             Vec::new()
         };
+        if !self.touch.is_empty() {
+            quads.extend(argus_ui::draw::touch(shared, &self.touch));
+        }
         if let Some((text, color)) = &self.bar {
             quads.extend(argus_ui::draw::bar(shared, text, *color));
         }

@@ -86,7 +86,7 @@ impl ActionValue {
             }
             (ActionKind::Axis, Json::Number(n)) if action == crate::map::DEVICE_ACTION => {
                 let v = n.as_f64().unwrap_or(-1.0);
-                if !(0.0..=4.0).contains(&v) || v.fract() != 0.0 {
+                if !(0.0..=5.0).contains(&v) || v.fract() != 0.0 {
                     return Err(bad(&format!("{v}")));
                 }
                 ActionValue::Axis(v as f32)
@@ -393,6 +393,9 @@ pub struct InputState {
     saves_now: Option<String>,
     /// This tick runs for the first time (not a re-run after a seek).
     fresh_now: bool,
+    /// The UI canvas's size, which touch controls are placed on
+    /// (reaching players item 1).
+    canvas: [f32; 2],
 }
 
 /// An action waiting for a key.
@@ -443,6 +446,7 @@ impl InputState {
             ui_only: false,
             saves_now: None,
             fresh_now: false,
+            canvas: [960.0, 540.0],
             current: BTreeMap::new(),
             pressed: Vec::new(),
             released: Vec::new(),
@@ -469,6 +473,9 @@ impl InputState {
         }
         self.typing_applied = self.typing.clone();
         let mut commands = self.apply_typed(now, devices, &slots);
+        // The touch controls where they are on this canvas: a finger that
+        // landed takes the one it landed on.
+        devices.set_touch_layout(&self.touch_layout());
         let mut changes = Vec::new();
         for slot in slots {
             let typing = self.typing.contains(&slot);
@@ -650,12 +657,18 @@ impl InputState {
                     continue;
                 }
                 self.device_last.insert(key, v);
-                if self.discrete && kind == ActionKind::Pointer {
+                if self.discrete
+                    && (kind == ActionKind::Pointer || action == crate::map::DEVICE_ACTION)
+                {
                     // A place, not a press: it holds where it was left and
                     // takes no turn, so a click's turn reads where the mouse
                     // is. As a press it lasted one tick and went back to
                     // 0, 0, and later moves changed nothing, so every click
-                    // in a discrete game landed at 0, 0 (issue 11).
+                    // in a discrete game landed at 0, 0 (issue 11). The
+                    // device in use is a state too: as a press, the first
+                    // touch or pad press took a turn of its own and the
+                    // device went back to the keyboard's the tick after
+                    // (reaching players item 1).
                     self.schedule(now, slot, &action, v);
                 } else if self.discrete {
                     if v.is_active() && !before.is_active() {
@@ -676,6 +689,17 @@ impl InputState {
     /// The map.
     pub fn map(&self) -> &ActionMap {
         &self.map
+    }
+
+    /// The UI canvas's size in its pixels, which touch controls are placed
+    /// on from their anchors (the theme's; 960 by 540 until a host says).
+    pub fn set_canvas(&mut self, canvas: [f32; 2]) {
+        self.canvas = canvas;
+    }
+
+    /// The touch controls laid out on the canvas.
+    pub fn touch_layout(&self) -> Vec<crate::touch::TouchArea> {
+        crate::touch::layout(&self.map.touch, self.canvas)
     }
 
     /// The map, to set a run's starting bindings and toggles (a player's
@@ -1316,6 +1340,7 @@ impl InputState {
             ui_only: self.ui_only,
             saves_now: self.saves_now.clone(),
             fresh_now: self.fresh_now,
+            canvas: self.canvas,
         }
     }
 

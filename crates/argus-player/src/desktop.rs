@@ -19,6 +19,10 @@ pub enum WindowInput {
     /// The mouse moved to a place in the window, in its pixels (y down);
     /// the host puts it on the UI canvas (`argus_ui::Fit`) as a pointer.
     Cursor(f32, f32),
+    /// A finger on a touchscreen, in window pixels (y down), which the
+    /// host puts on the UI canvas as it does the mouse (reaching players
+    /// item 1).
+    Touch(u64, argus_input::TouchPhase, f32, f32),
     /// The close button.
     Close,
 }
@@ -42,6 +46,7 @@ pub fn window_input(ev: DeviceEvent) -> Option<WindowInput> {
         DeviceEvent::Text { text } => WindowInput::Text(text),
         DeviceEvent::Resized { width, height } => WindowInput::Resized(width, height),
         DeviceEvent::CloseRequested => WindowInput::Close,
+        DeviceEvent::Touch { id, phase, at } => WindowInput::Touch(id, phase, at.0, at.1),
         _ => return None,
     })
 }

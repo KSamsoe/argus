@@ -298,6 +298,83 @@ pub fn bar(shared: &Shared, text: &str, color: Rgba) -> Vec<Quad> {
     out
 }
 
+/// The touch controls over the game (reaching players item 1): a stick's
+/// ring and its knob where the finger is, a button's disc and its words,
+/// in the theme's colours, brighter while a finger is on it.
+pub fn touch(shared: &Shared, controls: &[argus_input::TouchShown]) -> Vec<Quad> {
+    let theme = &shared.theme;
+    let contrast = theme.high_contrast;
+    let text = theme
+        .color("text", contrast)
+        .unwrap_or([1.0, 1.0, 1.0, 1.0]);
+    let panel = theme
+        .color("panel", contrast)
+        .unwrap_or([0.1, 0.1, 0.12, 1.0]);
+    let accent = theme.color("accent", contrast).unwrap_or(text);
+    let clip = [0.0, 0.0, theme.width, theme.height];
+    let alpha = |c: Rgba, a: f32| [c[0], c[1], c[2], a];
+    let disc = |c: (f32, f32), r: f32, color: Rgba| Quad {
+        pos: [c.0 - r, c.1 - r],
+        size: [2.0 * r, 2.0 * r],
+        paint: Paint::Image {
+            sprite: "circle".into(),
+            frame: 0,
+            sub: [0.0, 0.0, 1.0, 1.0],
+        },
+        color,
+        clip,
+        node: Entity::NULL,
+    };
+    let font = shared.fonts.face(&theme.font, &theme.font);
+    let mut out = Vec::new();
+    for c in controls {
+        match c.kind {
+            argus_input::TouchKind::Stick => {
+                out.push(disc(c.centre, c.radius, alpha(panel, 0.35)));
+                let (knob, a) = if c.pressed {
+                    (accent, 0.75)
+                } else {
+                    (text, 0.45)
+                };
+                out.push(disc(c.knob, c.radius * 0.45, alpha(knob, a)));
+            }
+            argus_input::TouchKind::Button => {
+                let (fill, a) = if c.pressed {
+                    (accent, 0.65)
+                } else {
+                    (panel, 0.45)
+                };
+                out.push(disc(c.centre, c.radius, alpha(fill, a)));
+                if c.label.is_empty() {
+                    continue;
+                }
+                let size = (c.radius * 0.5).clamp(10.0, theme.text_size * 1.5);
+                let l = lines(font.as_ref(), &c.label, size, Some(c.radius * 1.8));
+                let top = c.centre.1 - l.height * 0.5;
+                for (row, line) in l.lines.iter().enumerate() {
+                    let x0 = c.centre.0 - line.width * 0.5;
+                    let y0 = top + row as f32 * l.line_height;
+                    glyphs(font.as_ref(), &line.text, size, |g| {
+                        out.push(Quad {
+                            pos: [x0 + g.x, y0 + g.y],
+                            size: [g.w, g.h],
+                            paint: Paint::Glyph {
+                                atlas: font.atlas(),
+                                frame: g.frame,
+                                sdf: font.sdf(),
+                            },
+                            color: alpha(text, 0.9),
+                            clip,
+                            node: Entity::NULL,
+                        })
+                    });
+                }
+            }
+        }
+    }
+    out
+}
+
 /// Words centred on a canvas point, a line a paragraph, on a dark backing:
 /// a debug shape's text (2D staples item 1), in the theme's font.
 pub fn label(

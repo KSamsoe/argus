@@ -62,7 +62,20 @@ pub enum DeviceEvent {
         /// Focused now.
         focused: bool,
     },
+    /// A finger on a touchscreen (reaching players item 1).
+    Touch {
+        /// The finger, the same from its landing to its lift.
+        id: u64,
+        /// Landed, moved, lifted, or taken away.
+        phase: argus_input::TouchPhase,
+        /// Pixel position, y down.
+        at: (f32, f32),
+    },
 }
+
+/// After the last finger lifts, how long the mouse the system makes of a
+/// touch is still not the mouse.
+const TOUCH_QUIET: std::time::Duration = std::time::Duration::from_millis(500);
 
 /// The name a key is sent under: winit's key code spelling (`KeyW`,
 /// `ArrowLeft`, `Space`). `argus_input::key_name` turns it into a binding's
@@ -90,6 +103,12 @@ struct App {
     id: Option<WindowId>,
     events: Vec<DeviceEvent>,
     cursor: (f32, f32),
+    /// Fingers down, and when the last one lifted: Windows also sends a
+    /// touch as the mouse, which winit passes on, so while a finger is
+    /// down and a moment after, the mouse is not heard (reaching players
+    /// item 1).
+    fingers: std::collections::BTreeSet<u64>,
+    lifted: Option<std::time::Instant>,
     closed: bool,
     visible: bool,
     destroyed: bool,
@@ -223,6 +242,34 @@ impl ApplicationHandler for App {
                     });
                 }
             }
+            WindowEvent::Touch(t) => {
+                let phase = match t.phase {
+                    winit::event::TouchPhase::Started => argus_input::TouchPhase::Start,
+                    winit::event::TouchPhase::Moved => argus_input::TouchPhase::Move,
+                    winit::event::TouchPhase::Ended => argus_input::TouchPhase::End,
+                    winit::event::TouchPhase::Cancelled => argus_input::TouchPhase::Cancel,
+                };
+                match phase {
+                    argus_input::TouchPhase::Start => {
+                        self.fingers.insert(t.id);
+                    }
+                    argus_input::TouchPhase::End | argus_input::TouchPhase::Cancel => {
+                        self.fingers.remove(&t.id);
+                        if self.fingers.is_empty() {
+                            self.lifted = Some(std::time::Instant::now());
+                        }
+                    }
+                    argus_input::TouchPhase::Move => {}
+                }
+                self.events.push(DeviceEvent::Touch {
+                    id: t.id,
+                    phase,
+                    at: (t.location.x as f32, t.location.y as f32),
+                });
+            }
+            WindowEvent::CursorMoved { .. } | WindowEvent::MouseInput { .. }
+                if !self.fingers.is_empty()
+                    || self.lifted.is_some_and(|t| t.elapsed() < TOUCH_QUIET) => {}
             WindowEvent::CursorMoved { position, .. } => {
                 self.cursor = (position.x as f32, position.y as f32);
                 self.events.push(DeviceEvent::Cursor { at: self.cursor });
@@ -290,6 +337,8 @@ impl WindowHost {
                 id: None,
                 events: Vec::new(),
                 cursor: (0.0, 0.0),
+                fingers: std::collections::BTreeSet::new(),
+                lifted: None,
                 closed: false,
                 visible,
                 destroyed: false,

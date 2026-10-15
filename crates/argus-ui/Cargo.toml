@@ -11,12 +11,12 @@ argus-sim = { path = "../argus-sim", version = "0.1.0" }
 argus-camera = { path = "../argus-camera", version = "0.1.0" }
 argus-assets = { path = "../argus-assets", version = "0.1.0" }
 argus-os = { path = "../argus-os", version = "0.1.0" }
+argus-input = { path = "../argus-input", version = "0.1.0" }
 toml_edit = "0.22"
 taffy = { version = "0.14", default-features = false, features = ["std", "flexbox", "taffy_tree"] }
 rustybuzz = "0.20"
 
 [dev-dependencies]
 argus-tween = { path = "../argus-tween", version = "0.1.0" }
-argus-input = { path = "../argus-input", version = "0.1.0" }
 serde_json = "1"
 ttf-parser = "0.25"

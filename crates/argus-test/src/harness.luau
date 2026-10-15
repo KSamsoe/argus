@@ -494,6 +494,11 @@ local function make_t(ctx, spec, seed)
     if type(now) == "number" then rest = 0 elseif type(now) == "table" then rest = { 0, 0 } end
     return callm("input.inject", { action = action, value = rest })
   end
+  -- A finger on a touchscreen (reaching players item 1), in the UI
+  -- canvas's pixels: on a control it holds it, else it is the mouse.
+  function t.input:touch(finger, phase, x, y)
+    return callm("input.device", { events = { { touch = finger, phase = phase, at = { x, y } } } })
+  end
   -- Text from the host (the page, a model's answer): the next tick's
   -- scripts get it as a host.message event {channel, text, slot}.
   function t.input:message(channel, text)

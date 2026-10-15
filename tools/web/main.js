@@ -332,20 +332,47 @@ try {
     const r = canvas.getBoundingClientRect();
     player.pointer(e.clientX - r.left, e.clientY - r.top, r.width, r.height);
   };
+  // A finger is a finger, not the mouse (reaching players item 1): the game
+  // gives it the touch control it lands on, or makes it the mouse itself.
+  // Held by the canvas from landing to lift, so a thumb that slides off the
+  // edge still moves its stick.
+  const fingers = new Set();
+  const touchAt = (e, phase) => {
+    const r = canvas.getBoundingClientRect();
+    player.touch(e.pointerId, phase, e.clientX - r.left, e.clientY - r.top, r.width, r.height);
+  };
   canvas.addEventListener("pointermove", (e) => {
+    if (e.pointerType === "touch") {
+      if (fingers.has(e.pointerId)) touchAt(e, "move");
+      return;
+    }
     syncMods(e);
     point(e);
   });
   canvas.addEventListener("pointerdown", (e) => {
     canvas.focus();
+    if (e.pointerType === "touch") {
+      e.preventDefault();
+      canvas.setPointerCapture?.(e.pointerId);
+      fingers.add(e.pointerId);
+      touchAt(e, "start");
+      return;
+    }
     syncMods(e);
     point(e);
     if (buttons[e.button]) player.mouse(buttons[e.button], true);
   });
   canvas.addEventListener("pointerup", (e) => {
+    if (e.pointerType === "touch") {
+      if (fingers.delete(e.pointerId)) touchAt(e, "end");
+      return;
+    }
     syncMods(e);
     point(e);
     if (buttons[e.button]) player.mouse(buttons[e.button], false);
+  });
+  canvas.addEventListener("pointercancel", (e) => {
+    if (e.pointerType === "touch" && fingers.delete(e.pointerId)) touchAt(e, "cancel");
   });
   canvas.addEventListener("contextmenu", (e) => e.preventDefault());
   // The wheel: a line a notch, up positive.
@@ -361,6 +388,7 @@ try {
   );
   canvas.addEventListener("blur", () => {
     held.clear();
+    fingers.clear();
     player.release_all();
   });
   canvas.focus();

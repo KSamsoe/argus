@@ -981,6 +981,10 @@ impl Daemon {
         let Some(st) = st else {
             return 0;
         };
+        // Touch controls are placed on the UI canvas.
+        if let Some(c) = self.ui_canvas() {
+            st.borrow_mut().set_canvas(c);
+        }
         let now = self.sched.tick();
         let commands = st.borrow_mut().apply_devices(now, &mut self.devices);
         self.input_branched();
@@ -1039,6 +1043,15 @@ impl Daemon {
         }
     }
 
+    /// The touch controls drawn over the game now (reaching players item
+    /// 1): none unless touch is the device in use.
+    pub(crate) fn touch_shown(&self) -> Vec<argus_input::TouchShown> {
+        match self.session.as_ref().and_then(|s| s.input.as_ref()) {
+            Some(st) => self.devices.touch_shown(st.borrow().map()),
+            None => Vec::new(),
+        }
+    }
+
     /// The UI canvas, for semantic frames (phase 3 item 1).
     pub(crate) fn ui_canvas(&self) -> Option<[f32; 2]> {
         let s = self.session.as_ref()?;
@@ -1053,6 +1066,12 @@ impl Daemon {
             "keys": keys,
             "mouse": mouse,
             "gamepads": pads.iter().map(|(i, n)| json!([i, n])).collect::<Vec<_>>(),
+            "touches": self
+                .devices
+                .touches()
+                .into_iter()
+                .map(|(id, at, holds)| json!({ "id": id, "at": [at.0, at.1], "holds": holds }))
+                .collect::<Vec<_>>(),
             "events_seen": self.devices.events_seen,
             "turns_taken": self.device_turns,
         })
@@ -1229,6 +1248,31 @@ impl Daemon {
                 lines: lines as f32,
             });
         }
+        // A finger, in the UI canvas's own pixels (reaching players item
+        // 1): an agent or a scenario presses a touch control where the
+        // game places it, with no frames open.
+        if let Some(id) = e.get("touch").and_then(Json::as_u64) {
+            let phase = e
+                .get("phase")
+                .and_then(Json::as_str)
+                .and_then(argus_input::TouchPhase::parse)
+                .ok_or_else(|| bad_params(format!("{e}: phase is start, move, end, or cancel")))?;
+            let at = e.get("at").and_then(Json::as_array);
+            let (x, y) = match at.map(|a| {
+                (
+                    a.first().and_then(Json::as_f64),
+                    a.get(1).and_then(Json::as_f64),
+                )
+            }) {
+                Some((Some(x), Some(y))) => (x as f32, y as f32),
+                _ => {
+                    return Err(bad_params(format!(
+                        "{e}: at is [x, y], in the UI canvas's pixels"
+                    )))
+                }
+            };
+            return Ok(DeviceInput::Touch { id, phase, x, y });
+        }
         if let Some(p) = e.get("pointer").and_then(Json::as_array) {
             let (x, y) = match (
                 p.first().and_then(Json::as_f64),
@@ -1251,7 +1295,7 @@ impl Daemon {
                 .hint("render.stream opens them; the pointer is in their pixels, as a window's is in its own."));
         }
         Err(bad_params(format!(
-            "{e} is not a device event: {{key, pressed}}, {{mouse, pressed}}, {{pointer: [x, y]}}, or {{release_all: true}}"
+            "{e} is not a device event: {{key, pressed}}, {{mouse, pressed}}, {{pointer: [x, y]}}, {{wheel}}, {{touch: id, phase, at: [x, y]}}, or {{release_all: true}}"
         )))
     }
 
@@ -1307,6 +1351,7 @@ impl Daemon {
             let extras = self.tile_extras(view);
             let edges = self.tile_occluders(view);
             let t = shader_time(&self.sched, alpha);
+            let touch = self.touch_shown();
             let (Some(s), Some(ses)) = (&mut self.render.stream, &self.session) else {
                 return;
             };
@@ -1320,6 +1365,7 @@ impl Daemon {
             s.renderer.set_time(t);
             s.renderer.set_ui(Some(ses.ui.clone()));
             s.renderer.set_draws(Some(ses.host.draws()));
+            s.renderer.set_touch(touch);
             s.renderer.set_occluders(edges);
             let store = ses.particles.borrow();
             let drawn = s
@@ -6229,6 +6275,7 @@ impl Daemon {
         let view = argus_render::view_for(&self.world, width, height);
         let extras = self.tile_extras(view);
         let edges = self.tile_occluders(view);
+        let touch = self.touch_shown();
         let r = self.render.offscreen(
             width,
             height,
@@ -6239,6 +6286,7 @@ impl Daemon {
         r.set_time(shader_time(&self.sched, alpha));
         r.set_ui(self.session.as_ref().map(|s| s.ui.clone()));
         r.set_draws(self.session.as_ref().map(|s| s.host.draws()));
+        r.set_touch(touch);
         r.set_occluders(edges);
         // Set every time: the renderer is kept between calls.
         r.gpu_mut().set_see_as(see_as);
@@ -6381,6 +6429,9 @@ impl Daemon {
         );
         drop(store);
         sf.with_debug(&ses.host.draws().borrow());
+        if let Some(c) = self.ui_canvas() {
+            sf.with_touch(&self.touch_shown(), c);
+        }
         let mut out = sf.to_json();
         out["tick"] = json!(self.sched.tick());
         out["time"] = json!((self.sched.time() * 1000.0).round() / 1000.0);
@@ -6611,10 +6662,12 @@ impl Daemon {
         let edges = self.tile_occluders(view);
         let t = shader_time(&self.sched, alpha);
         self.update_bar(size.0);
+        let touch = self.touch_shown();
         if let (Some((_, r)), Some(ses)) = (&mut self.render.window, &self.session) {
             r.set_time(t);
             r.set_ui(Some(ses.ui.clone()));
             r.set_draws(Some(ses.host.draws()));
+            r.set_touch(touch);
             r.set_occluders(edges);
             let store = ses.particles.borrow();
             let _ = r.render_frame(&self.world, tick, alpha, &extras, Some(&store));
@@ -7811,6 +7864,14 @@ pub(crate) mod render {
                             if let Some(f) = r.ui_fit() {
                                 let [x, y] = f.to_canvas([x, y]);
                                 out.push(DeviceInput::Pointer { x, y });
+                            }
+                        }
+                        // A finger, on the UI canvas as the mouse is
+                        // (reaching players item 1).
+                        Some(WindowInput::Touch(id, phase, x, y)) => {
+                            if let Some(f) = r.ui_fit() {
+                                let [x, y] = f.to_canvas([x, y]);
+                                out.push(DeviceInput::Touch { id, phase, x, y });
                             }
                         }
                         // The host reports the close as the pump's answer.

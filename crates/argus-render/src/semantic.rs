@@ -170,9 +170,46 @@ pub struct SemanticFrame {
     /// The shapes systems drew for debugging (2D staples item 1), when a
     /// host added them ([`SemanticFrame::with_debug`]).
     pub debug: Option<Json>,
+    /// The touch controls drawn over the game (reaching players item 1),
+    /// when a host added them ([`SemanticFrame::with_touch`]).
+    pub touch: Option<Json>,
 }
 
 impl SemanticFrame {
+    /// List the touch controls the engine draws (reaching players item 1)
+    /// under `touch`, in this frame's pixels as `ui` places things: each
+    /// one's name, kind, bounds, words, and whether a finger is on it.
+    pub fn with_touch(&mut self, controls: &[argus_input::TouchShown], canvas: [f32; 2]) {
+        if controls.is_empty() {
+            return;
+        }
+        let fit = argus_ui::Fit::new(canvas, [self.size[0] as f32, self.size[1] as f32]);
+        // A tenth of a pixel, rounded as the f64 JSON holds.
+        let r = |v: f32| (f64::from(v) * 10.0).round() / 10.0;
+        let rows: Vec<Json> = controls
+            .iter()
+            .map(|c| {
+                let a = fit.to_window([c.centre.0 - c.radius, c.centre.1 - c.radius]);
+                let b = fit.to_window([c.centre.0 + c.radius, c.centre.1 + c.radius]);
+                let kind = match c.kind {
+                    argus_input::TouchKind::Button => "button",
+                    argus_input::TouchKind::Stick => "stick",
+                };
+                let mut o = json!({
+                    "name": c.name,
+                    "kind": kind,
+                    "bounds": [r(a[0]), r(a[1]), r(b[0]), r(b[1])],
+                    "pressed": c.pressed,
+                });
+                if !c.label.is_empty() {
+                    o["label"] = json!(c.label);
+                }
+                o
+            })
+            .collect();
+        self.touch = Some(Json::Array(rows));
+    }
+
     /// As the protocol returns it: entities as rows under columns, to keep
     /// it near 3 KB.
     pub fn to_json(&self) -> Json {
@@ -235,6 +272,9 @@ impl SemanticFrame {
             }
             if let Some(d) = &self.debug {
                 o.insert("debug".into(), d.clone());
+            }
+            if let Some(t) = &self.touch {
+                o.insert("touch".into(), t.clone());
             }
             Json::Object(o)
         })
@@ -748,6 +788,7 @@ pub fn semantic(world: &World, spec: &FrameSpec) -> SemanticFrame {
         omitted,
         problems,
         debug: None,
+        touch: None,
     }
 }
 

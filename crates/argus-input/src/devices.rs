@@ -25,11 +25,17 @@
 //!
 //! - platform: `overlay`, held while the platform's overlay (Steam's) is
 //!   open (phase 5 item 9), so a game binds its pause to it.
+//! - touch: a control's name from `[touch.<name>]` (reaching players item
+//!   1): a button for a button, a stick for an axis2, `<stick>.x` or
+//!   `<stick>.y` for an axis. A finger that lands on no control is the
+//!   mouse (its left button and the pointer), so a game made for the mouse
+//!   works under a finger.
 //!
 //! A slot's `devices` list says which devices feed it: `keyboard`,
 //! `mouse`, `gamepad` (any pad), `gamepad:N` (the Nth pad connected,
-//! from 0), so two gamepads are two players (§12). The platform feeds
-//! every slot.
+//! from 0), so two gamepads are two players (§12), `touch`. The platform
+//! feeds every slot, and touch goes with the mouse: a slot that lists
+//! `mouse` takes it too.
 //!
 //! The device a slot's player last pressed something on is its
 //! [`Family`], the value of the map's `device` action.
@@ -37,6 +43,7 @@
 use crate::glyphs::Family;
 use crate::map::{ActionKind, ActionMap, DEVICE_ACTION};
 use crate::state::ActionValue;
+use crate::touch::{TouchArea, TouchKind, TouchPhase, TouchShown};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Stick dead zone.
@@ -124,6 +131,18 @@ pub enum DeviceInput {
         /// What was typed.
         text: String,
     },
+    /// A finger on a touchscreen, at a place on the UI canvas in its
+    /// pixels (the host converts; reaching players item 1).
+    Touch {
+        /// The finger: the same id from its landing to its lift.
+        id: u64,
+        /// Landed, moved, lifted, or taken away.
+        phase: TouchPhase,
+        /// Canvas x, from the left.
+        x: f32,
+        /// Canvas y, from the top.
+        y: f32,
+    },
     /// Focus lost: everything held is released (no stuck keys).
     ReleaseAll,
 }
@@ -172,9 +191,37 @@ impl Pad {
     }
 }
 
+/// A finger down (reaching players item 1).
+#[derive(Clone, Debug, PartialEq)]
+struct Finger {
+    at: (f32, f32),
+    grab: Grab,
+}
+
+/// What a finger is doing.
+#[derive(Clone, Debug, PartialEq)]
+enum Grab {
+    /// Landed since the controls were last looked at.
+    New,
+    /// Holding a control, with the centre it is held from (a floating
+    /// stick's is where the finger landed).
+    Control(String, (f32, f32)),
+    /// Being the mouse: its left button and the pointer.
+    Mouse,
+    /// A second finger off the controls: nothing.
+    Idle,
+}
+
 /// Raw state of every device.
 #[derive(Clone, Debug, Default)]
 pub struct Devices {
+    /// Fingers down, by id.
+    touches: BTreeMap<u64, Finger>,
+    /// When a finger last landed (the devices' own count).
+    touch_used: u64,
+    /// The touch controls on the canvas, from the map
+    /// ([`Devices::set_touch_layout`]).
+    touch_layout: Vec<TouchArea>,
     keys: BTreeSet<String>,
     mouse: BTreeSet<String>,
     pointer: Option<(f32, f32)>,
@@ -294,7 +341,42 @@ impl Devices {
                     self.text.push_str(text);
                 }
             }
+            DeviceInput::Touch { id, phase, x, y } => {
+                let at = (*x, *y);
+                match phase {
+                    TouchPhase::Start => {
+                        // It takes its control when the devices are next
+                        // resolved, with the controls laid out by then.
+                        self.touches.insert(
+                            *id,
+                            Finger {
+                                at,
+                                grab: Grab::New,
+                            },
+                        );
+                        self.uses += 1;
+                        self.touch_used = self.uses;
+                    }
+                    TouchPhase::Move => {
+                        if let Some(f) = self.touches.get_mut(id) {
+                            f.at = at;
+                            if f.grab == Grab::Mouse {
+                                self.pointer = Some(at);
+                            }
+                        }
+                    }
+                    TouchPhase::End | TouchPhase::Cancel => {
+                        if let Some(f) = self.touches.remove(id) {
+                            if f.grab == Grab::Mouse {
+                                self.pointer = Some(at);
+                                self.mouse.remove("left");
+                            }
+                        }
+                    }
+                }
+            }
             DeviceInput::ReleaseAll => {
+                self.touches.clear();
                 self.keys.clear();
                 self.mouse.clear();
                 for p in self.pads.values_mut() {
@@ -303,6 +385,137 @@ impl Devices {
                 }
             }
         }
+    }
+
+    /// The touch controls as laid out on the canvas (the input state's,
+    /// from its map). Fingers that landed before it was known take their
+    /// controls now.
+    pub fn set_touch_layout(&mut self, layout: &[TouchArea]) {
+        if self.touch_layout != layout {
+            self.touch_layout = layout.to_vec();
+        }
+        self.settle_touches();
+    }
+
+    /// Each finger that landed since the last look takes the control it
+    /// landed on (the nearest, a button before a floating stick's area; a
+    /// stick one finger at a time), else is the mouse if no finger is, else
+    /// does nothing.
+    fn settle_touches(&mut self) {
+        let new: Vec<u64> = self
+            .touches
+            .iter()
+            .filter(|(_, f)| f.grab == Grab::New)
+            .map(|(id, _)| *id)
+            .collect();
+        for id in new {
+            let at = self.touches[&id].at;
+            let held = |name: &str, kind: TouchKind| {
+                kind == TouchKind::Stick
+                    && self
+                        .touches
+                        .values()
+                        .any(|f| matches!(&f.grab, Grab::Control(n, _) if n == name))
+            };
+            let control = self
+                .touch_layout
+                .iter()
+                .filter(|c| !held(&c.name, c.kind))
+                .filter_map(|c| c.reach(at).map(|d| (d, c)))
+                .min_by(|a, b| a.0.total_cmp(&b.0))
+                .map(|(_, c)| {
+                    let centre = if c.floating.is_some() { at } else { c.centre };
+                    Grab::Control(c.name.clone(), centre)
+                });
+            let grab = control.unwrap_or_else(|| {
+                if self.touches.values().any(|f| f.grab == Grab::Mouse) {
+                    Grab::Idle
+                } else {
+                    self.mouse.insert("left".to_string());
+                    self.pointer = Some(at);
+                    Grab::Mouse
+                }
+            });
+            self.touches.get_mut(&id).expect("listed above").grab = grab;
+        }
+    }
+
+    /// The fingers holding a touch control: the centre each holds it from,
+    /// and where it is.
+    fn touch_held<'a>(
+        &'a self,
+        name: &'a str,
+    ) -> impl Iterator<Item = ((f32, f32), (f32, f32))> + 'a {
+        self.touches.values().filter_map(move |f| match &f.grab {
+            Grab::Control(n, c) if n == name => Some((*c, f.at)),
+            _ => None,
+        })
+    }
+
+    /// The touch controls the engine draws, as they are now: while touch
+    /// is the device the player it feeds used last (the first slot that
+    /// lists `touch` or `mouse`), else none.
+    pub fn touch_shown(&self, map: &ActionMap) -> Vec<TouchShown> {
+        let Some(slot) = map
+            .slots
+            .iter()
+            .find(|s| s.devices.iter().any(|d| d == "touch" || d == "mouse"))
+        else {
+            return Vec::new();
+        };
+        if self.family(map, slot.index) != Some(Family::Touch) {
+            return Vec::new();
+        }
+        self.touch_layout
+            .iter()
+            .filter(|c| c.draw)
+            .map(|c| {
+                let held = self.touch_held(&c.name).next();
+                let centre = held.map(|(c, _)| c).unwrap_or(c.centre);
+                let knob = match (c.kind, held) {
+                    (TouchKind::Stick, Some((from, at))) => {
+                        let (vx, vy) = c.stick(from, at);
+                        (from.0 + vx * c.radius, from.1 - vy * c.radius)
+                    }
+                    _ => centre,
+                };
+                // A button with no words of its own has its action's name.
+                let label = if c.label.is_empty() && c.kind == TouchKind::Button {
+                    map.actions
+                        .iter()
+                        .find(|a| a.bindings.get("touch").is_some_and(|v| v.contains(&c.name)))
+                        .map(|a| crate::glyphs::words_of(&a.name))
+                        .unwrap_or_default()
+                } else {
+                    c.label.clone()
+                };
+                TouchShown {
+                    name: c.name.clone(),
+                    kind: c.kind,
+                    centre,
+                    radius: c.radius,
+                    knob,
+                    pressed: held.is_some(),
+                    label,
+                }
+            })
+            .collect()
+    }
+
+    /// Fingers down, for `input.devices`: each finger's id, where it is,
+    /// and what it holds (a control's name, `mouse`, or nothing).
+    pub fn touches(&self) -> Vec<(u64, (f32, f32), String)> {
+        self.touches
+            .iter()
+            .map(|(id, f)| {
+                let what = match &f.grab {
+                    Grab::Control(n, _) => n.clone(),
+                    Grab::Mouse => "mouse".to_string(),
+                    Grab::New | Grab::Idle => String::new(),
+                };
+                (*id, f.at, what)
+            })
+            .collect()
     }
 
     /// Keys held, mouse buttons held, and connected pads, for `input.devices`.
@@ -336,8 +549,13 @@ impl Devices {
     pub fn family(&self, map: &ActionMap, slot: u8) -> Option<Family> {
         let s = map.slot(slot).ok()?;
         let keyboard = s.devices.iter().any(|d| d == "keyboard" || d == "mouse");
+        let touch = s.devices.iter().any(|d| d == "touch" || d == "mouse");
         let mut best: Option<(u64, Family)> =
             keyboard.then_some((self.keyboard_used, Family::Keyboard));
+        // A finger that landed after the keys and the mouse were last used.
+        if touch && self.touch_used > 0 && best.is_none_or(|(u, _)| self.touch_used > u) {
+            best = Some((self.touch_used, Family::Touch));
+        }
         for p in self.pads_for(&s.devices) {
             if best.is_none_or(|(u, _)| p.used > u) {
                 best = Some((p.used, p.family()));
@@ -413,6 +631,8 @@ impl Devices {
         let has = |d: &str| s.devices.iter().any(|x| x == d);
         let keyboard = has("keyboard");
         let mouse = has("mouse");
+        // Touch goes with the mouse (reaching players item 1).
+        let touch = has("touch") || mouse;
         let pads = self.pads_for(&s.devices);
         // A mouse binding with modifiers (issue 33), pressed with them held:
         // its button is that binding's, and a plain binding of the same
@@ -450,7 +670,8 @@ impl Devices {
             let ms = a.bindings.get("mouse").filter(|_| mouse);
             let gp = a.bindings.get("gamepad").filter(|_| !pads.is_empty());
             let pf = a.bindings.get("platform");
-            if kb_bound.is_none() && ms.is_none() && gp.is_none() && pf.is_none() {
+            let tc = a.bindings.get("touch").filter(|_| touch);
+            if kb_bound.is_none() && ms.is_none() && gp.is_none() && pf.is_none() && tc.is_none() {
                 continue;
             }
             // Typing: the keyboard holds nothing, so what it held is let go.
@@ -471,6 +692,9 @@ impl Devices {
                     for b in pf.into_iter().flatten() {
                         on |= self.platform.contains(b);
                     }
+                    for b in tc.into_iter().flatten() {
+                        on |= self.touch_held(b).next().is_some();
+                    }
                     ActionValue::Button(on)
                 }
                 ActionKind::Axis => {
@@ -490,6 +714,17 @@ impl Devices {
                     for b in gp.into_iter().flatten() {
                         for p in &pads {
                             take(Self::pad_axis(p, b));
+                        }
+                    }
+                    for b in tc.into_iter().flatten() {
+                        let Some((stick, axis)) = b.rsplit_once('.') else {
+                            continue;
+                        };
+                        if let Some(c) = self.touch_layout.iter().find(|c| c.name == stick) {
+                            for (from, at) in self.touch_held(stick) {
+                                let v = c.stick(from, at);
+                                take(if axis == "x" { v.0 } else { v.1 });
+                            }
                         }
                     }
                     ActionValue::Axis(best)
@@ -546,6 +781,13 @@ impl Devices {
                                 _ => (0.0, 0.0),
                             };
                             take(v);
+                        }
+                    }
+                    for b in tc.into_iter().flatten() {
+                        if let Some(c) = self.touch_layout.iter().find(|c| c.name == *b) {
+                            for (from, at) in self.touch_held(b) {
+                                take(c.stick(from, at));
+                            }
                         }
                     }
                     ActionValue::Axis2(best.0, best.1)

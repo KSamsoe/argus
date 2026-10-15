@@ -143,7 +143,7 @@ pub const FILES: &[FileDoc] = &[
     },
     FileDoc {
         title: "input.toml: the player's actions",
-        intro: "At the project's root, optional. It names the game's actions and the keys, buttons, and sticks bound to each; gameplay reads actions and never sees a key, so a player can rebind them. Without it the game has no PlayerSlot or Actions components and the `input.*` methods answer 4901. An entity with `[PlayerSlot] slot = 1` and an empty `[Actions]` table gets slot 1's actions written onto it every tick (the input stage's `input.actions`); a system that `reads = {\"Actions\"}` reads them by name: `e:get(\"Actions\").jump_pressed`, `.move.x`. What each action type gives the Actions component: a `button` named `jump` is three bools, `jump` (held), `jump_pressed` (went down this tick), and `jump_released` (went up this tick); an `axis` is one f32 from -1 to 1; an `axis2` is a vec2 no longer than 1; a `pointer` is a vec2, the mouse's place on the UI canvas in its pixels. Actions also has the engine's `device` field: the kind of device the player last used (0 keyboard and mouse, 1 Xbox, 2 PlayStation, 3 Switch, 4 another gamepad), which button prompts follow; `device` cannot be declared. The engine reads some actions by name: a UiRoot's menus use `ui_move` (axis2), `ui_confirm`, `ui_cancel`, `ui_click` (buttons), and `pointer` (pointer) unless its fields name others; a CharacterController uses `move` and `jump` unless `move_action` and `jump_action` name others; a Camera pans and zooms with the actions its `pan_action` and `zoom_action` name. Keys the file does not know are ignored; so is a `type` that is not a string, which makes the action a button.",
+        intro: "At the project's root, optional. It names the game's actions and the keys, buttons, and sticks bound to each; gameplay reads actions and never sees a key, so a player can rebind them. Without it the game has no PlayerSlot or Actions components and the `input.*` methods answer 4901. An entity with `[PlayerSlot] slot = 1` and an empty `[Actions]` table gets slot 1's actions written onto it every tick (the input stage's `input.actions`); a system that `reads = {\"Actions\"}` reads them by name: `e:get(\"Actions\").jump_pressed`, `.move.x`. What each action type gives the Actions component: a `button` named `jump` is three bools, `jump` (held), `jump_pressed` (went down this tick), and `jump_released` (went up this tick); an `axis` is one f32 from -1 to 1; an `axis2` is a vec2 no longer than 1; a `pointer` is a vec2, the mouse's place on the UI canvas in its pixels. Actions also has the engine's `device` field: the kind of device the player last used (0 keyboard and mouse, 1 Xbox, 2 PlayStation, 3 Switch, 4 another gamepad, 5 touch), which button prompts follow; `device` cannot be declared. The engine reads some actions by name: a UiRoot's menus use `ui_move` (axis2), `ui_confirm`, `ui_cancel`, `ui_click` (buttons), and `pointer` (pointer) unless its fields name others; a CharacterController uses `move` and `jump` unless `move_action` and `jump_action` name others; a Camera pans and zooms with the actions its `pan_action` and `zoom_action` name. Keys the file does not know are ignored; so is a `type` that is not a string, which makes the action a button.",
         keys: &[
             k("[actions.<name>]", "table", "", "An action. The name is letters, digits, and `_`, not starting with a digit: it becomes a field of Actions. Actions are listed in name order."),
             k("[actions.<name>] type", "string", "\"button\"", "`button`, `axis`, `axis2`, or `pointer`."),
@@ -153,11 +153,20 @@ pub const FILES: &[FileDoc] = &[
             k("[actions.<name>.bindings] mouse", "array of strings", "[]", "A button's mouse buttons: `left`, `right`, `middle`, `back`, `forward`, each with any of the modifiers `ctrl`, `shift`, `alt`, `meta` before it (`ctrl+left`, `shift+alt+right`): pressed with them held, it is a binding of its own, and a plain `left` of the same slot stands down meanwhile, so Ctrl and a click is not also a click. The modifier keys need bind nothing, so on a discrete clock holding Ctrl takes no turn. A pointer's: `position`. An axis's: `wheel`, the mouse wheel: 1 (up) or -1 for the tick of a notch, then 0 (the UI's `ui_scroll` scrolls a UiScroll with it). An axis2 takes none."),
             k("[actions.<name>.bindings] gamepad", "array of strings", "[]", "A button's gamepad buttons: `south`, `east`, `west`, `north` (A, B, X, Y on an Xbox pad), `lb`, `rb`, `lt`, `rt` (a trigger past half way), `select`, `start`, `mode`, `lthumb`, `rthumb`, `dpad_up`, `dpad_down`, `dpad_left`, `dpad_right`. An axis's: `left_x`, `left_y`, `right_x`, `right_y`, `lt`, `rt`. An axis2's: `left_stick`, `right_stick`, `dpad`. Sticks have a dead zone of 0.2 on each axis. Other names are refused (4905)."),
             k("[actions.<name>.bindings] platform", "array of strings", "[]", "The platform's own: `overlay`, a button that is held while the platform's overlay (Steam's Shift+Tab) is open."),
-            k("[slots.<n>] devices", "array of strings", "a single slot 1 with [\"keyboard\"]", "Player slot n (1 to 8) and the devices that feed it: `keyboard`, `mouse`, `gamepad` (every pad), `gamepad:0` (the first pad connected, and so on). Without any `[slots]` there is one slot, 1, fed by the keyboard alone: list `mouse` and a gamepad to have them. A button is held when any binding holds it; an axis takes the binding with the largest value, an axis2 the longest."),
+            k("[actions.<name>.bindings] touch", "array of strings", "[]", "Touch controls, by their `[touch.<name>]` names: a button's, a `button` control; an axis2's, a `stick`; an axis's, a stick's `x` or `y` (`\"stick.x\"`, up positive). A pointer takes none: a finger that lands on no control is the mouse, its `left` button and the pointer, so a game made for the mouse plays under a finger with no touch bindings at all."),
+            k("[touch.<name>]", "table", "", "A touch control, a button or a stick on the screen, which touch bindings name. A finger that lands on it holds it until it lifts (a stick, one finger at a time). The engine draws the controls over the game while touch is the device the player last used (`device` 5), unless `draw = false`. Fingers are recorded as the actions they press, so replays, seeks, and reports have them."),
+            k("[touch.<name>] kind", "string", "", "`button`, held while a finger is on it, or `stick`, a drag from its centre: as far as its edge is 1, nothing within a tenth of it."),
+            k("[touch.<name>] anchor", "string", "\"center\"", "Where it is placed from on the UI canvas: `top-left`, `top`, `top-right`, `left`, `center`, `right`, `bottom-left`, `bottom`, `bottom-right`."),
+            k("[touch.<name>] at", "array of 2 numbers", "[0, 0]", "Its centre from the anchor, inward, in UI canvas pixels: from a left anchor rightward, from a right anchor leftward, from a top anchor down, from a bottom anchor up; from the middle (top, bottom, left, right, and center are at a middle) right and down."),
+            k("[touch.<name>] size", "number", "96", "Its diameter in UI canvas pixels. A finger landing within a quarter past its edge takes it; between two, the nearer."),
+            k("[touch.<name>] label", "string", "\"\"", "A button's words, drawn on it and shown by button prompts; empty: the name of the action bound to it (`jump` is Jump)."),
+            k("[touch.<name>] floating", "boolean", "false", "A stick only: a finger landing anywhere in its half of the screen (its anchor's side, or all of it for a middle anchor) takes it, centred where it landed. A button's own place comes first."),
+            k("[touch.<name>] draw", "boolean", "true", "Drawn by the engine; false when the game draws its own (it reads the actions as ever)."),
+            k("[slots.<n>] devices", "array of strings", "a single slot 1 with [\"keyboard\"]", "Player slot n (1 to 8) and the devices that feed it: `keyboard`, `mouse`, `gamepad` (every pad), `gamepad:0` (the first pad connected, and so on), `touch`. Touch goes with the mouse: a slot that lists `mouse` takes the fingers too. Without any `[slots]` there is one slot, 1, fed by the keyboard alone: list `mouse` and a gamepad to have them. A button is held when any binding holds it; an axis takes the binding with the largest value, an axis2 the longest."),
         ],
         example_from: "examples/hollow/input.toml",
         example: "[actions.move]\ntype = \"axis2\"\ndoc = \"Run left and right; down with jump drops through a plank\"\n[actions.move.bindings]\nkeyboard = [\"wasd\", \"arrows\"]\ngamepad = [\"left_stick\", \"dpad\"]\n\n[actions.pause]\ntype = \"button\"\n[actions.pause.bindings]\nkeyboard = [\"escape\"]\ngamepad = [\"start\"]\nplatform = [\"overlay\"]\n\n[actions.pointer]\ntype = \"pointer\"\n[actions.pointer.bindings]\nmouse = [\"position\"]\n\n[slots.1]\ndevices = [\"keyboard\", \"mouse\", \"gamepad:0\"]",
-        errors: "When the project opens, 4905 at the action's line: a name that cannot be a field, a type that is not one of the four, `toggle` on an axis, a bindings device that is not keyboard, mouse, gamepad, or platform, a mouse, gamepad, or platform name not in the lists above (the message lists the known ones), a slot number outside 1 to 8, or an action named `device`, `typed`, or `typing` (the engine's: `Actions.typed` is what the slot typed this tick, and while `Actions.typing` is true its keyboard types instead of moving actions, as a text box sets it). A table or list of the wrong shape: 4605. A button `fire` beside an action named `fire_pressed`: 4005, the field declared twice.",
+        errors: "When the project opens, 4905 at the action's line: a name that cannot be a field, a type that is not one of the four, `toggle` on an axis, a bindings device that is not keyboard, mouse, gamepad, platform, or touch, a mouse, gamepad, or platform name not in the lists above (the message lists the known ones), a touch binding that names no control of the right kind (the message lists the controls `[touch]` declares), a `[touch.<name>]` with a key not above, a `kind` not button or stick, an anchor not in the list, a `size` not above 0, or `floating` on a button, a slot number outside 1 to 8, or an action named `device`, `typed`, or `typing` (the engine's: `Actions.typed` is what the slot typed this tick, and while `Actions.typing` is true its keyboard types instead of moving actions, as a text box sets it). A table or list of the wrong shape: 4605. A button `fire` beside an action named `fire_pressed`: 4005, the field declared twice.",
     },
     FileDoc {
         title: "defs/<table>.toml: a data table's rows",
@@ -1246,6 +1255,28 @@ mod tests {
             &[argus_input::map::DEVICE_ACTION],
             "engine action",
         );
+        // Touch controls (reaching players item 1): every key the parser
+        // reads, the kinds, and every anchor.
+        check(
+            "input.toml",
+            &[(
+                "argus-input/src/touch.rs",
+                include_str!("../../argus-input/src/touch.rs"),
+                &["pub fn parse(file: &str"],
+            )],
+            &["button", "stick", "center"],
+        );
+        let anchor = file("input.toml")
+            .keys
+            .iter()
+            .find(|k| k.name == "[touch.<name>] anchor")
+            .expect("input.toml: no [touch.<name>] anchor key");
+        for a in argus_input::touch::ANCHORS {
+            assert!(
+                anchor.doc.contains(&format!("`{a}`")),
+                "input.toml: the anchor {a:?} is not in the reference (formats.rs)"
+            );
+        }
     }
 
     #[test]

@@ -4,7 +4,11 @@
 <title>Argus</title>
 <style>
   body { margin: 0; background: #16141c; color: #c9c4d6; font: 13px/1.4 ui-monospace, Consolas, monospace; }
-  canvas { display: block; margin: 12px auto 0; width: 960px; height: 540px; max-width: 100%; outline: none; background: #000; }
+  /* The game fits the screen, in either orientation, at its own shape; a
+     finger on it is the game's, not the page's to scroll, zoom, or select
+     (reaching players item 1). */
+  canvas { display: block; margin: 12px auto 0; width: min(960px, 100vw, calc(100vh * 16 / 9)); width: min(960px, 100vw, calc(100dvh * 16 / 9)); height: auto; aspect-ratio: 16 / 9; outline: none; background: #000; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+  @media (pointer: coarse) { canvas { margin-top: 0; } }
   p, form { max-width: 960px; margin: 8px auto; padding: 0 12px; }
   form { display: flex; gap: 8px; }
   /* An author's display beats the hidden attribute's own (the browser's

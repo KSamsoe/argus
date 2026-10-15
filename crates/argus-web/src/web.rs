@@ -245,6 +245,26 @@ impl WebPlayer {
             .devices(&[argus_input::DeviceInput::Pointer { x: cx, y: cy }]) as u32
     }
 
+    /// A finger on a touchscreen (reaching players item 1): its id (the
+    /// pointer event's), `start`, `move`, `end`, or `cancel`, at a place on
+    /// the canvas element in its CSS pixels, with the element's CSS size.
+    /// Returns turns taken, as a key does.
+    pub fn touch(&mut self, id: u32, phase: &str, x: f32, y: f32, css_w: f32, css_h: f32) -> u32 {
+        let Some(phase) = argus_input::TouchPhase::parse(phase) else {
+            return 0;
+        };
+        let Some(r) = self.renderer.as_ref() else {
+            return 0;
+        };
+        let (w, h) = r.gpu().size();
+        let (bx, by) = (x * w as f32 / css_w.max(1.0), y * h as f32 / css_h.max(1.0));
+        let Some(fit) = r.ui_fit() else {
+            return 0;
+        };
+        let [cx, cy] = fit.to_canvas([bx, by]);
+        self.p.touch(u64::from(id), phase, cx, cy) as u32
+    }
+
     /// A mouse button (`left`, `right`, `middle`), down or up.
     pub fn mouse(&mut self, button: &str, pressed: bool) -> u32 {
         self.p.devices(&[argus_input::DeviceInput::Mouse {
@@ -267,7 +287,7 @@ impl WebPlayer {
             [sh.theme.width, sh.theme.height]
         };
         let store = self.p.particles.borrow();
-        let sf = argus_render::semantic::semantic(
+        let mut sf = argus_render::semantic::semantic(
             &self.p.world,
             &argus_render::FrameSpec {
                 width: w,
@@ -280,6 +300,7 @@ impl WebPlayer {
                 ui_canvas: Some(canvas),
             },
         );
+        sf.with_touch(&self.p.touch_shown(), canvas);
         sf.to_json().to_string()
     }
 
@@ -516,6 +537,7 @@ impl WebPlayer {
         };
         r.set_time(self.p.sched.time() as f32);
         r.set_ui(Some(self.p.ui.clone()));
+        r.set_touch(self.p.touch_shown());
         let store = self.p.particles.borrow();
         let tick = self.p.sched.tick();
         let rep = r

@@ -419,6 +419,14 @@ impl Game {
                         devs.push(DeviceInput::Pointer { x, y });
                     }
                 }
+                // A finger, onto the UI canvas as the mouse is (reaching
+                // players item 1).
+                Some(WindowInput::Touch(id, phase, x, y)) if self.prompt.is_none() => {
+                    if let Some(f) = self.r.ui_fit() {
+                        let [x, y] = f.to_canvas([x, y]);
+                        devs.push(DeviceInput::Touch { id, phase, x, y });
+                    }
+                }
                 _ => {}
             }
         }
@@ -511,6 +519,7 @@ impl Game {
             ClockKind::Continuous => self.owed.clamp(0.0, 1.0) as f32,
             ClockKind::Discrete => 1.0,
         };
+        self.r.set_touch(self.p.touch_shown());
         self.r
             .render_frame(&self.p.world, tick, alpha, &extras, Some(&store))
             .map_err(|e| e.message)?;

@@ -454,6 +454,21 @@ impl Player {
         self.devices(&[DeviceInput::Wheel { lines }])
     }
 
+    /// A finger on a touchscreen, at a place on the UI canvas in its
+    /// pixels (reaching players item 1). Returns the turns it took.
+    pub fn touch(&mut self, id: u64, phase: argus_input::TouchPhase, x: f32, y: f32) -> u64 {
+        self.devices(&[DeviceInput::Touch { id, phase, x, y }])
+    }
+
+    /// The touch controls to draw over the game now: none unless touch is
+    /// the device in use.
+    pub fn touch_shown(&self) -> Vec<argus_input::TouchShown> {
+        match &self.input {
+            Some(st) => self.devices.touch_shown(st.borrow().map()),
+            None => Vec::new(),
+        }
+    }
+
     /// Device input (keys, mouse, pads) through the action map, as the
     /// daemon takes it. Returns the turns a discrete game took: one command,
     /// one turn.
@@ -475,6 +490,12 @@ impl Player {
         let Some(st) = st else {
             return 0;
         };
+        // Touch controls are placed on the UI canvas.
+        let canvas = {
+            let t = &self.ui.borrow().theme;
+            [t.width, t.height]
+        };
+        st.borrow_mut().set_canvas(canvas);
         let now = self.sched.tick();
         let commands = st.borrow_mut().apply_devices(now, &mut self.devices);
         // A caught key is a command too: the controls page shows it on the

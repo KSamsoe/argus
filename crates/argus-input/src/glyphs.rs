@@ -34,16 +34,20 @@ pub enum Family {
     Switch,
     /// Any other gamepad, named by position.
     Gamepad,
+    /// A touchscreen (reaching players item 1): its controls are on the
+    /// screen, drawn while it is the device in use.
+    Touch,
 }
 
 impl Family {
     /// Every family, in index order.
-    pub const ALL: [Family; 5] = [
+    pub const ALL: [Family; 6] = [
         Family::Keyboard,
         Family::Xbox,
         Family::PlayStation,
         Family::Switch,
         Family::Gamepad,
+        Family::Touch,
     ];
 
     /// Its value as the `device` action holds it.
@@ -59,11 +63,13 @@ impl Family {
             1 => Family::Xbox,
             2 => Family::PlayStation,
             3 => Family::Switch,
+            5 => Family::Touch,
             _ => Family::Gamepad,
         }
     }
 
-    /// Its name: `keyboard`, `xbox`, `playstation`, `switch`, `gamepad`.
+    /// Its name: `keyboard`, `xbox`, `playstation`, `switch`, `gamepad`,
+    /// `touch`.
     pub fn name(self) -> &'static str {
         match self {
             Family::Keyboard => "keyboard",
@@ -71,6 +77,7 @@ impl Family {
             Family::PlayStation => "playstation",
             Family::Switch => "switch",
             Family::Gamepad => "gamepad",
+            Family::Touch => "touch",
         }
     }
 
@@ -106,6 +113,7 @@ impl Family {
     fn device(self) -> &'static str {
         match self {
             Family::Keyboard => "keyboard",
+            Family::Touch => "touch",
             _ => "gamepad",
         }
     }
@@ -148,6 +156,20 @@ pub fn label(family: Family, binding: &str) -> String {
         "left_stick" | "left_x" | "left_y" => "Left stick".to_string(),
         "right_stick" | "right_x" | "right_y" => "Right stick".to_string(),
         other => other.to_string(),
+    }
+}
+
+/// An action's name as words, for a touch button with none of its own:
+/// `ui_confirm` is `Confirm`, `jump` is `Jump`.
+pub fn words_of(action: &str) -> String {
+    let w = action
+        .strip_prefix("ui_")
+        .unwrap_or(action)
+        .replace('_', " ");
+    let mut c = w.chars();
+    match c.next() {
+        Some(f) => f.to_uppercase().chain(c).collect(),
+        None => String::new(),
     }
 }
 
@@ -198,6 +220,28 @@ fn key_label(binding: &str) -> String {
 /// when it has no key).
 pub fn prompt(map: &ActionMap, action: &str, family: Family) -> Option<(String, String)> {
     let a = map.action(action).ok()?;
+    if family == Family::Touch {
+        // The control's words, or the action's name; a click is a tap; and
+        // else what the keyboard says (reaching players item 1).
+        if let Some(b) = a.bindings.get("touch").and_then(|v| v.first()) {
+            let control = b.split('.').next().unwrap_or(b);
+            let l = map
+                .touch
+                .iter()
+                .find(|c| c.name == control)
+                .map(|c| c.label.clone())
+                .filter(|l| !l.is_empty())
+                .unwrap_or_else(|| words_of(action));
+            return Some((format!("touch_{b}"), l));
+        }
+        if a.bindings
+            .get("mouse")
+            .is_some_and(|v| v.iter().any(|m| m == "left"))
+        {
+            return Some(("touch_tap".to_string(), "Tap".to_string()));
+        }
+        return prompt(map, action, Family::Keyboard);
+    }
     let b = a.bindings.get(family.device()).and_then(|v| v.first());
     if b.is_none() && family == Family::Keyboard {
         if let Some(m) = a.bindings.get("mouse").and_then(|v| v.first()) {

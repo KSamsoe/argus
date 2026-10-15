@@ -111,6 +111,10 @@ It is not part of an Argus install yet. See [Playtesting](playtesting.md) for pu
 
 A game with Rust plugins has no web build, since a page cannot load a library: `argus build --target web` says so and stops. Swarm is such a game.
 
+### On a phone or a tablet
+
+The page fits the game to the screen in either orientation, and a finger on it is the game's: the browser does not scroll, zoom, or select under it. Each finger goes to the game as a finger, so a game's touch controls work, and a game without them is played by tapping, a finger being the mouse ([Gameplay](gameplay.md#touch)). Turn the phone on its side for a game drawn wide. To try one, serve the build where the phone can reach it (a computer on the same network, or a tailnet, with `serve.mjs`'s address as the host's, [docs/playtest.md](../playtest.md)) and open its address in the phone's browser.
+
 ### The game's own page script
 
 A project's `web/` folder goes into the build beside the page. When it has a `game.js`, the page imports it once the game is running, with `window.argus.player` set. That is where a game talks to the world outside it: a server, an AI model, the browser's own storage. The script trades text with the game ([Talking to the host](gameplay.md#talking-to-the-host)):

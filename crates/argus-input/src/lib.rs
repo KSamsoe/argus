@@ -24,6 +24,7 @@ pub mod map;
 pub mod rebind;
 pub mod state;
 pub mod system;
+pub mod touch;
 
 pub use devices::{key_name, DeviceInput, Devices};
 pub use glyphs::{Family, InputGlyph, GLYPHS};
@@ -34,6 +35,7 @@ pub use state::{
     Message, Rebound, MAX_CHANNEL, MAX_MESSAGE,
 };
 pub use system::{install, register, PlayerSlot, ACTIONS, MESSAGE_EVENT, SYSTEM};
+pub use touch::{TouchKind, TouchPhase, TouchShown};
 
 /// Error codes this crate adds to the 4xxx block.
 pub mod codes {

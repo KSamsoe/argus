@@ -64,6 +64,18 @@ type = "button"
 doc = "A click (the host check)"
 [actions.click.bindings]
 mouse = ["left"]
+
+[actions.zap]
+type = "button"
+doc = "A touch button (the host check)"
+[actions.zap.bindings]
+touch = ["zap"]
+
+[touch.zap]
+kind = "button"
+anchor = "bottom-right"
+at = [80, 80]
+size = 100
 `,
 );
 writeFileSync(
@@ -76,6 +88,7 @@ writeFileSync(
     for _, a in q:each("Actions") do
       if a.tag_pressed then q:send("input", "tag") end
       if a.click_pressed then q:send("input", "click") end
+      if a.zap_pressed then q:send("input", "zap") end
     end
   end,
 }
@@ -227,10 +240,33 @@ try {
   await send("Input.dispatchKeyEvent", { type: "keyUp", key: "Control", code: "ControlLeft", windowsVirtualKeyCode: 17, modifiers: 0 });
   report.plain_click = await click(0);
 
+  // A finger (reaching players item 1): on the touch button it presses the
+  // game's zap and the controls are drawn; off the controls it is the
+  // mouse, a click. The canvas is 960 by 540, as the UI's is.
+  report.stage = "touch";
+  await send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
+  const box = await evaluate("(() => { const r = document.getElementById('game').getBoundingClientRect(); return [r.left, r.top, r.width / 960, r.height / 540]; })()");
+  const css = (x, y) => [box[0] + x * box[2], box[1] + y * box[3]];
+  const tap = async (x, y, look) => {
+    const [cx, cy] = css(x, y);
+    await send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: cx, y: cy, id: 7 }] });
+    await sleep(200);
+    const seen = look ? JSON.parse(await evaluate("argus.player.semantic()")).touch ?? null : undefined;
+    await send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await sleep(200);
+    return { sent: JSON.parse(await evaluate("argus.player.take_sent()")).map((m) => m.text), seen };
+  };
+  report.touch_button = await tap(880, 460, true);
+  report.touch_off = await tap(300, 200, false);
+
   const sent = report.page?.sent ?? [];
   const failures = [];
   if (JSON.stringify(report.ctrl_click) !== '["tag"]') failures.push(`Ctrl and a click, Ctrl pressed in the page's box, sent ${JSON.stringify(report.ctrl_click)}, not ["tag"]`);
   if (JSON.stringify(report.plain_click) !== '["click"]') failures.push(`a plain click sent ${JSON.stringify(report.plain_click)}, not ["click"]`);
+  if (JSON.stringify(report.touch_button?.sent) !== '["zap"]') failures.push(`a finger on the touch button sent ${JSON.stringify(report.touch_button?.sent)}, not ["zap"]`);
+  const drawn = report.touch_button?.seen ?? [];
+  if (!(drawn.length === 1 && drawn[0].name === "zap" && drawn[0].pressed === true)) failures.push(`the semantic frame did not list the held touch button: ${JSON.stringify(drawn)}`);
+  if (JSON.stringify(report.touch_off?.sent) !== '["click"]') failures.push(`a finger off the controls sent ${JSON.stringify(report.touch_off?.sent)}, not ["click"] (the finger as the mouse)`);
   if (report.report_form_shown !== false) failures.push(`the report form shows before F8 (${report.report_form_shown})`);
   if (!report.page) failures.push("web/game.js did not run");
   else {

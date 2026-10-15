@@ -112,9 +112,12 @@ pub struct ActionMap {
     pub slots: Vec<Slot>,
     /// Project-relative file.
     pub file: String,
+    /// Touch controls, `[touch.<name>]` (reaching players item 1), in file
+    /// order.
+    pub touch: Vec<crate::touch::TouchControl>,
 }
 
-const DEVICES: &[&str] = &["keyboard", "mouse", "gamepad", "platform"];
+const DEVICES: &[&str] = &["keyboard", "mouse", "gamepad", "platform", "touch"];
 
 /// The engine's own action in every map: the kind of device the player
 /// last used (a [`crate::glyphs::Family`] index), which button prompts
@@ -144,8 +147,13 @@ impl ActionMap {
         let t = im.as_table();
         let bad = |msg: String, at: String| {
             ArgusError::new(codes::BAD_MAP, msg)
-                .hint("input.toml has [actions.<name>] tables with type = \"button\" | \"axis\" | \"axis2\" | \"pointer\", optional doc, toggle, and [actions.<name>.bindings] per device; [slots.<n>] tables list devices.")
+                .hint("input.toml has [actions.<name>] tables with type = \"button\" | \"axis\" | \"axis2\" | \"pointer\", optional doc, toggle, and [actions.<name>.bindings] per device; [slots.<n>] tables list devices; [touch.<name>] tables are touch controls.")
                 .at(Some(at))
+        };
+        // The touch controls first: a touch binding names one.
+        let touch = match t.get("touch") {
+            Some(i) => crate::touch::parse(file, text, i)?,
+            None => Vec::new(),
         };
         let mut actions = Vec::new();
         if let Some(a) = t.get("actions") {
@@ -224,6 +232,33 @@ impl ActionMap {
                                 known.contains(&i.as_str())
                             }
                         };
+                        // A touch binding names a control of the right kind.
+                        if dev == "touch" {
+                            if let Some(bad_name) = items
+                                .iter()
+                                .find(|i| !crate::touch::binding_ok(&touch, kind, i))
+                            {
+                                let want = match kind {
+                                    ActionKind::Button => "a button control's name",
+                                    ActionKind::Axis2 => "a stick control's name",
+                                    ActionKind::Axis => "a stick control's name with .x or .y",
+                                    ActionKind::Pointer => "nothing: a finger off the controls is the mouse, so bind mouse = [\"position\"]",
+                                };
+                                let names: Vec<&str> =
+                                    touch.iter().map(|c| c.name.as_str()).collect();
+                                return Err(bad(
+                                    format!(
+                                        "actions.{name}.bindings.touch: {bad_name:?} is not {want}; {}",
+                                        if names.is_empty() {
+                                            "input.toml declares no [touch] controls".to_string()
+                                        } else {
+                                            format!("[touch] declares: {}", names.join(", "))
+                                        }
+                                    ),
+                                    tomlv::item_ref(file, text, list),
+                                ));
+                            }
+                        }
                         if !known.is_empty() {
                             if let Some(bad_name) = items.iter().find(|i| !fine(i)) {
                                 return Err(bad(
@@ -263,7 +298,7 @@ impl ActionMap {
         actions.push(Action {
             name: DEVICE_ACTION.to_string(),
             kind: ActionKind::Axis,
-            doc: "The kind of device the player last used (the engine's): 0 keyboard and mouse, 1 Xbox, 2 PlayStation, 3 Switch, 4 another gamepad".to_string(),
+            doc: "The kind of device the player last used (the engine's): 0 keyboard and mouse, 1 Xbox, 2 PlayStation, 3 Switch, 4 another gamepad, 5 touch".to_string(),
             bindings: BTreeMap::new(),
             toggle: false,
             at: "argus-input".to_string(),
@@ -301,6 +336,7 @@ impl ActionMap {
             actions,
             slots,
             file: file.to_string(),
+            touch,
         })
     }
 
@@ -333,6 +369,15 @@ impl ActionMap {
                 known.contains(&n.as_str())
             }
         };
+        if let Some(bad_name) = names
+            .iter()
+            .find(|n| device == "touch" && !crate::touch::binding_ok(&self.touch, kind, n))
+        {
+            return Err(ArgusError::new(
+                codes::BAD_MAP,
+                format!("{bad_name:?} is no touch control of the kind {action} needs"),
+            ));
+        }
         if let Some(bad_name) = names.iter().find(|n| !known.is_empty() && !fine(n)) {
             return Err(ArgusError::new(
                 codes::BAD_MAP,
@@ -481,9 +526,9 @@ impl ActionMap {
                     &a.name,
                     FieldType::F32,
                     Value::Float(0.0),
-                    // The device action holds a family's index, 0 to 4.
+                    // The device action holds a family's index, 0 to 5.
                     Some(if a.name == DEVICE_ACTION {
-                        (0.0, 4.0)
+                        (0.0, 5.0)
                     } else {
                         (-1.0, 1.0)
                     }),

@@ -48,14 +48,52 @@ Each action's `bindings` table has a list per device:
 - `mouse`: `left`, `right`, `middle`, `back`, `forward` for a button; `position` for a pointer. A button may carry modifiers: `mouse = ["ctrl+left"]` is pressed by a left click with Ctrl held (`ctrl`, `shift`, `alt`, `meta`, joined with `+`). While it is pressed, a plain `left` binding stands down, so Ctrl and a click is one action, not two, and the Ctrl key need not be bound (on a discrete clock it takes no turn).
 - `gamepad`: `south`, `east`, `west`, `north` (A, B, X, Y on an Xbox pad), `lb`, `rb`, `lt`, `rt`, `start`, `select`, the d-pad buttons, and for axes `left_x`, `left_stick`, `dpad`, and so on.
 - `platform`: `overlay`, held while the platform's overlay (Steam's Shift+Tab) is open. Hollow binds its pause to it.
+- `touch`: a touch control's name, from the file's `[touch]` tables (see [Touch](#touch) below): a button control for a button, a stick for an `axis2`, a stick's `x` or `y` for an `axis` (`"stick.x"`).
 
 Gamepad and mouse names are checked when the project opens. Keyboard names are not: a name no key sends is accepted and never fires, so check a new binding by pressing it. The full name lists are in the `input.toml` section of `argus docs`.
 
 A button with `toggle = true` turns on with one press and off with the next, instead of being held.
 
+### Touch
+
+A game plays under a finger with nothing added: a finger that touches the screen is the mouse, its left button down where it lands and the pointer following it, so menus, the engine's click, and `q:screen_to_world` work on a phone or a tablet as they do with a mouse. That covers a game played by clicking. A game played with keys needs controls on the screen: buttons and sticks, declared in `input.toml` and bound to actions as keys are.
+
+```toml
+[actions.move.bindings]
+keyboard = ["wasd", "arrows"]
+touch = ["stick"]
+
+[actions.jump.bindings]
+keyboard = ["space"]
+touch = ["jump"]
+
+# A stick at the bottom left, 170 across, its centre 130 in from each edge.
+[touch.stick]
+kind = "stick"
+anchor = "bottom-left"
+at = [130, 130]
+size = 170
+floating = true
+
+[touch.jump]
+kind = "button"
+anchor = "bottom-right"
+at = [110, 110]
+size = 120
+```
+
+- A control is placed on the UI canvas from its `anchor` (a corner, the middle of an edge, or `center`) by `at`, its centre measured inward from that anchor, and `size`, its diameter, in the canvas's pixels. So it stays in its corner on any screen.
+- A finger that lands on a control holds it until it lifts. A stick gives its `axis2` the drag from its centre, as far as its edge being 1 and up positive, as a gamepad stick does. A `floating` stick takes a finger landing anywhere in its half of the screen and centres itself where the finger landed, which suits thumbs.
+- A finger that lands on no control is the mouse, as above, and a second one there does nothing. Several fingers can hold several controls at once.
+- The engine draws the controls over the game in the theme's colours while touch is the device the player last used: the `device` action is 5, and button prompts say what the touch buttons are called. A key, a click, or a pad hides them again. Give a control `draw = false` to draw it yourself.
+- A slot takes touch when its `devices` list `touch` or `mouse`.
+- What a finger presses is recorded as the actions it pressed, as a key is, so replays, seeks, and players' reports have it.
+
+To try it without a phone, send fingers with `argus input device events='[{touch: 1, phase: start, at: [130, 410]}]'` (the at is in the UI canvas's pixels), or from a scenario with `t.input:touch(1, "start", 130, 410)`. The semantic frame lists the controls on the screen under `touch`. A web build's page hands fingers to the game, and stops the browser scrolling or zooming under them; [Releasing](releasing.md) has how to play it on a phone.
+
 ### Slots and players
 
-A **slot** is one player. `[slots.<n>] devices` says which devices feed slot n (1 to 8). Without any `[slots]` table there is one slot fed by the keyboard alone, so list `mouse` and a gamepad when you want them. `gamepad:0` is the first pad connected, `gamepad:1` the second; `gamepad` alone is every pad.
+A **slot** is one player. `[slots.<n>] devices` says which devices feed slot n (1 to 8). Without any `[slots]` table there is one slot fed by the keyboard alone, so list `mouse` and a gamepad when you want them. `gamepad:0` is the first pad connected, `gamepad:1` the second; `gamepad` alone is every pad. `touch` is a touchscreen, which goes with the mouse: a slot that lists `mouse` takes the fingers too.
 
 An entity receives a slot's actions when it has `[PlayerSlot] slot = 1` and an empty `[Actions]` table, as Hollow's hero does (`examples/hollow/scenes/hollow/rooms/persistent/player.toml`). The input stage writes the slot's actions onto it every tick.
 

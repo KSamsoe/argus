@@ -483,6 +483,8 @@ impl Daemon {
         r.set_time(shader_time(&self.sched, 1.0));
         r.set_ui(Some(ses.ui.clone()));
         r.set_draws(Some(ses.host.draws()));
+        // A mark is a moment replayed: no finger is on it.
+        r.set_touch(Vec::new());
         r.set_occluders(edges);
         let store = ses.particles.borrow();
         r.render_frame(&self.world, tick, 1.0, &extras, Some(&store))?;
