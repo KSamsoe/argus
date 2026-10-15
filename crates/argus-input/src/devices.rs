@@ -452,10 +452,13 @@ impl Devices {
         })
     }
 
-    /// The touch controls the engine draws, as they are now: while touch
-    /// is the device the player it feeds used last (the first slot that
-    /// lists `touch` or `mouse`), else none.
-    pub fn touch_shown(&self, map: &ActionMap) -> Vec<TouchShown> {
+    /// The touch controls the engine draws, as they are now: while the
+    /// `device` action of the slot touch feeds (the first that lists
+    /// `touch` or `mouse`) is touch, else none. That is the run's value, as
+    /// the button prompts follow, not these devices': so a new run starts
+    /// without them, and a seek or a replay shows them as the run did.
+    pub fn touch_shown(&self, st: &crate::state::InputState) -> Vec<TouchShown> {
+        let map = st.map();
         let Some(slot) = map
             .slots
             .iter()
@@ -463,7 +466,11 @@ impl Devices {
         else {
             return Vec::new();
         };
-        if self.family(map, slot.index) != Some(Family::Touch) {
+        let family = match st.value(slot.index, DEVICE_ACTION) {
+            Some(ActionValue::Axis(v)) => Family::from_index(v),
+            _ => Family::Keyboard,
+        };
+        if family != Family::Touch {
             return Vec::new();
         }
         self.touch_layout

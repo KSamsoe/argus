@@ -64,7 +64,7 @@ impl ActionValue {
                     match kind {
                         ActionKind::Button => "true or false",
                         ActionKind::Axis if action == crate::map::DEVICE_ACTION => {
-                            "a kind of device: 0 keyboard and mouse, 1 Xbox, 2 PlayStation, 3 Switch, 4 another gamepad"
+                            "a kind of device: 0 keyboard and mouse, 1 Xbox, 2 PlayStation, 3 Switch, 4 another gamepad, 5 touch"
                         }
                         ActionKind::Axis => "a number in [-1, 1]",
                         ActionKind::Axis2 => "[x, y] with each in [-1, 1]",

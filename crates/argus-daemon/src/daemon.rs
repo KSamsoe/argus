@@ -1047,7 +1047,7 @@ impl Daemon {
     /// 1): none unless touch is the device in use.
     pub(crate) fn touch_shown(&self) -> Vec<argus_input::TouchShown> {
         match self.session.as_ref().and_then(|s| s.input.as_ref()) {
-            Some(st) => self.devices.touch_shown(st.borrow().map()),
+            Some(st) => self.devices.touch_shown(&st.borrow()),
             None => Vec::new(),
         }
     }

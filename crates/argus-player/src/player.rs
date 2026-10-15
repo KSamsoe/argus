@@ -464,7 +464,7 @@ impl Player {
     /// the device in use.
     pub fn touch_shown(&self) -> Vec<argus_input::TouchShown> {
         match &self.input {
-            Some(st) => self.devices.touch_shown(st.borrow().map()),
+            Some(st) => self.devices.touch_shown(&st.borrow()),
             None => Vec::new(),
         }
     }

@@ -160,7 +160,7 @@ fn a_stick_a_button_and_a_finger_that_is_the_mouse() {
 
     // What the engine draws: every control, the stick's knob where the
     // finger is, kept to its edge, the button with its words.
-    let shown = r.d.touch_shown(r.st.borrow().map());
+    let shown = r.d.touch_shown(&r.st.borrow());
     assert_eq!(shown.len(), 3);
     let stick = shown.iter().find(|c| c.name == "stick").unwrap();
     assert!(stick.pressed && stick.kind == TouchKind::Stick);
@@ -185,7 +185,7 @@ fn a_stick_a_button_and_a_finger_that_is_the_mouse() {
     r.st.borrow_mut().apply_devices(r.s.tick(), &mut r.d);
     r.tick();
     assert_eq!(r.get("device"), Value::Float(0.0));
-    assert!(r.d.touch_shown(r.st.borrow().map()).is_empty());
+    assert!(r.d.touch_shown(&r.st.borrow()).is_empty());
     // Focus lost: every finger lets go.
     r.d.apply(&DeviceInput::ReleaseAll);
     r.st.borrow_mut().apply_devices(r.s.tick(), &mut r.d);

@@ -117,6 +117,8 @@ fn a_finger_on_the_stick_walks_the_hero_and_a_seek_plays_it_again() {
         "input.device",
         json!({ "events": [{ "key": "KeyD", "pressed": true }, { "key": "KeyD", "pressed": false }] }),
     );
+    // On the tick that takes the key, as the button prompts change.
+    ok(&mut d, "sim.step", json!({ "n": 1 }));
     let f = ok(&mut d, "obs.frame", json!({ "format": "semantic" }));
     assert!(f.get("touch").is_none(), "hidden: {f}");
 
@@ -138,4 +140,30 @@ fn a_finger_on_the_stick_walks_the_hero_and_a_seek_plays_it_again() {
         "{}",
         e.message
     );
+}
+
+#[test]
+fn a_new_run_starts_without_the_controls_a_touch_showed_in_the_last() {
+    // Found playing Hollow's suite: after a scenario's touch, the next
+    // scenario's pictures had the controls drawn over them. They follow the
+    // run's device action now, which a new run starts at the keyboard's.
+    let t = temp("touch-new-run");
+    project(t.path());
+    write(t.path(), "input.toml", INPUT);
+    let mut d = open(t.path());
+    touch(&mut d, 1, "start", 500.0, 100.0);
+    touch(&mut d, 1, "end", 500.0, 100.0);
+    ok(&mut d, "sim.step", json!({ "n": 1 }));
+    let f = ok(&mut d, "obs.frame", json!({ "format": "semantic" }));
+    assert_eq!(f["touch"].as_array().map(|c| c.len()), Some(2), "{f}");
+    ok(&mut d, "scene.load", json!({ "scene": "arena", "seed": 1 }));
+    ok(&mut d, "sim.step", json!({ "n": 1 }));
+    let f = ok(&mut d, "obs.frame", json!({ "format": "semantic" }));
+    assert!(f.get("touch").is_none(), "{f}");
+    assert_eq!(player(&mut d, "Actions.device"), json!(0.0));
+    // A finger in the new run shows them again.
+    touch(&mut d, 1, "start", 500.0, 100.0);
+    ok(&mut d, "sim.step", json!({ "n": 1 }));
+    let f = ok(&mut d, "obs.frame", json!({ "format": "semantic" }));
+    assert_eq!(f["touch"].as_array().map(|c| c.len()), Some(2), "{f}");
 }

@@ -31,7 +31,7 @@
 //! Every map also has the engine's own action [`DEVICE_ACTION`], `device`:
 //! the kind of device the player last used, an axis whose value is a
 //! [`crate::glyphs::Family`] (0 keyboard and mouse, 1 Xbox, 2 PlayStation,
-//! 3 Switch, 4 another gamepad; phase 5 item 9). It is logged like any
+//! 3 Switch, 4 another gamepad, 5 touch; phase 5 item 9). It is logged like any
 //! action, so the button prompts a replay shows are the run's.
 
 use crate::codes;
