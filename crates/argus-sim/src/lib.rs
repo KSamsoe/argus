@@ -32,7 +32,7 @@ pub use prof::{
 pub use rng::{stream_seed, Pcg32};
 pub use scheduler::{
     BatchInfo, FrameReport, HeldEvent, Observer, RunUntil, Scheduler, SchedulerConfig, SimSnapshot,
-    SimState, SystemInfo,
+    SimState, SystemInfo, RECENT_TURNS,
 };
 pub use system::{ClockBinding, Stage, SystemCtx, SystemDesc, SystemFn};
 

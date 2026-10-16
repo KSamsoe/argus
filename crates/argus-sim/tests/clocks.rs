@@ -333,3 +333,48 @@ fn context_time_is_sim_time() {
     assert_eq!(v[2].0, 2);
     assert!((v[2].1 - 0.2).abs() < 1e-12);
 }
+
+#[test]
+fn a_frozen_tick_takes_no_turn_and_a_seek_keeps_the_turns_true() {
+    // Issue 36: the wheel's, a typed character's, or a menu's tick is
+    // frozen in the input stage and takes no turn, though the tick count
+    // moves. The scheduler keeps the latest turns' ticks, as the timeline
+    // stands after a seek.
+    let mut w = World::new();
+    let mut s = Scheduler::new(SchedulerConfig::discrete());
+    let frozen = Rc::new(RefCell::new(vec![3u64, 4, 5, 6]));
+    let f = frozen.clone();
+    s.add_system(
+        SystemDesc::new("input.actions", Stage::Input),
+        Box::new(move |ctx| {
+            if f.borrow().contains(&ctx.tick) {
+                ctx.freeze();
+            }
+            Ok(())
+        }),
+    )
+    .unwrap();
+    s.advance(&mut w, 5).unwrap();
+    let snap = s.snapshot(&w);
+    s.advance(&mut w, 5).unwrap();
+    assert_eq!(s.tick(), 10);
+    // Ticks 0, 1, 2, 7, 8, 9 were turns.
+    assert_eq!(s.turns_back(1), Some(9));
+    assert_eq!(s.turns_back(4), Some(2));
+    assert_eq!(s.turns_back(6), Some(0));
+    assert_eq!(s.turns_back(7), None);
+    assert_eq!(s.turns_since(3), 3);
+
+    // Back to tick 5 and on again with nothing frozen: 5 to 9 are turns now.
+    s.restore(&mut w, &snap);
+    frozen.borrow_mut().clear();
+    assert_eq!(s.turns_since(0), 3, "only what came before tick 5");
+    s.advance(&mut w, 5).unwrap();
+    assert_eq!(s.turns_since(3), 5);
+    assert_eq!(s.turns_back(6), Some(2));
+    // A continuous clock has no turns.
+    assert_eq!(
+        Scheduler::new(SchedulerConfig::default()).turns_back(1),
+        None
+    );
+}

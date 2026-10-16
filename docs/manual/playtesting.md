@@ -95,7 +95,7 @@ A mark is a moment a person flags while playing, with a note: "jump feels floaty
 argus mark drop note="jump feels floaty"
 ```
 
-A mark keeps, in `.argus/marks/<id>/`: the frame as a picture, a two-second clip replayed from the run, the last two seconds of sound, the five seconds of input and events before it, the world's digest, and a replay file that reproduces the moment after the daemon is gone. On a discrete clock the seconds are turns. The input it keeps includes the host's messages (see [Talking to the host](gameplay.md#talking-to-the-host)), so a turn decided by an outside service replays without asking it again.
+A mark keeps, in `.argus/marks/<id>/`: the frame as a picture, a two-second clip replayed from the run, the last two seconds of sound, the five seconds of input and events before it, the world's digest, and a replay file that reproduces the moment after the daemon is gone. On a discrete clock the seconds are turns: the ten before the mark, however many ticks that took no turn lie between them (a wheel notch, a character typed, a menu's press), so a player who scrolled back through a log before marking still has the turn they meant. The input it keeps includes the host's messages (see [Talking to the host](gameplay.md#talking-to-the-host)), so a turn decided by an outside service replays without asking it again.
 
 Marks wait in a queue for the agent:
 
@@ -112,7 +112,7 @@ In the editor's Agent tab your open marks show with their pictures and notes, to
 
 ## Reports from players
 
-A player's build has no daemon, but it keeps the last thirty to sixty seconds of play: a keyframe every thirty seconds of sim time, the newest two kept, and the input since the older. On a discrete clock it is turns, not seconds: the last thirty to sixty turns, however long the player or an outside service took over each. When a player presses F8 (or the game's `[marks] key`) and types a note, or when the game crashes, it saves a report: a replay file in the save folder's `reports/`, named `<time>-report.argr` or `<time>-crash.argr`.
+A player's build has no daemon, but it keeps the last thirty to sixty seconds of play: a keyframe every thirty seconds of sim time, the newest two kept, and the input since the older. On a discrete clock it is turns, not seconds: the last thirty to sixty turns, however long the player or an outside service took over each, and however many ticks that took no turn lie between them (scrolling, typing, a menu). When a player presses F8 (or the game's `[marks] key`) and types a note, or when the game crashes, it saves a report: a replay file in the save folder's `reports/`, named `<time>-report.argr` or `<time>-crash.argr`.
 
 Turn a report into a mark and open it like any other. The path is relative to the project, or absolute:
 

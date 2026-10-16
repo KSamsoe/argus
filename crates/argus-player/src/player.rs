@@ -363,7 +363,8 @@ impl Player {
         ));
     }
 
-    /// A report of the last thirty to sixty seconds as a replay file
+    /// A report of the last thirty to sixty seconds (turns, on a discrete
+    /// clock) as a replay file
     /// (`kind` "report" for the report key, "crash" for a crash, which
     /// leaves the world at the end out). None without the recorder.
     pub fn report(&self, note: &str, kind: &str, code: &str) -> Option<Vec<u8>> {

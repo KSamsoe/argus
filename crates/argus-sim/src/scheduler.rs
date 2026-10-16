@@ -15,7 +15,7 @@ use crate::system::{ClockBinding, Stage, SystemCtx, SystemDesc, SystemFn};
 use argus_ecs::codec::{Reader, Writer};
 use argus_ecs::{Access, ArgusError, ComponentId, Event, Registry, Result, Snapshot, World};
 use argus_os::time::Instant;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::Arc;
 use std::time::Duration;
@@ -443,6 +443,10 @@ pub struct SystemInfo {
     pub between_turns: bool,
 }
 
+/// How many recent turns a scheduler remembers ([`Scheduler::turns_back`]):
+/// more than a recorder's window of thirty, and a mark's ten.
+pub const RECENT_TURNS: usize = 128;
+
 /// Runs systems over a world on two clocks.
 pub struct Scheduler {
     config: SchedulerConfig,
@@ -462,6 +466,9 @@ pub struct Scheduler {
     quiet: bool,
     /// A system froze the rest of the tick being run (`SystemCtx::freeze`).
     frozen: bool,
+    /// The ticks of the latest turns on a driving discrete clock, oldest
+    /// first ([`Scheduler::turns_back`]).
+    recent_turns: VecDeque<u64>,
     /// An idle tick is running: only the systems that move between turns.
     idling: bool,
     /// How many recorded idle ticks are owed before a turn, and not yet run
@@ -545,6 +552,7 @@ impl Scheduler {
             tick_end: None,
             quiet: false,
             frozen: false,
+            recent_turns: VecDeque::new(),
             idling: false,
             idle_due: None,
             idle_record: None,
@@ -761,6 +769,47 @@ impl Scheduler {
     /// Whether the last tick was frozen by a system (a hit-stop).
     pub fn frozen(&self) -> bool {
         self.frozen
+    }
+
+    /// On a driving discrete clock, the tick the `n`th latest turn ran on:
+    /// where a window of the last `n` turns starts (issue 36). A turn is a
+    /// tick whose systems ran. A menu's press, a character typed, or the
+    /// wheel freezes its tick, which takes no turn though the tick count
+    /// moves. `None` before `n` turns, or past the [`RECENT_TURNS`] kept,
+    /// or on a continuous clock. A seek's re-run turns replace the ones
+    /// after it, so this is the timeline as it now stands.
+    pub fn turns_back(&self, n: usize) -> Option<u64> {
+        let now = self.discrete.tick;
+        let turns: Vec<u64> = self
+            .recent_turns
+            .iter()
+            .copied()
+            .filter(|t| *t < now)
+            .collect();
+        (n > 0 && n <= turns.len()).then(|| turns[turns.len() - n])
+    }
+
+    /// How many turns ran from tick `from` on (at most [`RECENT_TURNS`]).
+    pub fn turns_since(&self, from: u64) -> usize {
+        let now = self.discrete.tick;
+        self.recent_turns
+            .iter()
+            .filter(|t| **t >= from && **t < now)
+            .count()
+    }
+
+    /// A discrete tick ran: what came after it on another timeline is gone,
+    /// and it is a turn if its systems ran.
+    fn note_turn(&mut self, tick: u64, turn: bool) {
+        while self.recent_turns.back().is_some_and(|t| *t >= tick) {
+            self.recent_turns.pop_back();
+        }
+        if turn {
+            self.recent_turns.push_back(tick);
+            while self.recent_turns.len() > RECENT_TURNS {
+                self.recent_turns.pop_front();
+            }
+        }
     }
 
     /// Quiet ticks run the systems but not the observers, the tick-end
@@ -1443,6 +1492,9 @@ impl Scheduler {
             self.hold_over(world, events_before);
         }
         self.apply_speed_requests(world, events_before);
+        if kind == ClockKind::Discrete && self.config.driving == ClockKind::Discrete {
+            self.note_turn(tick, !self.frozen);
+        }
         {
             let t = Instant::now();
             let (pa, pb) = alloc::counters();

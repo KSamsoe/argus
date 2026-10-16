@@ -18,8 +18,10 @@
 //!   and works headless.
 //! - `clip.wav`: the last two seconds of what the mixer played.
 //!
-//! On a discrete clock "seconds" are turns: the lead-in is ten turns and
-//! the clip the last eight, one picture a turn.
+//! On a discrete clock "seconds" are turns: the lead-in is the last ten
+//! turns, however many frozen ticks lie between them (the wheel's, a typed
+//! character's, or a menu's, which take no turn; issue 36), and the clip
+//! the last eight ticks, one picture a tick.
 //!
 //! `mark.open` reproduces one: it loads the mark's scene with its seed,
 //! reads the keyframe back, and plays the lead-in forward so the event log
@@ -285,7 +287,18 @@ impl Daemon {
         let started = std::time::Instant::now();
         let frame = self.sched.tick();
         let driving = self.sched.driving().clone();
-        let (lead, clip_len, every, fps) = spans(driving.kind, driving.hz());
+        let (mut lead, clip_len, every, fps) = spans(driving.kind, driving.hz());
+        // Back to the tenth turn, or the oldest there was: a player who read
+        // back through a log with the wheel before marking still has the
+        // turn they meant (issue 36).
+        if driving.kind == ClockKind::Discrete {
+            if let Some(t) = (1..=DISCRETE_LEAD as usize)
+                .rev()
+                .find_map(|n| self.sched.turns_back(n))
+            {
+                lead = lead.max(frame - t);
+            }
+        }
         let (root, scene, seed, ring, sources, input) = {
             let s = self.session.as_ref().expect("session");
             (

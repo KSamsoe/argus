@@ -1255,7 +1255,7 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "mark.drop",
-        doc: "Mark this moment as a bug report (section 10): what F8 does in the window. Saves the frame as a picture, a two-second clip replayed from the ring, the last two seconds of sound, the last five seconds of input and events, the world's digest, and a replay file (a keyframe and the input since) that reproduces it after this daemon is gone. On a discrete clock the seconds are turns: ten of lead-in, a clip of eight. Marks land in .argus/marks/<id>/ and wait in the queue (mark.list).",
+        doc: "Mark this moment as a bug report (section 10): what F8 does in the window. Saves the frame as a picture, a two-second clip replayed from the ring, the last two seconds of sound, the last five seconds of input and events, the world's digest, and a replay file (a keyframe and the input since) that reproduces it after this daemon is gone. On a discrete clock the seconds are turns: ten of lead-in, past any ticks that took no turn (a wheel notch, a character typed, a menu's press), and a clip of the last eight ticks. Marks land in .argus/marks/<id>/ and wait in the queue (mark.list).",
         params: &[
             opt("note", STRING, "optional; mark.note adds one later"),
             opt("author", STRING, "default \"human\""),
@@ -1273,7 +1273,7 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "mark.get",
-        doc: "Everything a mark holds: its frame, note, run identity (scene, seed, code, clock), digest, the input of the five seconds before (changes, and what was already held), the events of those seconds (counts by name and the latest 40), and its files.",
+        doc: "Everything a mark holds: its frame, note, run identity (scene, seed, code, clock), digest, the input of the five seconds before (ten turns on a discrete clock; changes, and what was already held), the events of those seconds (counts by name and the latest 40), and its files.",
         params: &[
             req("id", INTEGER, ""),
         ],
@@ -1281,7 +1281,7 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "mark.open",
-        doc: "Reproduce a mark: load its scene with its seed, restore its keyframe, and play the five seconds before it, so obs.events and obs.trace hold them, stopping at the mark's frame. Then compare the world with the one the mark saved, field by field: after a fix, the difference is the fix's effect at that frame. A JSON mark from the web player's old mark() (mark.import) replays its input from the load instead; a report from the page is a replay file like any mark's. The sim is paused at the mark; sim.seek moves within the lead-in. A mark with no clip gets one.",
+        doc: "Reproduce a mark: load its scene with its seed, restore its keyframe, and play the five seconds before it (ten turns on a discrete clock), so obs.events and obs.trace hold them, stopping at the mark's frame. Then compare the world with the one the mark saved, field by field: after a fix, the difference is the fix's effect at that frame. A JSON mark from the web player's old mark() (mark.import) replays its input from the load instead; a report from the page is a replay file like any mark's. The sim is paused at the mark; sim.seek moves within the lead-in. A mark with no clip gets one.",
         params: &[
             req("id", INTEGER, ""),
         ],

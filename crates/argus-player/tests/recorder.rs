@@ -88,3 +88,53 @@ fn the_recorder_stays_bounded_and_a_report_replays_to_the_same_world() {
     assert_eq!(out["tick"], now);
     assert_eq!(fresh.digest(), p.digest());
 }
+
+fn delve() -> Player {
+    Player::open(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/delve"),
+        None,
+        None,
+    )
+    .unwrap()
+}
+
+fn key(p: &mut Player, name: &str) {
+    let k = |pressed| argus_input::DeviceInput::Key {
+        name: name.into(),
+        pressed,
+    };
+    p.devices(&[k(true)]);
+    p.devices(&[k(false)]);
+}
+
+#[test]
+fn on_a_turn_based_clock_a_report_reaches_back_by_turns_not_ticks() {
+    // Issue 36: a player reads back through the log with the wheel before
+    // reporting. Every notch is a tick of its own, frozen, which takes no
+    // turn; the report's window counts turns, so the turns before the
+    // reading are still in it.
+    let mut p = delve();
+    p.record();
+    for _ in 0..5 {
+        key(&mut p, "Period");
+    }
+    let waited = p.sched.turns_back(5).expect("five turns");
+    let before = p.tick();
+    for i in 0..200 {
+        p.wheel(if i % 2 == 0 { 1.0 } else { -1.0 });
+    }
+    assert_eq!(p.tick(), before + 200, "each notch is a tick");
+    assert_eq!(p.sched.turns_since(before), 0, "and none is a turn");
+    assert!(
+        p.recorder.as_ref().unwrap().from() <= waited,
+        "the report starts before the turns: from {} > {waited}",
+        p.recorder.as_ref().unwrap().from()
+    );
+    let bytes = p
+        .report("that wait looked wrong", "report", "test")
+        .unwrap();
+    let mut fresh = delve();
+    let out = fresh.play_report(&bytes).unwrap();
+    assert_eq!(out["same"], true, "{out}");
+    assert_eq!(fresh.digest(), p.digest());
+}

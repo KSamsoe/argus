@@ -6,7 +6,11 @@
 //! discrete clock) and the two newest are kept, with the input commands
 //! since the older one; the rest of the input journal and log is forgotten.
 //! So memory stays bounded however long the game runs, and a report always
-//! reaches back between thirty and sixty seconds (all of it, early on). A
+//! reaches back between thirty and sixty seconds, or turns (all of it,
+//! early on). On a discrete clock the turns are the ticks whose systems
+//! ran: the wheel's, a typed character's, and a menu's ticks are frozen and
+//! take none, so a player reading back through a log before reporting
+//! does not push the turn they meant out of the report (issue 36). A
 //! report is a replay file (`crate::replay`): the older keyframe, the
 //! commands after it, and the world now, which `argus mark import` turns
 //! into a mark the agent opens like any other.
@@ -21,10 +25,14 @@ use std::collections::VecDeque;
 pub const WINDOW_SECONDS: f64 = 30.0;
 /// Turns between keyframes on a discrete clock.
 pub const WINDOW_TURNS: u64 = 30;
+/// Ticks between keyframes at most on a discrete clock, however few were
+/// turns, so a long stretch of scrolling or typing keeps memory bounded.
+pub const MOST_TICKS: u64 = 3000;
 
 /// Two keyframes and what came after the older.
 pub struct Recorder {
-    /// Ticks between keyframes.
+    /// Ticks (a continuous clock) or turns (a discrete one) between
+    /// keyframes.
     pub every: u64,
     keys: VecDeque<Keyframe>,
 }
@@ -50,7 +58,13 @@ impl Recorder {
     /// the input before it, forgotten.
     pub fn after_ticks(&mut self, world: &World, sched: &Scheduler, sources: &Sources) {
         let last = self.keys.back().map_or(0, |k| k.tick);
-        if sched.tick() < last + self.every {
+        let due = match sched.driving().kind {
+            ClockKind::Continuous => sched.tick() >= last + self.every,
+            ClockKind::Discrete => {
+                sched.turns_since(last) as u64 >= self.every || sched.tick() >= last + MOST_TICKS
+            }
+        };
+        if !due {
             return;
         }
         self.keys.push_back(sources.capture(world, sched, false));

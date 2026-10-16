@@ -289,6 +289,92 @@ cur = 5
 }
 
 #[test]
+fn a_mark_reaches_back_ten_turns_however_long_the_player_scrolled() {
+    // Issue 36: on a discrete clock every wheel notch is a tick of its own,
+    // frozen, which takes no turn. A player who read back through a log
+    // before marking still gets the ten turns before the mark.
+    let t = temp("marks-scroll");
+    project(t.path());
+    write(
+        t.path(),
+        "input.toml",
+        r#"[actions.move]
+type = "axis2"
+doc = "Walk direction"
+[actions.move.bindings]
+keyboard = ["wasd"]
+
+[actions.ui_scroll]
+type = "axis"
+doc = "Scroll a log"
+[actions.ui_scroll.bindings]
+mouse = ["wheel"]
+
+[slots.1]
+devices = ["keyboard", "mouse"]
+"#,
+    );
+    write(
+        t.path(),
+        "scenes/delve/hero.toml",
+        "tags = [\"player\"]
+
+[PlayerSlot]
+slot = 1
+
+[Actions]
+
+[Transform]
+pos = [0.0, 0.0]
+
+[Health]
+cur = 5
+",
+    );
+    let mut d = open(t.path());
+    ok(&mut d, "scene.load", json!({ "scene": "delve" }));
+    // Played as a person plays it: fourteen steps, a key press a turn.
+    ok(&mut d, "sim.play", json!({}));
+    for _ in 0..14 {
+        for pressed in [true, false] {
+            ok(
+                &mut d,
+                "input.device",
+                json!({ "events": [{ "key": "KeyW", "pressed": pressed }] }),
+            );
+        }
+    }
+    // Then thirty notches of reading back: thirty ticks, none a turn.
+    for i in 0..30 {
+        let lines = if i % 2 == 0 { 1.0 } else { -1.0 };
+        ok(
+            &mut d,
+            "input.device",
+            json!({ "events": [{ "wheel": lines }] }),
+        );
+    }
+    ok(&mut d, "sim.pause", json!({}));
+    let m = ok(
+        &mut d,
+        "mark.drop",
+        json!({ "note": "the turn before I scrolled" }),
+    );
+    assert_eq!(m["frame"], 44, "each notch was a tick");
+    let g = ok(&mut d, "mark.get", json!({ "id": 1 }));
+    assert_eq!(g["input"]["from"], 4, "ten turns back, past the scrolling");
+    assert!(
+        g["replay"]["from"].as_u64().unwrap() <= 4,
+        "{}",
+        g["replay"]
+    );
+    drop(d);
+    let mut d = open(t.path());
+    let r = ok(&mut d, "mark.open", json!({ "id": 1 }));
+    assert_eq!(r["frame"], 44);
+    assert_eq!(r["digest"]["same"], true, "{r}");
+}
+
+#[test]
 fn a_replay_is_a_mark_with_no_queue() {
     let t = temp("replays");
     project(t.path());
