@@ -304,6 +304,26 @@ pub fn language(world: &World) -> String {
         .unwrap_or_default()
 }
 
+/// The touch controls' words in the world's language: a control's label is
+/// a string key when the tables have it, else the key `touch.<name>` is,
+/// else its words are shown as written (an unlabelled button's are its
+/// action's name). So a game translates its controls in its string tables,
+/// as it does the rest of its words.
+pub fn touch_words(world: &World, strings: &Strings, controls: &mut [argus_input::TouchShown]) {
+    if controls.is_empty() {
+        return;
+    }
+    let lang = language(world);
+    for c in controls {
+        let found = strings
+            .get(&lang, &c.label)
+            .or_else(|| strings.get(&lang, &format!("touch.{}", c.name)));
+        if let Some(s) = found {
+            c.label = s.to_string();
+        }
+    }
+}
+
 /// Fill `{name}` holes from `args`; other holes are left for the world's.
 pub fn fill_args(text: &str, args: &[(String, String)]) -> String {
     if args.is_empty() || !text.contains('{') {

@@ -219,3 +219,48 @@ fn a_keyed_text_shows_in_the_worlds_language_and_changes_with_it() {
     s.step(&mut w, 1).unwrap();
     assert_eq!(shown(&w, resume), "Resume");
 }
+
+#[test]
+fn touch_controls_say_their_words_in_the_worlds_language() {
+    // A control's label is a string key when the tables have it, else
+    // touch.<name> is, else its words show as written.
+    let tables = Strings::from_texts(
+        "en",
+        &[
+            ("en", "[touch]\njump = \"Jump\"\n[hud]\npause = \"Menu\"\n"),
+            ("fr", "[touch]\njump = \"Sauter\"\n[hud]\npause = \"Menu principal\"\n"),
+        ],
+    );
+    let control = |name: &str, label: &str| argus_input::TouchShown {
+        name: name.into(),
+        kind: argus_input::TouchKind::Button,
+        centre: (0.0, 0.0),
+        radius: 10.0,
+        knob: (0.0, 0.0),
+        pressed: false,
+        label: label.into(),
+    };
+    let mut w = World::new();
+    argus_ui::register(&mut w).unwrap();
+    let words = |w: &World| {
+        let mut c = vec![
+            control("jump", "Jump"),
+            control("menu", "hud.pause"),
+            control("talk", "Talk"),
+        ];
+        strings::touch_words(w, &tables, &mut c);
+        c.into_iter().map(|c| c.label).collect::<Vec<_>>()
+    };
+    assert_eq!(words(&w), ["Jump", "Menu", "Talk"]);
+    let set = w.spawn();
+    let fr = w.strings().intern("fr");
+    w.insert(
+        set,
+        UiSettings {
+            language: fr,
+            ..UiSettings::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(words(&w), ["Sauter", "Menu principal", "Talk"]);
+}

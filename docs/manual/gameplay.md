@@ -86,6 +86,7 @@ size = 120
 - A finger that lands on a control holds it until it lifts. A stick gives its `axis2` the drag from its centre, as far as its edge being 1 and up positive, as a gamepad stick does. A `floating` stick takes a finger landing anywhere in its half of the screen and centres itself where the finger landed, which suits thumbs.
 - A finger that lands on no control is the mouse, as above, and a second one there does nothing. Several fingers can hold several controls at once.
 - The engine draws the controls over the game in the theme's colours while touch is the device the player last used: the `device` action is 5, and button prompts say what the touch buttons are called. A key, a click, or a pad hides them again. Give a control `draw = false` to draw it yourself.
+- A control's words come from the game's string tables, in the player's language: a `label` that is a string key shows that key's string, else the key `touch.<name>` does (`[touch] jump = "Sauter"` in `strings/fr.toml`), else the words show as written.
 - A slot takes touch when its `devices` list `touch` or `mouse`.
 - What a finger presses is recorded as the actions it pressed, as a key is, so replays, seeks, and players' reports have it.
 

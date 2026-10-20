@@ -1046,10 +1046,16 @@ impl Daemon {
     /// The touch controls drawn over the game now (reaching players item
     /// 1): none unless touch is the device in use.
     pub(crate) fn touch_shown(&self) -> Vec<argus_input::TouchShown> {
-        match self.session.as_ref().and_then(|s| s.input.as_ref()) {
+        let Some(s) = self.session.as_ref() else {
+            return Vec::new();
+        };
+        let mut shown = match &s.input {
             Some(st) => self.devices.touch_shown(&st.borrow()),
             None => Vec::new(),
-        }
+        };
+        // In the world's language, from the game's string tables.
+        argus_ui::strings::touch_words(&self.world, &s.ui.borrow().strings, &mut shown);
+        shown
     }
 
     /// The UI canvas, for semantic frames (phase 3 item 1).

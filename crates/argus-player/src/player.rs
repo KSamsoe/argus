@@ -484,10 +484,12 @@ impl Player {
     /// The touch controls to draw over the game now: none unless touch is
     /// the device in use.
     pub fn touch_shown(&self) -> Vec<argus_input::TouchShown> {
-        match &self.input {
+        let mut shown = match &self.input {
             Some(st) => self.devices.touch_shown(&st.borrow()),
             None => Vec::new(),
-        }
+        };
+        argus_ui::strings::touch_words(&self.world, &self.ui.borrow().strings, &mut shown);
+        shown
     }
 
     /// Device input (keys, mouse, pads) through the action map, as the
