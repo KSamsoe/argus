@@ -67,7 +67,7 @@ The usual way to make games with an agent today is an existing engine with an as
 | What the agent reads to learn the engine | The engine's docs online, and what the model already knows | The manual and the reference compiled into the engine, matched to the installed version and readable over MCP, and an `ARGUS.md` in every project describing that game |
 | Releasing | A build, checked by playing it | `argus build` checks that the release plays and looks as the project does, with no compiler needed |
 
-Where the big engines are ahead, and will stay ahead for a while: 3D, which Argus does not do at all; decades of tools, an asset store, and a very large community; consoles, and phones and tablets as installed apps (an Argus game plays on them in the browser, by touch); and generated assets (Coplay and Unity AI make models, sound, and voices; Argus's examples draw their art with scripts). Argus is young, at version 0.1.1, and 2D only.
+Where the big engines are ahead, and will stay ahead for a while: 3D, which Argus does not do at all; decades of tools, an asset store, and a very large community; consoles, and phones and tablets as installed apps (an Argus game plays on them in the browser, by touch); and generated assets (Coplay and Unity AI make models, sound, and voices; Argus's examples draw their art with scripts). Argus is young, at version 0.1.2, and 2D only.
 
 ## Play the games
 
@@ -120,4 +120,4 @@ That adds Argus to the tool's own settings. Set up once with `--scope user`, and
 - **Problems and ideas**: open an [issue](https://github.com/KSamsoe/argus/issues/new/choose) on this repository. Its templates ask for what helps: `argus version`, how to make it happen again, and a player's report if there is one. An agent that runs into something can write one too.
 - **[The design](docs/argus-engine-design-v0.3.html)**, **[how it was built](docs/history.md)**, and **[working on the engine](docs/developing.md)**, for changing Argus itself.
 
-Argus is young: version 0.1.1 (0.1.0 was the first release with a whole game made on it), in a private repository, on Windows, Linux, and macOS (cross-built on Linux, and tested on a Mac).
+Argus is young: version 0.1.2 (0.1.0 was the first release with a whole game made on it), in a private repository, on Windows, Linux, and macOS (cross-built on Linux, and tested on a Mac).

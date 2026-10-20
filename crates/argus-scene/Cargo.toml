@@ -6,10 +6,10 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-argus-os = { path = "../argus-os", version = "0.1.1" }
-argus-ecs = { path = "../argus-ecs", version = "0.1.1" }
-argus-sim = { path = "../argus-sim", version = "0.1.1" }
+argus-os = { path = "../argus-os", version = "0.1.2" }
+argus-ecs = { path = "../argus-ecs", version = "0.1.2" }
+argus-sim = { path = "../argus-sim", version = "0.1.2" }
 toml_edit = "0.22"
 
 [dev-dependencies]
-argus-luau = { path = "../argus-luau", version = "0.1.1" }
+argus-luau = { path = "../argus-luau", version = "0.1.2" }

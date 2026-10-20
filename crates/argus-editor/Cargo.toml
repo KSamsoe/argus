@@ -16,7 +16,7 @@ path = "src/main.rs"
 # The protocol client and the UI only: no engine crate that holds a world
 # (P1, checked by tests/protocol_only.rs).
 [dependencies]
-argus-client = { path = "../argus-client", version = "0.1.1" }
+argus-client = { path = "../argus-client", version = "0.1.2" }
 serde_json = "1"
 eframe = { version = "0.31", default-features = false, features = ["wgpu", "accesskit", "default_fonts"] }
 # A review's clip is an animated PNG the daemon wrote (phase 4 item 4).
@@ -24,7 +24,7 @@ png = "0.17"
 
 [dev-dependencies]
 egui_kittest = { version = "0.31", features = ["eframe", "wgpu"] }
-argus-daemon = { path = "../argus-daemon", version = "0.1.1" }
-argus-cli = { path = "../argus-cli", version = "0.1.1" }
-argus-ecs = { path = "../argus-ecs", version = "0.1.1" }
+argus-daemon = { path = "../argus-daemon", version = "0.1.2" }
+argus-cli = { path = "../argus-cli", version = "0.1.2" }
+argus-ecs = { path = "../argus-ecs", version = "0.1.2" }
 pollster = "0.4"

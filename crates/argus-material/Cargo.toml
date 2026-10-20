@@ -6,6 +6,6 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-argus-ecs = { path = "../argus-ecs", version = "0.1.1" }
+argus-ecs = { path = "../argus-ecs", version = "0.1.2" }
 toml_edit = "0.22"
 naga = { version = "24", features = ["wgsl-in"] }

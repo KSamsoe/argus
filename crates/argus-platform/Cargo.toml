@@ -7,9 +7,9 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-argus-ecs = { path = "../argus-ecs", version = "0.1.1" }
-argus-os = { path = "../argus-os", version = "0.1.1" }
-argus-scene = { path = "../argus-scene", version = "0.1.1" }
-argus-input = { path = "../argus-input", version = "0.1.1" }
+argus-ecs = { path = "../argus-ecs", version = "0.1.2" }
+argus-os = { path = "../argus-os", version = "0.1.2" }
+argus-scene = { path = "../argus-scene", version = "0.1.2" }
+argus-input = { path = "../argus-input", version = "0.1.2" }
 serde_json = "1"
 toml_edit = "0.22"

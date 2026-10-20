@@ -111,7 +111,7 @@ Its trace is [crates/argus-test/SPEC-TRACE.md](../crates/argus-test/SPEC-TRACE.m
 
 After 0.1.0, what games made on Argus need to reach people, chosen over online multiplayer: touch, so a web build plays on a phone or a tablet; a game's own name and icon on every platform, and a Mac app a player double-clicks; rich text in the UI; and two small fixes found making 0.1.0 (a web click's modifiers, undoing a named edit). Hollow plays by touch, every example game is built with its own icon, and Delve's log and menu use rich text. Kevin's play of Hollow on his phone led to two more: the camera framing the hero above the thumbs, and the page using the phone's whole screen. The plan and what each item built are in [docs/reaching-players-checklist.md](reaching-players-checklist.md).
 
-Version 0.1.1 shipped it, the first patch release under 0.1.0's promise not to break a game. Its notes are [docs/releases/0.1.1.md](releases/0.1.1.md).
+Version 0.1.1 shipped it, the first patch release under 0.1.0's promise not to break a game. Its notes are [docs/releases/0.1.1.md](releases/0.1.1.md). Then 0.1.2 fixed what Bring Your Own Game Master found next (#36): on a turn-based clock a report or a mark counted ticks, and the wheel's and typing's ticks pushed the turn a player meant out of it; they count turns now ([docs/releases/0.1.2.md](releases/0.1.2.md)).
 
 ## The 2D staples, and 0.1.0
 
