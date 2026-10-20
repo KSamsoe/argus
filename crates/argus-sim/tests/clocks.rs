@@ -354,15 +354,28 @@ fn a_frozen_tick_takes_no_turn_and_a_seek_keeps_the_turns_true() {
         }),
     )
     .unwrap();
+    let start = s.snapshot(&w);
     s.advance(&mut w, 5).unwrap();
     let snap = s.snapshot(&w);
     s.advance(&mut w, 5).unwrap();
+    let end = s.snapshot(&w);
     assert_eq!(s.tick(), 10);
     // Ticks 0, 1, 2, 7, 8, 9 were turns.
     assert_eq!(s.turns_back(1), Some(9));
     assert_eq!(s.turns_back(4), Some(2));
     assert_eq!(s.turns_back(6), Some(0));
     assert_eq!(s.turns_back(7), None);
+    assert_eq!(s.turns_since(3), 3);
+
+    // A seek as the daemon makes one: back to tick 3 (the keyframe at 0,
+    // replayed), then forward to 10 (the keyframe there, nothing replayed).
+    // The turns the forward seek skipped are as they were (Delve's map
+    // scenario found a record that lost them).
+    s.restore(&mut w, &start);
+    s.advance(&mut w, 3).unwrap();
+    assert_eq!(s.turns_back(1), Some(2));
+    s.restore(&mut w, &end);
+    assert_eq!(s.turns_back(1), Some(9));
     assert_eq!(s.turns_since(3), 3);
 
     // Back to tick 5 and on again with nothing frozen: 5 to 9 are turns now.

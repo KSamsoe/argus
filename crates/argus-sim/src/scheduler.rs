@@ -15,7 +15,7 @@ use crate::system::{ClockBinding, Stage, SystemCtx, SystemDesc, SystemFn};
 use argus_ecs::codec::{Reader, Writer};
 use argus_ecs::{Access, ArgusError, ComponentId, Event, Registry, Result, Snapshot, World};
 use argus_os::time::Instant;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeSet, HashMap};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::Arc;
 use std::time::Duration;
@@ -443,9 +443,10 @@ pub struct SystemInfo {
     pub between_turns: bool,
 }
 
-/// How many recent turns a scheduler remembers ([`Scheduler::turns_back`]):
-/// more than a recorder's window of thirty, and a mark's ten.
-pub const RECENT_TURNS: usize = 128;
+/// How many turns a scheduler remembers ([`Scheduler::turns_back`]): far
+/// more than a recorder's window of thirty or a mark's ten, so a seek back
+/// still finds the turns before where it lands.
+pub const RECENT_TURNS: usize = 1024;
 
 /// Runs systems over a world on two clocks.
 pub struct Scheduler {
@@ -466,9 +467,9 @@ pub struct Scheduler {
     quiet: bool,
     /// A system froze the rest of the tick being run (`SystemCtx::freeze`).
     frozen: bool,
-    /// The ticks of the latest turns on a driving discrete clock, oldest
-    /// first ([`Scheduler::turns_back`]).
-    recent_turns: VecDeque<u64>,
+    /// The ticks that were turns on a driving discrete clock, the latest
+    /// [`RECENT_TURNS`] ([`Scheduler::turns_back`]).
+    recent_turns: BTreeSet<u64>,
     /// An idle tick is running: only the systems that move between turns.
     idling: bool,
     /// How many recorded idle ticks are owed before a turn, and not yet run
@@ -552,7 +553,7 @@ impl Scheduler {
             tick_end: None,
             quiet: false,
             frozen: false,
-            recent_turns: VecDeque::new(),
+            recent_turns: BTreeSet::new(),
             idling: false,
             idle_due: None,
             idle_record: None,
@@ -776,39 +777,34 @@ impl Scheduler {
     /// tick whose systems ran. A menu's press, a character typed, or the
     /// wheel freezes its tick, which takes no turn though the tick count
     /// moves. `None` before `n` turns, or past the [`RECENT_TURNS`] kept,
-    /// or on a continuous clock. A seek's re-run turns replace the ones
-    /// after it, so this is the timeline as it now stands.
+    /// or on a continuous clock. Each tick that runs says whether it was a
+    /// turn, a seek's re-run included, so the ticks before now are the run
+    /// as it stands: a seek back and forward leaves the turns it skipped as
+    /// they were, and a branch's turns replace the old ones as they run.
     pub fn turns_back(&self, n: usize) -> Option<u64> {
         let now = self.discrete.tick;
-        let turns: Vec<u64> = self
-            .recent_turns
-            .iter()
-            .copied()
-            .filter(|t| *t < now)
-            .collect();
-        (n > 0 && n <= turns.len()).then(|| turns[turns.len() - n])
+        n.checked_sub(1)
+            .and_then(|k| self.recent_turns.range(..now).rev().nth(k).copied())
     }
 
     /// How many turns ran from tick `from` on (at most [`RECENT_TURNS`]).
     pub fn turns_since(&self, from: u64) -> usize {
         let now = self.discrete.tick;
-        self.recent_turns
-            .iter()
-            .filter(|t| **t >= from && **t < now)
-            .count()
+        if from >= now {
+            return 0;
+        }
+        self.recent_turns.range(from..now).count()
     }
 
-    /// A discrete tick ran: what came after it on another timeline is gone,
-    /// and it is a turn if its systems ran.
+    /// A discrete tick ran, and was a turn if its systems ran.
     fn note_turn(&mut self, tick: u64, turn: bool) {
-        while self.recent_turns.back().is_some_and(|t| *t >= tick) {
-            self.recent_turns.pop_back();
-        }
         if turn {
-            self.recent_turns.push_back(tick);
+            self.recent_turns.insert(tick);
             while self.recent_turns.len() > RECENT_TURNS {
-                self.recent_turns.pop_front();
+                self.recent_turns.pop_first();
             }
+        } else {
+            self.recent_turns.remove(&tick);
         }
     }
 
