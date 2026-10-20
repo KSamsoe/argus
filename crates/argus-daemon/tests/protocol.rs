@@ -986,3 +986,39 @@ fn what_was_kept_while_playing_stays_after_stop() {
         .is_err());
     assert!(!t.path().join("scenes/arena/crate.toml").exists());
 }
+
+#[test]
+fn an_event_names_a_gone_entity_by_the_id_it_had() {
+    // A death event names the bat, and the bat goes on the same tick: the
+    // event's row said e:<n> once it was gone, and `entity=@bat` was
+    // refused as no such entity.
+    let t = temp("gone-names");
+    project(t.path());
+    write(
+        t.path(),
+        "systems/strike.luau",
+        r#"system "sim.strike" {
+  stage = "sim",
+  doc = "The bat is struck down at tick 3.",
+  run = function(q)
+    if q.tick == 3 then
+      local bat = q:entity("@bat")
+      q:emit("struck", { who = bat })
+      bat:despawn()
+    end
+  end,
+}
+"#,
+    );
+    let mut d = open(t.path());
+    ok(&mut d, "sim.step", json!({ "n": 6 }));
+    let ev = ok(&mut d, "obs.events", json!({ "name": "struck" }));
+    assert_eq!(ev["rows"][0]["fields"]["who"], "@bat", "{ev}");
+    let by = ok(&mut d, "obs.events", json!({ "entity": "@bat" }));
+    assert!(
+        by["rows"].as_array().unwrap().iter().any(|r| r["name"] == "struck"),
+        "{by}"
+    );
+    // An id that never was is still refused.
+    assert!(d.call(0, "obs.events", &json!({ "entity": "@nobody" })).is_err());
+}

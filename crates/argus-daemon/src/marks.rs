@@ -596,13 +596,14 @@ impl Daemon {
     fn events_window(&self, from: u64, to: u64) -> Json {
         let mut counts: BTreeMap<String, u64> = BTreeMap::new();
         let mut last: VecDeque<Json> = VecDeque::new();
+        let dead = super::despawned_ids(self.events.records.iter().map(|(_, r)| r));
         for (seq, r) in &self.events.records {
             if r.frame < from || r.frame > to {
                 continue;
             }
             if let Event::Game { name, .. } = &r.event {
                 *counts.entry(name.clone()).or_default() += 1;
-                last.push_back(event_json(&self.world, *seq, r));
+                last.push_back(super::event_json_named(&self.world, *seq, r, &dead));
                 if last.len() > EVENTS_KEPT {
                     last.pop_front();
                 }

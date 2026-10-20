@@ -17,7 +17,7 @@ use argus_scene::{Bulk, DefSchema, EntityDoc, Project, ProjectConfig, Rect, Scen
 use argus_sim::{ClockKind, Scheduler, SchedulerConfig};
 use serde_json::{json, Map, Value as Json};
 use std::cell::RefCell;
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
@@ -5678,6 +5678,9 @@ impl Daemon {
             }
             out
         };
+        // What this batch despawned, by id: a death event comes before its
+        // entity's despawn in the same tick, and names it by its id still.
+        let dead = despawned_ids(records.iter());
         for rec in records {
             if let Event::Game { name, fields } = &rec.event {
                 if name == "load.requested" && self.from_ticks && !self.backstage {
@@ -5690,7 +5693,7 @@ impl Daemon {
             }
             let seq = self.events.next_seq;
             self.events.next_seq += 1;
-            let row = event_json(&self.world, seq, &rec);
+            let row = event_json_named(&self.world, seq, &rec, &dead);
             self.events.records.push_back((seq, rec));
             self.events.ticked.push_back(self.from_ticks);
             if self.events.records.len() > self.events.cap {
@@ -5720,9 +5723,10 @@ impl Daemon {
         let since = json::u64_param(params, "since", 0)?;
         let from_frame = json::u64_param(params, "from_frame", 0)?;
         let name = json::opt_str(params, "name")?;
+        let dead = despawned_ids(self.events.records.iter().map(|(_, r)| r));
         // How events name the entity. A gone one is still in the log by the
         // handle it had (found at the phase 5 gate: `entity=e:515` of a
-        // dead enemy was refused as not alive).
+        // dead enemy was refused as not alive), or by its id if it had one.
         let entity = match json::opt_str(params, "entity")? {
             Some(r) if r.starts_with("e:") => {
                 let e: Entity = r
@@ -5734,7 +5738,11 @@ impl Daemon {
                     e.to_string()
                 })
             }
-            Some(r) => Some(json::entity_str(&self.world, self.world.entity(r)?)),
+            Some(r) => Some(match self.world.entity(r) {
+                Ok(e) => json::entity_str(&self.world, e),
+                Err(_) if dead.values().any(|d| d == r) => r.to_string(),
+                Err(e) => return Err(e),
+            }),
             None => None,
         };
         let rows: Vec<Json> = self
@@ -5742,7 +5750,7 @@ impl Daemon {
             .records
             .iter()
             .filter(|(seq, r)| *seq > since && r.frame >= from_frame)
-            .map(|(seq, r)| event_json(&self.world, *seq, r))
+            .map(|(seq, r)| event_json_named(&self.world, *seq, r, &dead))
             .filter(|row| {
                 name.is_none_or(|n| row["name"].as_str() == Some(n))
                     && entity.as_deref().is_none_or(|s| {
@@ -6011,6 +6019,7 @@ impl Daemon {
         drop(hist);
         // Its events, the latest last: components coming and going are in
         // `components` already, so those events are left out.
+        let dead = despawned_ids(self.events.records.iter().map(|(_, r)| r));
         let mut events: Vec<Json> = self
             .events
             .records
@@ -6023,7 +6032,7 @@ impl Daemon {
                     Event::ComponentAdded { .. } | Event::ComponentRemoved { .. }
                 )
             })
-            .map(|(seq, rec)| event_json(&self.world, *seq, rec))
+            .map(|(seq, rec)| event_json_named(&self.world, *seq, rec, &dead))
             .filter(|row| {
                 row["fields"]
                     .as_object()
@@ -6094,7 +6103,12 @@ impl Daemon {
                 ),
             );
         };
-        let ev = event_json(&self.world, seq, &rec);
+        let ev = event_json_named(
+            &self.world,
+            seq,
+            &rec,
+            &despawned_ids(self.events.records.iter().map(|(_, r)| r)),
+        );
         let infos = self.sched.systems(self.world.registry())?;
         let index: std::collections::HashMap<&str, usize> = infos
             .iter()
@@ -7980,6 +7994,49 @@ pub(crate) mod render {
 }
 
 /// One event as `obs.events` reports it.
+/// The ids of the authored entities these records despawned: what an event
+/// row names a gone entity by, as it was named while it lived. Bounded by
+/// the records (the log's cap); a handle is never reused, so it stays true.
+pub(crate) fn despawned_ids<'a>(
+    records: impl Iterator<Item = &'a EventRecord>,
+) -> HashMap<Entity, String> {
+    records
+        .filter_map(|r| match &r.event {
+            Event::Despawned {
+                entity,
+                id: Some(id),
+            } => Some((*entity, format!("@{id}"))),
+            _ => None,
+        })
+        .collect()
+}
+
+/// An event's row, an entity in it that is gone named by `dead` (from
+/// [`despawned_ids`]) when it had an id, not by its handle.
+pub fn event_json_named(
+    world: &World,
+    seq: u64,
+    rec: &EventRecord,
+    dead: &HashMap<Entity, String>,
+) -> Json {
+    let mut row = event_json(world, seq, rec);
+    if dead.is_empty() {
+        return row;
+    }
+    if let (Event::Game { fields, .. }, Some(out)) = (&rec.event, row["fields"].as_object_mut()) {
+        for (k, v) in fields {
+            if let Value::Entity(e) = v {
+                if world.string_id(*e).is_none() {
+                    if let Some(id) = dead.get(e) {
+                        out.insert(k.clone(), json!(id));
+                    }
+                }
+            }
+        }
+    }
+    row
+}
+
 pub fn event_json(world: &World, seq: u64, rec: &EventRecord) -> Json {
     let cname = |c: argus_ecs::ComponentId| world.registry().schema(c).name.clone();
     let (name, fields) = match &rec.event {
