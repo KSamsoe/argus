@@ -743,6 +743,13 @@ impl AudioEngine {
                     .map(|s| s.voice),
             );
         }
+        // Every voice of a sound, by its name: how a script stops a loop
+        // that plays from no entity, since q:play returns no voice.
+        if let Some(Value::Str(name)) = field(fields, "sound") {
+            if let Some(q) = self.by_sound.get(name.as_str()) {
+                ids.extend(q.iter().copied());
+            }
+        }
         let mut m = self.lock();
         let stopped: Vec<u64> = ids.into_iter().filter(|id| m.stop(*id, fade)).collect();
         drop(m);

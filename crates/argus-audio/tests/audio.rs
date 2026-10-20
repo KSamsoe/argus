@@ -326,6 +326,24 @@ fn spatial_sounds_attenuate_and_pan_from_the_listener_and_follow_their_entity() 
 }
 
 #[test]
+fn a_sound_is_stopped_by_its_name_spatial_or_not() {
+    // A loop played from no entity could not be stopped from a script:
+    // q:play names no voice, and sound.stop took a voice or an entity.
+    let dir = project("stop", TOML);
+    let (w, _) = world_with_listener();
+    let mut e = AudioEngine::load(&dir, 1).unwrap();
+    let play = [("sound".into(), Value::Str("sfx/step".into()))];
+    for _ in 0..2 {
+        assert_eq!(e.request(&w, "sound.play", &play)[0].0, "sound.played");
+    }
+    let ev = e.request(&w, "sound.stop", &play);
+    assert_eq!(ev.len(), 2, "{ev:?}");
+    assert!(ev.iter().all(|x| x.0 == "sound.stopped"));
+    // Stopped already: nothing more to stop.
+    assert!(e.request(&w, "sound.stop", &play).is_empty());
+}
+
+#[test]
 fn music_layers_follow_intensity_and_are_logged() {
     let dir = project("music", TOML);
     let (mut w, _) = world_with_listener();

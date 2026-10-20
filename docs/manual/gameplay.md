@@ -446,7 +446,7 @@ A few events are requests the engine listens for:
 |---|---|
 | `camera.shake {amount, camera}` | raises the camera's `CameraShake.trauma` (the drawing camera's when no camera is named) |
 | `particles.burst {emitter, count, pos}` | bursts that emitter, at `pos` if given |
-| `sound.stop {entity, fade_ms}` | stops the spatial sounds playing from that entity, fading over `fade_ms` |
+| `sound.stop {sound, entity, fade_ms}` | stops every voice of that sound, or the spatial sounds playing from that entity, fading over `fade_ms` |
 | any name a `PostFlash`, `PostShake`, or `PostHitStop` lists in `on` | starts that effect (`hit` when `on` is empty) |
 
 ## Talking to the host

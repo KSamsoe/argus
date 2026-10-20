@@ -661,7 +661,7 @@ q:play("sfx/hit", { entity = e })
 
 The options are `entity` (where it plays from), `gain`, `pitch`, `bus`, `pan`, and `loop`. A sound is **spatial** by default: it is quieter and panned by its distance from the entity with an `AudioListener`, or from the drawing camera when there is none (`[spatial] min_distance` and `max_distance` in `audio.toml`). Give it `spatial = false` for UI and music-like sounds. Animator events, dialogue lines, and timeline cues play sounds by name too.
 
-`q:play` returns nothing, so a script cannot name the voice it started. To stop sounds from a script, emit `sound.stop {entity, fade_ms}`: it stops the spatial sounds playing from that entity. A looping sound that is not spatial cannot be stopped from a script (only `argus audio stop voice=<n>` from outside), so make a loop spatial, or use a music track for it.
+`q:play` returns nothing, so a script cannot name the voice it started. To stop sounds from a script, emit `sound.stop`. With `sound`, it stops every voice of that sound: `q:emit("sound.stop", { sound = "sfx/hum", fade_ms = 300 })` ends a hum's loop, spatial or not. With `entity`, it stops the spatial sounds playing from that entity.
 
 ### Music
 
