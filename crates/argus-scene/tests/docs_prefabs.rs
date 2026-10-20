@@ -224,6 +224,37 @@ fn cycles_and_missing_prefabs_are_reported_with_the_path() {
 }
 
 #[test]
+fn every_problem_in_an_entity_file_is_an_issue_not_only_the_first() {
+    // Scene issues showed the first problem a file had; fix it, reload,
+    // and the next came up.
+    let t = temp("allproblems");
+    project(t.path());
+    write(
+        t.path(),
+        "scenes/arena/a.toml",
+        "[Light]\nbrightness = 1\nintensity = 50.0\n\n[Nope]\nx = 1\n",
+    );
+    let p = open(t.path());
+    let w = world();
+    let s = Scene::open(&p, "arena", w.registry()).unwrap();
+    let mut at: Vec<(u32, String)> = s
+        .issues()
+        .iter()
+        .filter(|e| e.r#ref.as_deref().is_some_and(|r| r.contains("a.toml")) || e.message.contains("a.toml"))
+        .map(|e| (e.code, e.r#ref.clone().unwrap_or_default()))
+        .collect();
+    at.sort();
+    let codes_seen: Vec<u32> = at.iter().map(|x| x.0).collect();
+    assert!(codes_seen.contains(&ecs::UNKNOWN_FIELD), "{at:?}");
+    assert!(codes_seen.contains(&ecs::OUT_OF_RANGE), "{at:?}");
+    assert!(codes_seen.contains(&ecs::UNKNOWN_COMPONENT), "{at:?}");
+    assert!(
+        at.iter().any(|x| x.1 == "scenes/arena/a.toml:5"),
+        "the unknown component at its own line: {at:?}"
+    );
+}
+
+#[test]
 fn schema_errors_carry_both_locations() {
     let t = temp("schemaerr");
     project(t.path());

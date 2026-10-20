@@ -195,6 +195,9 @@ fn resolve_layers(
     let mut comps: Vec<ResolvedComponent> = Vec::new();
     let mut tags: Vec<(String, Provenance)> = Vec::new();
     let mut child_names: Vec<String> = Vec::new();
+    // Every problem in the file, not the first alone: the rest are issues
+    // beside the first, so a person (or an agent) fixes them in one pass.
+    let mut errs: Vec<ArgusError> = Vec::new();
 
     // Base first, own last, so nearer layers win.
     for layer in layers.iter().rev() {
@@ -209,14 +212,17 @@ fn resolve_layers(
             child_names.retain(|n| n != c);
         }
         for cd in &d.components {
-            let cid = ctx.registry.id(&cd.name).ok_or_else(|| {
-                ArgusError::new(
-                    argus_ecs::codes::UNKNOWN_COMPONENT,
-                    format!("no component named {:?}", cd.name),
-                )
-                .hint("world.describe lists registered components; script components must load before the scene.")
-                .at(Some(cd.at.clone()))
-            })?;
+            let Some(cid) = ctx.registry.id(&cd.name) else {
+                errs.push(
+                    ArgusError::new(
+                        argus_ecs::codes::UNKNOWN_COMPONENT,
+                        format!("no component named {:?}", cd.name),
+                    )
+                    .hint("world.describe lists registered components; script components must load before the scene.")
+                    .at(Some(cd.at.clone())),
+                );
+                continue;
+            };
             let schema = ctx.registry.schema(cid);
             if !comps.iter().any(|c| c.name == cd.name) {
                 comps.push(ResolvedComponent {
@@ -230,26 +236,41 @@ fn resolve_layers(
                 .find(|c| c.name == cd.name)
                 .expect("just ensured");
             for f in &cd.fields {
-                let fs = schema.field(&f.name).ok_or_else(|| {
-                    ArgusError::new(
-                        argus_ecs::codes::UNKNOWN_FIELD,
-                        format!("{} has no field {:?}", cd.name, f.name),
-                    )
-                    .hint(format!(
-                        "Fields: {}",
-                        schema
-                            .fields
-                            .iter()
-                            .map(|x| x.name.as_str())
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    ))
-                    .at(Some(f.at.clone()))
-                })?;
-                let v = tomlv::to_value(&f.raw, fs.ty, &f.at)?;
+                let Some(fs) = schema.field(&f.name) else {
+                    errs.push(
+                        ArgusError::new(
+                            argus_ecs::codes::UNKNOWN_FIELD,
+                            format!("{} has no field {:?}", cd.name, f.name),
+                        )
+                        .hint(format!(
+                            "Fields: {}",
+                            schema
+                                .fields
+                                .iter()
+                                .map(|x| x.name.as_str())
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        ))
+                        .at(Some(f.at.clone())),
+                    );
+                    continue;
+                };
+                let v = match tomlv::to_value(&f.raw, fs.ty, &f.at) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        errs.push(e);
+                        continue;
+                    }
+                };
                 let v = match fs.ty {
                     FieldType::Entity => v,
-                    _ => schema.check(fs, v).map_err(|e| locate(e, &f.at))?,
+                    _ => match schema.check(fs, v) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            errs.push(locate(e, &f.at));
+                            continue;
+                        }
+                    },
                 };
                 if let Value::Ref(s) = &v {
                     if let Err(e) = check_ref(ctx, s, &f.at) {
@@ -291,6 +312,14 @@ fn resolve_layers(
                 child_names.push(name.clone());
             }
         }
+    }
+
+    // The first problem is the entity's error; the others are issues.
+    if !errs.is_empty() {
+        let mut errs = errs.into_iter();
+        let first = errs.next().expect("not empty");
+        issues.extend(errs);
+        return Err(first);
     }
 
     // Fill defaults and put fields in schema order.
