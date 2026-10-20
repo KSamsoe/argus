@@ -78,6 +78,27 @@ pub mod fs {
             if mem::covers(p) {
                 return mem::write(p, c);
             }
+            write_replacing(p, c)
+        }
+
+        /// Written beside it, then moved over it: a reader sees the old file
+        /// or the new one, never half of one (a test reading a def table as
+        /// an edit wrote it found the row missing), and a crash mid-write
+        /// leaves the old file whole. A link is written through, and where
+        /// the move cannot be made (a file another program holds on
+        /// Windows), the file is written in place, as before.
+        fn write_replacing(p: &Path, c: &[u8]) -> io::Result<()> {
+            let link = std::fs::symlink_metadata(p).is_ok_and(|m| m.file_type().is_symlink());
+            let name = p.file_name().map(|n| n.to_string_lossy().into_owned());
+            if let (false, Some(name)) = (link, name) {
+                let tmp = p.with_file_name(format!(".{name}.{}.tmp", std::process::id()));
+                if std::fs::write(&tmp, c).is_ok() {
+                    if std::fs::rename(&tmp, p).is_ok() {
+                        return Ok(());
+                    }
+                    let _ = std::fs::remove_file(&tmp);
+                }
+            }
             std::fs::write(p, c)
         }
         pub fn create_dir_all(p: &Path) -> io::Result<()> {

@@ -601,7 +601,7 @@ pub fn write_value(
         std::fs::create_dir_all(dir)
             .map_err(|e| ArgusError::new(codes::MISSING_FILE, format!("{}: {e}", dir.display())))?;
     }
-    std::fs::write(&path, doc.to_string())
+    argus_os::fs::write(&path, doc.to_string())
         .map_err(|e| ArgusError::new(codes::MISSING_FILE, format!("{rel}: {e}")))?;
     Ok(rel)
 }
@@ -664,7 +664,7 @@ pub fn write_row(
         std::fs::create_dir_all(dir)
             .map_err(|e| ArgusError::new(codes::MISSING_FILE, format!("{}: {e}", dir.display())))?;
     }
-    std::fs::write(&path, doc.to_string())
+    argus_os::fs::write(&path, doc.to_string())
         .map_err(|e| ArgusError::new(codes::MISSING_FILE, format!("{rel}: {e}")))?;
     Ok((rel, old))
 }
