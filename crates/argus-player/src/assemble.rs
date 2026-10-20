@@ -637,7 +637,7 @@ fn install_rigid(
         )
         .hint("argus build includes it for a game whose argus.toml lists modules = [\"rigid\"]; cargo builds it with --features rigid."));
     }
-    Ok(())
+    Ok(crate::keyframe::NoRigid)
 }
 
 /// Scripts' maps (`q:tiles`, phase 5 item 4): the session's map store, a

@@ -25,7 +25,13 @@ use std::rc::Rc;
 pub type RigidSource = Option<Rc<RefCell<argus_rigid::RigidStore>>>;
 /// Where the rigid bodies' state lives: a build without the module has none.
 #[cfg(not(feature = "rigid"))]
-pub type RigidSource = ();
+pub type RigidSource = NoRigid;
+
+/// A build without the rigid-body module's store: nothing. A type of its
+/// own, not `()`, which clippy rightly flags wherever a unit is passed on.
+#[cfg(not(feature = "rigid"))]
+#[derive(Clone, Debug, Default)]
+pub struct NoRigid;
 
 /// The rigid bodies' state in a keyframe: Rapier's contact caches and
 /// solver warm-start, without which a replay parts from its run.

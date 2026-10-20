@@ -87,7 +87,12 @@ prune_stale() {
 }
 
 step_fmt() { cargo fmt --all -- --check --color never; }
-step_clippy() { cargo clippy --workspace --all-targets -q -- -D warnings; }
+# The player once more on its own: the workspace build turns its rigid
+# feature on (argus-cli wants it), which hid the lints of a build without.
+step_clippy() {
+  cargo clippy --workspace --all-targets -q -- -D warnings &&
+    cargo clippy -p argus-player --all-targets -q -- -D warnings
+}
 step_test() {
   local failed=0
   cargo test --workspace --no-fail-fast -q || failed=1
