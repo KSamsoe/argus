@@ -21,9 +21,19 @@
 #    games released for each platform by the checks (example-games-*, to
 #    play with nothing installed; not named argus-*, which the installers
 #    look for), and SHA256SUMS.
-# 5. With --publish: a draft release v<version> on the private repository
+# 5. mac-expected.json, what the Mac testing packet compares a Mac's runs
+#    with: every example's scenarios and the packet's section 7, run with
+#    the staged Windows install's own argus (mac_runs.sh, mac_expected.py),
+#    and the packet itself, docs/mac-testing.md. Neither is in SHA256SUMS.
+# 6. With --publish: a draft release v<version> on the private repository
 #    (gh), with those files, its notes docs/releases/<version>.md if there
 #    is one. Publishing the draft is a person's click.
+#
+# Before it, in this order: `python tools/release/bump.py <version>` (the
+# version everywhere, and the old builds cleared so the CI does not fill
+# the disk), the notes in docs/releases/<version>.md and a line in
+# docs/history.md, a commit, then `tools/ci/ci.sh` with every step
+# passing.
 #
 # The tree must be clean: a release is a commit. The Linux host defaults
 # to $ARGUS_RELEASE_HOST; $ARGUS_SSH_OPTS are added to ssh and scp (this
@@ -106,6 +116,12 @@ bash tools/release/manifest.sh "$MAC" "$VERSION" "$REV" macos
 echo "== the examples released for the Mac, from the Windows install"
 bash tools/release/check.sh "$WIN" --for macos --keep "$GMAC"
 
+echo "== mac-expected.json, from the Windows install's own runs"
+RUNS=target/release/v$VERSION-runs
+bash tools/release/mac_runs.sh "$WIN/bin/argus.exe" "$RUNS" "target/release/mac-scratch-$VERSION"
+python tools/release/mac_expected.py "$RUNS" "target/release/mac-scratch-$VERSION/platformer" > "$OUT/mac-expected.json"
+cp docs/mac-testing.md "$OUT/mac-testing.md"
+
 echo "== archives"
 cp tools/release/games-readme.txt "$GWIN/README.txt"
 cp tools/release/games-readme.txt "$GLIN/README.txt"
@@ -145,7 +161,7 @@ if [ "$PUBLISH" = 1 ]; then
     sed '1{/^# /d}' "docs/releases/$VERSION.md" | sed '1{/^$/d}' > "target/release/notes-$VERSION.md"
     NOTES=(--notes-file "target/release/notes-$VERSION.md")
   fi
-  gh release create "v$VERSION" "$OUT"/argus-* "$OUT"/example-games-* "$OUT"/install.* "$OUT/SHA256SUMS" \
+  gh release create "v$VERSION" "$OUT"/argus-* "$OUT"/example-games-* "$OUT"/install.* "$OUT/SHA256SUMS"     "$OUT/mac-expected.json" "$OUT/mac-testing.md" \
     --draft --target "$SHA" --title "Argus $VERSION" "${NOTES[@]}"
 fi
 echo "== done: $OUT"
