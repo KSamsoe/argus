@@ -77,6 +77,22 @@ fn every_template_and_example_has_an_icon_from_its_sprites() {
             seen > 256 * 256 / 10,
             "{name}: the icon is mostly clear ({seen} pixels)"
         );
+        // The drawn part fills the square on its longer side (whole-pixel
+        // scaling leaves at most a thin clear border): a frame's clear
+        // margins are left off (Outpost's colonist was a small figure).
+        let (mut lo, mut hi) = ([256u32; 2], [0u32; 2]);
+        for (i, p) in rgba.chunks(4).enumerate() {
+            if p[3] > 0 {
+                let (x, y) = (i as u32 % 256, i as u32 / 256);
+                lo = [lo[0].min(x), lo[1].min(y)];
+                hi = [hi[0].max(x + 1), hi[1].max(y + 1)];
+            }
+        }
+        let longer = (hi[0] - lo[0]).max(hi[1] - lo[1]);
+        assert!(
+            longer >= 256 * 85 / 100,
+            "{name}: the drawn part spans {longer} of 256"
+        );
         if let Some(to) = &shown {
             std::fs::create_dir_all(to).unwrap();
             std::fs::write(to.join(format!("{name}.png")), icon.png(256).unwrap()).unwrap();

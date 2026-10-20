@@ -25,8 +25,9 @@ pub struct Icon {
 
 impl Icon {
     /// The project's icon, from `[game] icon` (a sprite asset) and
-    /// `icon_frame`; none when the project names none. A frame that is not
-    /// square sits in the middle of a clear square.
+    /// `icon_frame`; none when the project names none. The frame's drawn
+    /// part, its clear margins left off, sits in the middle of a clear
+    /// square.
     pub fn load(root: &Path, game: &GameInfo) -> Result<Option<Icon>, String> {
         let Some(name) = &game.icon else {
             return Ok(None);
@@ -50,7 +51,29 @@ impl Icon {
             )
         })?;
         let (tw, th, sheet) = argus_assets::decode_png(&s.texture).map_err(|e| e.message)?;
-        let [x, y, w, h] = f.rect;
+        // The frame's drawn part: a sprite's frame often has clear margins
+        // (Outpost's colonist stands in the middle of its frame), and an
+        // icon of the whole frame drew the figure small. A frame all clear
+        // is kept as it is.
+        let [fx, fy, fw, fh] = f.rect;
+        let drawn = |i: u32, j: u32| {
+            let (sx, sy) = (fx + i, fy + j);
+            sx < tw && sy < th && sheet[((sy * tw + sx) * 4 + 3) as usize] > 0
+        };
+        let (mut x0, mut y0, mut x1, mut y1) = (fw, fh, 0, 0);
+        for j in 0..fh {
+            for i in 0..fw {
+                if drawn(i, j) {
+                    (x0, y0) = (x0.min(i), y0.min(j));
+                    (x1, y1) = (x1.max(i + 1), y1.max(j + 1));
+                }
+            }
+        }
+        let [x, y, w, h] = if x1 > x0 {
+            [fx + x0, fy + y0, x1 - x0, y1 - y0]
+        } else {
+            f.rect
+        };
         let size = w.max(h).max(1);
         let (ox, oy) = ((size - w) / 2, (size - h) / 2);
         let mut rgba = vec![0u8; (size * size * 4) as usize];
