@@ -376,7 +376,7 @@ pub const FILES: &[FileDoc] = &[
     },
     FileDoc {
         title: "assets/<name>.toml with type = \"sound\": a sound",
-        intro: "A sound defined beside its files instead of in audio.toml: the same keys as an audio.toml `[sounds.\"<name>\"]` table (bus, variations, tone, file, gain, gain_jitter, pitch_jitter, spatial, loop, max_voices, and a tone's keys), its variation paths relative to the sidecar's folder first, then to `assets/`. Beside a `.wav` or `.ogg` of its name the sidecar still has to name what it plays. A sound audio.toml defines with the same name wins. Keys it does not know are ignored.",
+        intro: "A sound defined beside its files instead of in audio.toml: the same keys as an audio.toml `[sounds.\"<name>\"]` table (bus, variations, tone, file, gain, gain_jitter, pitch_jitter, spatial, loop, max_voices, and a tone's keys), its variation paths relative to the sidecar's folder first, then to `assets/`. Beside a `.wav` or `.ogg` of its name, the sidecar plays that file unless it names files of its own, so it may hold only settings (`gain = 0.5`). A sound audio.toml defines with the same name wins. Keys it does not know are ignored.",
         keys: &[],
         example_from: "`assets/sfx/step.toml` in the importer's tests",
         example: "type = \"sound\"\nbus = \"sfx\"\ngain = 0.8\npitch_jitter = 0.05\nvariations = [\"step1.wav\", \"step2.wav\", { wave = \"noise\", ms = 40 }]",

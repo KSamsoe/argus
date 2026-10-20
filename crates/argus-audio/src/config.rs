@@ -428,7 +428,13 @@ fn tone_from(t: &dyn toml_edit::TableLike, file: &str, line: u32) -> Result<Tone
 /// A sound from a table: the body of `[sounds."name"]` in `audio.toml`, or
 /// a whole sound sidecar (`assets/sfx/step.toml`). The bus is checked by
 /// the caller, who knows the buses.
-fn sound_from(name: &str, st: &dyn toml_edit::TableLike, file: &str, sl: u32) -> Result<SoundDef> {
+fn sound_from(
+    name: &str,
+    st: &dyn toml_edit::TableLike,
+    file: &str,
+    sl: u32,
+    beside: Option<&str>,
+) -> Result<SoundDef> {
     let bus = get_str(st, "bus").unwrap_or_else(|| {
         if name.starts_with("music/") {
             "music"
@@ -466,6 +472,13 @@ fn sound_from(name: &str, st: &dyn toml_edit::TableLike, file: &str, sl: u32) ->
     if let Some(f) = get_str(st, "file") {
         variations.push(Source::File(f));
     }
+    // A sidecar beside a file of its name plays that file unless it names
+    // files of its own, so it may hold settings alone (`gain = 0.5`).
+    if let Some(w) = beside {
+        if !variations.iter().any(|v| matches!(v, Source::File(_))) {
+            variations.push(Source::File(w.to_string()));
+        }
+    }
     if variations.is_empty() {
         return Err(err(
             file,
@@ -488,8 +501,15 @@ fn sound_from(name: &str, st: &dyn toml_edit::TableLike, file: &str, sl: u32) ->
 }
 
 /// Parse a sound sidecar: the whole file is one sound's table, with file
-/// variations relative to `assets/` (the importer rewrites them).
-pub fn parse_sound_sidecar(name: &str, file: &str, text: &str) -> Result<SoundDef> {
+/// variations relative to `assets/` (the importer rewrites them). `beside`
+/// is the sound file of its name next to it, when there is one, which it
+/// plays unless it names files of its own.
+pub fn parse_sound_sidecar(
+    name: &str,
+    file: &str,
+    text: &str,
+    beside: Option<&str>,
+) -> Result<SoundDef> {
     let doc: Doc = Doc::parse(text.to_string()).map_err(|e| {
         let line = e
             .span()
@@ -497,7 +517,7 @@ pub fn parse_sound_sidecar(name: &str, file: &str, text: &str) -> Result<SoundDe
             .unwrap_or(1);
         err(file, line, format!("not valid TOML: {}", e.message()))
     })?;
-    sound_from(name, doc.as_table(), file, 1)
+    sound_from(name, doc.as_table(), file, 1, beside)
 }
 
 impl AudioConfig {
@@ -743,7 +763,7 @@ impl AudioConfig {
                 let st = s
                     .as_table_like()
                     .ok_or_else(|| err(file, sl, format!("sounds.{name:?} must be a table")))?;
-                let def = sound_from(name, st, file, sl)?;
+                let def = sound_from(name, st, file, sl, None)?;
                 if !bus_exists(&cfg, &def.bus) {
                     return Err(err(
                         file,

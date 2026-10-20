@@ -1678,7 +1678,12 @@ impl Importer {
             .unwrap_or_default();
         let (mut def, from_sidecar) = match side {
             Some(t) => (
-                argus_audio::parse_sound_sidecar(name, side_file.unwrap_or(""), t)?,
+                argus_audio::parse_sound_sidecar(
+                    name,
+                    side_file.unwrap_or(""),
+                    t,
+                    g.wav.as_deref(),
+                )?,
                 true,
             ),
             None => (

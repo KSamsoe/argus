@@ -329,6 +329,34 @@ fn a_sound_sidecar_names_its_variations_and_the_files_are_checked() {
     assert!(r.failed[0].error.message.contains("step9.wav"));
 }
 
+#[test]
+fn a_sound_sidecar_beside_its_wav_may_hold_settings_alone() {
+    // It said "nothing to play": the WAV beside it was added after the
+    // sidecar was checked for something to play.
+    let dir = project("sound-beside");
+    wav(&dir, "sfx/step.wav", 48_000, 1, 0.5);
+    write(&dir, "sfx/step.toml", "gain = 0.5\nspatial = false\n");
+    let mut imp = Importer::new(&dir);
+    let r = imp.scan();
+    assert!(r.failed.is_empty(), "{:?}", r.failed);
+    let Asset::Sound(s) = &imp.get("sfx/step").unwrap().asset else {
+        panic!()
+    };
+    assert!(s.from_sidecar);
+    assert_eq!((s.def.gain, s.def.spatial), (0.5, false));
+    assert_eq!(s.files.len(), 1);
+    assert_eq!(s.files[0].path, "sfx/step.wav");
+    // Naming files of its own, it plays those and not the one beside it.
+    wav(&dir, "sfx/other.wav", 48_000, 1, 0.5);
+    write(&dir, "sfx/step.toml", "variations = [\"other.wav\"]\n");
+    imp.poll().unwrap();
+    let Asset::Sound(s) = &imp.get("sfx/step").unwrap().asset else {
+        panic!()
+    };
+    let paths: Vec<&str> = s.files.iter().map(|f| f.path.as_str()).collect();
+    assert_eq!(paths, ["sfx/other.wav"]);
+}
+
 /// Item 8: an animator is an asset (a sidecar with type = "animator" or
 /// [states]): parsed at import, its conditions checked for syntax, its
 /// problems errors with the line, unknown keys warnings.

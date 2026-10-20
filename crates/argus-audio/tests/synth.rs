@@ -291,7 +291,7 @@ fn each_control_does_what_it_says() {
 }
 
 fn read_back(text: &str) -> Tone {
-    let def = parse_sound_sidecar("sfx/x", "assets/sfx/x.toml", text).unwrap();
+    let def = parse_sound_sidecar("sfx/x", "assets/sfx/x.toml", text, None).unwrap();
     match &def.variations[..] {
         [Source::Tone(t)] => t.clone(),
         v => panic!("{v:?}"),
