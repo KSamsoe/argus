@@ -292,6 +292,35 @@ fn limits_rotation_and_points() {
     assert_eq!((f.groups.len(), f.omitted), (2, 1));
 }
 
+#[test]
+fn a_described_thing_whose_sprite_is_hidden_is_not_listed() {
+    // It was, at its point, though nothing of it was on the screen. A
+    // described thing with no sprite at all still is.
+    let mut w = world();
+    let chest = thing(&mut w, Some("chest"), 2.0, 1.0, 1.0, None);
+    w.insert(
+        chest,
+        Describe {
+            text: s(&w, "A locked chest"),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    w.update::<Sprite, _>(chest, |s| s.visible = false).unwrap();
+    let sign = w.spawn_authored("sign").unwrap();
+    w.insert(sign, Transform::at(-5.0, 2.0)).unwrap();
+    w.insert(sign, Describe::default()).unwrap();
+    let f = semantic(&w, &spec());
+    let ids: Vec<&str> = f.entities.iter().map(|e| e.id.as_str()).collect();
+    assert!(!ids.contains(&"@chest"), "{ids:?}");
+    assert!(ids.contains(&"@sign"), "{ids:?}");
+    // Shown again, it is listed with its sprite's bounds.
+    w.update::<Sprite, _>(chest, |s| s.visible = true).unwrap();
+    let f = semantic(&w, &spec());
+    let c = f.entities.iter().find(|e| e.id == "@chest").expect("listed");
+    assert_eq!(c.bounds, [115, 35, 125, 45]);
+}
+
 /// Effects on screen: the camera's shake and the materials sprites draw with.
 #[test]
 fn effects_report_shake_and_materials() {

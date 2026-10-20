@@ -587,6 +587,12 @@ pub fn semantic(world: &World, spec: &FrameSpec) -> SemanticFrame {
                 });
                 continue;
             }
+            // A described entity whose sprite is hidden is not on the
+            // screen, so not in the frame either; one with no sprite at all
+            // (a sign, a zone) is listed at its point.
+            if !at.contains_key(&e) && world.get::<Sprite>(e).is_ok_and(|s| !s.visible) {
+                continue;
+            }
             if let std::collections::hash_map::Entry::Vacant(slot) = at.entry(e) {
                 let p = pos.expect("in the world");
                 let (x, y) = to_px(p[0], p[1]);
