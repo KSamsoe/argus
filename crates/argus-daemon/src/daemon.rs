@@ -7993,7 +7993,6 @@ pub(crate) mod render {
     }
 }
 
-/// One event as `obs.events` reports it.
 /// The ids of the authored entities these records despawned: what an event
 /// row names a gone entity by, as it was named while it lived. Bounded by
 /// the records (the log's cap); a handle is never reused, so it stays true.
@@ -8037,6 +8036,7 @@ pub fn event_json_named(
     row
 }
 
+/// One event as `obs.events` reports it.
 pub fn event_json(world: &World, seq: u64, rec: &EventRecord) -> Json {
     let cname = |c: argus_ecs::ComponentId| world.registry().schema(c).name.clone();
     let (name, fields) = match &rec.event {
