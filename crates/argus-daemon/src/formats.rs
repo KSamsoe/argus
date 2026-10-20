@@ -220,7 +220,7 @@ pub const FILES: &[FileDoc] = &[
             k("text_size", "number above 0", "16", "The text size in UI pixels a UiText without its own `size` has."),
             k("text_scale", "number above 0", "1", "The text size factor when the world has no UiSettings entity (with one, its `text_scale`)."),
             k("high_contrast", "boolean", "false", "Whether high-contrast colours are in effect when the world has no UiSettings entity."),
-            k("[colors] <token>", "string", "", "A colour token, `#RGB`, `#RRGGBB`, or `#RRGGBBAA`: overrides one of the engine's (`text` #E8E4DC, `muted` #9AA1A8, `panel` #15181CE6, `border` #3A4048, `focus` #FFD166, `accent` #E8703F, `disabled` #6A7078) or adds one. The engine's dialogue box asks for `button`, which only the game defines."),
+            k("[colors] <token>", "string", "", "A colour token, `#RGB`, `#RRGGBB`, or `#RRGGBBAA`: overrides one of the engine's (`text` #E8E4DC, `muted` #9AA1A8, `panel` #15181CE6, `border` #3A4048, `focus` #FFD166, `accent` #E8703F, `disabled` #6A7078, `button` #262C34, which the engine's dialogue box's buttons use) or adds one."),
             k("[high_contrast_colors] <token>", "string", "the same token's [colors] value, for a new token", "The token's colour in high contrast."),
         ],
         example_from: "examples/outpost/ui.toml",

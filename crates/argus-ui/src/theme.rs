@@ -33,6 +33,8 @@ pub const DEFAULT_COLORS: &[(&str, &str, &str)] = &[
     ("focus", "#FFD166", "#FFFF00"),
     ("accent", "#E8703F", "#FFFFFF"),
     ("disabled", "#6A7078", "#BFBFBF"),
+    // The engine's dialogue box's buttons (a game's own buttons name it too).
+    ("button", "#262C34", "#000000"),
 ];
 
 /// A colour, 0 to 1 per channel, sRGB.
@@ -223,5 +225,14 @@ mod tests {
         assert!(t.color("panel", false).is_some(), "the defaults stay");
         assert_eq!(t.color("#00FF00", false), Some([0.0, 1.0, 0.0, 1.0]));
         assert!(Theme::parse("width = 0").is_err());
+    }
+
+    #[test]
+    fn the_dialogue_box_has_a_button_colour_in_any_theme() {
+        // It asked for `button`, which no default had: in a game whose
+        // ui.toml names none, the box's buttons were drawn with no panel.
+        let t = Theme::default();
+        assert_eq!(t.color("button", false), parse_color("#262C34"));
+        assert_eq!(t.color("button", true), parse_color("#000000"));
     }
 }
