@@ -347,7 +347,7 @@ pub const FILES: &[FileDoc] = &[
         keys: &[
             k("art.sprite{ frames }", "list", "[]", "Frames in order, numbered from 0 as `Sprite.frame` counts: each a canvas, or `{ canvas, pivot = {x, y}, ms = n, properties = { slope = {0, 1} } }`. The same canvas twice is one frame."),
             k("art.sprite{ clips }", "table", "{}", "Clips by name: `walk = { a, b, c, fps = 8 }` (canvases, or frame numbers from 0) or `walk = { from = 1, to = 4, fps = 8 }`, with `loop` (default true) and `direction` (forward, reverse, pingpong). A canvas only a clip names becomes a frame after `frames`' (clips taken by name)."),
-            k("art.sprite{ pixels_per_unit }", "number", "16", "Pixels a world unit."),
+            k("art.sprite{ pixels_per_unit }", "number", "16", "Kept in the sidecar the script writes and reported by `asset.get`, as a sprite sidecar's is; the drawn size is the Sprite's `size`."),
             k("art.sprite{ pivot }", "{x, y}", "{0.5, 0.5}", "Every frame's pivot, a fraction of the frame, y up from the bottom (`{0.5, 0}` stands it on its feet)."),
             k("art.sprite{ ms }", "integer", "100", "How long a frame shows when its clip gives no fps."),
             k("art.canvas(w, h, fill)", "function", "clear", "A new canvas, filled with `fill`. Its size is `c.w`, `c.h`."),
