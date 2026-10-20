@@ -1016,9 +1016,15 @@ fn an_event_names_a_gone_entity_by_the_id_it_had() {
     assert_eq!(ev["rows"][0]["fields"]["who"], "@bat", "{ev}");
     let by = ok(&mut d, "obs.events", json!({ "entity": "@bat" }));
     assert!(
-        by["rows"].as_array().unwrap().iter().any(|r| r["name"] == "struck"),
+        by["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r["name"] == "struck"),
         "{by}"
     );
     // An id that never was is still refused.
-    assert!(d.call(0, "obs.events", &json!({ "entity": "@nobody" })).is_err());
+    assert!(d
+        .call(0, "obs.events", &json!({ "entity": "@nobody" }))
+        .is_err());
 }

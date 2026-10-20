@@ -29,7 +29,11 @@ fn a_reader_never_sees_half_a_write() {
         // A read may meet the move itself on Windows and fail; it never
         // reads a file cut short.
         if let Ok(got) = std::fs::read(&p) {
-            assert!(got == a || got == b, "a read of {} bytes, neither", got.len());
+            assert!(
+                got == a || got == b,
+                "a read of {} bytes, neither",
+                got.len()
+            );
             reads += 1;
         }
     }

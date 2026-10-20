@@ -240,7 +240,9 @@ fn every_problem_in_an_entity_file_is_an_issue_not_only_the_first() {
     let mut at: Vec<(u32, String)> = s
         .issues()
         .iter()
-        .filter(|e| e.r#ref.as_deref().is_some_and(|r| r.contains("a.toml")) || e.message.contains("a.toml"))
+        .filter(|e| {
+            e.r#ref.as_deref().is_some_and(|r| r.contains("a.toml")) || e.message.contains("a.toml")
+        })
         .map(|e| (e.code, e.r#ref.clone().unwrap_or_default()))
         .collect();
     at.sort();

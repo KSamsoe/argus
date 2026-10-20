@@ -228,7 +228,10 @@ fn touch_controls_say_their_words_in_the_worlds_language() {
         "en",
         &[
             ("en", "[touch]\njump = \"Jump\"\n[hud]\npause = \"Menu\"\n"),
-            ("fr", "[touch]\njump = \"Sauter\"\n[hud]\npause = \"Menu principal\"\n"),
+            (
+                "fr",
+                "[touch]\njump = \"Sauter\"\n[hud]\npause = \"Menu principal\"\n",
+            ),
         ],
     );
     let control = |name: &str, label: &str| argus_input::TouchShown {

@@ -317,7 +317,11 @@ fn a_described_thing_whose_sprite_is_hidden_is_not_listed() {
     // Shown again, it is listed with its sprite's bounds.
     w.update::<Sprite, _>(chest, |s| s.visible = true).unwrap();
     let f = semantic(&w, &spec());
-    let c = f.entities.iter().find(|e| e.id == "@chest").expect("listed");
+    let c = f
+        .entities
+        .iter()
+        .find(|e| e.id == "@chest")
+        .expect("listed");
     assert_eq!(c.bounds, [115, 35, 125, 45]);
 }
 
@@ -458,8 +462,14 @@ fn a_described_things_words_are_in_the_worlds_language() {
     let tables = argus_ui::Strings::from_texts(
         "en",
         &[
-            ("en", "[chest]\nname = \"chest\"\ntext = \"A locked chest\"\n"),
-            ("fr", "[chest]\nname = \"coffre\"\ntext = \"Un coffre ferm\u{e9}\"\n"),
+            (
+                "en",
+                "[chest]\nname = \"chest\"\ntext = \"A locked chest\"\n",
+            ),
+            (
+                "fr",
+                "[chest]\nname = \"coffre\"\ntext = \"Un coffre ferm\u{e9}\"\n",
+            ),
         ],
     );
     let said = |w: &World, tables: Option<&argus_ui::Strings>| {
@@ -469,8 +479,14 @@ fn a_described_things_words_are_in_the_worlds_language() {
         (c.name.clone(), c.text.clone(), g.text.clone())
     };
     let words = |a: &str, b: &str, c: &str| (a.to_string(), b.to_string(), c.to_string());
-    assert_eq!(said(&w, None), words("chest.name", "chest.text", "Keep out"));
-    assert_eq!(said(&w, Some(&tables)), words("chest", "A locked chest", "Keep out"));
+    assert_eq!(
+        said(&w, None),
+        words("chest.name", "chest.text", "Keep out")
+    );
+    assert_eq!(
+        said(&w, Some(&tables)),
+        words("chest", "A locked chest", "Keep out")
+    );
     let set = w.spawn();
     let fr = w.strings().intern("fr");
     w.insert(
