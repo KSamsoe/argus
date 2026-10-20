@@ -83,9 +83,19 @@ fn start(tag: &str) -> Web {
         std::thread::sleep(Duration::from_millis(20));
     }
     let (recv, send) = stream.expect("the daemon's socket").split();
-    let info: Json =
-        serde_json::from_str(&std::fs::read_to_string(root.join(".argus/daemon.json")).unwrap())
-            .unwrap();
+    // The daemon writes daemon.json just after its socket listens, so a
+    // client can connect first (a CI run under load did).
+    let mut info = Json::Null;
+    for _ in 0..100 {
+        if let Some(j) = std::fs::read_to_string(root.join(".argus/daemon.json"))
+            .ok()
+            .and_then(|s| serde_json::from_str::<Json>(&s).ok())
+        {
+            info = j;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
     let web = info["web"]
         .as_str()
         .expect("daemon.json names the web client");
