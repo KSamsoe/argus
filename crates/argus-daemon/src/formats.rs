@@ -409,7 +409,7 @@ pub const FILES: &[FileDoc] = &[
     },
     FileDoc {
         title: "assets/<name>.toml with type = \"emitter\": a particle effect",
-        intro: "A particle effect an Emitter component plays at its entity (`[Emitter] effect = \"fx/pop\"`). Its particles live in a pool, not as entities. A number key is one number; a range is a number or `[min, max]`; a curve is a number or `[[t, value], ...]` over a particle's life (t from 0 to 1, never going back); a colour is `\"#RRGGBBAA\"` or `[[t, \"#RRGGBBAA\"], ...]`. The keys marked tune are the effect's knobs: the tuning panel's sliders, and `tune.fields asset=fx/pop`. A key it does not know is a warning.",
+        intro: "A particle effect an Emitter component plays at its entity (`[Emitter] effect = \"fx/pop\"`). Its particles live in a pool, not as entities. A number key is one number; a range is a number or `[min, max]`; a curve is a number or `[[t, value], ...]` over a particle's life (t from 0 to 1, never going back); a colour is `\"#RRGGBBAA\"` or `[[t, \"#RRGGBBAA\"], ...]`. The keys marked tune are the effect's knobs: the tuning panel's sliders, and `tune.fields asset=fx/pop`. A key it does not know is a warning. A burst on demand, as an enemy dies, is the `particles.burst` event, with its `count` and `pos`: `q:emit(\"particles.burst\", { emitter = q:entity(\"@sparks\"), count = 12, pos = target:get(\"Transform\").pos })` emits `count` particles (1 when left out) from that emitter on this tick, at `pos` in the world when given, else at the emitter; `Emitter.burst = 12` does the same on the next tick.",
         keys: &[
             k("type", "string", "", "\"emitter\"."),
             k("sprite", "string", "none", "An atlas to draw particles from (else a described `particle`)."),
@@ -442,7 +442,7 @@ pub const FILES: &[FileDoc] = &[
     },
     FileDoc {
         title: "assets/<name>.wgsl and its sidecar: a material",
-        intro: "A material draws a sprite (`[Sprite] material = \"fx/glow\"`), particles, or a skeleton with a shader: a `.wgsl` whose fragment half defines `fn material(in: MaterialInput, p: Params) -> vec4<f32>`, with a sidecar `<name>.toml` declaring its parameters; or a sidecar alone over a built-in shader (`unlit`, `lit`, `palette`, `dissolve`, `outline`, `sdf_text`, and `sdf_text_bold`, which rich text's bold draws with), changing its blend or its parameters' defaults. A parameter may be fed per sprite from a component field (`from`), so a tween or a script animates it. The shader is checked when it imports; one that does not compile is a `script.errors` row (phase material) at its line, and the last good version keeps drawing. A key it does not know is a warning.",
+        intro: "A material draws a sprite (`[Sprite] material = \"fx/glow\"`), particles, or a skeleton with a shader: a `.wgsl` whose fragment half defines `fn material(in: MaterialInput, p: Params) -> vec4<f32>`, with a sidecar `<name>.toml` declaring its parameters; or a sidecar alone over a built-in shader (`unlit`, `lit`, `palette`, `dissolve`, `outline`, `sdf_text`, and `sdf_text_bold`, which rich text's bold draws with), changing its blend or its parameters' defaults. A parameter may be fed per sprite from a component field (`from`), so a tween or a script animates it. The shader's inputs, `MaterialInput`: `uv`, where in the atlas this fragment samples; `local`, where on the sprite (0 to 1 across, y up); `world`, where in the world; `color`, the sprite's tint (linear RGBA); `frame`, its frame in the atlas (u min, v min, u max, v max); `texel`, one texel of the atlas in uv; and `time`, sim seconds. `sample_atlas(in, uv)` reads the sprite's atlas, each parameter is `p.<name>`, and a texture parameter `t` is `sample_t(uv)`. The shader is checked when it imports; one that does not compile is a `script.errors` row (phase material) at its line, and the last good version keeps drawing. A key it does not know is a warning.",
         keys: &[
             k("type", "string", "", "\"material\"."),
             k("shader", "string", "<name>.wgsl beside it", "A built-in's name or a `.wgsl` path under `assets/`."),
@@ -1526,6 +1526,24 @@ mod tests {
             "assets/<name>.wgsl",
             &argus_material::BUILTIN_NAMES,
             "built-in",
+        );
+        // The shader's inputs, as the prelude declares them.
+        let prelude = include_str!("../../argus-material/materials/prelude.wgsl");
+        let fields: Vec<&str> = prelude
+            .split("struct MaterialInput {")
+            .nth(1)
+            .and_then(|s| s.split('}').next())
+            .expect("the prelude declares MaterialInput")
+            .lines()
+            .filter_map(|l| l.trim().split_once(':').map(|(n, _)| n.trim()))
+            .filter(|n| !n.is_empty() && !n.starts_with("//"))
+            .collect();
+        assert!(fields.len() >= 7, "{fields:?}");
+        all_mentioned("assets/<name>.wgsl", &fields, "MaterialInput field");
+        all_mentioned(
+            "assets/<name>.toml with type = \"emitter\"",
+            &["particles.burst", "count", "pos"],
+            "burst event's part",
         );
         check(
             "assets/<name>.ttf",
