@@ -297,7 +297,7 @@ end
 - `argus edit ops='[{op: text, lang: fr, key: hud.no_falls, text: "aucune chute"}]' note='...'` changes one string in a transaction.
 - A release build ships each language but the base in a pack of its own, so a language can be added to a shipped game by dropping in its pack (see [releasing](releasing.md)).
 - Letters: the built-in pixel font has ASCII and 35 accented letters. A font asset bakes ASCII and Latin-1; its sidecar's `chars` adds more (see [presentation](presentation.md#fonts)).
-- `Describe` texts are not string keys. They stay in the language they are written in (see below).
+- `Describe` names and texts may be string keys too: a key the tables have is said in the player's language (see below).
 
 ## Accessibility
 
@@ -323,7 +323,7 @@ text = "HP {Health.cur}/{Health.max}, {Player.kills} kills"
 | `order` | Reading order: lower first, then top to bottom, left to right |
 | `hidden` | Leave it out (a darkening sheet over the scene, as in `templates/colony/scenes/main/night.toml`) |
 
-A `Describe` is never drawn, and its text is not translated: a player playing in French hears the UI in French but the descriptions in the language they were written in.
+A `Describe` is never drawn. Its `name` and `text` may be string keys (`text = "describe.hero"`): a key the tables have is said in the player's language, as the UI is, and other words are said as written. So a player playing in French hears the descriptions in French too, where the game's `strings/fr.toml` has them.
 
 ### Text size and high contrast
 

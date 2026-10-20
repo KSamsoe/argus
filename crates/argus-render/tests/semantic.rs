@@ -427,3 +427,62 @@ fn perf_fifty_thousand_entities() {
     println!("50,000 entities: semantic frame {best:.1} ms, {bytes} bytes");
     assert!(best < 20.0, "{best} ms");
 }
+
+#[test]
+fn a_described_things_words_are_in_the_worlds_language() {
+    // Describe's name and text went into the frame (and the screen reader)
+    // as written; a string key is that key's string now, in the player's
+    // language, and other words stay as written.
+    let mut w = world();
+    argus_ui::register(&mut w).unwrap();
+    let chest = thing(&mut w, Some("chest"), 2.0, 1.0, 1.0, None);
+    w.insert(
+        chest,
+        Describe {
+            name: s(&w, "chest.name"),
+            text: s(&w, "chest.text"),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let sign = w.spawn_authored("sign").unwrap();
+    w.insert(sign, Transform::at(-5.0, 2.0)).unwrap();
+    w.insert(
+        sign,
+        Describe {
+            text: s(&w, "Keep out"),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let tables = argus_ui::Strings::from_texts(
+        "en",
+        &[
+            ("en", "[chest]\nname = \"chest\"\ntext = \"A locked chest\"\n"),
+            ("fr", "[chest]\nname = \"coffre\"\ntext = \"Un coffre ferm\u{e9}\"\n"),
+        ],
+    );
+    let said = |w: &World, tables: Option<&argus_ui::Strings>| {
+        let f = argus_render::semantic_with(w, &spec(), tables);
+        let c = f.entities.iter().find(|e| e.id == "@chest").unwrap();
+        let g = f.entities.iter().find(|e| e.id == "@sign").unwrap();
+        (c.name.clone(), c.text.clone(), g.text.clone())
+    };
+    let words = |a: &str, b: &str, c: &str| (a.to_string(), b.to_string(), c.to_string());
+    assert_eq!(said(&w, None), words("chest.name", "chest.text", "Keep out"));
+    assert_eq!(said(&w, Some(&tables)), words("chest", "A locked chest", "Keep out"));
+    let set = w.spawn();
+    let fr = w.strings().intern("fr");
+    w.insert(
+        set,
+        argus_ui::UiSettings {
+            language: fr,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        said(&w, Some(&tables)),
+        words("coffre", "Un coffre ferm\u{e9}", "Keep out")
+    );
+}

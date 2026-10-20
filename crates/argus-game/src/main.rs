@@ -316,9 +316,10 @@ impl Game {
             [sh.theme.width, sh.theme.height]
         };
         let (world, assets, name) = (&self.p.world, &self.p.assets, &self.p.name);
+        let tables = self.p.ui.borrow();
         let mut seen = None;
         self.host.access(|| {
-            let sf = argus_render::semantic::semantic(
+            let sf = argus_render::semantic::semantic_with(
                 world,
                 &argus_render::FrameSpec {
                     width: w,
@@ -330,6 +331,7 @@ impl Game {
                     view: None,
                     ui_canvas: Some(canvas),
                 },
+                Some(&tables.strings),
             );
             let tree = argus_render::access::tree(&sf, name);
             seen = Some(sf.ui);

@@ -6310,7 +6310,8 @@ impl Daemon {
             };
             let ses = self.session.as_ref().expect("session");
             let store = ses.particles.borrow();
-            let sf = argus_render::semantic(
+            let tables = ses.ui.borrow();
+            let sf = argus_render::semantic_with(
                 &self.world,
                 &argus_render::FrameSpec {
                     width,
@@ -6322,6 +6323,7 @@ impl Daemon {
                     view: Some(view),
                     ui_canvas: self.ui_canvas(),
                 },
+                Some(&tables.strings),
             );
             let marks = argus_render::annotate(&mut img, &sf);
             Some(
@@ -6420,7 +6422,8 @@ impl Daemon {
         let started = std::time::Instant::now();
         let ses = self.session.as_ref().expect("session");
         let store = ses.particles.borrow();
-        let mut sf = argus_render::semantic(
+        let tables = ses.ui.borrow();
+        let mut sf = argus_render::semantic_with(
             &self.world,
             &argus_render::FrameSpec {
                 width,
@@ -6432,7 +6435,9 @@ impl Daemon {
                 view,
                 ui_canvas: self.ui_canvas(),
             },
+            Some(&tables.strings),
         );
+        drop(tables);
         drop(store);
         sf.with_debug(&ses.host.draws().borrow());
         if let Some(c) = self.ui_canvas() {

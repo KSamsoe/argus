@@ -37,7 +37,7 @@ pub use annotate::{annotate, Mark};
 pub use gpu::{DrawStats, Gpu, Instance, Page, Run, Texels, UiDraw};
 pub use light::{LightFrame, LightInstance};
 pub use see_as::SeeAs;
-pub use semantic::{semantic, Describe, FrameSpec, SemanticFrame, View};
+pub use semantic::{semantic, semantic_with, Describe, FrameSpec, SemanticFrame, View};
 
 /// Error codes this crate adds (50xx).
 pub mod codes {

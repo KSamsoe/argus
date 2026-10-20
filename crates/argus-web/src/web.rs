@@ -298,7 +298,8 @@ impl WebPlayer {
             [sh.theme.width, sh.theme.height]
         };
         let store = self.p.particles.borrow();
-        let mut sf = argus_render::semantic::semantic(
+        let tables = self.p.ui.borrow();
+        let mut sf = argus_render::semantic::semantic_with(
             &self.p.world,
             &argus_render::FrameSpec {
                 width: w,
@@ -310,7 +311,9 @@ impl WebPlayer {
                 view: None,
                 ui_canvas: Some(canvas),
             },
+            Some(&tables.strings),
         );
+        drop(tables);
         sf.with_touch(&self.p.touch_shown(), canvas);
         sf.to_json().to_string()
     }

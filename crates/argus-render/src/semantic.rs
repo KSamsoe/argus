@@ -364,6 +364,19 @@ struct Cand {
 
 /// Build the frame.
 pub fn semantic(world: &World, spec: &FrameSpec) -> SemanticFrame {
+    semantic_with(world, spec, None)
+}
+
+/// Build the frame with the game's string tables: a described thing's
+/// name or text that is a string key is that key's string in the world's
+/// language, which is what a screen reader then says; other words are as
+/// written. The hosts that have the tables (the daemon, the web page, the
+/// release game) build it this way.
+pub fn semantic_with(
+    world: &World,
+    spec: &FrameSpec,
+    tables: Option<&argus_ui::Strings>,
+) -> SemanticFrame {
     let (w, h) = (spec.width.max(1) as f32, spec.height.max(1) as f32);
     let aspect = w / h;
     let mut camera = None;
@@ -420,6 +433,16 @@ pub fn semantic(world: &World, spec: &FrameSpec) -> SemanticFrame {
         view.center[1] + bx[1],
     ];
     let strings = world.strings();
+    let lang = tables
+        .map(|_| argus_ui::strings::language(world))
+        .unwrap_or_default();
+    let said = |id: StrId| -> String {
+        let s = strings.resolve(id);
+        match tables.and_then(|t| t.get(&lang, &s)) {
+            Some(t) => t.to_string(),
+            None => s.to_string(),
+        }
+    };
 
     // Every visible sprite on screen.
     let mut cands: Vec<Cand> = Vec::new();
@@ -577,9 +600,9 @@ pub fn semantic(world: &World, spec: &FrameSpec) -> SemanticFrame {
                 hud.push(Seen {
                     entity: e,
                     id: entity_id(world, e),
-                    name: strings.resolve(d.name),
+                    name: said(d.name),
                     role,
-                    text: cap(fill(world, e, &strings.resolve(d.text), &mut problems)),
+                    text: cap(fill(world, e, &said(d.text), &mut problems)),
                     bounds,
                     z: 0.0,
                     look: String::new(),
@@ -652,9 +675,9 @@ pub fn semantic(world: &World, spec: &FrameSpec) -> SemanticFrame {
     let seen = |c: &Cand, d: Describe, problems: &mut Vec<String>| Seen {
         entity: c.e,
         id: entity_id(world, c.e),
-        name: strings.resolve(d.name),
+        name: said(d.name),
         role: strings.resolve(d.role),
-        text: cap(fill(world, c.e, &strings.resolve(d.text), problems)),
+        text: cap(fill(world, c.e, &said(d.text), problems)),
         bounds: c.bounds,
         z: c.z,
         look: c.look.to_string(),
