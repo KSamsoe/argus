@@ -391,9 +391,17 @@ impl Daemon {
             .unwrap_or("")
             .trim()
             .to_string();
-        let author = json::opt_str(params, "author")?
-            .unwrap_or("human")
-            .to_string();
+        // Who the call is by, as its feed row says (`argus mark drop` from a
+        // shell is `cli`, an identified connection its name); the window's
+        // F8, which no connection makes, is the human's.
+        let author = match json::opt_str(params, "author")? {
+            Some(a) => a.to_string(),
+            None => self
+                .calling
+                .as_ref()
+                .map(|(_, a)| a.clone())
+                .unwrap_or_else(|| "human".to_string()),
+        };
         let want_clip = json::bool_param(params, "clip", true)?;
         let id = ids(&root).last().map_or(1, |i| i + 1);
         let mut mark = self.capture(&mark_dir(&root, id), want_clip, false)?;

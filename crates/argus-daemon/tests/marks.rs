@@ -375,6 +375,49 @@ cur = 5
 }
 
 #[test]
+fn a_mark_is_by_whoever_dropped_it_as_its_feed_row_says() {
+    // A mark dropped from a shell said "human" while its feed row said
+    // "cli": two authors for one mark.
+    let t = temp("marks-author");
+    project(t.path());
+    let mut d = open(t.path());
+    let author = |d: &mut argus_daemon::daemon::Daemon, id: u64| {
+        let mark = ok(d, "mark.get", json!({ "id": id }))["author"].clone();
+        let feed = ok(d, "edit.feed", json!({}));
+        let row = feed["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .rev()
+            .find(|r| r["method"] == "mark.drop")
+            .cloned()
+            .unwrap_or(Json::Null);
+        (mark, row["author"].clone())
+    };
+    d.call(1, "mark.drop", &json!({ "note": "from a shell" }))
+        .unwrap();
+    assert_eq!(author(&mut d, 1), (json!("cli"), json!("cli")));
+    d.call(2, "session.identify", &json!({ "author": "agent:claude" }))
+        .unwrap();
+    d.call(2, "mark.drop", &json!({ "note": "an agent's" }))
+        .unwrap();
+    assert_eq!(
+        author(&mut d, 2),
+        (json!("agent:claude"), json!("agent:claude"))
+    );
+    // Named in the call, it is that; and the window's F8 (no connection)
+    // is the human's.
+    d.call(1, "mark.drop", &json!({ "author": "human:kevin" }))
+        .unwrap();
+    assert_eq!(author(&mut d, 3).0, json!("human:kevin"));
+    ok(&mut d, "mark.drop", json!({}));
+    assert_eq!(
+        ok(&mut d, "mark.get", json!({ "id": 4 }))["author"],
+        "human"
+    );
+}
+
+#[test]
 fn a_replay_is_a_mark_with_no_queue() {
     let t = temp("replays");
     project(t.path());

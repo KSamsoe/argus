@@ -1258,7 +1258,7 @@ pub const METHODS: &[MethodDoc] = &[
         doc: "Mark this moment as a bug report (section 10): what F8 does in the window. Saves the frame as a picture, a two-second clip replayed from the ring, the last two seconds of sound, the last five seconds of input and events, the world's digest, and a replay file (a keyframe and the input since) that reproduces it after this daemon is gone. On a discrete clock the seconds are turns: ten of lead-in, past any ticks that took no turn (a wheel notch, a character typed, a menu's press), and a clip of the last eight ticks. Marks land in .argus/marks/<id>/ and wait in the queue (mark.list).",
         params: &[
             opt("note", STRING, "optional; mark.note adds one later"),
-            opt("author", STRING, "default \"human\""),
+            opt("author", STRING, "default: who the call is by, as its feed row says (the connection's session.identify name, else \"cli\"); F8 in the window is \"human\""),
             opt("clip", BOOLEAN, "default true"),
         ],
         returns: "{id, status, source, frame, time, scene, note, author, dropped_at, dir, picture, clip, sound: absolute paths, ms}",
