@@ -136,7 +136,7 @@ argus mark pull url=http://100.70.114.55:8765/
 
 Each report is pulled once; the project remembers which in `.argus/marks/pulled.json`.
 
-The playtest server is `tools/web/serve.mjs` in the engine's repository, run with Node: `node tools/web/serve.mjs <site> [port] [host] [marks-dir]`. It serves a web build and takes reports at `POST /marks`. It is not part of an Argus install yet. [docs/playtest.md](../playtest.md) describes the one Kevin runs. Building the page is in [Releasing](releasing.md).
+The playtest server is `serve.mjs`, run with Node: `node serve.mjs <site> [port] [host] [marks-dir]`. It serves a web build and takes reports at `POST /marks`. An install has it in `runtime/web/`: `%LOCALAPPDATA%\Argus\app\runtime\web\serve.mjs` on Windows, `~/.local/share/argus/app/runtime/web/serve.mjs` on Linux and the Mac. In the engine's repository it is `tools/web/serve.mjs`. [docs/playtest.md](../playtest.md) describes the one Kevin runs. Building the page is in [Releasing](releasing.md).
 
 ## Two web pages
 

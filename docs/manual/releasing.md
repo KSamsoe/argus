@@ -117,13 +117,19 @@ python -m http.server 8000
 
 Then open `http://localhost:8000/`. The page draws with WebGPU, and falls back to WebGL2 in a browser without it. Query parameters: `?scene=` and `?seed=` choose what loads, `?lang=fr` plays in a language pack, and `?webgl` forces WebGL2. The page's sound uses an AudioWorklet, which a browser allows only in a secure context: from `localhost`, or over HTTPS. Over plain HTTP from another machine it falls back to an older way, which a slow frame can interrupt. Players' settings and saves are kept in the browser.
 
-To collect players' reports (F8) as well, serve the page with the playtest server from the engine's repository, which takes them at `POST /marks` and sends the page compressed:
+To collect players' reports (F8) as well, serve the page with the playtest server, which takes them at `POST /marks` and sends the page compressed. An install has it in `runtime/web/serve.mjs`, in the folder Argus is installed in. On Windows:
 
-```sh
-node tools/web/serve.mjs dist/web 8765 127.0.0.1
+```powershell
+node "$env:LOCALAPPDATA\Argus\app\runtime\web\serve.mjs" dist/web 8765 127.0.0.1
 ```
 
-It is not part of an Argus install yet. See [Playtesting](playtesting.md) for pulling its reports into marks, and [docs/playtest.md](../playtest.md) for a server on a tailnet with HTTPS.
+On Linux and the Mac:
+
+```sh
+node ~/.local/share/argus/app/runtime/web/serve.mjs dist/web 8765 127.0.0.1
+```
+
+In the engine's repository it is `tools/web/serve.mjs`. See [Playtesting](playtesting.md) for pulling its reports into marks, and [docs/playtest.md](../playtest.md) for a server on a tailnet with HTTPS.
 
 A game with Rust plugins has no web build, since a page cannot load a library: `argus build --target web` says so and stops. Swarm is such a game.
 

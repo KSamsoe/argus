@@ -44,6 +44,10 @@ STAGE=${STAGE:-target/stage/argus-$VERSION-$OS}
 STAGE=$(cd "$STAGE" && pwd)
 ARGUS=$STAGE/bin/argus$EXE
 [ -x "$ARGUS" ] || { echo "check.sh: no $ARGUS; run tools/release/stage.sh" >&2; exit 1; }
+if [ "$WEB" = 1 ] && [ ! -f "$STAGE/runtime/web/serve.mjs" ]; then
+  echo "check.sh: the install has no playtest server, runtime/web/serve.mjs" >&2
+  exit 1
+fi
 
 # The PATH without any directory that has cargo in it.
 NOCARGO=$(printf '%s' "$PATH" | tr ':' '\n' | while IFS= read -r d; do

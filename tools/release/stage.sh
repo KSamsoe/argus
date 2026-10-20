@@ -145,7 +145,9 @@ if [ "$WEB" = 1 ]; then
     --target wasm32-unknown-unknown --crate-type cdylib --features rigid
   wasm-bindgen --target web --out-dir "$OUT/runtime/web/pkg" \
     target-web/wasm32-unknown-unknown/release/argus_web.wasm
-  cp tools/web/index.html tools/web/main.js "$OUT/runtime/web/"
+  # The page and its script, and the playtest server that serves a web
+  # build and takes its reports (`argus build` copies only the first two).
+  cp tools/web/index.html tools/web/main.js tools/web/serve.mjs "$OUT/runtime/web/"
   meta "$OUT/runtime/web" web web '["rigid"]'
 fi
 
