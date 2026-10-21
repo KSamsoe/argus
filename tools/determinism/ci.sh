@@ -34,19 +34,19 @@ SHA=$(git rev-parse HEAD)
 rm -rf "$OUT"
 mkdir -p "$OUT"
 
-echo "=== $NATIVE: the runs and the scenarios"
-bash tools/determinism/native.sh "$NATIVE" || exit 1
-bash tools/determinism/scenarios.sh "$NATIVE" "${GAMES[@]}"
-
-echo "=== linux ($HOST), at $SHA"
+# The Linux host works while this machine does: its half starts first.
+echo "=== linux ($HOST), at $SHA: started"
 git bundle create "$OUT/head.bundle" HEAD > /dev/null 2>&1
 scp -q -o BatchMode=yes "$OUT/head.bundle" "$HOST:/tmp/argus-ci.bundle" || {
   echo "det: cannot reach $HOST" >&2
   exit 1
 }
-ssh -o BatchMode=yes "$HOST" bash -s -- "$SHA" "${GAMES[*]}" <<'REMOTE' || exit 1
+# ssh joins its arguments into one command line, so the games go as one
+# word each after the commit.
+ssh -o BatchMode=yes "$HOST" bash -s -- "$SHA" "${GAMES[@]}" > "$OUT/klab.log" 2>&1 <<'REMOTE' &
 set -uo pipefail
-SHA=$1; GAMES=$2
+SHA=$1
+shift
 export PATH="$HOME/.cargo/bin:$PATH"
 [ -d ~/argus-ci/.git ] || git init -q ~/argus-ci
 cd ~/argus-ci
@@ -54,12 +54,17 @@ git fetch -q /tmp/argus-ci.bundle HEAD && git checkout -q --force "$SHA" || exit
 git clean -qfdx -e target
 rm -rf target/determinism
 bash tools/determinism/native.sh klab || exit 1
-bash tools/determinism/scenarios.sh klab $GAMES
+bash tools/determinism/scenarios.sh klab "$@"
 tar -C target/determinism -czf /tmp/argus-ci-det.tar.gz .
 REMOTE
-scp -q -o BatchMode=yes "$HOST:/tmp/argus-ci-det.tar.gz" "$OUT/klab.tar.gz" || exit 1
-tar --force-local -C "$OUT" -xzf "$OUT/klab.tar.gz" || exit 1
+REMOTE_PID=$!
 
+echo "=== $NATIVE: the runs and the scenarios"
+bash tools/determinism/native.sh "$NATIVE" || exit 1
+bash tools/determinism/scenarios.sh "$NATIVE" "${GAMES[@]}"
+
+# After the scenarios: a web build opens the project's daemon, which a
+# scenario run beside it would share (one job a project at a time).
 echo "=== Chrome: the runs, from each game's web build"
 cargo build -q -p argus-cli || exit 1
 EXE=""
@@ -74,6 +79,17 @@ for g in "${WEB_GAMES[@]}"; do
   timeout 1800 node tools/determinism/web.mjs "target-web/det/$g" tools/determinism/runs/"$g"-*.json || exit 1
 done
 
+echo "=== linux ($HOST): waiting for its half"
+wait "$REMOTE_PID" || {
+  echo "det: $HOST's half failed:"
+  tail -n 30 "$OUT/klab.log"
+  exit 1
+}
+cat "$OUT/klab.log"
+scp -q -o BatchMode=yes "$HOST:/tmp/argus-ci-det.tar.gz" "$OUT/klab.tar.gz" || exit 1
+# -m: the two clocks differ by seconds, and tar warns of files from the future.
+tar --force-local -m -C "$OUT" -xzf "$OUT/klab.tar.gz" || exit 1
+
 echo "=== the comparison"
 failed=0
 node tools/determinism/compare.mjs "$NATIVE" klab web > "$OUT/det-runs.json" || failed=1
@@ -86,12 +102,18 @@ for (const r of runs) {
   console.log(`${r.run}: klab ${show(r.klab)}, Chrome ${show(r.web)}`);
 }
 for (const g of JSON.parse(fs.readFileSync(process.argv[2]))) {
-  console.log(`${g.game} scenarios: ${g.runs ?? 0} runs, ${g.same ?? 0} the same on klab` + (g.differ ? `, ${g.differ} differ: ${g.first_differing.join("; ")}` : ""));
+  console.log(`${g.game} scenarios: ${g.runs ?? 0} runs, ${g.same ?? 0} the same on klab` + (g.only_in_one ? `, ${g.only_in_one} run on one machine only` : "") + (g.differ ? `, ${g.differ} differ: ${g.first_differing.join("; ")}` : ""));
 }' "$OUT/det-runs.json" "$OUT/det-scenarios.json"
-# Swarm is never measured in Chrome; anything else unmeasured is a failure.
+# Swarm is never measured in Chrome; anything else not measured everywhere
+# is a failure, as is a game whose scenarios did not all run on both.
 if node -e '
-const runs = JSON.parse(require("fs").readFileSync(process.argv[1]));
-const missing = runs.filter((r) => r.klab === "not measured" || (r.web === "not measured" && !r.run.startsWith("swarm-")));
-for (const r of missing) console.log(`${r.run}: not measured on every platform`);
-process.exit(missing.length ? 1 : 0);' "$OUT/det-runs.json"; then :; else failed=1; fi
+const fs = require("fs");
+const runs = JSON.parse(fs.readFileSync(process.argv[1]));
+const games = JSON.parse(fs.readFileSync(process.argv[2]));
+const bad = [
+  ...runs.filter((r) => r.klab === "not measured" || (r.web === "not measured" && !r.run.startsWith("swarm-"))).map((r) => `${r.run}: not measured on every platform`),
+  ...process.argv.slice(3).filter((g) => !games.some((x) => x.game === g && x.runs > 0 && !x.only_in_one)).map((g) => `${g}: its scenarios did not all run on both machines`),
+];
+for (const b of bad) console.log(b);
+process.exit(bad.length ? 1 : 0);' "$OUT/det-runs.json" "$OUT/det-scenarios.json" "${GAMES[@]}"; then :; else failed=1; fi
 exit $failed
