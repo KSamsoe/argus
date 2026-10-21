@@ -207,3 +207,24 @@ fn what_is_not_a_relay_message_is_refused() {
     }
     panic!("connections left open: {:?}", h.counts());
 }
+
+#[test]
+fn a_relay_made_slow_holds_each_message_its_lag() {
+    let url = relay(Limits {
+        lag: Duration::from_millis(80),
+        jitter: Duration::from_millis(20),
+        ..Limits::default()
+    });
+    let mut a = Client::host(&url, 2, 7).unwrap();
+    let mut b = Client::join(&url, a.code(), 7).unwrap();
+    present(&mut a, &[1, 2]);
+    for i in 0..5u8 {
+        let t = std::time::Instant::now();
+        a.send(vec![i]);
+        let got = got(&mut b, 1);
+        let took = t.elapsed();
+        assert_eq!(got, vec![vec![i]]);
+        assert!(took >= Duration::from_millis(80), "{took:?}");
+        assert!(took < Duration::from_millis(400), "{took:?}");
+    }
+}

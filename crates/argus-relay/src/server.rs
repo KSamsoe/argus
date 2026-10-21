@@ -36,6 +36,11 @@ pub struct Limits {
     pub idle: Duration,
     /// A room with no one connected is kept this long for one coming back.
     pub empty: Duration,
+    /// A link made slow on purpose: each message passed on is held this
+    /// long first (0 for none), for trying a match over a bad connection.
+    pub lag: Duration,
+    /// Up to this much more, drawn for each message.
+    pub jitter: Duration,
 }
 
 impl Default for Limits {
@@ -49,6 +54,8 @@ impl Default for Limits {
             burst: 480.0,
             idle: Duration::from_secs(30),
             empty: Duration::from_secs(60),
+            lag: Duration::ZERO,
+            jitter: Duration::ZERO,
         }
     }
 }
@@ -118,6 +125,56 @@ fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+/// Messages held back for a slow link (`Limits::lag`), each until its time,
+/// and the thread that sends them then.
+#[derive(Clone)]
+struct Later(Arc<(Mutex<Vec<(Instant, Conn, Down)>>, std::sync::Condvar)>);
+
+impl Later {
+    fn start() -> Later {
+        let later = Later(Arc::new((
+            Mutex::new(Vec::new()),
+            std::sync::Condvar::new(),
+        )));
+        let l = later.clone();
+        std::thread::spawn(move || {
+            let (q, cv) = &*l.0;
+            let mut held = lock(q);
+            loop {
+                let now = Instant::now();
+                let (due, rest): (Vec<_>, Vec<_>) = held.drain(..).partition(|m| m.0 <= now);
+                *held = rest;
+                if !due.is_empty() {
+                    drop(held);
+                    let mut due = due;
+                    due.sort_by_key(|m| m.0);
+                    for (_, c, m) in due {
+                        send(&c, &m);
+                    }
+                    held = lock(q);
+                    continue;
+                }
+                let wait = held
+                    .iter()
+                    .map(|m| m.0.saturating_duration_since(now))
+                    .min()
+                    .unwrap_or(Duration::from_secs(1));
+                held = cv
+                    .wait_timeout(held, wait)
+                    .map(|r| r.0)
+                    .unwrap_or_else(|e| e.into_inner().0);
+            }
+        });
+        later
+    }
+
+    fn hold(&self, at: Instant, c: Conn, m: Down) {
+        let (q, cv) = &*self.0;
+        lock(q).push((at, c, m));
+        cv.notify_one();
+    }
+}
+
 /// A relay bound to its address, not yet answering.
 pub struct Relay {
     listener: TcpListener,
@@ -150,12 +207,14 @@ impl Relay {
 
     /// Answer players until the process ends.
     pub fn serve(self) {
+        let later =
+            (!self.limits.lag.is_zero() || !self.limits.jitter.is_zero()).then(Later::start);
         let limits = Arc::new(self.limits);
         for s in self.listener.incoming() {
             let Ok(s) = s else { continue };
-            let (state, limits) = (self.state.clone(), limits.clone());
+            let (state, limits, later) = (self.state.clone(), limits.clone(), later.clone());
             std::thread::spawn(move || {
-                let _ = connection(s, &state, &limits);
+                let _ = connection(s, &state, &limits, later.as_ref());
             });
         }
     }
@@ -190,7 +249,12 @@ fn present(room: &Room) -> Vec<(Conn, Down)> {
         .collect()
 }
 
-fn connection(s: TcpStream, state: &Arc<Mutex<State>>, limits: &Limits) -> std::io::Result<()> {
+fn connection(
+    s: TcpStream,
+    state: &Arc<Mutex<State>>,
+    limits: &Limits,
+    later: Option<&Later>,
+) -> std::io::Result<()> {
     s.set_read_timeout(Some(limits.idle))?;
     s.set_write_timeout(Some(Duration::from_secs(3)))?;
     s.set_nodelay(true)?;
@@ -232,7 +296,7 @@ fn connection(s: TcpStream, state: &Arc<Mutex<State>>, limits: &Limits) -> std::
             limits.connections
         ))
     } else {
-        talk(&mut reader, &conn, state, limits, &mut me)
+        talk(&mut reader, &conn, state, limits, later, &mut me)
     };
     if let Some(why) = why {
         send(&conn, &Down::Refused(why));
@@ -285,6 +349,7 @@ fn talk(
     conn: &Conn,
     state: &Arc<Mutex<State>>,
     limits: &Limits,
+    later: Option<&Later>,
     me: &mut Option<(String, u8)>,
 ) -> Option<String> {
     let mut tokens = limits.burst;
@@ -334,7 +399,17 @@ fn talk(
             handle(&mut st, m, conn, limits, me, &mut out)
         };
         for (c, m) in out {
-            send(&c, &m);
+            match (later, &m) {
+                // A slow link holds what one player sends another.
+                (Some(l), Down::From { .. }) => {
+                    let x = u64::from_le_bytes(ws::noise()[..8].try_into().unwrap());
+                    let extra = limits
+                        .jitter
+                        .mul_f64((x >> 11) as f64 / (1u64 << 53) as f64);
+                    l.hold(Instant::now() + limits.lag + extra, c, m);
+                }
+                _ => send(&c, &m),
+            }
         }
         if refused.is_some() {
             return refused;
