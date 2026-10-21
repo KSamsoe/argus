@@ -1,0 +1,18 @@
+# Sparks where a swing lands: systems/looks.luau starts one of these where
+# the fighter was hit. It throws its burst at once, and its entity is gone
+# when the last spark is. Each spark is frame 27 of sprites/actors,
+# glowing (fx/glow), white, then gold, then gone. More sparks: raise
+# burst; longer: raise lifetime.
+type = "emitter"
+sprite = "sprites/actors"
+frame = 27
+burst = 24
+max = 32
+lifetime = [0.15, 0.45]
+speed = [4, 12]
+spread = 360
+drag = 5
+size = [[0, 0.35], [1, 0.05]]
+color = [[0, "#FFFFFFFF"], [0.35, "#FFD866E0"], [1, "#FF7A3000"]]
+z = 3.5
+material = "fx/glow"

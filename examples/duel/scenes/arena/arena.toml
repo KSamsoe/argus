@@ -1,0 +1,22 @@
+# The arena: the floor you see, and its edge is the walls. Its Sprite's
+# size is the arena's size: sim.move keeps the fighters inside it. Make it
+# bigger here, and make the wall (wall.toml) and the camera's height
+# (camera.toml) bigger to match; the floor's picture stretches, so redraw
+# it at the new size too (ARENA_W and ARENA_H in
+# assets/sprites/room.art.luau).
+#
+# It also holds the match: the score, and how many points win.
+[Transform]
+pos = [0.0, 0.0]
+
+# The floor's picture: frame 0 of sprites/room (assets/sprites/room.art.luau
+# draws it).
+[Sprite]
+atlas = "sprites/room"
+frame = 0
+size = [32.0, 18.0]
+z = 0.0
+
+[Match]
+to = 3
+pause = 60

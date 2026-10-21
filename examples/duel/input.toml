@@ -1,0 +1,100 @@
+# The players' actions, and the keys, buttons, and touch controls bound to
+# them. A script reads an action by name (Actions.move, Actions.attack_pressed);
+# a player can rebind it.
+#
+# Two players share one keyboard: slot 1 has the actions' own keys (WASD,
+# F, Space), and [slots.2.keys] gives slot 2 its own (the arrows, period,
+# slash). Online, each player plays on their own machine with slot 1's
+# keys, pad, and touch, whichever slot the room gave them.
+[actions.move]
+type = "axis2"
+doc = "Move (eight ways on keys, any way on a stick); the fighter faces the way it last moved"
+[actions.move.bindings]
+keyboard = ["wasd"]
+gamepad = ["left_stick", "dpad"]
+touch = ["stick"]
+
+[actions.attack]
+type = "button"
+doc = "Swing in front; on the win screen, start a new match"
+[actions.attack.bindings]
+keyboard = ["f"]
+gamepad = ["south", "rb"]
+touch = ["attack"]
+
+[actions.dash]
+type = "button"
+doc = "A short fast burst the way the fighter faces; nothing hits it while it dashes"
+[actions.dash.bindings]
+keyboard = ["space", "g"]
+gamepad = ["east", "lb"]
+touch = ["dash"]
+
+# The menus' actions (the UI reads these names). The title menu is moved
+# by slot 1's. Cancel in a match on this machine goes back to the menu.
+[actions.ui_move]
+type = "axis2"
+doc = "Move the focus in the menu"
+[actions.ui_move.bindings]
+keyboard = ["arrows", "wasd"]
+gamepad = ["dpad", "left_stick"]
+
+[actions.ui_confirm]
+type = "button"
+doc = "Press the focused button"
+[actions.ui_confirm.bindings]
+keyboard = ["enter"]
+gamepad = ["south"]
+
+[actions.ui_cancel]
+type = "button"
+doc = "Stop typing a room's code; in a match on this machine, back to the title menu"
+[actions.ui_cancel.bindings]
+keyboard = ["escape"]
+gamepad = ["start"]
+
+[actions.ui_click]
+type = "button"
+doc = "Press the button under the pointer (or the finger)"
+[actions.ui_click.bindings]
+mouse = ["left"]
+
+[actions.pointer]
+type = "pointer"
+doc = "Where the mouse is, on the UI canvas"
+[actions.pointer.bindings]
+mouse = ["position"]
+
+[slots.1]
+devices = ["keyboard", "mouse", "gamepad:0"]
+
+[slots.2]
+devices = ["keyboard", "gamepad:1"]
+
+# Player 2's keys on the shared keyboard, in place of the actions' own.
+[slots.2.keys]
+move = ["arrows"]
+attack = ["period"]
+dash = ["slash"]
+
+# Under a finger: a stick at the bottom left, Attack and Dash at the bottom
+# right. The stick stays where it is (not floating), so a tap on the
+# menu's buttons is a tap, whichever half of the screen it is in. The
+# engine draws them while touch is in use.
+[touch.stick]
+kind = "stick"
+anchor = "bottom-left"
+at = [140, 140]
+size = 180
+
+[touch.attack]
+kind = "button"
+anchor = "bottom-right"
+at = [110, 120]
+size = 120
+
+[touch.dash]
+kind = "button"
+anchor = "bottom-right"
+at = [245, 80]
+size = 96

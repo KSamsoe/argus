@@ -1,0 +1,18 @@
+# A puff of dust where a dash starts: systems/looks.luau starts one of
+# these there. It throws its burst at once, and its entity is gone when
+# the last of the dust is. Each mote is frame 28 of sprites/actors,
+# growing as it slows, pale, then the floor's grey, then gone.
+type = "emitter"
+sprite = "sprites/actors"
+frame = 28
+burst = 10
+max = 16
+shape = "circle"
+radius = 0.25
+lifetime = [0.25, 0.5]
+speed = [1.0, 3.0]
+spread = 360
+drag = 5
+size = [[0, 0.3], [1, 0.8]]
+color = [[0, "#E8EEF0C0"], [0.3, "#9AA8B0A0"], [1, "#3A444A00"]]
+z = 1.5

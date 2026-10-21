@@ -1,0 +1,25 @@
+# Duel's UI theme: the colours the HUD, the title menu, and the win screen
+# name, on the default 960 x 540 canvas in the built-in pixel font. `one`
+# and `two` are the fighters' colours (their helmets in
+# assets/shared.lib.luau). The frame the panels sit in is ui/panel
+# (assets/ui/panel.art.luau draws it). High contrast (a player's setting)
+# uses the second set.
+[colors]
+text = "#E6EEF2"
+muted = "#8DA2AE"
+accent = "#F2C14E"
+one = "#5DB4FF"
+two = "#FF6A55"
+button = "#1B2A33"
+border = "#4F6672"
+focus = "#F2C14E"
+
+[high_contrast_colors]
+text = "#FFFFFF"
+muted = "#FFFFFF"
+accent = "#FFFF00"
+one = "#40C0FF"
+two = "#FF5030"
+button = "#000000"
+border = "#FFFFFF"
+focus = "#FFFF00"

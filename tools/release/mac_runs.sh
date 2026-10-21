@@ -19,7 +19,7 @@ RUNS=$(abs "$2")
 SCRATCH=$(abs "$3")
 [ -x "$A" ] || { echo "mac_runs.sh: no $A" >&2; exit 1; }
 rm -rf "${RUNS:?}"/* "${SCRATCH:?}/platformer"
-for g in delve hollow outpost puppet swarm toybox; do
+for g in delve hollow outpost puppet swarm toybox duel; do
   t0=$SECONDS
   # Each game's suite in a copy, so the checkout's examples stay as they are.
   rm -rf "${SCRATCH:?}/$g"

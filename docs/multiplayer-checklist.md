@@ -62,6 +62,8 @@ Before a public relay: connections a minute per address, a cap on its total band
 - **Scenarios** run a match in one test: `t:net { players = 2, delay = 2, jitter = 30, loss = 0.05 }`, every player's input scripted, and the test fails if the players ever disagree.
 - Tests: a scenario match under a bad link; a page and a desktop game in one match through a relay; the daemon as one player.
 
+**Done (2026-10-21, e402b88e, 9c6d6ddb, 650972c6).** Scripts: `q:net()` (recorded with the input, as `q:saves()` is; in a match only what every player shares), `q:net_host`, `q:net_join`, `q:net_leave`. `argus_net::Lobby` makes a room on the relay; once every slot is taken the host's `Start` has every player load the scene afresh from its seed, and the first world's digest is the match's fingerprint. The desktop game takes `--relay`, `--host [players]`, `--join <code>` (and plays a match headless, for tests); the page `?relay`, `?room`, `?host`; the daemon `net.host`, `net.join`, `net.leave`, `net.status`, playing one side so an agent plays against a person. Scenarios: `t:net {players, delay, latency, jitter, loss}` and `t.input:slot(n)` (`net.sim`: the other players are forks over a simulated network; every step ends with every world the same, or the run fails naming the fields). Tests: argus-daemon `tests/netplay.rs` (a scenario match over a 70 ms link with 5% loss; a drifted world failing its run by `Fighter.speed`; the daemon against a Player through a relay), argus-player `tests/netplay.rs` (a room on a relay starting one match), and `tools/net/check.mjs` (Duel's web build against its desktop build, and two pages, through a relay made slow on purpose: 9 checks agreed, rollbacks on both).
+
 ## 4. A versus game
 
 - **A new example**, small and quick to read: two players in one arena, each with a move, a dash, and an attack, first to three wins. Real time, so it shows prediction and rollback at work.
@@ -69,6 +71,8 @@ Before a public relay: connections a minute per address, a cap on its total band
 - Its art and sound are made by its own scripts, as the other examples' are.
 - Two players on one machine, sharing the keyboard, also works, which is how it is played in tests and by an agent.
 - Tests: scenarios of whole rounds over a bad link; its pictures; the web build in headless Chrome as two pages through a relay.
+
+**Done (2026-10-21).** `examples/duel`: two fighters in the arena template's room, move, a dash that cannot be hit, a swing, first to three; a title menu (two players here, host online, join online with a code), the room's code from `q:net()`, a win screen; art from its own scripts, sounds as tones; the keyboard for both players (`[slots.2.keys]`), pads, and touch. 13 scenarios, among them five rounds over `t:net { latency = 60, jitter = 30, loss = 0.05 }` (13 rollbacks a side, 81 of 1,724 messages lost) and three picture goldens; its web and desktop builds play together (item 3). It is in CI's games step, the det step, and the release's example games. Not on the public games site yet: that is Kevin's to decide, with a relay the public can reach.
 
 ## Docs
 

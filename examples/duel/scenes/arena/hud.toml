@@ -1,0 +1,25 @@
+# The HUD: the score, at the top middle of the screen, in the frame the
+# menu and the win screen use too (ui/panel, which assets/ui/panel.art.luau
+# draws; nine-sliced: its corners keep their size, drawn two canvas pixels
+# a pixel, as the art is). The {...} holes are filled from the world every
+# frame ({@arena:Match.one} is @arena's Match.one), so no script writes it;
+# [color=one] is ui.toml's blue. UI sizes are pixels on a 960 x 540 canvas.
+[UiRoot]
+interactive = false
+layer = 1
+
+[UiNode]
+absolute = true
+anchor = [0.5, 0.0]
+pivot = [0.5, 0.0]
+offset = [0.0, 6.0]
+pad = [16.0, 7.0]
+
+[UiPanel]
+image = "ui/panel"
+slice = 5.0
+scale = 2.0
+
+[UiText]
+text = "[color=one]Player 1[/color]   [b]{@arena:Match.one} - {@arena:Match.two}[/b]   [color=two]Player 2[/color]"
+wrap = false

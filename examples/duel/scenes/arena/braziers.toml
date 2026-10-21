@@ -1,0 +1,96 @@
+# A brazier on each corner pillar of the walls: the room's light. Only a
+# look. Each is a picture (frame 30 of sprites/actors), a Light that
+# flickers, and an Emitter that keeps throwing flames (fx/flame). The
+# camera's Lighting (camera.toml) is the dim light everywhere else; a
+# brighter room is a higher Lighting.level there, a warmer or wider pool
+# is a Light's color or radius here.
+[Transform]
+pos = [0.0, 0.0]
+
+[children.nw.Transform]
+pos = [-16.125, 9.875]
+
+[children.nw.Sprite]
+atlas = "sprites/actors"
+frame = 30
+size = [1.0, 1.0]
+z = 4.5
+
+[children.nw.Emissive]
+
+[children.nw.Light]
+color = "#FFA050"
+intensity = 2.0
+radius = 10.0
+falloff = 1.2
+flicker = 0.2
+shadows = false
+
+[children.nw.Emitter]
+effect = "fx/flame"
+
+[children.ne.Transform]
+pos = [16.125, 9.875]
+
+[children.ne.Sprite]
+atlas = "sprites/actors"
+frame = 30
+size = [1.0, 1.0]
+z = 4.5
+
+[children.ne.Emissive]
+
+[children.ne.Light]
+color = "#FFA050"
+intensity = 2.0
+radius = 10.0
+falloff = 1.2
+flicker = 0.2
+shadows = false
+
+[children.ne.Emitter]
+effect = "fx/flame"
+
+[children.sw.Transform]
+pos = [-16.125, -9.125]
+
+[children.sw.Sprite]
+atlas = "sprites/actors"
+frame = 30
+size = [1.0, 1.0]
+z = 4.5
+
+[children.sw.Emissive]
+
+[children.sw.Light]
+color = "#FFA050"
+intensity = 2.0
+radius = 10.0
+falloff = 1.2
+flicker = 0.2
+shadows = false
+
+[children.sw.Emitter]
+effect = "fx/flame"
+
+[children.se.Transform]
+pos = [16.125, -9.125]
+
+[children.se.Sprite]
+atlas = "sprites/actors"
+frame = 30
+size = [1.0, 1.0]
+z = 4.5
+
+[children.se.Emissive]
+
+[children.se.Light]
+color = "#FFA050"
+intensity = 2.0
+radius = 10.0
+falloff = 1.2
+flicker = 0.2
+shadows = false
+
+[children.se.Emitter]
+effect = "fx/flame"

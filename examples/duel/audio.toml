@@ -1,0 +1,38 @@
+# Duel's sounds, every one a described tone: no audio files. systems/looks.luau
+# plays them on the game's events (swing, dash, point, clash, match.won).
+# `argus audio describe sound=sfx/hit` says what one is like without ears.
+[buses]
+master = { gain_db = 0 }
+sfx    = { parent = "master", gain_db = -4 }
+
+# A swing: a short whoosh of noise, its high end falling away.
+[sounds."sfx/swing"]
+spatial = false
+gain = 0.35
+pitch_jitter = 0.1
+variations = [ { wave = "noise", ms = 90, attack_ms = 10, release_ms = 60, lowpass = 5000, lowpass_sweep = -40000 } ]
+
+# A dash: a rush of noise rising.
+[sounds."sfx/dash"]
+spatial = false
+gain = 0.3
+pitch_jitter = 0.08
+variations = [ { wave = "noise", ms = 120, attack_ms = 5, release_ms = 70, highpass = 300, highpass_sweep = 12000 } ]
+
+# A hit: a hard snap, low and falling.
+[sounds."sfx/hit"]
+spatial = false
+gain = 0.5
+variations = [ { wave = "square", freq = 220, slide = -900, ms = 110, release_ms = 70, punch = 0.8, duty = 0.3 } ]
+
+# A point: two notes up, a fifth apart.
+[sounds."sfx/point"]
+spatial = false
+gain = 0.3
+variations = [ { wave = "square", freq = 660, ms = 220, release_ms = 120, jump = 1.5, jump_ms = 90, duty = 0.25 } ]
+
+# A win: a short rising tune.
+[sounds."sfx/win"]
+spatial = false
+gain = 0.3
+tone = { wave = "triangle", notes = [523, 659, 784, 1047], note_ms = 140, attack_ms = 5, release_ms = 200, gain = 0.6 }

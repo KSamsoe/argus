@@ -1,0 +1,142 @@
+# The title menu: shown while no match is on (systems/menu.luau shows and
+# hides it, and stands the fight still under it). Slot 1's UI actions move
+# its focus and press its buttons: the arrows or WASD and Enter, a pad, the
+# mouse, or a finger. It starts hidden, so an online match, which opens the
+# scene afresh, never shows it: input.menu shows it from the first tick
+# when no match is playing.
+#
+# Two players here: a match on this machine, both on the keyboard and pads.
+# Host online: a room on the relay for two (its code shows in the status
+# line). Join online: type the other's code in the box, then Enter.
+[UiRoot]
+layer = 10
+
+[UiNode]
+justify = "center"
+align = "center"
+visible = false
+
+[UiPanel]
+color = "#05080AB0"
+
+[children.panel.UiNode]
+pad = [40.0, 22.0]
+gap = 10.0
+min = [420.0, 0.0]
+
+[children.panel.UiPanel]
+image = "ui/panel"
+slice = 5.0
+scale = 2.0
+
+[children.panel.children.title.UiNode]
+
+[children.panel.children.title.UiText]
+text = "DUEL"
+size = 40.0
+color = "accent"
+align = "center"
+wrap = false
+
+[children.panel.children.tagline.UiNode]
+order = 1
+margin = [0.0, 4.0]
+
+[children.panel.children.tagline.UiText]
+text = "Two fighters, one arena: first to three wins"
+color = "muted"
+align = "center"
+wrap = false
+
+[children.panel.children.here.UiNode]
+order = 2
+pad = [18.0, 8.0]
+
+[children.panel.children.here.UiPanel]
+color = "button"
+border = 1.0
+
+[children.panel.children.here.UiButton]
+event = "menu.here"
+
+[children.panel.children.here.UiText]
+text = "Two players here"
+align = "center"
+
+[children.panel.children.host.UiNode]
+order = 3
+pad = [18.0, 8.0]
+
+[children.panel.children.host.UiPanel]
+color = "button"
+border = 1.0
+
+[children.panel.children.host.UiButton]
+event = "menu.host"
+
+[children.panel.children.host.UiText]
+text = "Host online"
+align = "center"
+
+# Join online, and the box the room's code is typed into.
+[children.panel.children.join.UiNode]
+order = 4
+direction = "row"
+gap = 8.0
+
+[children.panel.children.join.children.button.UiNode]
+pad = [18.0, 8.0]
+grow = 1.0
+
+[children.panel.children.join.children.button.UiPanel]
+color = "button"
+border = 1.0
+
+[children.panel.children.join.children.button.UiButton]
+event = "menu.join"
+
+[children.panel.children.join.children.button.UiText]
+text = "Join online"
+align = "center"
+
+[children.panel.children.join.children.code.UiNode]
+order = 1
+size = [130.0, 0.0]
+pad = [10.0, 8.0]
+
+[children.panel.children.join.children.code.UiPanel]
+color = "#0B1013"
+border = 1.0
+
+[children.panel.children.join.children.code.UiButton]
+
+[children.panel.children.join.children.code.UiText]
+align = "center"
+
+[children.panel.children.join.children.code.UiTextBox]
+hint = "its code"
+event = "menu.code"
+max = 8
+# The code stays in the box after Enter, so Join can try it again.
+clear = false
+
+# What the room is doing: written by input.menu from q:net().
+[children.panel.children.status.UiNode]
+order = 5
+margin = [0.0, 4.0]
+
+[children.panel.children.status.UiText]
+color = "accent"
+align = "center"
+
+# The keys: player 1's as glyphs, which follow a rebind and the device in
+# hand; player 2's in words, since a glyph shows the action's own keys,
+# not [slots.2.keys].
+[children.panel.children.keys.UiNode]
+order = 6
+
+[children.panel.children.keys.UiText]
+text = "[color=one]Player 1[/color]  [glyph=move] move  [glyph=attack] attack  [glyph=dash] dash\n[color=two]Player 2[/color]  Arrows move  Period attack  Slash dash"
+color = "muted"
+align = "center"
+wrap = false

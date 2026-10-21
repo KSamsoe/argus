@@ -1,0 +1,15 @@
+# A swing's hitbox, as sim.attack spawns it (q:spawn_prefab("swing") in
+# systems/attack.luau), which gives it where it is, which way it turns, its
+# fighter, and how long it lasts. Its look is here: the slash, frames 24 to
+# 26 of sprites/actors, glowing. systems/looks.luau picks the frame as it
+# sweeps and tints it in its fighter's colour.
+[Transform]
+
+[Swing]
+
+[Sprite]
+atlas = "sprites/actors"
+frame = 24
+size = [1.5, 2.0]
+material = "fx/glow"
+z = 3.0

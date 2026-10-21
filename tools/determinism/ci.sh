@@ -22,8 +22,8 @@ HOST=${ARGUS_DET_HOST:-klab}
 OUT=target/determinism
 NATIVE=windows
 [ "${OS:-}" = "Windows_NT" ] || NATIVE=linux
-GAMES=(hollow delve swarm outpost toybox puppet)
-WEB_GAMES=(hollow delve outpost toybox puppet)
+GAMES=(hollow delve swarm outpost toybox puppet duel)
+WEB_GAMES=(hollow delve outpost toybox puppet duel)
 
 git update-index -q --refresh > /dev/null 2>&1 || true
 if [ -n "$(git status --porcelain --untracked-files=no)" ]; then

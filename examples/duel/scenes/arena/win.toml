@@ -1,0 +1,53 @@
+# The win screen, in the middle of the screen: hidden until a fighter has
+# three points (sim.round shows it, and hides it when a new match starts).
+# The canvas dimmed, a panel in the HUD's frame, and three lines; the
+# title's colour is the winner's (systems/looks.luau sets it).
+[UiRoot]
+interactive = false
+layer = 10
+
+[UiNode]
+justify = "center"
+align = "center"
+visible = false
+
+[UiPanel]
+color = "#05080A99"
+
+[children.panel.UiNode]
+pad = [44.0, 20.0]
+# Above the middle, so the fighters still show.
+offset = [0.0, -105.0]
+gap = 10.0
+align = "center"
+
+[children.panel.UiPanel]
+image = "ui/panel"
+slice = 5.0
+scale = 2.0
+
+[children.panel.children.title.UiNode]
+
+[children.panel.children.title.UiText]
+text = "Player {@arena:Match.winner} wins"
+size = 32.0
+color = "accent"
+align = "center"
+wrap = false
+
+[children.panel.children.score.UiNode]
+order = 1
+
+[children.panel.children.score.UiText]
+text = "{@arena:Match.one} - {@arena:Match.two}"
+align = "center"
+wrap = false
+
+[children.panel.children.hint.UiNode]
+order = 2
+
+[children.panel.children.hint.UiText]
+text = "[glyph=attack] or Period to play again"
+color = "muted"
+align = "center"
+wrap = false

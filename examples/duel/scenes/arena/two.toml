@@ -1,0 +1,38 @@
+# Player 2, the red fighter, on the right: slot 2's actions (the arrows,
+# period, slash on the shared keyboard, or the second pad). As one.toml in
+# every way but its slot, its place, and its pictures (frames 12 to 23).
+[PlayerSlot]
+slot = 2
+
+[Actions]
+
+[Transform]
+pos = [6.0, 0.0]
+
+[Fighter]
+home = [6.0, 0.0]
+facing = [-1.0, 0.0]
+
+[Sprite]
+atlas = "sprites/actors"
+frame = 12
+flip_x = true
+size = [1.0, 1.0]
+material = "fx/body"
+z = 2.0
+
+[Light]
+color = "#FFB4A8"
+intensity = 1.0
+radius = 7.0
+falloff = 1.4
+shadows = false
+
+[children.shadow.Transform]
+pos = [0.0, -0.4167]
+
+[children.shadow.Sprite]
+atlas = "sprites/actors"
+frame = 29
+size = [0.8333, 0.3333]
+z = 0.5

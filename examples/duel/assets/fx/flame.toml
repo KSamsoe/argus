@@ -1,0 +1,20 @@
+# A brazier's flames (scenes/arena/braziers.toml): soft motes (frame 28 of
+# sprites/actors) rising from the coals, glowing (fx/glow), pale yellow,
+# then orange, then gone. Taller flames: a longer lifetime or more
+# gravity (it points up); a fiercer fire: a higher rate.
+type = "emitter"
+sprite = "sprites/actors"
+frame = 28
+rate = 34
+max = 64
+shape = "circle"
+radius = 0.18
+lifetime = [0.35, 0.7]
+speed = [0.3, 1.0]
+direction = 90
+spread = 50
+gravity = [0, 2.5]
+size = [[0, 0.6], [1, 0.1]]
+color = [[0, "#FFF1B0F0"], [0.35, "#FF9A3CC0"], [1, "#B0301000"]]
+z = 4.6
+material = "fx/glow"

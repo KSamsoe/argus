@@ -1,0 +1,44 @@
+# Player 1, the blue fighter, on the left: slot 1's actions are written onto
+# it every tick. Its numbers (speed, dash, swing) are in Fighter: try them
+# in the editor's tuning panel, then write the ones you like here. Each
+# round it starts at home, facing the other.
+[PlayerSlot]
+slot = 1
+
+[Actions]
+
+[Transform]
+pos = [-6.0, 0.0]
+
+[Fighter]
+home = [-6.0, 0.0]
+facing = [1.0, 0.0]
+
+# Its picture: a frame of sprites/actors (assets/sprites/actors.art.luau
+# draws them; 0 to 11 are this fighter's), which systems/looks.luau picks
+# each tick, drawn at its own colour whatever the light (fx/body). The
+# size is also its body: sim.move keeps it inside the walls by it.
+[Sprite]
+atlas = "sprites/actors"
+frame = 0
+size = [1.0, 1.0]
+material = "fx/body"
+z = 2.0
+
+# The light it carries, in its colour. Only a look.
+[Light]
+color = "#A8D4FF"
+intensity = 1.0
+radius = 7.0
+falloff = 1.4
+shadows = false
+
+# Its shadow, under its feet (frame 29). Only a look.
+[children.shadow.Transform]
+pos = [0.0, -0.4167]
+
+[children.shadow.Sprite]
+atlas = "sprites/actors"
+frame = 29
+size = [0.8333, 0.3333]
+z = 0.5

@@ -71,6 +71,21 @@ function swarm(r, ticks) {
   return log;
 }
 
+// Duel: the menu's first button (two players here), then both players
+// walk, swing, and dash at random, as two people at one keyboard do.
+function duel(r, ticks) {
+  const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1], [0.7071, 0.7071], [-0.7071, -0.7071], [0, 0]];
+  const log = [[15, 1, "ui_confirm", true], [17, 1, "ui_confirm", false]];
+  for (const slot of [1, 2]) {
+    for (let t = 30; t < ticks; t += between(r, 10, 50)) {
+      log.push([t, slot, "move", pick(r, dirs)]);
+      if (r() < 0.4) log.push([t + 2, slot, "attack", true], [t + 4, slot, "attack", false]);
+      if (r() < 0.15) log.push([t + 6, slot, "dash", true], [t + 8, slot, "dash", false]);
+    }
+  }
+  return dedupeSlots(log);
+}
+
 // Outpost runs itself: no input, the colony's week at 1x (and toybox and
 // puppet, which have no input map).
 const outpost = () => [];
@@ -80,6 +95,13 @@ function dedupe(log) {
   const seen = new Map();
   for (const row of log) seen.set(`${row[0]}|${row[2]}`, row);
   return [...seen.values()].sort((a, b) => a[0] - b[0]);
+}
+
+// As dedupe, each slot its own.
+function dedupeSlots(log) {
+  const seen = new Map();
+  for (const row of log) seen.set(`${row[0]}|${row[1]}|${row[2]}`, row);
+  return [...seen.values()].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
 }
 
 // A few seeds a game: Delve's hero dies on the first floors and the game
@@ -93,6 +115,8 @@ const games = [
   // skeletons (sin, cos, and atan2 every bone, every tick) run themselves.
   { game: "toybox", scene: "toybox", seeds: [1], ticks: 3600, every: 30, make: outpost },
   { game: "puppet", scene: "stage", seeds: [1], ticks: 3600, every: 30, make: outpost },
+  // The versus game: two players' input, rounds won and lost.
+  { game: "duel", scene: "arena", seeds: [1, 2], ticks: 3600, every: 30, make: duel },
 ];
 for (const { make, seeds, ...g } of games) {
   for (const seed of seeds) {

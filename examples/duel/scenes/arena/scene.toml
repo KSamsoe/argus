@@ -1,0 +1,6 @@
+# The one scene: two fighters in a walled arena. Each other file here is one
+# entity, named by its file (one.toml is @one). The seed starts every random
+# stream; the tests set their own. An online match opens this scene afresh
+# on every player's machine, from the host's seed.
+clock = "continuous@60"
+seed = 1

@@ -14,7 +14,7 @@ cd "$(dirname "$0")/../.."
 LABEL=${1:?usage: scenarios.sh <label> [game...]}
 shift
 GAMES=("$@")
-[ ${#GAMES[@]} -eq 0 ] && GAMES=(hollow delve swarm outpost toybox puppet)
+[ ${#GAMES[@]} -eq 0 ] && GAMES=(hollow delve swarm outpost toybox puppet duel)
 cargo build -q --release -p argus-cli || exit 1
 ARGUS=target/release/argus
 [ -x "$ARGUS.exe" ] && ARGUS="$ARGUS.exe"

@@ -94,7 +94,7 @@ release() { # name target rust|no-rust [expect-failure-text]
 echo "checking $STAGE ($("$ARGUS" version))"
 if [ -n "$FOR" ]; then
   [ "$FOR" = macos ] || { echo "check.sh: --for takes macos" >&2; exit 2; }
-  for g in delve hollow outpost puppet toybox; do
+  for g in delve hollow outpost puppet toybox duel; do
     release "$g" macos no-rust
   done
   release swarm macos rust "compiled for the machine they run on"
@@ -103,7 +103,7 @@ if [ -n "$FOR" ]; then
     if [ -n "$KEEP" ]; then
       rm -rf "${KEEP:?}"
       mkdir -p "$KEEP"
-      for g in hollow delve outpost; do
+      for g in hollow delve outpost duel; do
         cp -r "$WORK/out/$g-macos" "$KEEP/$g"
       done
       echo "kept the games' macos releases in $KEEP"
@@ -113,7 +113,7 @@ if [ -n "$FOR" ]; then
   echo "the install does NOT release every example for macos"
   exit 1
 fi
-for g in delve hollow outpost puppet toybox; do
+for g in delve hollow outpost puppet toybox duel; do
   release "$g" "$OS" no-rust
   [ "$WEB" = 1 ] && release "$g" web no-rust
 done

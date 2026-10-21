@@ -1,0 +1,11 @@
+name = "duel"
+clock = "continuous@60"
+default_scene = "arena"
+plugins = []
+
+# The game's icon, on its executable, its window, the Mac app, and a
+# phone's home screen: a frame of its sprites, the blue fighter.
+[game]
+title = "Duel"
+icon = "sprites/actors"
+icon_frame = 0

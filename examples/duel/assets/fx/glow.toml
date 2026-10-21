@@ -1,0 +1,7 @@
+# What glows (the swings, the sparks, the braziers' flames): the picture
+# added to what is under it, so it brightens the floor instead of covering
+# it, and at its own colour however dark the room (emissive). The swing
+# prefab names it; the effects name it as their material.
+shader = "unlit"
+blend = "add"
+emissive = true

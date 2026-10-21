@@ -64,9 +64,11 @@ fn every_template_and_example_has_an_icon_from_its_sprites() {
         .map(|n| repo().join("templates").join(n))
         .collect();
     dirs.extend(
-        ["hollow", "delve", "swarm", "outpost", "toybox", "puppet"]
-            .iter()
-            .map(|n| repo().join("examples").join(n)),
+        [
+            "hollow", "delve", "swarm", "outpost", "toybox", "puppet", "duel",
+        ]
+        .iter()
+        .map(|n| repo().join("examples").join(n)),
     );
     for d in dirs {
         let name = d.file_name().unwrap().to_string_lossy().into_owned();

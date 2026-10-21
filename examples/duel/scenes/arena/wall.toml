@@ -1,0 +1,17 @@
+# The walls round the arena. Only a look; the arena's size is in
+# arena.toml, and the dark beyond the walls is the camera's Background.
+#
+# The picture is frame 1 of sprites/room (assets/sprites/room.art.luau
+# draws it): stone tops all round, and the top wall's face, as we look
+# down on the room a little from the south. It is clear in the middle,
+# where the floor shows, and drawn in front of the fighters. It is taller
+# at the top than at the bottom, so it sits a little above the arena's
+# middle.
+[Transform]
+pos = [0.0, 0.375]
+
+[Sprite]
+atlas = "sprites/room"
+frame = 1
+size = [33.5, 20.25]
+z = 4.0

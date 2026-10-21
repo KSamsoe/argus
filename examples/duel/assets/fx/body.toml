@@ -1,0 +1,6 @@
+# The fighters: drawn as they are, at their own colour, however dark the
+# room is round them (emissive), so they read even where the light does
+# not reach; the floor and walls are what the light falls on. one.toml and
+# two.toml name it.
+shader = "unlit"
+emissive = true
