@@ -20,6 +20,7 @@ steam = ["dep:argus-steam"]
 
 [dependencies]
 argus-player = { path = "../argus-player", version = "0.1.2", features = ["desktop"] }
+argus-relay = { path = "../argus-relay", version = "0.1.2" }
 argus-plugins = { path = "../argus-plugins", version = "0.1.2" }
 argus-render = { path = "../argus-render", version = "0.1.2" }
 argus-assets = { path = "../argus-assets", version = "0.1.2" }

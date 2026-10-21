@@ -215,6 +215,10 @@ pub const TYPED_CHANNEL: &str = "\u{1}typed";
 /// replay, or a report reads the same list. Never a `host.message`.
 pub const SAVES_CHANNEL: &str = "\u{1}saves";
 
+/// The channel a script's read of the match is recorded on (`q:net`;
+/// multiplayer item 3), as a read of the saves is on [`SAVES_CHANNEL`].
+pub const NET_CHANNEL: &str = "\u{1}net";
+
 /// A command the input state was given.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Command {
@@ -391,6 +395,8 @@ pub struct InputState {
     ui_only: bool,
     /// This tick's recorded read of the host's saves, on [`SAVES_CHANNEL`].
     saves_now: Option<String>,
+    /// This tick's recorded read of the match, on [`NET_CHANNEL`].
+    net_now: Option<String>,
     /// This tick runs for the first time (not a re-run after a seek).
     fresh_now: bool,
     /// The UI canvas's size, which touch controls are placed on
@@ -448,6 +454,7 @@ impl InputState {
             typing_applied: BTreeSet::new(),
             ui_only: false,
             saves_now: None,
+            net_now: None,
             fresh_now: false,
             canvas: [960.0, 540.0],
             screen: None,
@@ -610,6 +617,28 @@ impl InputState {
             text.to_string(),
         ));
         Ok(())
+    }
+
+    /// This tick's recorded read of the match (`q:net`; multiplayer item 3).
+    pub fn net_read(&self) -> Option<&str> {
+        self.net_now.as_deref()
+    }
+
+    /// Record this tick's read of the match, as [`InputState::record_saves`]
+    /// does the saves.
+    pub fn record_net(&mut self, text: &str) {
+        self.net_now = Some(text.to_string());
+        let Some(tick) = self.last_tick else { return };
+        if self.fresh_now {
+            self.journal_live(
+                tick,
+                Command::Message {
+                    slot: 0,
+                    channel: NET_CHANNEL.to_string(),
+                    text: text.to_string(),
+                },
+            );
+        }
     }
 
     /// This tick's recorded read of the host's save games (`q:saves`; 2D
@@ -1118,6 +1147,7 @@ impl InputState {
         self.inbox.clear();
         self.typed_now.clear();
         self.saves_now = None;
+        self.net_now = None;
         self.fresh_now = fresh;
         let due: Vec<u64> = self.messages.range(..=tick).map(|(t, _)| *t).collect();
         for t in due {
@@ -1126,6 +1156,8 @@ impl InputState {
                     self.typed_now.entry(slot).or_default().push_str(&text);
                 } else if channel == SAVES_CHANNEL {
                     self.saves_now = Some(text);
+                } else if channel == NET_CHANNEL {
+                    self.net_now = Some(text);
                 } else {
                     self.inbox.push((slot, channel, text));
                 }
@@ -1275,7 +1307,7 @@ impl InputState {
                 slot,
                 channel,
                 text,
-            } if channel == SAVES_CHANNEL => {
+            } if channel == SAVES_CHANNEL || channel == NET_CHANNEL => {
                 self.messages
                     .entry(now)
                     .or_default()
@@ -1373,6 +1405,7 @@ impl InputState {
             typing_applied: self.typing_applied.clone(),
             ui_only: self.ui_only,
             saves_now: self.saves_now.clone(),
+            net_now: self.net_now.clone(),
             fresh_now: self.fresh_now,
             canvas: self.canvas,
             screen: self.screen,

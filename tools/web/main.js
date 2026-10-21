@@ -5,7 +5,10 @@
 // Query parameters: scene, seed; lang (a language pack); webgl (force
 // WebGL2); paused (draw but do not advance: how the headless checks step
 // the sim exactly); audio_ms (the sound queue's depth); cpal (the sound
-// through cpal's Web Audio output, not the AudioWorklet).
+// through cpal's Web Audio output, not the AudioWorklet). Multiplayer
+// (docs/multiplayer-checklist.md item 3): relay (ws://<address>:7879, the
+// relay the game's menu hosts and joins rooms on); room (a code: join that
+// room at once); host (a number of players: host a room at once).
 import init, { WebPlayer, open_renderer } from "./pkg/argus_web.js";
 
 const q = new URLSearchParams(location.search);
@@ -397,6 +400,38 @@ try {
   // openReport is F8's form, for a page script whose own text box has the
   // keys (the game hears them only while the canvas has focus).
   window.argus = { player, setRunning: (r) => (run = r), report: (n) => player.report(n), openReport, send, store, savesAndLoads };
+
+  // The relay (multiplayer): the player says when it wants a connection
+  // and what to send; the page's WebSocket carries it, both ways.
+  const relay = { ws: null, queue: [] };
+  if (q.get("relay")) player.set_relay(q.get("relay"));
+  const relayPump = () => {
+    const url = player.net_connect_url();
+    if (url) {
+      if (relay.ws) relay.ws.close();
+      relay.queue = [];
+      const ws = new WebSocket(url);
+      ws.binaryType = "arraybuffer";
+      ws.onmessage = (e) => player.net_incoming(new Uint8Array(e.data));
+      ws.onclose = (e) => {
+        if (relay.ws === ws) player.net_closed(e.reason || `code ${e.code}`);
+      };
+      ws.onerror = () => console.warn(`the relay at ${url} did not answer`);
+      relay.ws = ws;
+    }
+    for (const b of player.net_outgoing()) relay.queue.push(b);
+    if (relay.ws?.readyState === WebSocket.OPEN) {
+      for (const b of relay.queue) relay.ws.send(b);
+      relay.queue = [];
+    }
+  };
+  window.argus.net = () => JSON.parse(player.net_status());
+  try {
+    if (q.get("room")) player.net_join(q.get("room"));
+    else if (q.get("host")) player.net_host(Number(q.get("host")) || 2);
+  } catch (e) {
+    status.textContent = String(e);
+  }
   // The sound's queue: how deep it is now, and the render quanta (128
   // frames each) the worklet could not fill since it started.
   window.argus.sound = () => ({ ...sound, queued_ms: sound.rate ? Math.round(((sound.sent - sound.played) * 1000) / sound.rate) : 0 });
@@ -503,7 +538,9 @@ try {
   const frame = (t) => {
     try {
       fitBuffer();
+      relayPump();
       player.frame(t, run);
+      relayPump();
       savesAndLoads();
       fitScreen();
       if (n % 30 === 0) keepSettings();

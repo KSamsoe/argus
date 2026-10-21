@@ -670,6 +670,8 @@ impl<L: Link, P: Peer> Match<L, P> {
                     self.state = State::Ended(format!("slot {from} left the match"));
                 }
             }
+            // The lobby's: a match has started by now.
+            Msg::Start { .. } => {}
         }
     }
 

@@ -34,6 +34,13 @@ component "Fighter" {
   hum = field.u32 { default = 0, doc = "Ticks thrusting; it hums every eighth" },
 }
 
+component "Net" {
+  doc = "What q:net() said this tick",
+  state = field.str { doc = "alone, asking, room, playing, or ended" },
+  players = field.u8 { default = 0, doc = "Players" },
+  code = field.str { doc = "The room's code, in a room" },
+}
+
 component "Shot" {
   doc = "Flies along vel until its life runs out",
   vel = field.vec2 { doc = "Units per second" },
@@ -84,6 +91,22 @@ return system "sim.shots" {
       t.pos = t.pos + s.vel * q.dt
       s.life -= 1
       if s.life == 0 then e:despawn() end
+    end
+  end,
+}
+"#;
+
+const NET: &str = r#"
+return system "sim.net" {
+  stage = "sim",
+  writes = { "Net" },
+  doc = "Writes what q:net() says on the watcher; the menu's asks come from host = true on it.",
+  run = function(q)
+    local n = q:net()
+    for _, w in q:each("Net") do
+      w.state = n.state
+      w.players = n.players
+      w.code = n.code or ""
     end
   end,
 }
@@ -164,6 +187,8 @@ fn duel(name: &str, clock: &str) -> Temp {
     put("components/duel.luau", COMPONENTS);
     put("systems/fly.luau", FLY);
     put("systems/shots.luau", SHOTS);
+    put("systems/net.luau", NET);
+    put("scenes/main/watch.toml", "[Net]\n");
     put(
         "scenes/main/scene.toml",
         &format!("clock = \"{clock}\"\nseed = 1\n"),
@@ -580,5 +605,117 @@ fn two_players_play_one_run_through_a_relay() {
         matches.iter().all(|m| m.stats().checks >= 5),
         "{:?}",
         matches[0].stats()
+    );
+}
+
+fn watched(p: &Player) -> (String, u64, String) {
+    let w = p.world.entity("@watch").unwrap();
+    let get = |f: &str| p.world.get_field(w, f).unwrap();
+    let text = |v: argus_ecs::Value| match v {
+        argus_ecs::Value::Str(s) => s,
+        v => panic!("{v:?}"),
+    };
+    let players = match get("Net.players") {
+        argus_ecs::Value::UInt(n) => n,
+        v => panic!("{v:?}"),
+    };
+    (text(get("Net.state")), players, text(get("Net.code")))
+}
+
+/// A room on a real relay: the host's menu hosts, the code goes to the
+/// other player, who joins; once the room is full both open the host's
+/// scene afresh from its seed, and play one run. Scripts saw the room, then
+/// only what both share.
+#[test]
+fn a_room_on_a_relay_starts_one_match_from_the_hosts_seed() {
+    use argus_player::netplay::{NetAsk, Netplay};
+    use argus_relay::Client;
+    let dir = duel("lobby", "continuous@60");
+    let relay = argus_relay::Relay::bind("127.0.0.1:0", argus_relay::Limits::default())
+        .unwrap()
+        .spawn();
+    let url = format!("ws://{}", relay.addr());
+    let mut players: Vec<Player> = (0..2)
+        .map(|_| Player::open(&dir, None, None).unwrap())
+        .collect();
+    let mut nets: Vec<Netplay<Client>> = (0..2).map(|_| Netplay::new()).collect();
+    nets[0].host(Client::connect(&url).unwrap(), &players[0], 2, None, 77, 2);
+    let mut code = None;
+    let frame = |players: &mut Vec<Player>, nets: &mut Vec<Netplay<Client>>, f: u64| {
+        for i in 0..2 {
+            if let Some(start) = nets[i].poll() {
+                let mut p = Player::open(&dir, Some(&start.scene), Some(start.seed)).unwrap();
+                nets[i].begin(&mut p, &start).unwrap();
+                players[i] = p;
+            }
+            nets[i].local(&script(i as u8 + 1, f));
+            nets[i].frame(&mut players[i], 1).unwrap();
+        }
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    };
+    // The host's room, as its scripts see it.
+    for f in 0..200 {
+        frame(&mut players, &mut nets, f);
+        let (state, _, c) = watched(&players[0]);
+        if state == "room" && !c.is_empty() {
+            code = Some(c);
+            break;
+        }
+    }
+    let code = code.expect("the host's scripts saw its room");
+    assert_eq!(code.len(), 5);
+    nets[1].join(Client::connect(&url).unwrap(), &players[1], &code);
+    for f in 0..400 {
+        frame(&mut players, &mut nets, f);
+    }
+    for (i, p) in players.iter().enumerate() {
+        assert_eq!(p.seed, 77, "player {} plays the host's seed", i + 1);
+        assert_eq!(watched(p).0, "playing");
+        assert_eq!(watched(p).1, 2);
+        assert!(
+            matches!(nets[i].state(), Some(State::Running)),
+            "{:?}",
+            nets[i].state()
+        );
+    }
+    // Both run to the same tick, every tick final, and agree.
+    for _ in 0..2000 {
+        let lead = players[0].tick().max(players[1].tick());
+        let done = players.iter().all(|p| p.tick() == lead)
+            && nets.iter().all(|n| n.stats().is_some_and(|s| s.checks > 0));
+        if done {
+            break;
+        }
+        for i in 0..2 {
+            let behind = (players[i].tick() < lead) as u32;
+            nets[i].frame(&mut players[i], behind).unwrap();
+        }
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+    assert_eq!(players[0].digest(), players[1].digest());
+    // A player leaving ends the match for the other, who is told why.
+    let mut p0 = std::mem::replace(&mut players[0], Player::open(&dir, None, None).unwrap());
+    nets[0].leave(&mut p0);
+    for f in 0..200 {
+        nets[1].frame(&mut players[1], 1).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        if f > 5 && watched(&players[1]).0 == "ended" {
+            break;
+        }
+    }
+    let v = nets[1].view();
+    assert_eq!(v.state, "ended");
+    assert!(v.why.contains("left"), "{v:?}");
+    // The menu's asks reach the host.
+    let asks = NetAsk::from_event(
+        "net.host_requested",
+        &[("players".into(), argus_ecs::Value::Int(3))],
+    );
+    assert_eq!(
+        asks,
+        Some(NetAsk::Host {
+            players: 3,
+            scene: None
+        })
     );
 }

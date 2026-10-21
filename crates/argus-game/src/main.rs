@@ -26,6 +26,13 @@
 //! `--lang <code>` plays in a language pack; `--data <dir>` reads packs
 //! from elsewhere; `--mods <dir>` reads mods from elsewhere, `--no-mods`
 //! reads none; `--scene` and `--seed` as in the daemon.
+//!
+//! Multiplayer (docs/multiplayer-checklist.md item 3): `--relay
+//! ws://<address>:7879` names the relay the game's menu hosts and joins
+//! rooms on (`q:net_host`, `q:net_join`); `--host [players]` hosts a room
+//! at once and `--join <code>` joins one, for a game without a menu for it.
+//! The room's code is on the bottom line. A match opens the host's scene
+//! afresh from its seed on every player's machine.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -67,6 +74,9 @@ struct Args {
     headless: Option<u64>,
     scene: Option<String>,
     seed: Option<u64>,
+    relay: Option<String>,
+    host: Option<u8>,
+    join: Option<String>,
 }
 
 fn parse() -> Result<Args, String> {
@@ -93,6 +103,15 @@ fn parse() -> Result<Args, String> {
                         .parse()
                         .map_err(|_| "--headless takes a number of ticks")?,
                 )
+            }
+            "--relay" => a.relay = Some(need("--relay")?),
+            "--join" => a.join = Some(need("--join")?),
+            "--host" => {
+                // A number of players may follow; 2 if none does.
+                a.host = Some(2);
+            }
+            n if a.host == Some(2) && n.parse::<u8>().is_ok_and(|n| (2..=4).contains(&n)) => {
+                a.host = n.parse().ok();
             }
             other => return Err(format!("unknown argument {other:?}")),
         }
@@ -219,6 +238,15 @@ fn run(args: Args) -> Result<(), String> {
     // The window has the game's title and icon (reaching players item 2).
     let look = (cfg.game.title.clone(), data.join("icon.png"));
     let mut game = Game::open(p, key, save, cfg.reports_url.clone(), settings, look)?;
+    game.relay = args
+        .relay
+        .clone()
+        .or_else(|| std::env::var("ARGUS_RELAY").ok());
+    if let Some(players) = args.host {
+        game.host_room(players, None);
+    } else if let Some(code) = &args.join {
+        game.join_room(code);
+    }
     // Reports that did not go last time go now.
     game.send_later();
     // Mods that did not load, or a load order that did not read; Steam
@@ -266,6 +294,12 @@ struct Game {
     settings: argus_player::settings::Store,
     /// The UI the screen reader was last given, to find what it asks for.
     access_ui: Vec<argus_render::semantic::UiSeen>,
+    /// Multiplayer: the room on the relay, then the match.
+    net: argus_player::netplay::Netplay<argus_relay::Client>,
+    /// The relay rooms are on (`--relay`, or `ARGUS_RELAY`).
+    relay: Option<String>,
+    /// The room code last shown on the bottom line.
+    shown_code: String,
 }
 
 impl Game {
@@ -304,7 +338,76 @@ impl Game {
             sending: None,
             settings,
             access_ui: Vec::new(),
+            net: argus_player::netplay::Netplay::new(),
+            relay: None,
+            shown_code: String::new(),
         })
+    }
+
+    /// Host a room on the relay, for the game's menu or `--host`.
+    fn host_room(&mut self, players: u8, scene: Option<&str>) {
+        let Some(c) = self.connect() else { return };
+        let seed = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos() as u64)
+            .unwrap_or(1)
+            | 1;
+        self.net.host(c, &self.p, players, scene, seed, 2);
+    }
+
+    /// Join a room by its code.
+    fn join_room(&mut self, code: &str) {
+        let Some(c) = self.connect() else { return };
+        self.net.join(c, &self.p, code);
+    }
+
+    fn connect(&mut self) -> Option<argus_relay::Client> {
+        let Some(url) = self.relay.clone() else {
+            self.toast = Some((
+                "There is no relay to play with others: start the game with --relay ws://<address>:7879".into(),
+                Instant::now(),
+            ));
+            return None;
+        };
+        match argus_relay::Client::connect(&url) {
+            Ok(c) => Some(c),
+            Err(e) => {
+                self.toast = Some((
+                    format!("The relay at {url} did not answer: {e}"),
+                    Instant::now(),
+                ));
+                None
+            }
+        }
+    }
+
+    /// The game's asks, the relay's news, and a match starting.
+    fn multiplayer(&mut self) -> Result<(), String> {
+        for ask in self.p.take_net_asks() {
+            match ask {
+                argus_player::netplay::NetAsk::Host { players, scene } => {
+                    self.host_room(players, scene.as_deref())
+                }
+                argus_player::netplay::NetAsk::Join { code } => self.join_room(&code),
+                argus_player::netplay::NetAsk::Leave => self.net.leave(&mut self.p),
+            }
+        }
+        // The room's code, for the others, once the relay gives it.
+        if let Some(r) = self.net.room().filter(|r| r.code != self.shown_code) {
+            self.shown_code = r.code.clone();
+            self.toast = Some((
+                format!("Room {}: the others join it with this code", r.code),
+                Instant::now(),
+            ));
+        }
+        if let Some(start) = self.net.poll() {
+            self.p
+                .restart(&start.scene, start.seed)
+                .map_err(|e| e.message)?;
+            self.net.begin(&mut self.p, &start).map_err(|e| e.message)?;
+            self.owed = 0.0;
+        }
+        Ok(())
     }
 
     /// The UI as the player's screen reader reads it: the semantic frame
@@ -474,13 +577,15 @@ impl Game {
                 click |= press;
             }
         }
+        self.multiplayer()?;
+        // In a match the player keeps them for the match.
         if !devs.is_empty() {
             self.p.devices(&devs);
         }
         // The platform's callbacks, and its overlay as an input (phase 5
         // item 9).
         self.p.poll_platform();
-        if click {
+        if click && !self.net.playing() {
             let _ = self
                 .p
                 .inject("ui_click", Some(&json!(true)), Some(1), false);
@@ -490,7 +595,23 @@ impl Game {
         self.last = now;
         let d = self.p.sched.driving();
         let (kind, hz) = (d.kind, d.hz());
-        if self.prompt.is_none() && kind == ClockKind::Continuous && hz > 0.0 {
+        let was_playing = self.net.playing();
+        if was_playing {
+            // The match runs what the time owes, or every turn that is ready.
+            let n = if kind == ClockKind::Continuous {
+                self.owed = (self.owed + dt * hz).min(5.0);
+                let n = self.owed.floor();
+                self.owed -= n;
+                n as u32
+            } else {
+                16
+            };
+            self.net.frame(&mut self.p, n).map_err(|e| e.message)?;
+            if !self.net.playing() {
+                let why = self.net.view().why;
+                self.toast = Some((format!("The match is over: {why}"), Instant::now()));
+            }
+        } else if self.prompt.is_none() && kind == ClockKind::Continuous && hz > 0.0 {
             // At 3x or 10x (q:speed, sim.speed) a frame owes that many
             // ticks; a slow frame catches up at most five frames' worth.
             let speed = self.p.sched.speed();
@@ -511,6 +632,9 @@ impl Game {
             if n > 0.0 {
                 self.p.idle(n as u64).map_err(|e| e.message)?;
             }
+        }
+        if !was_playing {
+            self.net.tick_view(&mut self.p);
         }
         let _ = self.p.sched.present(&mut self.p.world);
         // The game's settings say whether the window fills the screen.

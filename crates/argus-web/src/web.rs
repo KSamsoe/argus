@@ -4,8 +4,34 @@
 //! last thirty to sixty seconds as a replay file.
 
 use crate::Player;
+use argus_net::relay::{Down, Up};
+use argus_player::netplay::{NetAsk, Netplay};
 use serde_json::Value as Json;
+use std::cell::RefCell;
+use std::collections::VecDeque;
+use std::rc::Rc;
 use wasm_bindgen::prelude::*;
+
+/// What goes between the page's WebSocket to the relay and the match
+/// (multiplayer item 3): the page sends `out` and puts what came in `inbox`.
+#[derive(Default)]
+struct WireQueue {
+    out: Vec<Vec<u8>>,
+    inbox: VecDeque<Down>,
+}
+
+/// The lobby's [`argus_net::Wire`] over the page's WebSocket.
+struct PageWire(Rc<RefCell<WireQueue>>);
+
+impl argus_net::Wire for PageWire {
+    fn send(&mut self, up: &Up) {
+        self.0.borrow_mut().out.push(up.encode());
+    }
+
+    fn recv(&mut self) -> Vec<Down> {
+        self.0.borrow_mut().inbox.drain(..).collect()
+    }
+}
 
 /// Where a pack is mounted.
 const ROOT: &str = "/game";
@@ -40,6 +66,13 @@ pub struct WebPlayer {
     /// its packs', since one prebuilt module plays any game (distribution
     /// item 1), else what the module was built for.
     code: String,
+    /// Multiplayer: the room on the relay, then the match.
+    net: Netplay<PageWire>,
+    queue: Rc<RefCell<WireQueue>>,
+    /// The relay rooms are made on (`?relay=`), and a connection to it the
+    /// page has yet to open.
+    relay: Option<String>,
+    want: Option<String>,
 }
 
 /// The module's own code (`argus build` sets it when it compiles one for a
@@ -116,7 +149,118 @@ impl WebPlayer {
             frames: 0,
             drawn: 0,
             code,
+            net: Netplay::new(),
+            queue: Rc::default(),
+            relay: None,
+            want: None,
         })
+    }
+
+    /// The relay rooms are made on: a page's `?relay=ws://<address>:7879`.
+    pub fn set_relay(&mut self, url: &str) {
+        self.relay = (!url.trim().is_empty()).then(|| url.trim().to_string());
+    }
+
+    /// Host a room for `players` (a page's `?host=2`, or the game's menu).
+    pub fn net_host(&mut self, players: u32) -> Result<(), JsValue> {
+        let wire = self.open_wire()?;
+        let seed = (js_sys::Math::random() * 9.0e15) as u64 | 1;
+        let players = players.clamp(2, 4) as u8;
+        self.net.host(wire, &self.p, players, None, seed, 2);
+        Ok(())
+    }
+
+    /// Join the room with `code` (a page's `?room=CODE`, or the menu).
+    pub fn net_join(&mut self, code: &str) -> Result<(), JsValue> {
+        let wire = self.open_wire()?;
+        self.net.join(wire, &self.p, code);
+        Ok(())
+    }
+
+    fn open_wire(&mut self) -> Result<PageWire, JsValue> {
+        let Some(url) = self.relay.clone() else {
+            return Err(JsValue::from_str(
+                "no relay to play with others: open the page with ?relay=ws://<address>:7879",
+            ));
+        };
+        self.queue = Rc::default();
+        self.want = Some(url);
+        Ok(PageWire(self.queue.clone()))
+    }
+
+    /// The relay the page should open a WebSocket to now, once.
+    pub fn net_connect_url(&mut self) -> Option<String> {
+        self.want.take()
+    }
+
+    /// What to send the relay, in order, since the last call.
+    pub fn net_outgoing(&mut self) -> js_sys::Array {
+        let out = js_sys::Array::new();
+        for b in self.queue.borrow_mut().out.drain(..) {
+            out.push(&js_sys::Uint8Array::from(b.as_slice()));
+        }
+        out
+    }
+
+    /// A message the relay sent.
+    pub fn net_incoming(&mut self, bytes: &[u8]) {
+        let m = Down::decode(bytes)
+            .unwrap_or_else(|e| Down::Refused(format!("the relay sent {}", e.message)));
+        self.queue.borrow_mut().inbox.push_back(m);
+    }
+
+    /// The page's WebSocket closed.
+    pub fn net_closed(&mut self, why: &str) {
+        self.queue
+            .borrow_mut()
+            .inbox
+            .push_back(Down::Refused(format!(
+                "the connection to the relay closed: {why}"
+            )));
+    }
+
+    /// The room or the match, as the page shows it: `{state, code, slot,
+    /// players, present, why}` as JSON, the match's counts while it runs.
+    pub fn net_status(&self) -> String {
+        let v = self.net.view();
+        let room = self.net.room();
+        serde_json::json!({
+            "state": v.state,
+            "code": room.as_ref().map(|r| r.code.clone()).unwrap_or_default(),
+            "slot": room.as_ref().map(|r| r.slot).unwrap_or(0),
+            "players": room.as_ref().map(|r| r.players).unwrap_or(v.players),
+            "present": room.map(|r| r.present).unwrap_or_default(),
+            "why": v.why,
+            "tick": self.p.sched.tick(),
+            "digest": format!("{:016x}", self.p.digest()),
+            "stats": self.net.stats().map(|s| serde_json::json!({
+                "rollbacks": s.rollbacks, "again": s.again, "checks": s.checks, "waits": s.waits,
+            })),
+        })
+        .to_string()
+    }
+
+    /// The game's asks, and a match starting: the scene opened afresh.
+    fn multiplayer(&mut self) -> Result<(), JsValue> {
+        for ask in self.p.take_net_asks() {
+            let done = match ask {
+                NetAsk::Host { players, .. } => self.net_host(players as u32),
+                NetAsk::Join { code } => self.net_join(&code),
+                NetAsk::Leave => {
+                    self.net.leave(&mut self.p);
+                    Ok(())
+                }
+            };
+            if let Err(e) = done {
+                web_sys::console::warn_1(&e);
+            }
+        }
+        if let Some(start) = self.net.poll() {
+            self.p.restart(&start.scene, start.seed).map_err(js)?;
+            self.net.begin(&mut self.p, &start).map_err(js)?;
+            self.owed = 0.0;
+        }
+        Ok(())
     }
 
     /// The player's settings as the page kept them (`settings.toml`'s text,
@@ -509,7 +653,24 @@ impl WebPlayer {
     /// Without it only the picture, which is how a check steps exactly.
     pub fn frame(&mut self, now_ms: f64, run: bool) -> Result<(), JsValue> {
         let hz = self.p.sched.driving().hz();
-        if run && hz > 0.0 && self.p.sched.driving().kind == argus_sim::ClockKind::Continuous {
+        if run {
+            self.multiplayer()?;
+        }
+        let playing = self.net.playing();
+        if run && playing {
+            // The match runs what the time owes, or every turn that is ready.
+            let n = if self.p.sched.driving().kind == argus_sim::ClockKind::Continuous {
+                let dt = self.last_ms.map(|l| (now_ms - l) / 1000.0).unwrap_or(0.0);
+                self.owed = (self.owed + dt * hz).min(5.0);
+                let n = self.owed.floor();
+                self.owed -= n;
+                n as u32
+            } else {
+                16
+            };
+            self.net.frame(&mut self.p, n).map_err(js)?;
+        } else if run && hz > 0.0 && self.p.sched.driving().kind == argus_sim::ClockKind::Continuous
+        {
             let dt = self.last_ms.map(|l| (now_ms - l) / 1000.0).unwrap_or(0.0);
             let speed = self.p.sched.speed();
             self.owed = (self.owed + dt * hz * speed).min(5.0 * speed.max(1.0));
@@ -529,6 +690,9 @@ impl WebPlayer {
             if n > 0.0 {
                 self.p.idle(n as u64).map_err(js)?;
             }
+        }
+        if run && !playing {
+            self.net.tick_view(&mut self.p);
         }
         self.last_ms = Some(now_ms);
         let _ = self.p.sched.present(&mut self.p.world);

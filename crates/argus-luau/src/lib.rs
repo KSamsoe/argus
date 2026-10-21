@@ -214,6 +214,46 @@ pub trait Saves {
 /// The save games a host was given.
 pub(crate) struct SavesData(pub Rc<dyn Saves>);
 
+/// A match as a script sees it (`q:net()`; docs/multiplayer-checklist.md
+/// item 3). In a lobby, this machine's room: its code, this player's slot,
+/// who is there. In a match only what every player shares (the state and
+/// the players), since the world must be the same on every machine.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct NetView {
+    /// `alone`, `asking`, `room`, `playing`, or `ended`.
+    pub state: String,
+    /// The room's code, in a room.
+    pub code: String,
+    /// This player's slot, in a room (0 otherwise).
+    pub slot: u8,
+    /// Players the room or the match holds.
+    pub players: u8,
+    /// The slots whose players are there, in a room.
+    pub present: Vec<u8>,
+    /// Why it ended, once it has.
+    pub why: String,
+}
+
+impl NetView {
+    /// No room, no match.
+    pub fn alone() -> NetView {
+        NetView {
+            state: "alone".into(),
+            ..NetView::default()
+        }
+    }
+}
+
+/// The host's match for scripts (`q:net`). A host records what a tick
+/// read with the run's input, as it does `q:saves`.
+pub trait Net {
+    /// The match as this tick reads it.
+    fn view(&self) -> NetView;
+}
+
+/// The match a host was given.
+pub(crate) struct NetData(pub Rc<dyn Net>);
+
 /// What systems draw for debugging (`q:draw_line` and the rest; 2D
 /// staples item 1), which the host reads with [`ScriptHost::draws`].
 pub(crate) struct DrawsData(pub Rc<RefCell<argus_sim::Draws>>);
@@ -555,6 +595,12 @@ impl ScriptHost {
     /// Give scripts the host's save games (`q:saves`; 2D staples item 4).
     pub fn set_saves(&self, saves: Rc<dyn Saves>) {
         self.lua.set_app_data(SavesData(saves));
+    }
+
+    /// Give scripts the host's match (`q:net`; docs/multiplayer-checklist.md
+    /// item 3).
+    pub fn set_net(&self, net: Rc<dyn Net>) {
+        self.lua.set_app_data(NetData(net));
     }
 
     /// Give scripts the game's maps (`q:tiles`; phase 5 item 4).

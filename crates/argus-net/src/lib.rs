@@ -10,10 +10,13 @@
 #![warn(missing_docs)]
 
 pub mod link;
+pub mod lobby;
+pub mod relay;
 pub mod session;
 pub mod wire;
 
 pub use link::{Conditions, Link, SimLink, SimNet};
+pub use lobby::{Lobby, Phase, Room, RoomLink, Start, Wire};
 pub use session::{Advance, Change, Config, Difference, Match, OutOfStep, Peer, State, Stats};
 pub use wire::{Frame, Msg, VERSION};
 

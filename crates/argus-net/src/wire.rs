@@ -79,6 +79,16 @@ pub enum Msg {
         /// The sender's slot.
         from: u8,
     },
+    /// From the room's host, once every slot is taken: the scene and the
+    /// seed the match starts from, which every player loads afresh.
+    Start {
+        /// The scene.
+        scene: String,
+        /// The run's seed.
+        seed: u64,
+        /// The input delay, in ticks.
+        delay: u8,
+    },
 }
 
 fn value(w: &mut Writer, v: ActionValue) {
@@ -181,6 +191,12 @@ impl Msg {
                 w.u8(6);
                 w.u8(*from);
             }
+            Msg::Start { scene, seed, delay } => {
+                w.u8(7);
+                w.str(scene);
+                w.u64(*seed);
+                w.u8(*delay);
+            }
         }
         w.into_bytes()
     }
@@ -246,6 +262,11 @@ impl Msg {
                 Msg::Rows { from, tick, rows }
             }
             6 => Msg::Bye { from: r.u8()? },
+            7 => Msg::Start {
+                scene: r.str()?,
+                seed: r.u64()?,
+                delay: r.u8()?,
+            },
             k => return Err(r.bad(format!("{k} is not a message"))),
         };
         if r.remaining() != 0 {
@@ -298,6 +319,11 @@ mod tests {
                 rows: vec!["e:1 Pos.p = [0, 0]".into()],
             },
             Msg::Bye { from: 2 },
+            Msg::Start {
+                scene: "arena".into(),
+                seed: 99,
+                delay: 2,
+            },
         ];
         for m in all {
             assert_eq!(Msg::decode(&m.encode()).unwrap(), m);

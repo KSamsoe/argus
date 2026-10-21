@@ -13,9 +13,11 @@
 pub mod addr;
 pub mod client;
 pub mod hash;
-pub mod proto;
 pub mod server;
 pub mod ws;
+
+/// What players and the relay say, which a web page speaks too.
+pub use argus_net::relay as proto;
 
 pub use client::Client;
 pub use proto::{Down, Up};

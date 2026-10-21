@@ -18,8 +18,53 @@ use crate::keyframe::Keyframe;
 use crate::player::Player;
 use argus_ecs::{Event, EventRecord, Result, Value};
 use argus_input::{ActionValue, DeviceInput};
-use argus_net::Change;
+use argus_luau::NetView;
+use argus_net::{Advance, Change, Config, Lobby, Match, Phase, RoomLink, Start, State, Wire};
 use std::collections::BTreeMap;
+
+/// What the game's menu asked of whatever hosts it.
+#[derive(Clone, Debug, PartialEq)]
+pub enum NetAsk {
+    /// `q:net_host(players, scene)`.
+    Host {
+        /// Players.
+        players: u8,
+        /// The match's scene, when the menu named one.
+        scene: Option<String>,
+    },
+    /// `q:net_join(code)`.
+    Join {
+        /// The room's code.
+        code: String,
+    },
+    /// `q:net_leave()`.
+    Leave,
+}
+
+impl NetAsk {
+    /// The ask an event is, if it is one.
+    pub fn from_event(name: &str, fields: &[(String, Value)]) -> Option<NetAsk> {
+        let get = |k: &str| fields.iter().find(|(n, _)| n == k).map(|(_, v)| v);
+        match name {
+            "net.host_requested" => Some(NetAsk::Host {
+                players: match get("players") {
+                    Some(Value::Int(n)) => (*n).clamp(2, 4) as u8,
+                    _ => 2,
+                },
+                scene: match get("scene") {
+                    Some(Value::Str(s)) => Some(s.clone()),
+                    _ => None,
+                },
+            }),
+            "net.join_requested" => match get("code") {
+                Some(Value::Str(c)) => Some(NetAsk::Join { code: c.clone() }),
+                _ => None,
+            },
+            "net.leave_requested" => Some(NetAsk::Leave),
+            _ => None,
+        }
+    }
+}
 
 /// A sound a tick started: the tick, which sound from which entity, its
 /// place among that tick's like sounds, and the mixer's voice.
@@ -41,6 +86,8 @@ pub struct NetState {
     expected: Option<Vec<Heard>>,
     /// Events of ticks not yet final, for the host when they are.
     waiting: Vec<EventRecord>,
+    /// The local player's changes from the devices, for the match.
+    local: Vec<(String, ActionValue)>,
     sounds: NetSounds,
 }
 
@@ -70,6 +117,60 @@ fn sound_key(fields: &[(String, Value)]) -> (String, u64) {
 }
 
 impl Player {
+    /// What the game's menu asked (host, join, leave), since the last call.
+    pub fn take_net_asks(&mut self) -> Vec<NetAsk> {
+        std::mem::take(&mut self.net_asks)
+    }
+
+    /// What scripts read with `q:net()` from the next tick on.
+    pub fn set_net_view(&mut self, view: NetView) {
+        *self.net_view.borrow_mut() = view;
+    }
+
+    /// The game's shape, which a relay checks a joining player against: its
+    /// components and their fields, its actions, and the engine's version.
+    /// The same game built for the web or the desktop has the same one.
+    pub fn fingerprint(&self) -> u64 {
+        let mut h = argus_ecs::intern::text_hash(env!("CARGO_PKG_VERSION"));
+        let mix = |h: &mut u64, s: &str| {
+            *h = (h.rotate_left(5) ^ argus_ecs::intern::text_hash(s))
+                .wrapping_mul(0x0000_0100_0000_01b3);
+        };
+        let mut names: Vec<String> = self
+            .world
+            .registry()
+            .schemas()
+            .iter()
+            .map(|c| {
+                let fields: Vec<String> = c
+                    .fields
+                    .iter()
+                    .map(|f| format!("{}:{:?}", f.name, f.ty))
+                    .collect();
+                format!("{}({})", c.name, fields.join(","))
+            })
+            .collect();
+        names.sort();
+        for n in &names {
+            mix(&mut h, n);
+        }
+        for a in argus_net::Peer::actions(self) {
+            mix(&mut h, &a);
+        }
+        h
+    }
+
+    /// Out of the match: what waited for its tick to be final is done now,
+    /// and the world is this machine's own again.
+    pub fn leave_match(&mut self) {
+        let Some(net) = self.net.take() else {
+            return;
+        };
+        for rec in &net.waiting {
+            self.external(rec);
+        }
+    }
+
     /// Play in a match from now on: [`Player::net_devices`] instead of
     /// [`Player::devices`], and the match steps the game.
     pub fn join_match(&mut self) {
@@ -84,6 +185,22 @@ impl Player {
     /// What rollbacks did to the sounds so far, in a match.
     pub fn net_sounds(&self) -> Option<NetSounds> {
         self.net.as_ref().map(|n| n.sounds)
+    }
+
+    /// Keep the local player's changes for the match ([`Netplay::frame`]
+    /// takes them).
+    pub(crate) fn net_local(&mut self, changes: Vec<(String, ActionValue)>) {
+        if let Some(n) = self.net.as_mut() {
+            n.local.extend(changes);
+        }
+    }
+
+    /// The local player's changes since the last call.
+    pub fn take_net_local(&mut self) -> Vec<(String, ActionValue)> {
+        self.net
+            .as_mut()
+            .map(|n| std::mem::take(&mut n.local))
+            .unwrap_or_default()
     }
 
     /// Device input for the local player in a match: the actions it
@@ -337,5 +454,194 @@ impl argus_net::Peer for Player {
             }
         }
         rows
+    }
+}
+
+/// A host's side of multiplayer: the room on the relay, then the match on
+/// the player. Each frame the host hands over the game's asks
+/// ([`Player::take_net_asks`]) and the local player's input, and runs
+/// [`Netplay::frame`]; when [`Netplay::poll`] gives a start, the host opens
+/// the player afresh on its scene and seed and calls [`Netplay::begin`].
+pub struct Netplay<W: Wire> {
+    lobby: Lobby<W>,
+    game: Option<Match<RoomLink<W>, Player>>,
+    /// Players, while the match runs.
+    players: u8,
+}
+
+impl<W: Wire> Default for Netplay<W> {
+    fn default() -> Netplay<W> {
+        Netplay {
+            lobby: Lobby::new(),
+            game: None,
+            players: 0,
+        }
+    }
+}
+
+impl<W: Wire> Netplay<W> {
+    /// Nothing yet.
+    pub fn new() -> Netplay<W> {
+        Netplay::default()
+    }
+
+    /// Host a room through `wire` for the player's game; the match starts
+    /// on `scene` (the player's when none) from `seed`.
+    pub fn host(
+        &mut self,
+        wire: W,
+        player: &Player,
+        players: u8,
+        scene: Option<&str>,
+        seed: u64,
+        delay: u8,
+    ) {
+        let scene = scene.unwrap_or(&player.scene).to_string();
+        self.lobby
+            .host(wire, players, player.fingerprint(), &scene, seed, delay);
+    }
+
+    /// Join the room with `code` through `wire`.
+    pub fn join(&mut self, wire: W, player: &Player, code: &str) {
+        self.lobby.join(wire, code, player.fingerprint());
+    }
+
+    /// Leave the room or the match.
+    pub fn leave(&mut self, player: &mut Player) {
+        if let Some(m) = self.game.as_mut() {
+            m.leave();
+        }
+        self.game = None;
+        self.lobby.leave();
+        player.leave_match();
+    }
+
+    /// The relay's news: a start once every slot is taken, for the host to
+    /// open the player afresh on its scene and seed.
+    pub fn poll(&mut self) -> Option<Start> {
+        self.lobby.poll()
+    }
+
+    /// The match begins on `player`, opened afresh for `start`. Its first
+    /// world is the match's fingerprint: a player whose world began
+    /// otherwise is refused.
+    pub fn begin(&mut self, player: &mut Player, start: &Start) -> Result<()> {
+        player.join_match();
+        let mut cfg = Config::new(start.players, start.slot, player.world.column_digest());
+        cfg.delay = start.delay;
+        cfg.lockstep = player.sched.driving().kind == argus_sim::ClockKind::Discrete;
+        let link = self.lobby.link().expect("a started lobby has its link");
+        self.game = Some(Match::new(cfg, link, player)?);
+        self.players = start.players;
+        Ok(())
+    }
+
+    /// The local player's input this frame, from [`Player::net_devices`].
+    pub fn local(&mut self, changes: &[(String, ActionValue)]) {
+        if let Some(m) = self.game.as_mut() {
+            m.local(changes);
+        }
+    }
+
+    /// One frame: in a match, its ticks (up to `ticks`); otherwise the
+    /// player runs alone. The view scripts read is brought up to date.
+    pub fn frame(&mut self, player: &mut Player, ticks: u32) -> Result<Advance> {
+        let mut out = Advance::default();
+        match self.game.as_mut() {
+            Some(m) => {
+                // What the local player's devices gave since the last frame.
+                m.local(&player.take_net_local());
+                out = m.advance(player, ticks)?;
+                let why = match m.state() {
+                    State::OutOfStep(o) => Some(o.describe()),
+                    State::Ended(why) => Some(why.clone()),
+                    _ => None,
+                };
+                if let Some(why) = why {
+                    self.lobby.end(&why);
+                    self.game = None;
+                    player.leave_match();
+                }
+            }
+            None => {
+                player.step(ticks as u64)?;
+                out.ran = ticks;
+            }
+        }
+        // A relay that closed ends the match too.
+        if let (Some(m), Some(why)) = (self.game.as_mut(), self.lobby.closed()) {
+            m.leave();
+            self.game = None;
+            player.leave_match();
+            self.lobby.end(&why);
+        }
+        player.set_net_view(self.view());
+        Ok(out)
+    }
+
+    /// Between a lobby's frames, the player running alone as its host runs
+    /// it: the relay's news, and the view scripts read.
+    pub fn tick_view(&mut self, player: &mut Player) {
+        if self.game.is_none() {
+            if let (Phase::Room | Phase::Asking, Some(why)) =
+                (self.lobby.phase().clone(), self.lobby.closed())
+            {
+                self.lobby.end(&why);
+            }
+        }
+        player.set_net_view(self.view());
+    }
+
+    /// Whether a match is running.
+    pub fn playing(&self) -> bool {
+        self.game.is_some()
+    }
+
+    /// The match, as scripts see it.
+    pub fn view(&self) -> NetView {
+        match self.lobby.phase() {
+            Phase::Alone => NetView::alone(),
+            Phase::Asking => NetView {
+                state: "asking".into(),
+                ..NetView::default()
+            },
+            Phase::Room => {
+                let r = self.lobby.room().unwrap_or_default();
+                NetView {
+                    state: "room".into(),
+                    code: r.code,
+                    slot: r.slot,
+                    players: r.players,
+                    present: r.present,
+                    why: String::new(),
+                }
+            }
+            // The world is every player's: nothing this machine's alone.
+            Phase::Playing => NetView {
+                state: "playing".into(),
+                players: self.players,
+                ..NetView::default()
+            },
+            Phase::Ended(why) => NetView {
+                state: "ended".into(),
+                why: why.clone(),
+                ..NetView::default()
+            },
+        }
+    }
+
+    /// The match's counts, while it runs.
+    pub fn stats(&self) -> Option<argus_net::Stats> {
+        self.game.as_ref().map(|m| m.stats())
+    }
+
+    /// The match's state, while it runs.
+    pub fn state(&self) -> Option<&State> {
+        self.game.as_ref().map(|m| m.state())
+    }
+
+    /// The room, once there is one.
+    pub fn room(&self) -> Option<argus_net::Room> {
+        self.lobby.room()
     }
 }

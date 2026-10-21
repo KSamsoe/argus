@@ -92,6 +92,11 @@ pub struct Player {
     plugin_source: argus_plugins::Source,
     /// In a match (docs/multiplayer-checklist.md item 1): what it keeps.
     pub(crate) net: Option<crate::netplay::NetState>,
+    /// The match as scripts see it (`q:net`), which the host keeps current.
+    pub(crate) net_view: Rc<RefCell<argus_luau::NetView>>,
+    /// What the game's menu asked of the host (`q:net_host` and the rest),
+    /// until [`Player::take_net_asks`].
+    pub(crate) net_asks: Vec<crate::netplay::NetAsk>,
 }
 
 fn fnv(h: &mut u64, bytes: &[u8]) {
@@ -197,6 +202,8 @@ impl Player {
             platform_answers: Vec::new(),
             overlay_held: false,
             net: None,
+            net_view: a.net_view,
+            net_asks: Vec::new(),
         };
         let (saves, sources) = (p.saves.clone(), p.sources.clone());
         p.sched.on_tick_end(Box::new(move |world, sched| {
@@ -287,6 +294,12 @@ impl Player {
     /// report or a seek carries it. On a discrete clock it is a turn, as a
     /// key press is; returns the turns taken.
     pub fn message(&mut self, channel: &str, text: &str) -> Result<u64> {
+        if self.net.is_some() {
+            return Err(ArgusError::new(
+                1,
+                "in a match every input comes through the match: the devices, not this",
+            ));
+        }
         let st = self
             .input
             .clone()
@@ -331,6 +344,33 @@ impl Player {
         next.sounds = self.sounds;
         *self = next;
         Ok(crate::savegame::report_json(&back))
+    }
+
+    /// `scene` opened afresh from `seed`, as a match starts it on every
+    /// player's machine (multiplayer item 3): the mixer, the platform, the
+    /// saves the host keeps, and the recorder carry over; the player's
+    /// settings do not, since the world is every player's.
+    pub fn restart(&mut self, scene: &str, seed: u64) -> Result<()> {
+        let mut next = Player::open_from(
+            &self.root,
+            Some(scene),
+            Some(seed),
+            self.mods_asked.clone(),
+            self.plugin_source.clone(),
+        )?;
+        next.audio = self.audio.take().or(next.audio);
+        *next.save_list.borrow_mut() = self.save_list.borrow().clone();
+        next.platform = std::mem::replace(
+            &mut self.platform,
+            Box::new(argus_platform::NullPlatform::new()),
+        );
+        if self.recorder.is_some() {
+            next.record();
+        }
+        next.events = self.events;
+        next.sounds = self.sounds;
+        *self = next;
+        Ok(())
     }
 
     /// Run `n` ticks of the driving clock.
@@ -429,6 +469,12 @@ impl Player {
         frames: Option<u64>,
         hold: bool,
     ) -> Result<()> {
+        if self.net.is_some() {
+            return Err(ArgusError::new(
+                1,
+                "in a match every input comes through the match: the devices, not this",
+            ));
+        }
         let st = self
             .input
             .clone()
@@ -499,9 +545,11 @@ impl Player {
     /// daemon takes it. Returns the turns a discrete game took: one command,
     /// one turn.
     pub fn devices(&mut self, evs: &[DeviceInput]) -> u64 {
-        // In a match the devices go to the match ([`Player::net_devices`]),
-        // which applies them at their tick for every player alike.
+        // In a match the devices go to the match, which applies them at
+        // their tick for every player alike (netplay.rs).
         if self.net.is_some() {
+            let changes = self.net_devices(evs);
+            self.net_local(changes);
             return 0;
         }
         let st = self.input.clone();
@@ -792,6 +840,9 @@ impl Player {
                 }
                 if name == "save.delete_requested" {
                     self.deletes.push(crate::savegame::request_name(fields));
+                }
+                if let Some(ask) = crate::netplay::NetAsk::from_event(name, fields) {
+                    self.net_asks.push(ask);
                 }
                 if name == "host.send" {
                     let text_of = |k: &str| {

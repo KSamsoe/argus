@@ -112,6 +112,9 @@ pub struct Assembly {
     /// The saves the host keeps, which scripts list (`q:saves`; 2D staples
     /// item 4): the host fills it and keeps it current.
     pub save_list: Rc<RefCell<Vec<argus_luau::SaveInfo>>>,
+    /// The match as scripts see it (`q:net`; multiplayer item 3): the host
+    /// keeps it current.
+    pub net_view: Rc<RefCell<argus_luau::NetView>>,
 }
 
 /// Scripts' `q:saves` (2D staples item 4): on a tick's first run, the
@@ -135,6 +138,63 @@ impl argus_luau::Saves for HostSaves {
         let now = self.list.borrow().clone();
         st.record_saves(&crate::savegame::list_json(&now));
         now
+    }
+}
+
+/// Scripts' `q:net` (multiplayer item 3): what the host says of the match,
+/// recorded with the run's input as `q:saves` is, so a replay of a lobby or
+/// a match reads what the tick read.
+struct HostNet {
+    view: Rc<RefCell<argus_luau::NetView>>,
+    input: Option<Rc<RefCell<InputState>>>,
+}
+
+impl argus_luau::Net for HostNet {
+    fn view(&self) -> argus_luau::NetView {
+        let Some(input) = &self.input else {
+            return self.view.borrow().clone();
+        };
+        let mut st = input.borrow_mut();
+        if let Some(text) = st.net_read() {
+            return net_from_json(text);
+        }
+        let now = self.view.borrow().clone();
+        st.record_net(&net_json(&now));
+        now
+    }
+}
+
+fn net_json(v: &argus_luau::NetView) -> String {
+    serde_json::json!({
+        "state": v.state,
+        "code": v.code,
+        "slot": v.slot,
+        "players": v.players,
+        "present": v.present,
+        "why": v.why,
+    })
+    .to_string()
+}
+
+fn net_from_json(text: &str) -> argus_luau::NetView {
+    let j: serde_json::Value = serde_json::from_str(text).unwrap_or_default();
+    let s = |k: &str| j[k].as_str().unwrap_or("").to_string();
+    let n = |k: &str| j[k].as_u64().unwrap_or(0) as u8;
+    argus_luau::NetView {
+        state: s("state"),
+        code: s("code"),
+        slot: n("slot"),
+        players: n("players"),
+        present: j["present"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|x| x.as_u64())
+                    .map(|x| x as u8)
+                    .collect()
+            })
+            .unwrap_or_default(),
+        why: s("why"),
     }
 }
 
@@ -501,6 +561,11 @@ fn assemble_layers(
         list: save_list.clone(),
         input: input.clone(),
     }));
+    let net_view = Rc::new(RefCell::new(argus_luau::NetView::alone()));
+    host.set_net(Rc::new(HostNet {
+        view: net_view.clone(),
+        input: input.clone(),
+    }));
     host.set_texts(Rc::new(UiTexts(ui.clone())));
     host.set_screen(Rc::new(UiScreen(ui.clone())));
     host.load_layers(&mut world, &mut sched, layers)?;
@@ -603,6 +668,7 @@ fn assemble_layers(
         audio,
         mods: crate::mods::Report::default(),
         save_list,
+        net_view,
     })
 }
 

@@ -22,6 +22,8 @@ pub struct Client {
     seat: u64,
     present: Vec<u8>,
     closed: Option<String>,
+    /// The lobby has been told it closed.
+    told: bool,
     pinged: Instant,
 }
 
@@ -61,7 +63,9 @@ impl Client {
         )
     }
 
-    fn open(url: &str, first: Up) -> std::io::Result<Client> {
+    /// A connection to the relay at `url` and nothing more, for a
+    /// [`argus_net::Lobby`] to speak through as its [`argus_net::Wire`].
+    pub fn connect(url: &str) -> std::io::Result<Client> {
         let (s, mut reader) = ws::connect(url)?;
         let out = Arc::new(Mutex::new(s));
         let (tx, rx) = mpsc::channel();
@@ -93,7 +97,7 @@ impl Client {
                 Ok(_) => {}
             }
         });
-        let mut c = Client {
+        Ok(Client {
             out,
             rx,
             code: String::new(),
@@ -102,8 +106,13 @@ impl Client {
             seat: 0,
             present: Vec::new(),
             closed: None,
+            told: false,
             pinged: Instant::now(),
-        };
+        })
+    }
+
+    fn open(url: &str, first: Up) -> std::io::Result<Client> {
+        let mut c = Client::connect(url)?;
         c.write(op::BINARY, &first.encode())?;
         let deadline = Instant::now() + Duration::from_secs(10);
         loop {
@@ -212,6 +221,31 @@ impl Client {
 
 fn mask() -> [u8; 4] {
     ws::noise()[..4].try_into().unwrap()
+}
+
+impl argus_net::Wire for Client {
+    fn send(&mut self, up: &Up) {
+        if self.closed.is_none() && self.write(op::BINARY, &up.encode()).is_err() {
+            self.closed = Some("the connection to the relay closed".into());
+        }
+    }
+
+    fn recv(&mut self) -> Vec<Down> {
+        if self.pinged.elapsed() >= PING {
+            self.pinged = Instant::now();
+            let _ = self.write(op::PING, &[]);
+        }
+        let mut out: Vec<Down> = std::iter::from_fn(|| self.rx.try_recv().ok()).collect();
+        if out.iter().any(|m| matches!(m, Down::Refused(_))) {
+            self.told = true;
+        }
+        // A send that failed here closed it too: said once.
+        if let (Some(why), false) = (&self.closed, self.told) {
+            self.told = true;
+            out.push(Down::Refused(why.clone()));
+        }
+        out
+    }
 }
 
 impl argus_net::Link for Client {

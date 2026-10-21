@@ -2041,6 +2041,69 @@ impl UserData for QueryHandle {
             }
             Ok(out)
         });
+        // net(): the match as this machine sees it (multiplayer item 3);
+        // what a tick reads is recorded with its input, as saves() is.
+        m.add_method("net", |lua, this, ()| {
+            ctx(&this.link)?;
+            let v = match lua.app_data_ref::<crate::NetData>() {
+                Some(n) => n.0.view(),
+                None => crate::NetView::alone(),
+            };
+            let t = lua.create_table()?;
+            t.set("state", v.state.as_str())?;
+            if !v.code.is_empty() {
+                t.set("code", v.code.as_str())?;
+            }
+            if v.slot > 0 {
+                t.set("slot", v.slot)?;
+            }
+            t.set("players", v.players)?;
+            let present = lua.create_table()?;
+            for (i, s) in v.present.iter().enumerate() {
+                present.set(i + 1, *s)?;
+            }
+            t.set("present", present)?;
+            if !v.why.is_empty() {
+                t.set("why", v.why.as_str())?;
+            }
+            Ok(t)
+        });
+        // The menu's asks of whatever hosts the game, as events: host a
+        // room, join one by its code, leave.
+        m.add_method(
+            "net_host",
+            |_, this, (players, scene): (Option<u8>, Option<String>)| {
+                let players = players.unwrap_or(2);
+                if !(2..=4).contains(&players) {
+                    return Err(mlua::Error::runtime(format!(
+                        "a match is 2 to 4 players, not {players}"
+                    )));
+                }
+                let mut fields = vec![("players".to_string(), Value::Int(players as i64))];
+                if let Some(s) = scene {
+                    fields.push(("scene".to_string(), Value::Str(s)));
+                }
+                ctx(&this.link)?.emit("net.host_requested", fields);
+                Ok(())
+            },
+        );
+        m.add_method("net_join", |_, this, code: String| {
+            let code = code.trim().to_string();
+            if code.is_empty() || code.len() > 16 {
+                return Err(mlua::Error::runtime(format!(
+                    "{code:?} is not a room's code"
+                )));
+            }
+            ctx(&this.link)?.emit(
+                "net.join_requested",
+                vec![("code".to_string(), Value::Str(code))],
+            );
+            Ok(())
+        });
+        m.add_method("net_leave", |_, this, ()| {
+            ctx(&this.link)?.emit("net.leave_requested", vec![]);
+            Ok(())
+        });
         // speed(x): ask for x ticks a frame (section 6, Outpost's 1x/3x/10x):
         // a `speed.requested` event the scheduler answers at the end of this
         // tick, from the next frame, inside the run, so every host and
