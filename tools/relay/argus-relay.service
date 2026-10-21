@@ -1,0 +1,14 @@
+[Unit]
+Description=Argus relay: rooms for multiplayer matches, on the tailnet only
+After=network-online.target tailscaled.service
+
+[Service]
+# The tailnet address only (argus relay tailnet): players on the tailnet
+# reach it as ws://<klab's tailnet address>:7879. Letting the public reach
+# a relay is a decision of its own (docs/multiplayer-checklist.md item 2).
+ExecStart=%h/argus-relay/argus relay tailnet
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
