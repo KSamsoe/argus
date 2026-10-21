@@ -31,6 +31,10 @@ Two players' machines must compute the same world, bit for bit, every tick, or t
 - **Out of step.** Players compare the fast digest every second. When it differs, the match stops and says so, and each player's report names the first tick and the fields that differ.
 - Tests: two players in one process over a simulated link (delay, jitter, loss) end every tick on the same world; a forced misprediction rolls back and agrees; a desync is caught within a second, and its report names the field; the cost of a rollback of 8 ticks is measured against a frame.
 
+**Done (2026-10-21).** The new crate `argus-net` is the match: its wire messages, a `Link` (and `SimNet`, a bad network inside one process), and `Match`, which runs any `Peer`. `Player` is one (`crates/argus-player/src/netplay.rs`): `join_match`, then `net_devices` for the local player's input. A rollback restores a keyframe and runs the ticks again quietly, the input journal and log rewritten from there, so either player's input log, replayed alone, and either player's report end on the same world. Sounds start at once; after a rollback a sound no longer made is stopped and one made again is left playing. Everything else a tick asks of the host waits until the tick is final. Turn-based games run in lockstep, and a release rides along with the next command rather than taking a turn. `OutOfStep::describe` gives the tick and each differing field's two values, for a report's note. Measured: a rollback of 8 ticks of Hollow is 2.1 ms, 13% of a 60 Hz frame (`crates/argus-player/tests/netplay.rs`).
+
+Left for item 3, as found: during a match every input must come through it (a host message or typed text does not yet, and a rollback would drop one); idle ticks between turns are not run in lockstep; a `q:save` during a match keeps the tick as first run. And for item 4: the UI is in the shared world, so a menu one player opens is in both players' worlds.
+
 ## 2. The relay
 
 - **`argus relay`**, in the install: a small server players connect to over WebSocket. A player hosts a room and gets its code; others join with it. The relay passes the players' messages on and keeps nothing.

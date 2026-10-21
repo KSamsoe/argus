@@ -505,6 +505,24 @@ impl InputState {
         commands
     }
 
+    /// Changes a match fixed for `now` (docs/multiplayer-checklist.md item
+    /// 1), every slot's: applied as devices' are, and journaled as a live
+    /// command, so after a rollback the run as finally played replaces the
+    /// recorded one from here.
+    pub fn apply_changes(&mut self, now: u64, changes: &[(u8, String, ActionValue)]) -> usize {
+        if changes.is_empty() {
+            return 0;
+        }
+        let n = self.apply_device_changes(now, changes);
+        self.journal_live(
+            now,
+            Command::Devices {
+                changes: changes.to_vec(),
+            },
+        );
+        n
+    }
+
     /// The wheel and the text since the last poll (issue 23): a wheel's
     /// turn is a one-tick push of each axis action bound to it, journaled
     /// as an inject; text goes to each slot with a keyboard that is
@@ -1484,6 +1502,17 @@ impl InputState {
             self.log_through = self.log.last().map(|e| e.tick).or(now.checked_sub(1));
             self.rewrite_recording();
         }
+    }
+
+    /// Back at `now` after a match's rollback (docs/multiplayer-checklist.md
+    /// item 1): the ticks from it run again with input that is now known,
+    /// so the recorded future and the log from it go, whether or not the
+    /// first run journaled anything there.
+    pub fn rewind_to(&mut self, now: u64) {
+        self.journal.truncate(self.cursor);
+        self.log.retain(|e| e.tick < now);
+        self.log_through = now.checked_sub(1);
+        self.rewrite_recording();
     }
 
     /// The `Actions` fields for a slot this tick, as `(field, value)`.

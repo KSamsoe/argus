@@ -19,6 +19,8 @@ pub mod desktop;
 pub mod http;
 pub mod keyframe;
 pub mod mods;
+#[cfg(all(feature = "render", feature = "audio"))]
+pub mod netplay;
 pub mod pack;
 #[cfg(all(feature = "render", feature = "audio"))]
 mod player;

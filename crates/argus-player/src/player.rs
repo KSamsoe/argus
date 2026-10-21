@@ -29,12 +29,12 @@ pub struct Player {
     pub name: String,
     /// The run seed.
     pub seed: u64,
-    input: Option<Rc<RefCell<InputState>>>,
-    devices: Devices,
+    pub(crate) input: Option<Rc<RefCell<InputState>>>,
+    pub(crate) devices: Devices,
     /// The window in UI canvas pixels when it shows more than the canvas
     /// ([`Player::set_screen`]).
     screen: Option<[f32; 4]>,
-    tiles: Rc<RefCell<argus_tiles::MapStore>>,
+    pub(crate) tiles: Rc<RefCell<argus_tiles::MapStore>>,
     /// Navigation grids and searches (phase 3 item 2).
     pub nav: Rc<RefCell<argus_nav::NavStore>>,
     /// Particle pools, which the renderer draws.
@@ -90,6 +90,8 @@ pub struct Player {
     overlay_held: bool,
     /// Where they come from, which a load uses again.
     plugin_source: argus_plugins::Source,
+    /// In a match (docs/multiplayer-checklist.md item 1): what it keeps.
+    pub(crate) net: Option<crate::netplay::NetState>,
 }
 
 fn fnv(h: &mut u64, bytes: &[u8]) {
@@ -194,6 +196,7 @@ impl Player {
             platform_cfg: a.platform,
             platform_answers: Vec::new(),
             overlay_held: false,
+            net: None,
         };
         let (saves, sources) = (p.saves.clone(), p.sources.clone());
         p.sched.on_tick_end(Box::new(move |world, sched| {
@@ -496,6 +499,11 @@ impl Player {
     /// daemon takes it. Returns the turns a discrete game took: one command,
     /// one turn.
     pub fn devices(&mut self, evs: &[DeviceInput]) -> u64 {
+        // In a match the devices go to the match ([`Player::net_devices`]),
+        // which applies them at their tick for every player alike.
+        if self.net.is_some() {
+            return 0;
+        }
         let st = self.input.clone();
         let next = self.sched.tick();
         let mut caught = false;
@@ -752,9 +760,32 @@ impl Player {
     }
 
     /// Answer sound requests and count and digest what happened.
-    fn pump(&mut self) {
+    pub(crate) fn pump(&mut self) {
         let drained = self.world.drain_events();
+        if self.net.is_some() {
+            self.pump_net(drained);
+            return;
+        }
         for rec in &drained {
+            self.external(rec);
+            if let (Event::Game { name, fields }, Some(a)) = (&rec.event, self.audio.as_mut()) {
+                if name == "sound.play" || name == "sound.stop" {
+                    a.at_frame(rec.frame);
+                    for (n, _) in a.request(&self.world, name, fields) {
+                        if n == "sound.played" {
+                            self.sounds += 1;
+                        }
+                    }
+                }
+            }
+        }
+        self.audio_follow();
+    }
+
+    /// What an event asks of the host besides sound (a load, a delete, a
+    /// message, the platform), and the event counted and digested.
+    pub(crate) fn external(&mut self, rec: &argus_ecs::EventRecord) {
+        {
             if let Event::Game { name, fields } = &rec.event {
                 if name == "load.requested" {
                     self.loads.push(crate::savegame::request_name(fields));
@@ -791,17 +822,11 @@ impl Player {
             self.events += 1;
             let key = format!("{}|{:?}", rec.frame, rec.event);
             fnv(&mut self.events_digest, key.as_bytes());
-            if let (Event::Game { name, fields }, Some(a)) = (&rec.event, self.audio.as_mut()) {
-                if name == "sound.play" || name == "sound.stop" {
-                    a.at_frame(rec.frame);
-                    for (n, _) in a.request(&self.world, name, fields) {
-                        if n == "sound.played" {
-                            self.sounds += 1;
-                        }
-                    }
-                }
-            }
         }
+    }
+
+    /// The mixer follows the sim's time and the world's music.
+    pub(crate) fn audio_follow(&mut self) {
         if let Some(a) = self.audio.as_mut() {
             // The mixer reaches the sim's time first, so a music change is
             // measured from where the music is now (phase 3 item 7).

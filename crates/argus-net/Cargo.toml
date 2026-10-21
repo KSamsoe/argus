@@ -1,0 +1,10 @@
+[package]
+name = "argus-net"
+description = "Argus Engine matches: players' actions exchanged every tick, prediction and rollback, lockstep for turns, and a cheap check that every player's world agrees"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+argus-ecs = { path = "../argus-ecs", version = "0.1.2" }
+argus-input = { path = "../argus-input", version = "0.1.2" }

@@ -510,6 +510,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "argus-net"
+version = "0.1.2"
+dependencies = [
+ "argus-ecs",
+ "argus-input",
+]
+
+[[package]]
 name = "argus-os"
 version = "0.1.2"
 dependencies = [
@@ -563,6 +571,7 @@ dependencies = [
  "argus-light",
  "argus-luau",
  "argus-nav",
+ "argus-net",
  "argus-os",
  "argus-particles",
  "argus-physics",
