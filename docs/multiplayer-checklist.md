@@ -18,6 +18,8 @@ Two players' machines must compute the same world, bit for bit, every tick, or t
 - **Checked in CI.** The determinism spike's tools run on this PC, klab, and headless Chrome for every example, and a difference fails the step.
 - Tests: the source scan; Luau's `math.sin` and `^` against `libm`'s bits; the fast digest changing when any field does and costing well under a millisecond for Swarm; every example's run ending on the same digest on all three platforms.
 
+**Done (2026-10-21, ae0ebd7a and d9010978).** The sim, the plugin SDK (`argus_plugin::math`), and Luau (vendored `luau0-src` and `mlua-sys`, vendor/README.md) all compute with `libm`, and `crates/argus-sim/tests/platform_math.rs` fails on a platform call in sim code. `World::column_digest` takes 28 µs for a Swarm-sized world, against 1.7 ms for the text digest. CI's det step (`tools/determinism/ci.sh`) gave the same run on this PC, klab, and Chrome for every example's long runs, puppet's included, and the same world on klab for all 348 scenario runs.
+
 ## 1. A match: prediction and rollback
 
 - **A match** is two to four players, each owning a slot (`[slots.<n>]` as today). Every tick, a player's own actions for that tick go to the others.
