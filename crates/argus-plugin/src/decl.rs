@@ -150,6 +150,9 @@ impl Layout {
 unsafe extern "C" fn trampoline(raw: *mut abi::RunCtx, user: *const c_void) -> u32 {
     // SAFETY: `user` is the SystemFn the declaration stored.
     let f: SystemFn = unsafe { core::mem::transmute::<*const c_void, SystemFn>(user) };
+    // SAFETY: the engine's run context, for this call; its table lives as
+    // long as the engine.
+    crate::math::bind(unsafe { (*raw).api });
     // SAFETY: the engine's run context, for this call.
     let ctx = unsafe { Ctx::from_raw(raw) };
     match catch_unwind(AssertUnwindSafe(|| f(&ctx))) {

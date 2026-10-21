@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Everything CI checks, cheapest failure first (phase 5 item 0):
 #
-#   tools/ci/ci.sh [step...]     (steps: fmt clippy test games perf web; none runs all)
+#   tools/ci/ci.sh [step...]     (steps: fmt clippy test games perf web det; none runs all)
 #
 # fmt and clippy: the code as committed, no warnings. test: the workspace's
 # tests, and the render tests again on the software rasteriser as a machine
@@ -10,7 +10,10 @@
 # every section 17 target but the web page's (the Outpost hand-tuning gate,
 # 21 minutes, is left to phase gates). web: Hollow's page built and checked
 # in headless Chrome, its cold load over 20 Mbit included, and the
-# daemon's browser editor page checked as a phone uses it.
+# daemon's browser editor page checked as a phone uses it. det: every
+# example's runs and scenarios end on the same worlds on this machine, on
+# klab, and in headless Chrome (tools/determinism/ci.sh; the last commit,
+# so it wants a clean tree).
 #
 # Every step runs; the script says which failed and exits 1 if any did.
 # Each step's output is in target/ci/<step>.log, which the workflow keeps.
@@ -131,14 +134,16 @@ step_web() {
   # message from the page reaching a script, and q:send's answer back.
   timeout 1800 node tools/web/host-check.mjs "$TARGET/debug/argus$EXE" "$LOGS/host-check" > "$LOGS/host-check.json" || { cat "$LOGS/host-check.json"; return 1; }
 }
+# The same run everywhere (docs/multiplayer-checklist.md item 0).
+step_det() { bash tools/determinism/ci.sh; }
 
 STEPS=("$@")
-[ ${#STEPS[@]} -eq 0 ] && STEPS=(fmt clippy test games perf web)
+[ ${#STEPS[@]} -eq 0 ] && STEPS=(fmt clippy test games perf web det)
 FAILED=()
 for s in "${STEPS[@]}"; do
   case $s in
-    fmt | clippy | test | games | perf | web) ;;
-    *) echo "no step $s: fmt clippy test games perf web" >&2; exit 2 ;;
+    fmt | clippy | test | games | perf | web | det) ;;
+    *) echo "no step $s: fmt clippy test games perf web det" >&2; exit 2 ;;
   esac
   t0=$SECONDS
   echo "--- $s"

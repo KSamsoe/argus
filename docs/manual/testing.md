@@ -363,7 +363,7 @@ It holds because:
 
 Every run in the report ends with the world's digest, 16 hex digits over every field of every live entity. Two runs with the same digest are the same world. `argus sim status digest=true` gives the digest now.
 
-The promise is for one machine and one build. Measured across Windows, Linux, and Chrome, the four reference games were identical too, but that is not promised: the puppet example (skeletal animation) differs between platforms from its first tick, because the engine's own `f32` math uses each platform's math library.
+The promise holds across machines too, since 0.2.0: Windows, Linux, and a browser compute the same world from the same run. The engine's math, and Luau's `math` and `^`, come from one library that gives the same bits everywhere, where each platform's own rounds a few results in a hundred differently. Before each release, CI plays every example's long runs and scenarios on Windows, on Linux, and in Chrome, and fails on one differing bit ([CI](../ci.md)). A Mac is built to agree (its C++ is compiled so a multiply and an add are never fused) but has not been measured. A Rust plugin keeps the promise by using the SDK's math ([Releasing](releasing.md#rust-plugins)).
 
 If the same seed gives two different endings on one machine, that is a bug in the engine or in a script that reaches around the rules. It is worth reporting.
 

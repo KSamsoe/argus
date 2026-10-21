@@ -3,6 +3,10 @@
 
 use std::f32::consts::PI;
 
+// libm's, not the platform's: an eased value is world state, and it must
+// be the same bits on every machine (docs/multiplayer-checklist.md item 0).
+use libm::{cosf, powf, sinf};
+
 /// Every easing name `ease` knows.
 pub const NAMES: &[&str] = &[
     "linear",
@@ -32,6 +36,19 @@ pub const NAMES: &[&str] = &[
     "out_bounce",
     "in_out_bounce",
 ];
+
+fn square(x: f32) -> f32 {
+    x * x
+}
+
+fn cube(x: f32) -> f32 {
+    x * x * x
+}
+
+fn quart(x: f32) -> f32 {
+    let x2 = x * x;
+    x2 * x2
+}
 
 fn out_bounce(t: f32) -> f32 {
     let (n, d) = (7.5625, 2.75);
@@ -77,67 +94,67 @@ pub fn ease(name: &str, t: f32) -> Option<f32> {
         "out_quad" => 1.0 - (1.0 - t) * (1.0 - t),
         "in_out_quad" => in_out(&|x| x * x),
         "in_cubic" => t * t * t,
-        "out_cubic" => 1.0 - (1.0 - t).powi(3),
+        "out_cubic" => 1.0 - cube(1.0 - t),
         "in_out_cubic" => in_out(&|x| x * x * x),
-        "in_quart" => t.powi(4),
-        "out_quart" => 1.0 - (1.0 - t).powi(4),
-        "in_out_quart" => in_out(&|x| x.powi(4)),
-        "in_sine" => 1.0 - (t * PI / 2.0).cos(),
-        "out_sine" => (t * PI / 2.0).sin(),
-        "in_out_sine" => -((PI * t).cos() - 1.0) / 2.0,
+        "in_quart" => quart(t),
+        "out_quart" => 1.0 - quart(1.0 - t),
+        "in_out_quart" => in_out(&quart),
+        "in_sine" => 1.0 - cosf(t * PI / 2.0),
+        "out_sine" => sinf(t * PI / 2.0),
+        "in_out_sine" => -(cosf(PI * t) - 1.0) / 2.0,
         "in_expo" => {
             if t == 0.0 {
                 0.0
             } else {
-                2f32.powf(10.0 * t - 10.0)
+                powf(2.0, 10.0 * t - 10.0)
             }
         }
         "out_expo" => {
             if t == 1.0 {
                 1.0
             } else {
-                1.0 - 2f32.powf(-10.0 * t)
+                1.0 - powf(2.0, -10.0 * t)
             }
         }
         "in_out_expo" => {
             if t == 0.0 || t == 1.0 {
                 t
             } else if t < 0.5 {
-                2f32.powf(20.0 * t - 10.0) / 2.0
+                powf(2.0, 20.0 * t - 10.0) / 2.0
             } else {
-                (2.0 - 2f32.powf(-20.0 * t + 10.0)) / 2.0
+                (2.0 - powf(2.0, -20.0 * t + 10.0)) / 2.0
             }
         }
         "in_back" => c3 * t * t * t - c1 * t * t,
-        "out_back" => 1.0 + c3 * (t - 1.0).powi(3) + c1 * (t - 1.0).powi(2),
+        "out_back" => 1.0 + c3 * cube(t - 1.0) + c1 * square(t - 1.0),
         "in_out_back" => {
             if t < 0.5 {
-                ((2.0 * t).powi(2) * ((c2 + 1.0) * 2.0 * t - c2)) / 2.0
+                (square(2.0 * t) * ((c2 + 1.0) * 2.0 * t - c2)) / 2.0
             } else {
-                ((2.0 * t - 2.0).powi(2) * ((c2 + 1.0) * (t * 2.0 - 2.0) + c2) + 2.0) / 2.0
+                (square(2.0 * t - 2.0) * ((c2 + 1.0) * (t * 2.0 - 2.0) + c2) + 2.0) / 2.0
             }
         }
         "in_elastic" => {
             if t == 0.0 || t == 1.0 {
                 t
             } else {
-                -(2f32.powf(10.0 * t - 10.0)) * ((t * 10.0 - 10.75) * c4).sin()
+                -powf(2.0, 10.0 * t - 10.0) * sinf((t * 10.0 - 10.75) * c4)
             }
         }
         "out_elastic" => {
             if t == 0.0 || t == 1.0 {
                 t
             } else {
-                2f32.powf(-10.0 * t) * ((t * 10.0 - 0.75) * c4).sin() + 1.0
+                powf(2.0, -10.0 * t) * sinf((t * 10.0 - 0.75) * c4) + 1.0
             }
         }
         "in_out_elastic" => {
             if t == 0.0 || t == 1.0 {
                 t
             } else if t < 0.5 {
-                -(2f32.powf(20.0 * t - 10.0) * ((20.0 * t - 11.125) * c5).sin()) / 2.0
+                -(powf(2.0, 20.0 * t - 10.0) * sinf((20.0 * t - 11.125) * c5)) / 2.0
             } else {
-                (2f32.powf(-20.0 * t + 10.0) * ((20.0 * t - 11.125) * c5).sin()) / 2.0 + 1.0
+                (powf(2.0, -20.0 * t + 10.0) * sinf((20.0 * t - 11.125) * c5)) / 2.0 + 1.0
             }
         }
         "in_bounce" => 1.0 - out_bounce(1.0 - t),

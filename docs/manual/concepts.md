@@ -167,7 +167,7 @@ The default comes from `argus.toml` and a scene's `scene.toml` can change it. A 
 
 ## Determinism: same seed, same run
 
-Given the same scene, the same seed, the same input, and the same code, Argus produces the same world, tick for tick, down to the last bit, on the same platform and build. Randomness comes from named streams seeded from the run's seed and the stream's name, so adding a system never changes the numbers another system draws.
+Given the same scene, the same seed, the same input, and the same code, Argus produces the same world, tick for tick, down to the last bit, on Windows, Linux, and in a browser alike. Randomness comes from named streams seeded from the run's seed and the stream's name, so adding a system never changes the numbers another system draws.
 
 This is what the rest of Argus is built on:
 

@@ -216,7 +216,8 @@ pub(crate) fn install(
 }
 
 fn dist(a: [f32; 2], b: [f32; 2]) -> f32 {
-    ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2)).sqrt()
+    let (dx, dy) = (a[0] - b[0], a[1] - b[1]);
+    (dx * dx + dy * dy).sqrt()
 }
 
 /// Move from `pos` toward `to` by at most `budget`; returns where it got

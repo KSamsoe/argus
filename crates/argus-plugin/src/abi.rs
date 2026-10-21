@@ -12,8 +12,9 @@
 use core::ffi::c_void;
 
 /// The version of this boundary. A library built against another one is
-/// refused at load, with a hint to rebuild it.
-pub const ABI_VERSION: u32 = 1;
+/// refused at load, with a hint to rebuild it. 2 added [`HostApi::math32`]
+/// and [`HostApi::math64`].
+pub const ABI_VERSION: u32 = 2;
 
 /// The one symbol a plugin library exports: an [`EntryFn`].
 pub const ENTRY: &str = "argus_plugin_v1";
@@ -398,6 +399,48 @@ pub mod rng_op {
     pub const CHANCE: u32 = 5;
 }
 
+/// The engine's math functions, by number ([`HostApi::math32`]). Each takes
+/// `a` (and `b` where it has two arguments) and is the `libm` crate's, so
+/// it gives the same bits on every machine.
+pub mod math_op {
+    /// sin(a), a in radians.
+    pub const SIN: u32 = 0;
+    /// cos(a).
+    pub const COS: u32 = 1;
+    /// tan(a).
+    pub const TAN: u32 = 2;
+    /// asin(a).
+    pub const ASIN: u32 = 3;
+    /// acos(a).
+    pub const ACOS: u32 = 4;
+    /// atan(a).
+    pub const ATAN: u32 = 5;
+    /// atan2(a, b): the angle of the point (b, a), y first as in C.
+    pub const ATAN2: u32 = 6;
+    /// sinh(a).
+    pub const SINH: u32 = 7;
+    /// cosh(a).
+    pub const COSH: u32 = 8;
+    /// tanh(a).
+    pub const TANH: u32 = 9;
+    /// e to the a.
+    pub const EXP: u32 = 10;
+    /// 2 to the a.
+    pub const EXP2: u32 = 11;
+    /// The natural logarithm of a.
+    pub const LN: u32 = 12;
+    /// log base 2 of a.
+    pub const LOG2: u32 = 13;
+    /// log base 10 of a.
+    pub const LOG10: u32 = 14;
+    /// a to the b.
+    pub const POW: u32 = 15;
+    /// sqrt(a*a + b*b), without overflowing.
+    pub const HYPOT: u32 = 16;
+    /// The cube root of a.
+    pub const CBRT: u32 = 17;
+}
+
 /// The engine's functions, every one taking [`RunCtx::host`] first and
 /// answering a [`status`]. A refusal's message is the engine's: the system
 /// that returns its error is stopped with it.
@@ -465,4 +508,8 @@ pub struct HostApi {
     pub intern: unsafe extern "C" fn(host: *mut c_void, s: Str, out: *mut u32) -> u32,
     /// The plugin's own error message for this run.
     pub fail: unsafe extern "C" fn(host: *mut c_void, message: Str),
+    /// A [`math_op`] in `f32`; NaN for an unknown op. Needs no host.
+    pub math32: unsafe extern "C" fn(op: u32, a: f32, b: f32) -> f32,
+    /// A [`math_op`] in `f64`.
+    pub math64: unsafe extern "C" fn(op: u32, a: f64, b: f64) -> f64,
 }

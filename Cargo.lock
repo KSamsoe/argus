@@ -300,6 +300,7 @@ version = "0.1.2"
 dependencies = [
  "argus-ecs",
  "argus-sim",
+ "libm",
 ]
 
 [[package]]
@@ -389,6 +390,7 @@ name = "argus-ecs"
 version = "0.1.2"
 dependencies = [
  "argus-ecs-derive",
+ "libm",
 ]
 
 [[package]]
@@ -482,6 +484,7 @@ dependencies = [
  "argus-ecs",
  "argus-os",
  "argus-sim",
+ "libm",
  "mlua",
 ]
 
@@ -594,6 +597,7 @@ dependencies = [
  "argus-plugin",
  "argus-sim",
  "libloading",
+ "libm",
  "serde_json",
 ]
 
@@ -729,6 +733,7 @@ version = "0.1.2"
 dependencies = [
  "argus-ecs",
  "argus-sim",
+ "libm",
 ]
 
 [[package]]
@@ -2657,8 +2662,6 @@ checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 [[package]]
 name = "luau0-src"
 version = "0.12.3+luau663"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "76ae337c644bbf86a8d8e9ce3ee023311833d41741baf5e51acc31b37843aba1"
 dependencies = [
  "cc",
 ]
@@ -2778,11 +2781,10 @@ dependencies = [
 [[package]]
 name = "mlua-sys"
 version = "0.6.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "380c1f7e2099cafcf40e51d3a9f20a346977587aa4d012eae1f043149a728a93"
 dependencies = [
  "cc",
  "cfg-if",
+ "libm",
  "luau0-src",
  "pkg-config",
 ]

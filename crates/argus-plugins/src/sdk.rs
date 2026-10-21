@@ -17,6 +17,10 @@ const FILES: &[(&str, &str)] = &[
         include_str!("../../argus-plugin/src/decl.rs"),
     ),
     (
+        "src/math.rs",
+        include_str!("../../argus-plugin/src/math.rs"),
+    ),
+    (
         "src/view.rs",
         include_str!("../../argus-plugin/src/view.rs"),
     ),

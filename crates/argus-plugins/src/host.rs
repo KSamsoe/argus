@@ -536,6 +536,58 @@ unsafe extern "C" fn fail(host: *mut c_void, message: Str) {
     });
 }
 
+/// libm's, as the engine's own sim code uses (docs/multiplayer-checklist.md
+/// item 0): a plugin's math is the same bits on every machine.
+unsafe extern "C" fn math32(op: u32, a: f32, b: f32) -> f32 {
+    use abi::math_op::*;
+    match op {
+        SIN => libm::sinf(a),
+        COS => libm::cosf(a),
+        TAN => libm::tanf(a),
+        ASIN => libm::asinf(a),
+        ACOS => libm::acosf(a),
+        ATAN => libm::atanf(a),
+        ATAN2 => libm::atan2f(a, b),
+        SINH => libm::sinhf(a),
+        COSH => libm::coshf(a),
+        TANH => libm::tanhf(a),
+        EXP => libm::expf(a),
+        EXP2 => libm::exp2f(a),
+        LN => libm::logf(a),
+        LOG2 => libm::log2f(a),
+        LOG10 => libm::log10f(a),
+        POW => libm::powf(a, b),
+        HYPOT => libm::hypotf(a, b),
+        CBRT => libm::cbrtf(a),
+        _ => f32::NAN,
+    }
+}
+
+unsafe extern "C" fn math64(op: u32, a: f64, b: f64) -> f64 {
+    use abi::math_op::*;
+    match op {
+        SIN => libm::sin(a),
+        COS => libm::cos(a),
+        TAN => libm::tan(a),
+        ASIN => libm::asin(a),
+        ACOS => libm::acos(a),
+        ATAN => libm::atan(a),
+        ATAN2 => libm::atan2(a, b),
+        SINH => libm::sinh(a),
+        COSH => libm::cosh(a),
+        TANH => libm::tanh(a),
+        EXP => libm::exp(a),
+        EXP2 => libm::exp2(a),
+        LN => libm::log(a),
+        LOG2 => libm::log2(a),
+        LOG10 => libm::log10(a),
+        POW => libm::pow(a, b),
+        HYPOT => libm::hypot(a, b),
+        CBRT => libm::cbrt(a),
+        _ => f64::NAN,
+    }
+}
+
 pub(crate) static API: HostApi = HostApi {
     abi: abi::ABI_VERSION,
     component,
@@ -553,4 +605,6 @@ pub(crate) static API: HostApi = HostApi {
     string,
     intern,
     fail,
+    math32,
+    math64,
 };

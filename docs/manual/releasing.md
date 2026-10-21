@@ -341,6 +341,7 @@ How it works:
 - **Building.** The daemon builds each plugin, optimised, when the project opens and on `argus reload`, into `.argus/plugins/target`. A one-line change to Swarm's plugin builds in under half a second on the reference laptop, and is running about 40 ms later, without losing a frame.
 - **Errors.** A compile error is a `script.errors` row with file and line (`argus script errors`), never a crash. A plugin that does not build keeps its last good build running. A panic stops only the system that panicked.
 - **Checking.** Each component's layout is checked against the game's, field for field, before any plugin system runs.
+- **Math.** Use the SDK's `argus_plugin::math` (`math::sin(x)`, `math::exp(x)`, `math::atan2(y, x)`, `math::pow(x, y)`, and the like, for `f32` or `f64`), not the float's own `x.sin()`. A float's own functions come from the platform's C library, which rounds a few results in a hundred differently on Windows, Linux, and a Mac, so a replay on another machine, or the other half of a multiplayer match, would drift apart. The SDK's are the engine's, the same everywhere. `+`, `-`, `*`, `/`, `sqrt`, `abs`, `floor`, and `round` are already the same everywhere.
 - **Releasing.** `argus build` builds the plugins and puts each library in `plugins/` beside the executable.
 
 A plugin needs Rust (from https://rustup.rs) on every machine that builds the game: yours, and any that runs the daemon or `argus build` for it. Without cargo, the build says the plugin needs Rust. Players need no Rust.

@@ -98,3 +98,10 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.crc32fast]
 opt-level = 3
+# Luau's math through libm, the same bits on every machine (vendor/README.md).
+[profile.dev.package.libm]
+opt-level = 3
+
+[patch.crates-io]
+luau0-src = { path = "vendor/luau0-src" }
+mlua-sys = { path = "vendor/mlua-sys" }

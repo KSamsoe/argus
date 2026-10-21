@@ -116,7 +116,8 @@ impl TouchArea {
     /// Whether a finger landing at `p` takes this control; how near its
     /// centre, to choose between two (a floating stick's area is far).
     pub fn reach(&self, p: (f32, f32)) -> Option<f32> {
-        let d = ((p.0 - self.centre.0).powi(2) + (p.1 - self.centre.1).powi(2)).sqrt();
+        let (dx, dy) = (p.0 - self.centre.0, p.1 - self.centre.1);
+        let d = (dx * dx + dy * dy).sqrt();
         // A little past its edge: a thumb lands roughly.
         if d <= self.radius * 1.25 {
             return Some(d);

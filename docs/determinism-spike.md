@@ -83,6 +83,8 @@ Puppet's three scenarios still pass on klab: what they check (the hero stands, w
 
 **Since fixed (2026-10-12).** A pose's trig (`argus-skeletal`'s pose.rs: sin, cos, atan2, acos) is `libm`'s now, not the platform's. Puppet's three scenarios end on the same digests on Windows and on klab. A Mac also differed in Todd's test of 0.0.6, issue 2, and will be checked with the next release. Hollow's picture goldens are now kept per system and held to 1% against another system's (testing.md), so they pass on klab too.
 
+**Since fixed (2026-10-21), for multiplayer.** Every other platform call that can reach the world is `libm`'s now too: tweens' easing, the transform hierarchy's rotations, and the camera's follow, zoom, and shake, with a test that fails on a platform call in sim code (`crates/argus-sim/tests/platform_math.rs`). So is Luau's own math: its `math` functions, `^`, `vector.angle`, and the compiler's folding of them call `libm` from Luau's C++, which is built without fused multiply-adds (vendor/README.md). A Rust plugin has the same functions in its SDK (`argus_plugin::math`). CI's det step plays the runs and scenarios below on this PC, klab, and Chrome before each release (docs/ci.md). A world's `column_digest` is the cheap check a match makes every second: 28 µs for a Swarm-sized world, where the text digest takes 1.7 ms.
+
 Two of Hollow's runs fail on klab, and not because of the world: see "Pictures" below.
 
 ## Pictures

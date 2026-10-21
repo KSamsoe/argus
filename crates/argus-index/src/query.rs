@@ -335,7 +335,8 @@ pub fn run(src: &dyn Source, params: &Json) -> Result<Json> {
             let Some(pos) = src.position(id) else {
                 continue;
             };
-            let d = ((pos.0 - center.0).powi(2) + (pos.1 - center.1).powi(2)).sqrt();
+            let (dx, dy) = (pos.0 - center.0, pos.1 - center.1);
+            let d = (dx * dx + dy * dy).sqrt();
             if d > r {
                 continue;
             }
@@ -382,9 +383,10 @@ pub fn run(src: &dyn Source, params: &Json) -> Result<Json> {
                 )
             })?;
             for (id, d) in rows.iter_mut() {
-                *d = src
-                    .position(*id)
-                    .map(|p| ((p.0 - center.0).powi(2) + (p.1 - center.1).powi(2)).sqrt());
+                *d = src.position(*id).map(|p| {
+                    let (dx, dy) = (p.0 - center.0, p.1 - center.1);
+                    (dx * dx + dy * dy).sqrt()
+                });
             }
             rows.sort_by(|a, b| {
                 a.1.unwrap_or(f64::INFINITY)

@@ -38,6 +38,21 @@ impl StrId {
 struct Inner {
     strings: Vec<Arc<str>>,
     map: HashMap<Arc<str>, StrId>,
+    /// Each string's [`text_hash`], by id: what the world's column digest
+    /// reads for a string field, since two machines may number one string
+    /// differently.
+    hashes: Vec<u64>,
+}
+
+/// A string's own hash (FNV-1a, 64-bit), the same for its text in any
+/// table.
+pub fn text_hash(s: &str) -> u64 {
+    let mut h = 0xcbf2_9ce4_8422_2325u64;
+    for b in s.as_bytes() {
+        h ^= *b as u64;
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    h
 }
 
 /// Append-only deduplicating string table with interior mutability, so that
@@ -106,6 +121,7 @@ impl Interner {
             inner: RwLock::new(Inner {
                 strings: vec![empty],
                 map,
+                hashes: vec![text_hash("")],
             }),
             sealed: AtomicUsize::new(0),
         }
@@ -153,6 +169,7 @@ impl Interner {
         }
         let id = StrId(inner.strings.len() as u32);
         let s: Arc<str> = Arc::from(s);
+        inner.hashes.push(text_hash(&s));
         inner.strings.push(s.clone());
         inner.map.insert(s, id);
         Ok(id)
@@ -194,6 +211,11 @@ impl Interner {
         }
     }
 
+    /// Every string's [`text_hash`] by id, for `f` to read under one lock.
+    pub fn with_hashes<R>(&self, f: impl FnOnce(&[u64]) -> R) -> R {
+        f(&self.read().hashes)
+    }
+
     /// Resolve to an owned string.
     pub fn resolve(&self, id: StrId) -> String {
         self.get(id).to_string()
@@ -213,6 +235,6 @@ impl Interner {
     /// reporting: its two tables of shared strings (the words themselves
     /// are shared between copies, not held by each).
     pub fn bytes(&self) -> usize {
-        self.read().strings.len() * 48
+        self.read().strings.len() * 56
     }
 }

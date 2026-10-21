@@ -8,3 +8,4 @@ license.workspace = true
 [dependencies]
 argus-ecs = { path = "../argus-ecs", version = "0.1.2" }
 argus-sim = { path = "../argus-sim", version = "0.1.2" }
+libm = "0.2"

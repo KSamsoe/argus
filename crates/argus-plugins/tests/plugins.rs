@@ -426,3 +426,60 @@ fn parallel_plugin_systems_share_a_batch_and_reach_the_same_world_on_any_threads
     assert_eq!(one.0, two.0);
     assert_eq!(one.1, two.1);
 }
+
+const MATH: &str = r#"use argus_plugin::math;
+use argus_plugin::prelude::*;
+
+component! { pub struct Pos { pub p: Vec2 } }
+component! { pub struct Vel { pub v: Vec2 } }
+
+fn turn(ctx: &Ctx) -> Result {
+    ctx.each::<(&Vel, &mut Pos)>(|_, (v, p)| {
+        let (s, c) = math::sin_cos(v.v.x * 0.37);
+        p.p.x = s + math::pow(c.abs(), 1.7) + math::atan2(v.v.y, v.v.x + 1.0);
+        p.p.y = math::exp(-v.v.x * 0.1) + math::ln(2.0 + v.v.x as f64) as f32;
+    })
+}
+
+plugin! {
+    components: [Pos, Vel],
+    systems: [System::new("sim.turn", "sim").reads(&["Vel"]).writes(&["Pos"]).run(turn)],
+}
+"#;
+
+#[test]
+fn a_plugin_s_math_is_the_engine_s_libm() {
+    plugin("math", MATH);
+    let mut w = world();
+    let mut s = Scheduler::new(SchedulerConfig::continuous(60.0));
+    let p = load_all(
+        project(),
+        &["math".into()],
+        &Source::default(),
+        &mut w,
+        &mut s,
+    );
+    assert!(p.errors.is_empty(), "{:?}", p.errors);
+    s.play(&w);
+    s.step(&mut w, 1).unwrap();
+    let mut seen = 0;
+    for e in w.query().has(w.component_id("Pos").unwrap()).entities() {
+        let v = match w.get_field(e, "Vel.v").unwrap() {
+            Value::Vec2(v) => v,
+            other => panic!("{other:?}"),
+        };
+        let x = libm::sinf(v.x * 0.37)
+            + libm::powf(libm::cosf(v.x * 0.37).abs(), 1.7)
+            + libm::atan2f(v.y, v.x + 1.0);
+        let y = libm::expf(-v.x * 0.1) + libm::log(2.0 + v.x as f64) as f32;
+        let Value::Vec2(got) = w.get_field(e, "Pos.p").unwrap() else {
+            unreachable!()
+        };
+        assert_eq!(
+            (got.x.to_bits(), got.y.to_bits()),
+            (x.to_bits(), y.to_bits())
+        );
+        seen += 1;
+    }
+    assert_eq!(seen, 10);
+}

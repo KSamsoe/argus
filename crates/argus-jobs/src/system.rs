@@ -151,7 +151,8 @@ pub fn spot_near(
 }
 
 fn dist(a: [f32; 2], b: [f32; 2]) -> f32 {
-    ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2)).sqrt()
+    let (dx, dy) = (a[0] - b[0], a[1] - b[1]);
+    (dx * dx + dy * dy).sqrt()
 }
 
 /// The entity a job is worked at: its site, else itself.

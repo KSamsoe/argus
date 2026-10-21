@@ -64,7 +64,7 @@ fn smooth(v: f32, to: f32, tau: f32, dt: f32) -> f32 {
     if tau <= 0.0 {
         to
     } else {
-        v + (to - v) * (1.0 - (-dt / tau).exp())
+        v + (to - v) * (1.0 - libm::expf(-dt / tau))
     }
 }
 
@@ -196,7 +196,7 @@ fn run(
         if moving && has_actions && c.zoom_action != StrId::EMPTY {
             let p = path(c.zoom_action, ctx.world());
             if let Some(z) = ctx.get_field(e, &p).ok().as_ref().and_then(num) {
-                c.height *= (-z * c.zoom_speed * dt).exp();
+                c.height *= libm::expf(-z * c.zoom_speed * dt);
                 if c.zoom_min > 0.0 {
                     c.height = c.height.max(c.zoom_min);
                 }
@@ -332,7 +332,7 @@ fn run(
                     s.trauma = (s.trauma + amount).clamp(0.0, 1.0);
                 }
             }
-            let k = s.trauma.clamp(0.0, 1.0).powf(s.curve.max(0.01));
+            let k = libm::powf(s.trauma.clamp(0.0, 1.0), s.curve.max(0.01));
             let t = time * s.frequency;
             let seed = e.index().wrapping_mul(3);
             if k > 0.0 {

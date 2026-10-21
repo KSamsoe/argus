@@ -486,6 +486,90 @@ impl World {
         h
     }
 
+    /// A digest of the whole world fast enough to take every second of a
+    /// match (docs/multiplayer-checklist.md item 0): every field of every
+    /// live entity read from its column as bytes, where [`World::digest`]
+    /// writes each one out as text. Two players' worlds agree on it when
+    /// they agree field for field, whatever order their storage happens to
+    /// hold the rows in (one may have rolled back and the other not): each
+    /// row is hashed alone and the hashes are added. Strings count by their
+    /// text, and every NaN as one NaN. When two of these differ,
+    /// [`World::digest_rows`] says where.
+    pub fn column_digest(&self) -> u64 {
+        fn mix(mut x: u64) -> u64 {
+            x ^= x >> 30;
+            x = x.wrapping_mul(0xbf58_476d_1ce4_e5b9);
+            x ^= x >> 27;
+            x = x.wrapping_mul(0x94d0_49bb_1331_11eb);
+            x ^ (x >> 31)
+        }
+        fn f32_bits(x: f32) -> u64 {
+            if x.is_nan() {
+                0x7fc0_0000
+            } else {
+                x.to_bits() as u64
+            }
+        }
+        self.strings.with_hashes(|texts| {
+            let text = |id: u32| texts.get(id as usize).copied().unwrap_or(0);
+            let mut total = 0u64;
+            for a in &self.archetypes {
+                for e in &a.entities {
+                    total = total.wrapping_add(mix(e.to_bits() ^ 0x5eed_a11e));
+                }
+                for (c, col) in a.components.iter().zip(&a.columns) {
+                    let schema = self.registry.schema(*c);
+                    let name = crate::intern::text_hash(&schema.name);
+                    let bytes = col.bytes();
+                    for (row, e) in a.entities.iter().enumerate() {
+                        let at = &bytes[row * col.stride()..];
+                        let mut h = mix(e.to_bits() ^ name);
+                        for f in &schema.fields {
+                            let p = at[f.offset..].as_ptr();
+                            // SAFETY: the field lies inside the row (the
+                            // schema's layout); reads are unaligned.
+                            let v = unsafe {
+                                macro_rules! rd {
+                                    ($t:ty) => {
+                                        core::ptr::read_unaligned(p as *const $t)
+                                    };
+                                }
+                                match f.ty {
+                                    FieldType::Bool => (rd!(u8) != 0) as u64,
+                                    FieldType::U8 | FieldType::I8 => rd!(u8) as u64,
+                                    FieldType::U16 | FieldType::I16 => rd!(u16) as u64,
+                                    FieldType::U32 | FieldType::I32 => rd!(u32) as u64,
+                                    FieldType::U64 | FieldType::I64 | FieldType::Entity => {
+                                        rd!(u64)
+                                    }
+                                    FieldType::F32 => f32_bits(rd!(f32)),
+                                    FieldType::F64 => {
+                                        let x = rd!(f64);
+                                        if x.is_nan() {
+                                            0x7ff8_0000_0000_0000
+                                        } else {
+                                            x.to_bits()
+                                        }
+                                    }
+                                    FieldType::Vec2 => {
+                                        let v = rd!(crate::value::Vec2);
+                                        f32_bits(v.x) | f32_bits(v.y) << 32
+                                    }
+                                    FieldType::Str | FieldType::Ref | FieldType::List(_) => {
+                                        text(rd!(u32))
+                                    }
+                                }
+                            };
+                            h = mix(h.rotate_left(17) ^ v);
+                        }
+                        total = total.wrapping_add(h);
+                    }
+                }
+            }
+            total
+        })
+    }
+
     /// What the digest reads, a line a field (`e:12 Transform.pos =
     /// [...]`), floats with their bits: two worlds' lines, compared, say
     /// which field of which entity differs first (the cross-platform

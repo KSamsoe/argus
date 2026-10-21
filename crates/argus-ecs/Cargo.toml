@@ -7,3 +7,4 @@ license.workspace = true
 
 [dependencies]
 argus-ecs-derive = { path = "../argus-ecs-derive", version = "0.1.2" }
+libm = "0.2"

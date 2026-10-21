@@ -82,7 +82,8 @@ impl Default for GlobalTransform {
 impl GlobalTransform {
     /// Compose a child's local transform under this world transform.
     pub fn compose(&self, local: &Transform) -> GlobalTransform {
-        let (s, c) = self.rot.sin_cos();
+        // libm's: a world position must be the same bits on every machine.
+        let (s, c) = libm::sincosf(self.rot);
         let sx = local.pos.x * self.scale.x;
         let sy = local.pos.y * self.scale.y;
         GlobalTransform {

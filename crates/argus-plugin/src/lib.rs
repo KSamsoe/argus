@@ -64,6 +64,7 @@
 pub mod abi;
 pub mod ctx;
 pub mod decl;
+pub mod math;
 pub mod view;
 
 pub use ctx::{Ctx, Entity, Error, Query, Ref, Result, Rng, StrId, Value, Vec2};
