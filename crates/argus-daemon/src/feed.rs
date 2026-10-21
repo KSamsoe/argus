@@ -56,6 +56,10 @@ pub const CHANGES: &[&str] = &[
     "sim.run_until",
     "sim.seek",
     "sim.fork",
+    "net.sim",
+    "net.host",
+    "net.join",
+    "net.leave",
     "sim.snapshot",
     "sim.save",
     "platform.overlay",
@@ -116,6 +120,7 @@ pub const TX_PARTS: &[&str] = &[
 /// Lookups and observations: no row.
 pub const READS: &[&str] = &[
     "project.read",
+    "net.status",
     "session.status",
     "session.capabilities",
     "session.docs",

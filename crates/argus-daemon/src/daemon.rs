@@ -27,6 +27,8 @@ mod jobs;
 mod marks;
 #[path = "nav.rs"]
 mod nav;
+#[path = "netplay.rs"]
+mod netplay;
 #[path = "perf.rs"]
 mod perf;
 #[path = "proposals.rs"]
@@ -262,6 +264,10 @@ pub struct Daemon {
     watched: Vec<String>,
     /// A trial's parked world is catching up: no sound, no notifications.
     backstage: bool,
+    /// A whole match in this daemon (`net.sim`; multiplayer item 3).
+    netsim: Option<netplay::NetSim>,
+    /// One side of a match through a relay (`net.host`, `net.join`).
+    relay: Option<netplay::RelayPlay>,
     /// The tuning session open, if any (phase 2 item 5).
     tuning: Option<tuning::TuneSession>,
     /// A tuning session's own commit is running: its rows are the session's.
@@ -351,6 +357,8 @@ impl Daemon {
             delete_requests: Vec::new(),
             watched: Vec::new(),
             backstage: false,
+            netsim: None,
+            relay: None,
             tuning: None,
             tune_committing: false,
             outbox: Vec::new(),
@@ -589,6 +597,9 @@ impl Daemon {
                 Ok(out)
             }
             "scene.index" => self.scene_index(params),
+            // In a match an inject is its slot's player's, through the match.
+            "input.inject" if self.in_net_sim() => self.net_inject(params),
+            "input.inject" if self.in_relay_match() => self.relay_inject(params),
             "input.inject" => {
                 let r = self.input_inject(params);
                 self.input_branched();
@@ -798,6 +809,11 @@ impl Daemon {
             "obs.diff" => self.obs_diff(params),
             "obs.trace" => self.obs_trace(params),
             "obs.why" => self.obs_why(params),
+            "sim.step" if self.in_net_sim() => {
+                let n = json::u64_param(params, "n", 1)?;
+                self.net_run(n)?;
+                Ok(self.sim_status())
+            }
             "sim.step" => {
                 let n = json::u64_param(params, "n", 1)?;
                 self.before_ticks();
@@ -855,7 +871,25 @@ impl Daemon {
                 }
                 Ok(self.sim_status())
             }
+            "sim.run_until" if self.in_net_sim() => {
+                let Some(n) = params.get("ticks").and_then(Json::as_u64) else {
+                    return Err(bad_params(
+                        "in a match (net.sim) a run is a number of ticks: every player runs them",
+                    ));
+                };
+                let ran = self.net_run(n)?;
+                let mut st = self.sim_status();
+                st["ticks"] = json!(ran);
+                st["hit"] = json!(true);
+                Ok(st)
+            }
             "sim.run_until" => self.sim_run_until(params),
+            "net.sim" => self.net_sim(params),
+            "net.status" if self.relay.is_some() => Ok(self.relay_status()),
+            "net.status" => Ok(self.net_status()),
+            "net.host" => self.net_host(params),
+            "net.join" => self.net_join(params),
+            "net.leave" => self.net_leave(),
             "sim.threads" => self.sim_threads(params),
             "sim.status" => {
                 let mut s = self.sim_status();
@@ -934,6 +968,11 @@ impl Daemon {
     /// a turn-based scene's idle tick between turns (2D staples item 5).
     /// The server calls this at the clock rate; `present` runs every frame.
     pub fn frame(&mut self) -> Result<()> {
+        // A match through a relay runs every frame, played or paused: the
+        // other player cannot wait on this one's clock.
+        if self.relay_frame()? {
+            return Ok(());
+        }
         if self.session.is_some() {
             self.before_ticks();
             self.sched.frame(&mut self.world)?;
@@ -963,6 +1002,11 @@ impl Daemon {
     /// turns taken. Tests call this directly; the window and gamepads
     /// reach it through `poll_devices`.
     pub fn device_input(&mut self, events: &[argus_input::DeviceInput]) -> u64 {
+        // In a relay match the devices are this side's input, at their tick.
+        if self.in_relay_match() {
+            self.relay_devices(events);
+            return 0;
+        }
         let st = self.session.as_ref().and_then(|s| s.input.clone());
         let next = self.sched.tick();
         let mut caught = false;
@@ -2522,6 +2566,7 @@ impl Daemon {
         }
         self.trial = None;
         self.forks.clear();
+        self.netsim = None;
         self.active = "main".to_string();
         let (root, current) = {
             let ses = self.require_session()?;

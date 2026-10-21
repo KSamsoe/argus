@@ -27,3 +27,36 @@ pub mod codes {
     /// A rollback reached a tick with no snapshot kept: an engine bug.
     pub const NO_SNAPSHOT: u32 = 6402;
 }
+
+/// A game's shape, which a relay checks a joining player against: its
+/// components and their fields, its actions, and the engine's version. The
+/// same game built for the web or the desktop, or open in the daemon, has
+/// the same one.
+pub fn fingerprint(world: &argus_ecs::World, actions: &[String]) -> u64 {
+    let mut h = argus_ecs::intern::text_hash(env!("CARGO_PKG_VERSION"));
+    let mix = |h: &mut u64, s: &str| {
+        *h = (h.rotate_left(5) ^ argus_ecs::intern::text_hash(s))
+            .wrapping_mul(0x0000_0100_0000_01b3);
+    };
+    let mut names: Vec<String> = world
+        .registry()
+        .schemas()
+        .iter()
+        .map(|c| {
+            let fields: Vec<String> = c
+                .fields
+                .iter()
+                .map(|f| format!("{}:{:?}", f.name, f.ty))
+                .collect();
+            format!("{}({})", c.name, fields.join(","))
+        })
+        .collect();
+    names.sort();
+    for n in &names {
+        mix(&mut h, n);
+    }
+    for a in actions {
+        mix(&mut h, a);
+    }
+    h
+}

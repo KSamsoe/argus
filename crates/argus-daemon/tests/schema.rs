@@ -14,7 +14,8 @@ use common::*;
 use serde_json::json;
 
 /// Methods not called here: they open a window or a device, end the
-/// session, or wait on the network, which this test must not do.
+/// session, or wait on the network, which this test must not do; or start
+/// a match, which every later step would run (tests/netplay.rs has it).
 const SKIP: &[&str] = &[
     "session.close",
     "session.shutdown",
@@ -22,6 +23,7 @@ const SKIP: &[&str] = &[
     "audio.device",
     "audio.play",
     "mark.pull",
+    "net.sim",
 ];
 
 #[test]

@@ -353,6 +353,7 @@ dependencies = [
  "argus-luau",
  "argus-material",
  "argus-nav",
+ "argus-net",
  "argus-particles",
  "argus-physics",
  "argus-platform",

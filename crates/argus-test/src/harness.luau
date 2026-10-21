@@ -473,17 +473,33 @@ end
 local function make_t(ctx, spec, seed)
   local t = { scene = spec.scene, seed = seed, messages = {} }
   t.input = {}
-  function t.input:hold(action, value, frames)
-    local p = { action = action }
+  -- `slot`: in a match (t:net), the player whose input it is.
+  local function hold(slot, action, value, frames)
+    local p = { action = action, slot = slot }
     if value ~= nil then p.value = value end
     if type(frames) == "table" then frames = frames.frames end
     if frames ~= nil then p.frames = frames else p.hold = true end
     return callm("input.inject", p)
   end
-  function t.input:tap(action, value)
-    local p = { action = action, frames = 1 }
+  local function tap(slot, action, value)
+    local p = { action = action, frames = 1, slot = slot }
     if value ~= nil then p.value = value end
     return callm("input.inject", p)
+  end
+  function t.input:hold(action, value, frames) return hold(1, action, value, frames) end
+  function t.input:tap(action, value) return tap(1, action, value) end
+  -- Another slot's input: a second player's, in couch play or a match.
+  function t.input:slot(n)
+    local s = {}
+    function s:hold(action, value, frames) return hold(n, action, value, frames) end
+    function s:tap(action, value) return tap(n, action, value) end
+    function s:release(action)
+      local now = callm("input.state", { slot = n }).actions[action]
+      local rest = false
+      if type(now) == "number" then rest = 0 elseif type(now) == "table" then rest = { 0, 0 } end
+      return callm("input.inject", { action = action, value = rest, slot = n })
+    end
+    return s
   end
   -- Back to rest. An inject without a value is the action's active value,
   -- so the rest value is sent: false, 0, or {0, 0}, by what it holds now
@@ -513,6 +529,11 @@ local function make_t(ctx, spec, seed)
     return callm("sim.idle", { seconds = seconds or 1 })
   end
   function t:step(n) return run_until(ctx, { frames = n or 1 }) end
+  -- A match of every player in this test, over a network as bad as asked
+  -- (multiplayer item 3): the other players' worlds are forks of this one,
+  -- each step runs them all, and the run fails if they ever disagree.
+  function t:net(opts) return callm("net.sim", opts or {}) end
+  function t:net_status() return callm("net.status", {}) end
   function t:call(method, params) return callm(method, params) end
   function t:log(msg) table.insert(self.messages, tostring(msg)) end
   function t:status() return sim_status() end

@@ -131,33 +131,7 @@ impl Player {
     /// components and their fields, its actions, and the engine's version.
     /// The same game built for the web or the desktop has the same one.
     pub fn fingerprint(&self) -> u64 {
-        let mut h = argus_ecs::intern::text_hash(env!("CARGO_PKG_VERSION"));
-        let mix = |h: &mut u64, s: &str| {
-            *h = (h.rotate_left(5) ^ argus_ecs::intern::text_hash(s))
-                .wrapping_mul(0x0000_0100_0000_01b3);
-        };
-        let mut names: Vec<String> = self
-            .world
-            .registry()
-            .schemas()
-            .iter()
-            .map(|c| {
-                let fields: Vec<String> = c
-                    .fields
-                    .iter()
-                    .map(|f| format!("{}:{:?}", f.name, f.ty))
-                    .collect();
-                format!("{}({})", c.name, fields.join(","))
-            })
-            .collect();
-        names.sort();
-        for n in &names {
-            mix(&mut h, n);
-        }
-        for a in argus_net::Peer::actions(self) {
-            mix(&mut h, &a);
-        }
-        h
+        argus_net::fingerprint(&self.world, &argus_net::Peer::actions(self))
     }
 
     /// Out of the match: what waited for its tick to be final is done now,

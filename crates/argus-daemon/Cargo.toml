@@ -37,6 +37,7 @@ argus-jobs = { path = "../argus-jobs", version = "0.1.2" }
 argus-dialogue = { path = "../argus-dialogue", version = "0.1.2" }
 argus-timeline = { path = "../argus-timeline", version = "0.1.2" }
 argus-tiles = { path = "../argus-tiles", version = "0.1.2" }
+argus-net = { path = "../argus-net", version = "0.1.2" }
 argus-physics = { path = "../argus-physics", version = "0.1.2" }
 argus-camera = { path = "../argus-camera", version = "0.1.2" }
 argus-post = { path = "../argus-post", version = "0.1.2" }

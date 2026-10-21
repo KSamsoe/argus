@@ -285,7 +285,11 @@ impl Daemon {
     }
 
     /// Run `f` against a parked world, swapped in for it.
-    fn in_world<T>(&mut self, name: &str, f: impl FnOnce(&mut Daemon) -> Result<T>) -> Result<T> {
+    pub(super) fn in_world<T>(
+        &mut self,
+        name: &str,
+        f: impl FnOnce(&mut Daemon) -> Result<T>,
+    ) -> Result<T> {
         let mut slot = self
             .forks
             .remove(name)
