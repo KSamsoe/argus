@@ -196,6 +196,19 @@ impl Daemon {
             };
             matches.push((name.clone(), m));
         }
+        // Every player's scripts see the match from its first tick.
+        let playing = argus_luau::NetView {
+            state: "playing".into(),
+            players,
+            ..argus_luau::NetView::default()
+        };
+        self.set_net_view(playing.clone());
+        for name in names.iter().skip(1) {
+            self.in_world(name, |d| {
+                d.set_net_view(playing.clone());
+                Ok(())
+            })?;
+        }
         let frame_ms = 1000.0 / self.sched.config().hz.max(1.0);
         self.netsim = Some(NetSim {
             net,
@@ -451,6 +464,48 @@ pub(super) struct RelayPlay {
 }
 
 impl Daemon {
+    /// What scripts read with `q:net()` from the next tick on.
+    pub(super) fn set_net_view(&self, v: argus_luau::NetView) {
+        if let Some(s) = &self.session {
+            *s.net_view.borrow_mut() = v;
+        }
+    }
+
+    /// The view of a relay's room or match, for this side's scripts.
+    fn relay_view(&self) -> argus_luau::NetView {
+        let Some(rp) = &self.relay else {
+            return argus_luau::NetView::alone();
+        };
+        match rp.lobby.phase() {
+            argus_net::Phase::Alone => argus_luau::NetView::alone(),
+            argus_net::Phase::Asking => argus_luau::NetView {
+                state: "asking".into(),
+                ..argus_luau::NetView::default()
+            },
+            argus_net::Phase::Room => {
+                let r = rp.lobby.room().unwrap_or_default();
+                argus_luau::NetView {
+                    state: "room".into(),
+                    code: r.code,
+                    slot: r.slot,
+                    players: r.players,
+                    present: r.present,
+                    why: String::new(),
+                }
+            }
+            argus_net::Phase::Playing => argus_luau::NetView {
+                state: "playing".into(),
+                players: rp.players,
+                ..argus_luau::NetView::default()
+            },
+            argus_net::Phase::Ended(why) => argus_luau::NetView {
+                state: "ended".into(),
+                why: why.clone(),
+                ..argus_luau::NetView::default()
+            },
+        }
+    }
+
     fn fingerprint(&self) -> u64 {
         argus_net::fingerprint(&self.world, &argus_net::Peer::actions(self))
     }
@@ -550,6 +605,12 @@ impl Daemon {
         let rp = self.relay.as_mut().unwrap();
         rp.game = Some(m);
         rp.players = start.players;
+        // Its scripts see the match from its first tick, as the others' do.
+        self.set_net_view(argus_luau::NetView {
+            state: "playing".into(),
+            players: start.players,
+            ..argus_luau::NetView::default()
+        });
         Ok(())
     }
 
@@ -561,6 +622,7 @@ impl Daemon {
             }
             rp.lobby.leave();
         }
+        self.set_net_view(argus_luau::NetView::alone());
         Ok(json!({ "state": "alone" }))
     }
 
@@ -627,6 +689,8 @@ impl Daemon {
         if rp.game.is_none() {
             if let Some(start) = rp.lobby.poll() {
                 self.relay_begin(start)?;
+            } else {
+                self.set_net_view(self.relay_view());
             }
             return Ok(false);
         }
@@ -661,7 +725,12 @@ impl Daemon {
             }
             rp.game = None;
             rp.lobby.end(&why);
-            rp.ended = Some(why);
+            rp.ended = Some(why.clone());
+            self.set_net_view(argus_luau::NetView {
+                state: "ended".into(),
+                why,
+                ..argus_luau::NetView::default()
+            });
         }
         Ok(())
     }

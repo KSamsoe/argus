@@ -348,6 +348,19 @@ A plugin needs Rust (from https://rustup.rs) on every machine that builds the ga
 
 Limits: a game with plugins has no web build and is released on its own platform; mods cannot carry plugins; a plugin is trusted code, outside the Luau sandbox; a plugin's own statics are not in snapshots, so keep its state in components.
 
+## Running a relay
+
+Players of a multiplayer match reach each other through a relay ([Multiplayer](multiplayer.md#the-relay)). `argus relay` is one, in the install; it needs nothing else. On a machine that stays on, run it as a service: `tools/relay/argus-relay.service` is a systemd unit for a Linux machine that runs `argus relay tailnet`, and `tools/relay/deploy.sh` puts the engine's relay on klab.
+
+On a tailnet (Tailscale), only machines on it can reach the relay, and Tailscale encrypts the traffic. That is the safe way to play with friends: share the tailnet, and give the game `--relay ws://<the relay's tailnet address>:7879`.
+
+A relay anyone can reach is `argus relay public`, on every address the machine has, behind a router that forwards the port. Decide that knowing what it exposes:
+
+- Anyone who reaches the port can open rooms, up to the limit (500), and send through them. Each message goes on to up to three others, so the relay can be made to send three times what it is sent, up to its limits (240 messages a second of up to 64 KB, 2,000 connections). Nothing caps the machine's bandwidth as a whole.
+- A room's code is 5 of 31 letters, about 29 million codes, and nothing limits how often one address tries one, so a stranger could find a room by trying and take a free slot in a match that is not yet full.
+- The traffic is not encrypted (`ws://`). A web page served over `https` may only reach a `wss://` relay, so a public relay needs a TLS proxy in front of it, such as Tailscale Funnel (as the example games' site uses) or Caddy.
+- The relay reads only its own few bytes of each message and keeps nothing; what the players send each other (their actions, and their worlds' digests and fields when they fall out of step) passes through unread.
+
 ## The platform layer and Steam
 
 A game talks to its platform through one small interface: achievements, rich presence, cloud saves, the overlay, and button pictures. Scripts ask; the platform answers in the log.

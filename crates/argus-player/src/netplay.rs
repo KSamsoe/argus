@@ -507,6 +507,9 @@ impl<W: Wire> Netplay<W> {
         let link = self.lobby.link().expect("a started lobby has its link");
         self.game = Some(Match::new(cfg, link, player)?);
         self.players = start.players;
+        // Scripts read the match from its first tick on every machine,
+        // whatever its first frame runs.
+        player.set_net_view(self.view());
         Ok(())
     }
 

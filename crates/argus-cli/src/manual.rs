@@ -25,6 +25,10 @@ pub const CHAPTERS: &[(&str, &str)] = &[
         include_str!("../../../docs/manual/presentation.md"),
     ),
     ("content", include_str!("../../../docs/manual/content.md")),
+    (
+        "multiplayer",
+        include_str!("../../../docs/manual/multiplayer.md"),
+    ),
     ("testing", include_str!("../../../docs/manual/testing.md")),
     (
         "playtesting",

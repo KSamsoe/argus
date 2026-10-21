@@ -17,6 +17,7 @@ New to Argus? Read **[Concepts](concepts.md)**, then follow **[Your first game](
 | [Gameplay](gameplay.md) | Input, movement and collision, rigid bodies, navigation and jobs, events, randomness, timers and tweens, pausing, saves |
 | [Presentation](presentation.md) | Sprites and animation, particles, materials, lighting, the camera, UI and fonts, sound and music |
 | [Content](content.md) | Def tables, dialogue, timelines, strings and languages, accessibility, the player's settings |
+| [Multiplayer](multiplayer.md) | Matches between machines: prediction and rollback, what a game needs, hosting and joining, the relay, testing a match |
 
 ## Working on it
 
@@ -31,7 +32,7 @@ New to Argus? Read **[Concepts](concepts.md)**, then follow **[Your first game](
 
 | Chapter | What it covers |
 |---|---|
-| [Releasing](releasing.md) | `argus build`, the web, the other platform, patches, mods, plugins, Steam, reports from players |
+| [Releasing](releasing.md) | `argus build`, the web, the other platform, patches, mods, plugins, running a relay, Steam, reports from players |
 | [Reference](reference.md) | Where each part of the reference is, and how to read it from a shell, a project, or an agent |
 
 Installing Argus and connecting each AI tool is in [docs/install.md](../install.md). Changing Argus itself is in [docs/developing.md](../developing.md).

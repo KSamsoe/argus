@@ -270,7 +270,7 @@ fn glyph_label(world: &World, shared: &Shared, action: &str, slot: u8) -> Option
             }
         }
     }
-    argus_input::glyphs::prompt(st.map(), action, family).map(|(_, l)| l)
+    argus_input::glyphs::prompt_for(st.map(), action, family, slot).map(|(_, l)| l)
 }
 
 /// A node's taffy style: `top` for a tree's top (never absolutely placed to

@@ -653,6 +653,20 @@ fn relay(words: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
                     return 2;
                 }
             },
+            Some(("lag", v)) => match v.parse::<u64>() {
+                Ok(ms) => limits.lag = std::time::Duration::from_millis(ms.min(5000)),
+                Err(_) => {
+                    let _ = writeln!(err, "{}", bad("lag=ms, a whole number"));
+                    return 2;
+                }
+            },
+            Some(("jitter", v)) => match v.parse::<u64>() {
+                Ok(ms) => limits.jitter = std::time::Duration::from_millis(ms.min(5000)),
+                Err(_) => {
+                    let _ = writeln!(err, "{}", bad("jitter=ms, a whole number"));
+                    return 2;
+                }
+            },
             Some(("players", v)) => match n(v).filter(|n| (2..=4).contains(n)) {
                 Some(n) => limits.players = n as u8,
                 None => {
@@ -661,7 +675,7 @@ fn relay(words: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
                 }
             },
             Some(_) => {
-                let _ = writeln!(err, "{}", bad("rooms=N or players=N"));
+                let _ = writeln!(err, "{}", bad("rooms=N, players=N, lag=ms, or jitter=ms"));
                 return 2;
             }
             None => place = w.clone(),

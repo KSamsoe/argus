@@ -133,6 +133,8 @@ struct Session {
     /// The saves in `.argus/saves/`, which scripts list (`q:saves`; 2D
     /// staples item 4).
     save_list: Rc<RefCell<Vec<argus_luau::SaveInfo>>>,
+    /// The match as scripts see it (`q:net`; multiplayer item 3).
+    net_view: Rc<RefCell<argus_luau::NetView>>,
     /// The UI's theme and fonts (phase 3 item 1), and the string tables
     /// (item 4).
     ui: Rc<RefCell<argus_ui::Shared>>,
@@ -1653,6 +1655,7 @@ impl Daemon {
             mods,
             platform,
             save_list,
+            net_view,
             ..
         } = a;
         // The saves scripts list (2D staples item 4): those in .argus/saves;
@@ -1734,6 +1737,7 @@ impl Daemon {
             mark_key: cfg.mark_key.clone().unwrap_or_else(|| "F8".to_string()),
             saves: Rc::new(RefCell::new(Vec::new())),
             save_list,
+            net_view,
             ui,
             dialogue,
             timelines,

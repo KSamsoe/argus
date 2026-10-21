@@ -32,7 +32,11 @@
 //! rooms on (`q:net_host`, `q:net_join`); `--host [players]` hosts a room
 //! at once and `--join <code>` joins one, for a game without a menu for it.
 //! The room's code is on the bottom line. A match opens the host's scene
-//! afresh from its seed on every player's machine.
+//! afresh from its seed on every player's machine. With `--headless
+//! <ticks>` it plays the match with no window until that many of its ticks
+//! are final, printing a line `{"room": ...}` once the room is open and the
+//! match's counts at the end: how a page and a desktop game are tested in
+//! one match.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -212,6 +216,9 @@ fn run(args: Args) -> Result<(), String> {
     // The saves there are, for the game's own menus (q:saves).
     let saves_dir = save.as_ref().map(|d| d.join("saves"));
     p.list_saves(saves_dir.as_deref());
+    if let (Some(n), true) = (args.headless, args.host.is_some() || args.join.is_some()) {
+        return headless_match(p, &args, n);
+    }
     if let Some(n) = args.headless {
         p.step(n).map_err(|e| e.message)?;
         let mut saves = Vec::new();
@@ -793,6 +800,72 @@ impl Game {
         }
         self.r.set_bar(want.as_ref().map(|(t, c)| (t.as_str(), *c)));
         self.bar = key;
+    }
+}
+
+/// A match with no window (`--headless <ticks>` with `--host` or
+/// `--join`): real time, no input of this side's own, until `ticks` of the
+/// match are final or two minutes pass.
+fn headless_match(mut p: Player, args: &Args, ticks: u64) -> Result<(), String> {
+    use argus_player::netplay::Netplay;
+    let url = args
+        .relay
+        .clone()
+        .or_else(|| std::env::var("ARGUS_RELAY").ok())
+        .ok_or("--host and --join need --relay ws://<address>:7879")?;
+    let connect =
+        || argus_relay::Client::connect(&url).map_err(|e| format!("the relay at {url}: {e}"));
+    let mut net: Netplay<argus_relay::Client> = Netplay::new();
+    match (&args.host, &args.join) {
+        (Some(players), _) => net.host(connect()?, &p, *players, None, args.seed.unwrap_or(7), 2),
+        (None, Some(code)) => net.join(connect()?, &p, code),
+        _ => unreachable!(),
+    }
+    let started = Instant::now();
+    let mut told = false;
+    let mut last = Instant::now();
+    let mut owed = 0.0f64;
+    let mut begun = None;
+    loop {
+        if started.elapsed() > Duration::from_secs(120) {
+            return Err(format!(
+                "no match of {ticks} ticks in two minutes: {:?}",
+                net.view()
+            ));
+        }
+        if let (false, Some(r)) = (told, net.room()) {
+            println!("{}", json!({ "room": r.code, "slot": r.slot }));
+            told = true;
+        }
+        if let Some(start) = net.poll() {
+            p.restart(&start.scene, start.seed).map_err(|e| e.message)?;
+            net.begin(&mut p, &start).map_err(|e| e.message)?;
+            begun = Some(p.tick());
+        }
+        let now = Instant::now();
+        owed = (owed + (now - last).as_secs_f64() * p.sched.driving().hz()).min(5.0);
+        last = now;
+        let n = owed.floor();
+        owed -= n;
+        if net.playing() {
+            net.frame(&mut p, n as u32).map_err(|e| e.message)?;
+        } else {
+            net.tick_view(&mut p);
+            if begun.is_some() {
+                return Err(format!("the match ended: {}", net.view().why));
+            }
+        }
+        if let (Some(b), Some(s)) = (begun, net.stats()) {
+            if p.tick() >= b + ticks && s.checks > 0 {
+                println!(
+                    "{}",
+                    json!({ "tick": p.tick(), "digest": format!("{:016x}", p.digest()), "rollbacks": s.rollbacks, "again": s.again, "checks": s.checks, "waits": s.waits })
+                );
+                net.leave(&mut p);
+                return Ok(());
+            }
+        }
+        std::thread::sleep(Duration::from_millis(4));
     }
 }
 

@@ -216,3 +216,23 @@ fn a_prompt_names_the_button_on_the_device_in_use() {
         "{log:?}"
     );
 }
+
+/// A slot's own keys (`[slots.2.keys]`) are what its prompts name.
+#[test]
+fn a_slot_with_keys_of_its_own_is_prompted_with_them() {
+    let m = ActionMap::parse(
+        "input.toml",
+        "[actions.attack]\ntype = \"button\"\n[actions.attack.bindings]\nkeyboard = [\"f\"]\ngamepad = [\"south\"]\n[slots.1]\ndevices = [\"keyboard\"]\n[slots.2]\ndevices = [\"keyboard\"]\n[slots.2.keys]\nattack = [\"period\"]\n",
+    )
+    .unwrap();
+    let one = argus_input::glyphs::prompt_for(&m, "attack", Family::Keyboard, 1).unwrap();
+    let two = argus_input::glyphs::prompt_for(&m, "attack", Family::Keyboard, 2).unwrap();
+    assert_eq!(one.1, "F");
+    assert_eq!(two.1, ".");
+    // A pad is the action's own whatever the slot.
+    let pad = argus_input::glyphs::prompt_for(&m, "attack", Family::Xbox, 2).unwrap();
+    assert_eq!(
+        pad,
+        argus_input::glyphs::prompt(&m, "attack", Family::Xbox).unwrap()
+    );
+}

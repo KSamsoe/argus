@@ -119,6 +119,9 @@ A scenario presses the game's actions from `input.toml`, never raw keys:
 | `t.input:release(action)` | Back to rest (false, 0, or `{0, 0}`). |
 | `t.input:touch(finger, phase, x, y)` | A finger on a touchscreen: `phase` is `"start"`, `"move"`, `"end"`, or `"cancel"`, at `x`, `y` in the UI canvas's pixels. On a `[touch]` control it holds it; elsewhere it is the mouse. Hold a button across a step or a turn before lifting the finger, as a key ([Gameplay](gameplay.md#touch)). |
 | `t.input:message(channel, text)` | Text from the host, as the page of a web build would send it: the next tick's scripts get a `host.message` event. A scripted stand-in for an outside service (a model's answer) lives here. It only queues the message: the next `t:advance` (or `t:step`) runs the tick that gets it. The text must be UTF-8, and up to 64 KiB. |
+| `t.input:slot(n)` | Slot n's input, with the same `hold`, `tap`, and `release`: a second player's. `local two = t.input:slot(2)`, then `two:tap("attack")`. |
+
+Typing into a text box is the keyboard's text, sent as a device would: `t:call("input.device", { text = { "KQ7XM" } })`, then Enter as `t:call("input.device", { text = { string.char(13) } })` (`examples/duel/tests/menu.luau`).
 
 Input is read when a tick runs. On a discrete clock, hold the action across the turn: a press and release with no tick between them is never seen. From `examples/hollow/tests/run.luau`:
 
@@ -186,6 +189,10 @@ Some details that matter:
 - **An error does stop it.** `error(msg)`, `assert`, or a failing `t:call` ends the run and names the line in `tests/`. In a helper of your own, `error(msg, 2)` names the caller's line instead.
 - **Declare a series before the run it watches.** Declared late, the harness runs that seed again from the start with the series in place. Outpost's food scenario declares it first for this reason, since a rerun would be thirty more days.
 - **`perf` has slack.** With the default `perf_margin` of 1.5, `:lt(4.0)` passes up to 6 ms. Timing depends on the machine and how busy it is.
+
+## A multiplayer match
+
+`t:net { players = 2, latency = 60, jitter = 30, loss = 0.05 }` at the start of a run plays the rest of it as a match of every player, over a network that bad: each `t:step` runs every player's world and ends with every world the same, and the run fails when two differ, naming the fields. [Multiplayer](multiplayer.md#testing-a-match) has the whole of it; `examples/duel/tests/online.luau` plays five rounds that way.
 
 ## Seeds
 

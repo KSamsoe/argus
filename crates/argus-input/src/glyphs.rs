@@ -219,6 +219,17 @@ fn key_label(binding: &str) -> String {
 /// binding on the family's device (the mouse's, for the keyboard family,
 /// when it has no key).
 pub fn prompt(map: &ActionMap, action: &str, family: Family) -> Option<(String, String)> {
+    prompt_for(map, action, family, 1)
+}
+
+/// [`prompt`] for a slot: its own keys for the action (`[slots.2.keys]`)
+/// in place of the action's, on the keyboard.
+pub fn prompt_for(
+    map: &ActionMap,
+    action: &str,
+    family: Family,
+    slot: u8,
+) -> Option<(String, String)> {
     let a = map.action(action).ok()?;
     if family == Family::Touch {
         // The control's words, or the action's name; a click is a tap; and
@@ -240,9 +251,16 @@ pub fn prompt(map: &ActionMap, action: &str, family: Family) -> Option<(String, 
         {
             return Some(("touch_tap".to_string(), "Tap".to_string()));
         }
-        return prompt(map, action, Family::Keyboard);
+        return prompt_for(map, action, Family::Keyboard, slot);
     }
-    let b = a.bindings.get(family.device()).and_then(|v| v.first());
+    let own = map
+        .slot(slot)
+        .ok()
+        .and_then(|s| s.keys.get(action))
+        .filter(|_| family == Family::Keyboard);
+    let b = own
+        .or_else(|| a.bindings.get(family.device()))
+        .and_then(|v| v.first());
     if b.is_none() && family == Family::Keyboard {
         if let Some(m) = a.bindings.get("mouse").and_then(|v| v.first()) {
             let (mods, button) = crate::devices::mouse_parts(m);
