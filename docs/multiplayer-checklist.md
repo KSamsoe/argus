@@ -43,6 +43,17 @@ Left for item 3, as found: during a match every input must come through it (a ho
 - For testing it runs on klab over the tailnet. Letting the public reach one is Kevin's decision, taken with what it exposes written down.
 - Tests: rooms, codes, joining a full room, a player dropping and coming back, the limits; a match through a real relay on this machine.
 
+**Done (2026-10-21, a94ab2d8 and 20546481).** `argus relay [local | tailnet | public | ip:port]` (crate `argus-relay`, port 7879) serves rooms; `Client` is a desktop player's end, a `Link`. A dropped player comes back to its slot with its seat token; a room no one is in goes after a minute. It runs on klab as `argus-relay.service`, on the tailnet only (`tools/relay/deploy.sh`): `ws://100.70.114.55:7879`, a 6.6 ms round trip from this PC (`tools/relay/check.mjs`, Node's own WebSocket, as a page's).
+
+**What letting the public reach a relay exposes** (Kevin's decision; `public` must be said):
+
+- Anyone who reaches the port can open rooms, up to the limit (500), and send through them: a message goes to up to three others, so a relay can be made to send three times what it is sent, up to its limits (240 messages a second of up to 64 KB, 2,000 connections). Nothing caps the bandwidth of the machine as a whole.
+- A room code is 5 of 31 letters, about 29 million codes. Nothing limits how often one address may try a code, so a stranger could find a room by trying, and take a free slot in a match not yet full.
+- The traffic is not encrypted (`ws://`). A web page served over `https` may only reach `wss://`, so a public relay needs a TLS proxy in front (Tailscale Funnel, as the games site uses, or Caddy).
+- The relay reads only its own few bytes of each message and keeps nothing; what the players send each other (their actions, and their worlds' digests and rows when they fall out of step) passes through unread.
+
+Before a public relay: connections a minute per address, a cap on its total bandwidth, and longer codes or an approval by the host would close the first two.
+
 ## 3. Hosts and scripts
 
 - **Scripts** see the match: `q:net()` gives the players, the local player's slot, each one's ping, and the match's state. Events say when a player joins, leaves, or falls out of step. A game's own menu hosts and joins, so it can show a room code and who is in.
