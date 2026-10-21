@@ -1104,3 +1104,40 @@ devices = ["keyboard", "mouse"]
         assert!(ActionMap::parse("input.toml", &text).is_err(), "{bad} read");
     }
 }
+
+/// Two players on one keyboard (multiplayer item 4): each slot has its
+/// own keys for an action, in place of the action's keyboard binding.
+#[test]
+fn two_slots_share_a_keyboard_with_keys_of_their_own() {
+    let m = ActionMap::parse(
+        "input.toml",
+        "[actions.move]\ntype = \"axis2\"\n[actions.move.bindings]\nkeyboard = [\"wasd\"]\n\
+         [actions.hit]\ntype = \"button\"\n[actions.hit.bindings]\nkeyboard = [\"f\"]\n\
+         [slots.1]\ndevices = [\"keyboard\"]\n\
+         [slots.2]\ndevices = [\"keyboard\"]\n[slots.2.keys]\nmove = [\"arrows\"]\nhit = [\"period\"]\n",
+    )
+    .unwrap();
+    let mut d = Devices::default();
+    d.apply(&key("KeyW", true));
+    d.apply(&key("Period", true));
+    let one: std::collections::BTreeMap<_, _> = d.resolve(&m, 1).into_iter().collect();
+    let two: std::collections::BTreeMap<_, _> = d.resolve(&m, 2).into_iter().collect();
+    assert_eq!(one["move"], argus_input::ActionValue::Axis2(0.0, 1.0));
+    assert_eq!(one["hit"], argus_input::ActionValue::Button(false));
+    assert_eq!(
+        two["move"],
+        argus_input::ActionValue::Axis2(0.0, 0.0),
+        "W is slot 1's"
+    );
+    assert_eq!(two["hit"], argus_input::ActionValue::Button(true));
+    d.apply(&key("ArrowLeft", true));
+    let two: std::collections::BTreeMap<_, _> = d.resolve(&m, 2).into_iter().collect();
+    assert_eq!(two["move"], argus_input::ActionValue::Axis2(-1.0, 0.0));
+    // A key for an action the map does not have is an error, at its line.
+    let e = ActionMap::parse(
+        "input.toml",
+        "[actions.move]\ntype = \"axis2\"\n[slots.2]\ndevices = [\"keyboard\"]\n[slots.2.keys]\njump = [\"x\"]\n",
+    )
+    .unwrap_err();
+    assert!(e.message.contains("slots.2.keys.jump"), "{}", e.message);
+}

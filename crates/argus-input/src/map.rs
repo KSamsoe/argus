@@ -101,6 +101,10 @@ pub struct Slot {
     pub index: u8,
     /// Devices feeding it (`keyboard`, `gamepad:0`).
     pub devices: Vec<String>,
+    /// Its own keys for actions (`[slots.2.keys] move = ["arrows"]`), in
+    /// place of the actions' keyboard bindings: two players on one
+    /// keyboard (multiplayer item 4).
+    pub keys: BTreeMap<String, Vec<String>>,
 }
 
 /// The parsed map.
@@ -322,13 +326,35 @@ impl ActionMap {
                     Some(d) => tomlv::string_list(d, &format!("slots.{n}.devices"), &iat)?,
                     None => Vec::new(),
                 };
-                slots.push(Slot { index, devices });
+                let mut keys = BTreeMap::new();
+                if let Some(k) = it.get("keys") {
+                    let kat = tomlv::item_ref(file, text, k);
+                    let kt = tomlv::table_like(k, &format!("slots.{n}.keys"), &kat)?;
+                    for (action, list) in kt.iter() {
+                        let lat = tomlv::item_ref(file, text, list);
+                        if action == DEVICE_ACTION || !actions.iter().any(|a| a.name == action) {
+                            return Err(bad(
+                                format!("slots.{n}.keys.{action}: [actions] has no {action:?}"),
+                                lat,
+                            ));
+                        }
+                        let names =
+                            tomlv::string_list(list, &format!("slots.{n}.keys.{action}"), &lat)?;
+                        keys.insert(action.to_string(), names);
+                    }
+                }
+                slots.push(Slot {
+                    index,
+                    devices,
+                    keys,
+                });
             }
         }
         if slots.is_empty() {
             slots.push(Slot {
                 index: 1,
                 devices: vec!["keyboard".to_string()],
+                keys: BTreeMap::new(),
             });
         }
         slots.sort_by_key(|s| s.index);

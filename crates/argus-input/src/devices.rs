@@ -673,7 +673,12 @@ impl Devices {
                 }
                 continue;
             }
-            let kb_bound = a.bindings.get("keyboard").filter(|_| keyboard);
+            // A slot's own keys for the action, when it has them.
+            let kb_bound = s
+                .keys
+                .get(&a.name)
+                .or_else(|| a.bindings.get("keyboard"))
+                .filter(|_| keyboard);
             let ms = a.bindings.get("mouse").filter(|_| mouse);
             let gp = a.bindings.get("gamepad").filter(|_| !pads.is_empty());
             let pf = a.bindings.get("platform");

@@ -110,6 +110,25 @@ devices = ["keyboard", "gamepad:0"]
 devices = ["gamepad:1"]
 ```
 
+Two players can share one keyboard. Give a slot keys of its own for an action, in place of the action's keyboard binding, and leave the other slot the action's own:
+
+```toml
+[actions.move.bindings]
+keyboard = ["wasd"]
+
+[slots.1]
+devices = ["keyboard", "gamepad:0"]
+
+[slots.2]
+devices = ["keyboard", "gamepad:1"]
+
+[slots.2.keys]
+move = ["arrows"]
+attack = ["period"]
+```
+
+A key's name is the browser's name for it, in lower case: `period`, `slash`, `shiftright`, `enter`.
+
 ### Reading actions in a script
 
 A system that declares `reads = {"Actions"}` reads the fields by the action's name. From `templates/blank/systems/move.luau`:
