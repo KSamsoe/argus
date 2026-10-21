@@ -315,6 +315,7 @@ dependencies = [
  "argus-os",
  "argus-player",
  "argus-plugins",
+ "argus-relay",
  "argus-render",
  "argus-scene",
  "argus-sim",
@@ -358,6 +359,7 @@ dependencies = [
  "argus-player",
  "argus-plugins",
  "argus-post",
+ "argus-relay",
  "argus-render",
  "argus-scene",
  "argus-sim",
@@ -578,6 +580,7 @@ dependencies = [
  "argus-platform",
  "argus-plugins",
  "argus-post",
+ "argus-relay",
  "argus-render",
  "argus-rigid",
  "argus-scene",
@@ -616,6 +619,14 @@ version = "0.1.2"
 dependencies = [
  "argus-ecs",
  "argus-sim",
+]
+
+[[package]]
+name = "argus-relay"
+version = "0.1.2"
+dependencies = [
+ "argus-ecs",
+ "argus-net",
 ]
 
 [[package]]

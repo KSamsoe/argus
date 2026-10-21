@@ -24,14 +24,14 @@
 //! call is checked against the token's scope before the daemon hears it;
 //! a path a call names must stay inside the project.
 
-pub mod hash;
+pub use argus_relay::hash;
 pub mod tokens;
 
 use crate::daemon::ConnId;
 use crate::server::Msg;
 use serde_json::{json, Value as Json};
 use std::io::{BufRead, BufReader, Read, Write};
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream, UdpSocket};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Sender};
@@ -51,25 +51,7 @@ pub const PAGE: &str = include_str!("index.html");
 /// The largest message the daemon reads from a browser.
 const MAX_MESSAGE: usize = 1 << 20;
 
-/// Whether the daemon may listen on an address: this machine, or its
-/// tailnet (Tailscale's 100.64.0.0/10 and fd7a:115c:a1e0::/48).
-pub fn allowed(ip: IpAddr) -> bool {
-    match ip {
-        IpAddr::V4(v) => {
-            v.is_loopback() || (v.octets()[0] == 100 && (64..128).contains(&v.octets()[1]))
-        }
-        IpAddr::V6(v) => v.is_loopback() || v.segments()[..3] == [0xfd7a, 0x115c, 0xa1e0],
-    }
-}
-
-/// This machine's tailnet address, if it has one: the address a UDP socket
-/// would send from to reach Tailscale's 100.100.100.100 (nothing is sent).
-pub fn tailnet_ip() -> Option<IpAddr> {
-    let s = UdpSocket::bind("0.0.0.0:0").ok()?;
-    s.connect("100.100.100.100:53").ok()?;
-    let ip = s.local_addr().ok()?.ip();
-    (allowed(ip) && !ip.is_loopback()).then_some(ip)
-}
+pub use argus_relay::addr::{allowed, tailnet_ip};
 
 /// `--web`'s value as an address: empty or `local` is this machine,
 /// `tailnet` its tailnet address, else `ip`, `ip:port`, or `:port`.
@@ -412,58 +394,12 @@ fn refusal(scope: Scope, line: &str) -> Option<(Json, String)> {
     None
 }
 
-/// One WebSocket frame: opcode and payload.
+/// One WebSocket frame: opcode, whether it ends a message, and payload.
 fn read_frame(r: &mut impl Read) -> std::io::Result<(u8, bool, Vec<u8>)> {
-    let mut h = [0u8; 2];
-    r.read_exact(&mut h)?;
-    let fin = h[0] & 0x80 != 0;
-    let op = h[0] & 0x0f;
-    let masked = h[1] & 0x80 != 0;
-    let mut len = (h[1] & 0x7f) as u64;
-    if len == 126 {
-        let mut b = [0u8; 2];
-        r.read_exact(&mut b)?;
-        len = u16::from_be_bytes(b) as u64;
-    } else if len == 127 {
-        let mut b = [0u8; 8];
-        r.read_exact(&mut b)?;
-        len = u64::from_be_bytes(b);
-    }
-    if len as usize > MAX_MESSAGE {
-        return Err(std::io::Error::other("a message too long"));
-    }
-    let mut mask = [0u8; 4];
-    if masked {
-        r.read_exact(&mut mask)?;
-    }
-    let mut data = vec![0u8; len as usize];
-    r.read_exact(&mut data)?;
-    if masked {
-        for (i, b) in data.iter_mut().enumerate() {
-            *b ^= mask[i % 4];
-        }
-    }
-    Ok((op, fin, data))
+    argus_relay::ws::read_frame(r, MAX_MESSAGE)
 }
 
-/// A server's frame (unmasked).
-fn write_frame(w: &mut impl Write, op: u8, data: &[u8]) -> std::io::Result<()> {
-    let mut h = vec![0x80 | op];
-    match data.len() {
-        n if n < 126 => h.push(n as u8),
-        n if n <= u16::MAX as usize => {
-            h.push(126);
-            h.extend_from_slice(&(n as u16).to_be_bytes());
-        }
-        n => {
-            h.push(127);
-            h.extend_from_slice(&(n as u64).to_be_bytes());
-        }
-    }
-    w.write_all(&h)?;
-    w.write_all(data)?;
-    w.flush()
-}
+use argus_relay::ws::write_frame;
 
 fn websocket(
     mut s: TcpStream,

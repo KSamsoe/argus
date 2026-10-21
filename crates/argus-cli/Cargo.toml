@@ -16,6 +16,7 @@ path = "src/main.rs"
 [dependencies]
 argus-client = { path = "../argus-client", version = "0.1.2" }
 argus-daemon = { path = "../argus-daemon", version = "0.1.2" }
+argus-relay = { path = "../argus-relay", version = "0.1.2" }
 argus-player = { path = "../argus-player", version = "0.1.2", features = ["rigid"] }
 argus-plugins = { path = "../argus-plugins", version = "0.1.2" }
 argus-render = { path = "../argus-render", version = "0.1.2" }

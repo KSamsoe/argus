@@ -528,3 +528,57 @@ fn a_rollback_of_eight_ticks_is_a_fraction_of_a_frame() {
     );
     assert!(each.as_secs_f64() < 0.25 / 60.0, "{each:?}");
 }
+
+/// The same match, through a real relay on this machine: each player's
+/// link is a WebSocket to it, so the messages cross threads and sockets.
+#[test]
+fn two_players_play_one_run_through_a_relay() {
+    let dir = duel("relay", "continuous@60");
+    let relay = argus_relay::Relay::bind("127.0.0.1:0", argus_relay::Limits::default())
+        .unwrap()
+        .spawn();
+    let url = format!("ws://{}", relay.addr());
+    let game = 0xd0e1;
+    let host = argus_relay::Client::host(&url, 2, game).unwrap();
+    let guest = argus_relay::Client::join(&url, host.code(), game).unwrap();
+    let mut players = Vec::new();
+    let mut matches = Vec::new();
+    for link in [host, guest] {
+        let mut p = Player::open(&dir, None, None).unwrap();
+        p.join_match();
+        let cfg = Config::new(2, link.slot(), game);
+        matches.push(Match::new(cfg, link, &p).unwrap());
+        players.push(p);
+    }
+    for f in 0..400u64 {
+        for i in 0..2 {
+            matches[i].local(&script(i as u8 + 1, f));
+            matches[i].advance(&mut players[i], 1).unwrap();
+        }
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+    // Run the one behind up to the other, and wait until both are final.
+    for _ in 0..2000 {
+        let lead = players[0].tick().max(players[1].tick());
+        if players.iter().all(|p| p.tick() == lead) && matches.iter().all(|m| m.final_to() == lead)
+        {
+            break;
+        }
+        for i in 0..2 {
+            let behind = (players[i].tick() < lead) as u32;
+            matches[i].advance(&mut players[i], behind).unwrap();
+        }
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+    let (a, b) = (&players[0], &players[1]);
+    assert_eq!(a.tick(), b.tick());
+    assert!(a.tick() >= 390, "{}", a.tick());
+    assert_eq!(a.digest(), b.digest());
+    assert_eq!(a.input_log(), b.input_log());
+    assert!(matches.iter().all(|m| matches!(m.state(), State::Running)));
+    assert!(
+        matches.iter().all(|m| m.stats().checks >= 5),
+        "{:?}",
+        matches[0].stats()
+    );
+}

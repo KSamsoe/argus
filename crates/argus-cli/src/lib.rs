@@ -280,6 +280,9 @@ pub enum Command {
     SelfUpdate(Vec<String>),
     /// `argus uninstall`: the install, removed.
     Uninstall,
+    /// `argus relay [where]`: rooms for matches (docs/multiplayer-checklist.md
+    /// item 2), until stopped.
+    Relay(Vec<String>),
     /// Nothing recognisable.
     Unknown(Vec<String>),
 }
@@ -294,6 +297,7 @@ pub fn resolve(words: &[String]) -> Command {
     match words[0].as_str() {
         "help" => return Command::Help(words[1..].to_vec()),
         "daemon" => return Command::Daemon(words[1..].to_vec()),
+        "relay" => return Command::Relay(words[1..].to_vec()),
         "editor" if words.len() == 1 => return Command::Editor,
         "build" => return Command::Build,
         "mcp" if words.get(1).map(String::as_str) == Some("setup") => {
@@ -381,6 +385,8 @@ pub fn run(argv: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
         Command::Docs => agentdoc::command(&inv, out, err),
         Command::SelfUpdate(words) => install::self_update(&inv, &words, out, err),
         Command::Uninstall => install::uninstall(out, err),
+        // An address (`100.70.1.2:7000`) or a limit (`rooms=50`) is an argument.
+        Command::Relay(words) => relay(&[words, inv.args.clone()].concat(), out, err),
         Command::Projects => {
             let under = inv.args.iter().find_map(|a| a.strip_prefix("under="));
             let open = project::find_project(inv.project.as_deref()).ok();
@@ -630,4 +636,62 @@ pub fn call_and_print(
         let _ = write!(out, "{}", render::result(&result));
     }
     EXIT_OK
+}
+
+/// `argus relay [where] [rooms=N] [players=N]`: serve rooms until stopped.
+fn relay(words: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
+    let mut limits = argus_relay::Limits::default();
+    let mut place = String::new();
+    for w in words {
+        let bad = |what: &str| format!("argus relay: {w:?}: {what}");
+        let n = |v: &str| v.parse::<usize>().ok().filter(|n| *n > 0);
+        match w.split_once('=') {
+            Some(("rooms", v)) => match n(v) {
+                Some(n) => limits.rooms = n,
+                None => {
+                    let _ = writeln!(err, "{}", bad("a number of rooms above 0"));
+                    return 2;
+                }
+            },
+            Some(("players", v)) => match n(v).filter(|n| (2..=4).contains(n)) {
+                Some(n) => limits.players = n as u8,
+                None => {
+                    let _ = writeln!(err, "{}", bad("players is 2 to 4"));
+                    return 2;
+                }
+            },
+            Some(_) => {
+                let _ = writeln!(err, "{}", bad("rooms=N or players=N"));
+                return 2;
+            }
+            None => place = w.clone(),
+        }
+    }
+    let addr = match argus_relay::addr::relay_addr(&place) {
+        Ok(a) => a,
+        Err(e) => {
+            let _ = writeln!(err, "argus relay: {e}");
+            return 2;
+        }
+    };
+    let relay = match argus_relay::Relay::bind(&addr.to_string(), limits.clone()) {
+        Ok(r) => r,
+        Err(e) => {
+            let _ = writeln!(err, "argus relay: cannot listen on {addr}: {e}");
+            return 1;
+        }
+    };
+    let players = match limits.players {
+        2 => "2 players".to_string(),
+        n => format!("2 to {n} players"),
+    };
+    let _ = writeln!(
+        out,
+        "argus relay: rooms on ws://{} (up to {} rooms of {players}); stop it with Ctrl+C",
+        relay.handle().addr(),
+        limits.rooms,
+    );
+    let _ = out.flush();
+    relay.serve();
+    0
 }

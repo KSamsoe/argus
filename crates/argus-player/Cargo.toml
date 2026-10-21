@@ -56,5 +56,7 @@ serde_json = "1"
 vorbis_rs = { version = "0.5", default-features = false }
 
 [dev-dependencies]
+# A match through a real relay on this machine.
+argus-relay = { path = "../argus-relay", version = "0.1.2" }
 # The screen reader's tree, in a test of it.
 accesskit = "0.17"

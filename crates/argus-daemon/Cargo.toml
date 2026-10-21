@@ -30,6 +30,7 @@ argus-luau = { path = "../argus-luau", version = "0.1.2" }
 argus-scene = { path = "../argus-scene", version = "0.1.2" }
 argus-index = { path = "../argus-index", version = "0.1.2" }
 argus-input = { path = "../argus-input", version = "0.1.2" }
+argus-relay = { path = "../argus-relay", version = "0.1.2" }
 argus-assets = { path = "../argus-assets", version = "0.1.2" }
 argus-nav = { path = "../argus-nav", version = "0.1.2" }
 argus-jobs = { path = "../argus-jobs", version = "0.1.2" }

@@ -42,6 +42,7 @@ pub fn overview() -> String {
     );
     out.push_str("\n  new\n    new <dir>              a working project from a template, ready for an agent (--template, --name)\n");
     out.push_str("\n  build\n    build                  a release: the executable and its packs, or the web page (--target, --release)\n");
+    out.push_str("\n  relay\n    relay [where]          rooms for multiplayer matches, until stopped (local, tailnet, or public)\n");
     out.push_str("\n  daemon\n    daemon start           start the project's daemon in the background (a method does this too when needed)\n    daemon stop            session.shutdown on the running daemon\n    daemon status          is a daemon running for this project, and which\n    daemon run             run the daemon in the foreground (what argusd --project does)\n");
     out
 }
@@ -84,6 +85,9 @@ pub fn topic(words: &[String]) -> String {
     }
     if matches!(joined.as_str(), "self-update" | "uninstall") {
         return install_help();
+    }
+    if joined == "relay" {
+        return relay_help();
     }
     if METHODS
         .iter()
@@ -211,6 +215,11 @@ pub fn new_help() -> String {
     out
 }
 
+/// Help for `argus relay`.
+fn relay_help() -> String {
+    "usage: argus relay [where] [rooms=N] [players=N]\n\nRooms for multiplayer matches: a player hosts a room and gets its code, the others join with the\ncode, and the relay passes each player's messages to the rest. Every player connects out to it,\nso it works behind home routers, for a web page and a desktop game alike. It keeps nothing.\n\nwhere:      local (the default, this machine only), tailnet (this machine's tailnet address),\n            public (every address this machine has: anyone who can reach it), or ip:port.\n            Each may end :port; the port is 7879 unless given.\nrooms=N:    rooms open at once (500).\nplayers=N:  players a room may hold, 2 to 4 (4).\n\nA message is at most 64 KB and a player may send 240 a second; a player silent for 30 s, or\nsending what is not a relay message, is dropped. Games reach it as ws://<address>:<port>.\n".to_string()
+}
+
 /// Help for `argus self-update` and `argus uninstall`.
 pub fn install_help() -> String {
     "usage: argus self-update [version]   the latest release (or that one), in place of this install\n       argus uninstall                 this install removed; projects and settings are kept\n\nBoth run the installer the install carries (install.ps1 or install.sh beside bin/). A release is\nfetched from the private repository with a GitHub token (GITHUB_TOKEN, or gh auth token) and checked\nagainst its SHA256SUMS. The version before stays until the new one starts. On Windows the installer\nwaits for this argus to exit, and stops daemons and agent hosts' servers running from the install.\n".to_string()
@@ -237,6 +246,7 @@ pub fn for_command(cmd: &Command) -> String {
         Command::Tool(name, _) => tool_topic(name),
         Command::Mcp | Command::McpSetup(_) | Command::Projects => mcp(),
         Command::SelfUpdate(_) | Command::Uninstall => install_help(),
+        Command::Relay(_) => relay_help(),
         Command::Docs => docs_help(),
         Command::New(_) => new_help(),
         Command::Version => "usage: argus version [--json]      (also argus --version, -V)\n\nThe engine's version, the source it was built from (`dev` for a build from a\ncheckout), and the platform.\n".to_string(),

@@ -1,6 +1,6 @@
 //! SHA-1 and base64, for the WebSocket handshake (RFC 6455's accept key)
-//! and for keeping a token's hash rather than the token. Small enough to
-//! be the engine's own.
+//! and for the daemon's keeping a token's hash rather than the token.
+//! Small enough to be the engine's own.
 
 /// SHA-1 of `data`.
 pub fn sha1(data: &[u8]) -> [u8; 20] {

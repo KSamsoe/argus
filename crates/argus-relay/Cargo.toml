@@ -1,0 +1,10 @@
+[package]
+name = "argus-relay"
+description = "Argus Engine relay: rooms of players who reach each other over WebSocket, behind any home router; the server (argus relay) and a desktop player's client"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+argus-ecs = { path = "../argus-ecs", version = "0.1.2" }
+argus-net = { path = "../argus-net", version = "0.1.2" }
