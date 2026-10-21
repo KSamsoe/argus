@@ -1,0 +1,1186 @@
+diff --git a/examples/duel/README.md b/examples/duel/README.md
+index fe4ed556..19123e4e 100644
+--- a/examples/duel/README.md
++++ b/examples/duel/README.md
+@@ -1,6 +1,8 @@
+ # Duel
+ 
+-Two fighters in one arena, first to three points. Each can move, dash, and swing. A swing that touches the other fighter is a point: the one hit is knocked back and flashes, the round stands still for a second, and both go back to where they started. Nothing hits a fighter while it dashes, so a dash at the right moment goes straight through a swing. The swing and the dash each have a cooldown. It plays on one machine, two players sharing the keyboard or with two pads, or online, one player on each machine, through a relay.
++Two fighters in one arena, first to three points. Each can move, dash, block, and swing. A swing that touches the other fighter is a point: the one hit is knocked back and flashes, the round stands still for a second, and both go back to where they started. Nothing hits a fighter while it dashes, so a dash at the right moment goes straight through a swing. The swing and the dash each have a cooldown.
++
++Holding block raises the fighter's blade, with a glow on the side it faces. A swing that reaches it from that side scores nothing: the swing is gone, a clink plays, and both fighters are pushed a little apart. A swing from behind still scores. Blocking costs: the fighter walks at half speed and cannot swing or dash, a block lasts 1.5 seconds at most, and when it ends (let go or run out) block must be let go for a second before the next. It plays on one machine, two players sharing the keyboard or with two pads, or online, one player on each machine, through a relay.
+ 
+ It is the multiplayer example: a real-time game whose online matches show prediction and rollback at work.
+ 
+@@ -16,27 +18,27 @@ The game needs a relay to play online: `argus relay` runs one, and the desktop g
+ 
+ | | Player 1 | Player 2 |
+ |---|---|---|
+-| Keyboard | WASD to move, F to swing, Space (or G) to dash | the arrow keys, Period to swing, Slash to dash |
+-| Gamepad | the first pad: stick or d-pad, A (or RB) to swing, B (or LB) to dash | the second pad, the same |
+-| Touch | the stick at the bottom left, Attack and Dash at the bottom right | |
++| Keyboard | WASD to move, F to swing, Space (or G) to dash, hold R to block | the arrow keys, Period to swing, Slash to dash, hold Comma to block |
++| Gamepad | the first pad: stick or d-pad, A (or RB) to swing, B (or LB) to dash, hold X (or LT) to block | the second pad, the same |
++| Touch | the stick at the bottom left, Attack and Dash at the bottom right, Block above Attack | |
+ 
+ Online, each player plays on their own machine with player 1's keys, pad, and touch. On the win screen either player's swing starts a new match. Escape (or Start) goes back to the menu from a match on this machine.
+ 
+ ## The files that matter
+ 
+-- `components/duel.luau`: the game's data. `Fighter` (speeds, the dash and the swing, their cooldowns, the knockback), `Swing` (a swing's hitbox), and `Match` (the score, and where the match is: menu, fight, point, won). The fields marked `tune` are in the editor's tuning panel.
++- `components/duel.luau`: the game's data. `Fighter` (speeds, the dash and the swing, their cooldowns, the knockback, the block's length, rest, slowing, and push), `Swing` (a swing's hitbox), and `Match` (the score, and where the match is: menu, fight, point, won). The fields marked `tune` are in the editor's tuning panel.
+ - `systems/`: the rules, in the order they run each tick:
+   - `menu.luau` shows the title menu and the win screen, follows the room online (`q:net()`), and does what the menu's buttons ask.
+   - `round.luau` moves the match on: a new round after a point, the win at three, a new match.
+-  - `move.luau` walks and dashes the fighters, slows a knockback, and keeps both inside the walls.
+-  - `attack.luau` swings, and scores a swing that lands.
++  - `move.luau` walks, dashes, and blocks the fighters (a block's length and its rest), slows a knockback, and keeps both inside the walls.
++  - `attack.luau` swings, scores a swing that lands, and stops one that meets a block from the front.
+   - `looks.luau` runs after them and only changes how things look and sound.
+ - `prefabs/swing.toml`: the hitbox `attack.luau` spawns, and its slash.
+-- `scenes/arena/`: one file per thing in the scene. `one.toml` and `two.toml` are the fighters; `arena.toml` the floor and the match; `menu.toml`, `win.toml`, and `hud.toml` the screens; `camera.toml`, `wall.toml`, and `braziers.toml` the room.
++- `scenes/arena/`: one file per thing in the scene. `one.toml` and `two.toml` are the fighters (each with a `guard` child, the glow shown while it blocks); `arena.toml` the floor and the match; `menu.toml`, `win.toml`, and `hud.toml` the screens; `camera.toml`, `wall.toml`, and `braziers.toml` the room.
+ - `input.toml`: the actions and their keys, buttons, and touch controls; `[slots.2.keys]` gives player 2 its own keys on the shared keyboard.
+ - `audio.toml`: the sounds, each a described tone. `ui.toml`: the colours.
+-- `assets/`: the art, drawn by scripts. `sprites/actors.art.luau` draws both fighters (in the colours in `shared.lib.luau`), the slash, and the effects' specks; `sprites/room.art.luau` the floor and walls; `ui/panel.art.luau` the frame the screens sit in; `fx/` the effects.
+-- `tests/`: the scenarios. `rules.luau` (a point, a dash through a swing, a clash, the cooldowns, the walls, the shared keyboard), `match.luau` (first to three and the win screen), `menu.luau` (the buttons), `touch.luau`, `online.luau` (a whole match over a bad link, `t:net`), and `looks.luau` (pictures of the menu, a fight, and the win screen). Run them with `argus test`.
++- `assets/`: the art, drawn by scripts. `sprites/actors.art.luau` draws both fighters (in the colours in `shared.lib.luau`, standing, walking, hit, and blocking), the slash, the guard's glow, and the effects' specks; `sprites/room.art.luau` the floor and walls; `ui/panel.art.luau` the frame the screens sit in; `fx/` the effects.
++- `tests/`: the scenarios. `rules.luau` (a point, a dash through a swing, a clash, the cooldowns, the walls, the shared keyboard), `block.luau` (a block from the front, a swing from behind, half speed with no swing or dash, the block's 1.5 seconds and its rest, R and Comma, the blocking look), `match.luau` (first to three and the win screen), `menu.luau` (the buttons), `touch.luau` (the stick and the buttons, Block among them), `online.luau` (a whole match, and blocks and a swing from behind, over a bad link, `t:net`), and `looks.luau` (pictures of the menu, a fight, the win screen, and a block). Run them with `argus test`.
+ 
+ ## Online, and what the world may hold
+ 
+diff --git a/examples/duel/assets/fx/block.toml b/examples/duel/assets/fx/block.toml
+new file mode 100644
+index 00000000..293224aa
+--- /dev/null
++++ b/examples/duel/assets/fx/block.toml
+@@ -0,0 +1,18 @@
++# Sparks where a swing is blocked: systems/looks.luau starts one of these
++# between the two fighters. Fewer, shorter, and colder than a hit's
++# (fx/spark): steel on steel, white, then pale blue, then gone. Each spark
++# is frame 27 of sprites/actors, glowing (fx/glow); its entity is gone
++# when the last spark is.
++type = "emitter"
++sprite = "sprites/actors"
++frame = 27
++burst = 14
++max = 16
++lifetime = [0.1, 0.3]
++speed = [3, 9]
++spread = 360
++drag = 6
++size = [[0, 0.3], [1, 0.05]]
++color = [[0, "#FFFFFFFF"], [0.4, "#B8DCFFE0"], [1, "#5A8CFF00"]]
++z = 3.5
++material = "fx/glow"
+diff --git a/examples/duel/assets/sprites/actors.art.luau b/examples/duel/assets/sprites/actors.art.luau
+index 7bde2e38..9bf87811 100644
+--- a/examples/duel/assets/sprites/actors.art.luau
++++ b/examples/duel/assets/sprites/actors.art.luau
+@@ -1,5 +1,6 @@
+--- The actors' sheet: the two fighters, the swing's slash, the braziers, and
+--- the specks the effects are made of, 31 frames at 12 pixels a world unit.
++-- The actors' sheet: the two fighters, the swing's slash, the braziers, the
++-- specks the effects are made of, and the fighters blocking with the
++-- guard's glow, 50 frames at 12 pixels a world unit.
+ -- systems/looks.luau, the scene's files, and the effects in assets/fx/ pick
+ -- the frames by number, so keep the order of the list at the bottom (a new
+ -- frame goes on its end). Change a colour or a row below and the game
+@@ -134,6 +135,83 @@ local function fighter(key)
+   return out
+ end
+ 
++-- A fighter blocking: its blade held up across its front, the hilt in its
++-- fist, so it reads as guarding even standing still. From the side the
++-- blade stands upright before the visor, its crossguard over the fist;
++-- from the front it lies across the chest; from the back its tip and
++-- hilt show either side of the shoulders.
++local GUARD_SIDE = {
++  "..LLYYY..G",
++  ".LYYYYYY.G",
++  ".YYYYYkVVG",
++  ".YYYYYkVvG",
++  ".yYYYYYYyG",
++  "..yyyyyggg",
++  ".YSSSSSSkg",
++  ".ySSSs....",
++}
++local GUARD_FRONT = {
++  "..LLYYYY..",
++  ".LYYYYYYy.",
++  ".YkVVVVky.",
++  ".YkVVVvky.",
++  ".yYYYYYYy.",
++  "kgGGGGGGGG",
++  ".YSSSSSSY.",
++  ".ySSSSSSy.",
++}
++local GUARD_BACK = {
++  "..LLYYYY..",
++  ".LYYYYYYy.",
++  ".YYYYYYYy.",
++  ".YYYYYYYy.",
++  "GyYYYYYYyg",
++  "..yyyyyy..",
++  ".YssssssY.",
++  ".ysssssy..",
++}
++
++-- A fighter's nine blocking frames, counted as its first nine are: each
++-- view standing, stepping, and on its other step.
++local function guard(key)
++  local views = { { GUARD_SIDE, SIDE_LEGS }, { GUARD_FRONT, FRONT_LEGS }, { GUARD_BACK, FRONT_LEGS } }
++  local out = {}
++  for _, v in views do
++    table.insert(out, frame(v[1], v[2].stand, key))
++    table.insert(out, frame(v[1], v[2].step, key))
++    table.insert(out, frame(v[1], v[2].step2, key))
++  end
++  return out
++end
++
++-- The guard's glow, 8 x 18: a bright arc on the side a blocking fighter
++-- faces (facing right; its Transform turns it the way the fighter faces),
++-- bulging outward, brightest in the middle and fading to its tips. White,
++-- so its Sprite's colour tints it. A clear pixel all round it, since the
++-- sheet packs frames edge to edge and a scaled-up edge would show its
++-- neighbour.
++local function guard_glow()
++  local c = art.canvas(8, 18)
++  for y = 1, 16 do
++    for x = 1, 6 do
++      local px, py = x - 0.5, y - 0.5
++      -- Between two circles round a point to the left: a ring's slice.
++      local dx, dy = px + 6, py - 8
++      local d = math.sqrt(dx * dx + dy * dy)
++      if d >= 8.6 and d <= 11.2 then
++        local tip = 1 - math.abs(dy) / 8.2 -- 1 in the middle, 0 at the tips
++        local a = math.max(0, tip) ^ 0.6
++        -- Brightest along the ring's outer edge.
++        a *= 0.5 + 0.5 * (d - 8.6) / 2.6
++        if a > 0 then
++          c:pixel(x, y, art.rgb(255, 255, 255, level(255 * a)))
++        end
++      end
++    end
++  end
++  return c
++end
++
+ -- The slash, 18 x 24 ---------------------------------------------------------
+ --
+ -- A crescent swept from top to bottom in front of the fighter (facing
+@@ -250,6 +328,13 @@ table.insert(frames, spark()) -- 27 spark
+ table.insert(frames, puff()) -- 28 puff
+ table.insert(frames, shadow(10, 4, 120)) -- 29 shadow
+ table.insert(frames, brazier()) -- 30 brazier
++for _, c in guard(ONE) do -- 31 to 39: player 1 blocking
++  table.insert(frames, c)
++end
++for _, c in guard(TWO) do -- 40 to 48: player 2 blocking
++  table.insert(frames, c)
++end
++table.insert(frames, guard_glow()) -- 49 the guard's glow
+ 
+ return art.sprite{
+   pixels_per_unit = 12,
+diff --git a/examples/duel/audio.toml b/examples/duel/audio.toml
+index 64c57a07..c2710cbc 100644
+--- a/examples/duel/audio.toml
++++ b/examples/duel/audio.toml
+@@ -1,5 +1,6 @@
+ # Duel's sounds, every one a described tone: no audio files. systems/looks.luau
+-# plays them on the game's events (swing, dash, point, clash, match.won).
++# plays them on the game's events (swing, dash, point, clash, blocked,
++# match.won).
+ # `argus audio describe sound=sfx/hit` says what one is like without ears.
+ [buses]
+ master = { gain_db = 0 }
+@@ -25,6 +26,15 @@ spatial = false
+ gain = 0.5
+ variations = [ { wave = "square", freq = 220, slide = -900, ms = 110, release_ms = 70, punch = 0.8, duty = 0.3 } ]
+ 
++# A blocked swing: blade on blade, a bright ringing clink, high and short,
++# that wavers as it rings out. Higher and thinner than a hit, so a block
++# never sounds like a point.
++[sounds."sfx/block"]
++spatial = false
++gain = 0.25
++pitch_jitter = 0.06
++variations = [ { wave = "square", freq = 1320, ms = 170, attack_ms = 1, release_ms = 150, punch = 0.7, duty = 0.15, jump = 0.75, jump_ms = 18, vibrato = 0.02, vibrato_hz = 38, highpass = 500 } ]
++
+ # A point: two notes up, a fifth apart.
+ [sounds."sfx/point"]
+ spatial = false
+diff --git a/examples/duel/components/duel.luau b/examples/duel/components/duel.luau
+index f7ee9906..b53d1308 100644
+--- a/examples/duel/components/duel.luau
++++ b/examples/duel/components/duel.luau
+@@ -4,7 +4,7 @@
+ -- ticks, 60 a second.
+ 
+ component "Fighter" {
+-  doc = "A player: moves, dashes, and swings by its slot's actions (sim.move, sim.attack)",
++  doc = "A player: moves, dashes, blocks, and swings by its slot's actions (sim.move, sim.attack)",
+   speed = field.f32 { default = 7.0, range = {0, 50}, tune = true, doc = "Walking speed, units a second" },
+   dash_speed = field.f32 { default = 24.0, range = {0, 100}, tune = true, doc = "Dashing speed, units a second" },
+   dash_ticks = field.u8 { default = 10, range = {1, 120}, tune = true, doc = "How long a dash lasts; nothing hits the fighter meanwhile" },
+@@ -14,11 +14,17 @@ component "Fighter" {
+   reach = field.f32 { default = 0.8, range = {0, 5}, tune = true, doc = "How far in front of the fighter a swing's middle is, units" },
+   radius = field.f32 { default = 0.7, range = {0.1, 5}, tune = true, doc = "A swing's radius: it hits a fighter whose middle is within this and half a body of it" },
+   knockback = field.f32 { default = 14.0, range = {0, 100}, tune = true, doc = "How fast a hit pushes the one hit away, units a second (it slows each tick)" },
++  block_ticks = field.u8 { default = 90, range = {1, 255}, tune = true, doc = "The longest one block lasts while block is held (90 is 1.5 seconds)" },
++  block_rest = field.u8 { default = 60, range = {0, 255}, tune = true, doc = "Ticks block must be let go, after a block ends (let go or run out), before the next one" },
++  block_slow = field.f32 { default = 0.5, range = {0, 1}, tune = true, doc = "Its walking speed while it blocks, a share of speed" },
++  block_push = field.f32 { default = 8.0, range = {0, 100}, tune = true, doc = "How fast a blocked swing pushes both fighters apart, units a second (it slows each tick)" },
+   home = field.vec2 { doc = "Where it starts each round" },
+   facing = field.vec2 { default = {1, 0}, doc = "The way it last moved, one unit long: dashes and swings go this way" },
+   dash = field.u8 { default = 0, doc = "Ticks of dash left, this one included (written by sim.move)" },
+   dash_wait = field.u8 { default = 0, doc = "Ticks until it can dash again (written by sim.move)" },
+   swing_wait = field.u8 { default = 0, doc = "Ticks until it can swing again (written by sim.attack)" },
++  block = field.u8 { default = 0, doc = "Ticks of block left, this one included: above 0 while it blocks (written by sim.move)" },
++  block_wait = field.u8 { default = 0, doc = "Ticks block must still be let go before it can block again; they count only while it is let go (written by sim.move)" },
+   push = field.vec2 { doc = "The knockback it is moving by, units a second (written by sim.attack, slowed by sim.move)" },
+   flash = field.u8 { default = 0, doc = "Ticks left that it shows it was hit (written by sim.attack)" },
+ }
+diff --git a/examples/duel/input.toml b/examples/duel/input.toml
+index e420b692..14d7829d 100644
+--- a/examples/duel/input.toml
++++ b/examples/duel/input.toml
+@@ -3,8 +3,8 @@
+ # a player can rebind it.
+ #
+ # Two players share one keyboard: slot 1 has the actions' own keys (WASD,
+-# F, Space), and [slots.2.keys] gives slot 2 its own (the arrows, period,
+-# slash). Online, each player plays on their own machine with slot 1's
++# F, Space, R), and [slots.2.keys] gives slot 2 its own (the arrows,
++# period, slash, comma). Online, each player plays on their own machine with slot 1's
+ # keys, pad, and touch, whichever slot the room gave them.
+ [actions.move]
+ type = "axis2"
+@@ -30,6 +30,14 @@ keyboard = ["space", "g"]
+ gamepad = ["east", "lb"]
+ touch = ["dash"]
+ 
++[actions.block]
++type = "button"
++doc = "Hold to block: a swing from the front scores nothing, but the fighter walks at half speed, cannot swing or dash, and blocks 1.5 s at most, then lets go a second"
++[actions.block.bindings]
++keyboard = ["r"]
++gamepad = ["west", "lt"]
++touch = ["block"]
++
+ # The menus' actions (the UI reads these names). The title menu is moved
+ # by slot 1's. Cancel in a match on this machine goes back to the menu.
+ [actions.ui_move]
+@@ -76,9 +84,10 @@ devices = ["keyboard", "gamepad:1"]
+ move = ["arrows"]
+ attack = ["period"]
+ dash = ["slash"]
++block = ["comma"]
+ 
+ # Under a finger: a stick at the bottom left, Attack and Dash at the bottom
+-# right. The stick stays where it is (not floating), so a tap on the
++# right, Block above Attack. The stick stays where it is (not floating), so a tap on the
+ # menu's buttons is a tap, whichever half of the screen it is in. The
+ # engine draws them while touch is in use.
+ [touch.stick]
+@@ -98,3 +107,10 @@ kind = "button"
+ anchor = "bottom-right"
+ at = [245, 80]
+ size = 96
++
++# Held, as a key is: the fighter blocks while the finger stays on it.
++[touch.block]
++kind = "button"
++anchor = "bottom-right"
++at = [110, 260]
++size = 96
+diff --git a/examples/duel/scenes/arena/menu.toml b/examples/duel/scenes/arena/menu.toml
+index 0390071f..54dd9449 100644
+--- a/examples/duel/scenes/arena/menu.toml
++++ b/examples/duel/scenes/arena/menu.toml
+@@ -136,7 +136,7 @@ align = "center"
+ order = 6
+ 
+ [children.panel.children.keys.UiText]
+-text = "[color=one]Player 1[/color]  [glyph=move] move  [glyph=attack] attack  [glyph=dash] dash\n[color=two]Player 2[/color]  Arrows move  Period attack  Slash dash"
++text = "[color=one]Player 1[/color]  [glyph=move] move  [glyph=attack] attack  [glyph=dash] dash  [glyph=block] block\n[color=two]Player 2[/color]  Arrows move  Period attack  Slash dash  Comma block"
+ color = "muted"
+ align = "center"
+ wrap = false
+diff --git a/examples/duel/scenes/arena/one.toml b/examples/duel/scenes/arena/one.toml
+index a0af170e..a2076862 100644
+--- a/examples/duel/scenes/arena/one.toml
++++ b/examples/duel/scenes/arena/one.toml
+@@ -15,9 +15,10 @@ home = [-6.0, 0.0]
+ facing = [1.0, 0.0]
+ 
+ # Its picture: a frame of sprites/actors (assets/sprites/actors.art.luau
+-# draws them; 0 to 11 are this fighter's), which systems/looks.luau picks
+-# each tick, drawn at its own colour whatever the light (fx/body). The
+-# size is also its body: sim.move keeps it inside the walls by it.
++# draws them; 0 to 11 are this fighter's, and 31 to 39 blocking), which
++# systems/looks.luau picks each tick, drawn at its own colour whatever the
++# light (fx/body). The size is also its body: sim.move keeps it inside the
++# walls by it.
+ [Sprite]
+ atlas = "sprites/actors"
+ frame = 0
+@@ -42,3 +43,18 @@ atlas = "sprites/actors"
+ frame = 29
+ size = [0.8333, 0.3333]
+ z = 0.5
++
++# Its guard: a glowing arc (frame 49) on the side it faces, shown only
++# while it blocks. systems/looks.luau shows it, turns it, and sets where it
++# is. Only a look.
++[children.guard.Transform]
++pos = [0.6, 0.0]
++
++[children.guard.Sprite]
++atlas = "sprites/actors"
++frame = 49
++size = [0.6667, 1.5]
++material = "fx/glow"
++color = "#9CD0FF"
++visible = false
++z = 2.5
+diff --git a/examples/duel/scenes/arena/two.toml b/examples/duel/scenes/arena/two.toml
+index 5c05f48b..b67eeb6c 100644
+--- a/examples/duel/scenes/arena/two.toml
++++ b/examples/duel/scenes/arena/two.toml
+@@ -1,6 +1,7 @@
+ # Player 2, the red fighter, on the right: slot 2's actions (the arrows,
+-# period, slash on the shared keyboard, or the second pad). As one.toml in
+-# every way but its slot, its place, and its pictures (frames 12 to 23).
++# period, slash, and comma on the shared keyboard, or the second pad). As one.toml in
++# every way but its slot, its place, its pictures (frames 12 to 23, and
++# 40 to 48 blocking), and its guard's colour.
+ [PlayerSlot]
+ slot = 2
+ 
+@@ -36,3 +37,16 @@ atlas = "sprites/actors"
+ frame = 29
+ size = [0.8333, 0.3333]
+ z = 0.5
++
++[children.guard.Transform]
++pos = [-0.6, 0.0]
++rot = 3.14159265
++
++[children.guard.Sprite]
++atlas = "sprites/actors"
++frame = 49
++size = [0.6667, 1.5]
++material = "fx/glow"
++color = "#FFA898"
++visible = false
++z = 2.5
+diff --git a/examples/duel/systems/attack.luau b/examples/duel/systems/attack.luau
+index 1412b7c2..dd4cd1db 100644
+--- a/examples/duel/systems/attack.luau
++++ b/examples/duel/systems/attack.luau
+@@ -6,10 +6,18 @@
+ -- (Match.state point) until sim.round starts the next. Two swings that land
+ -- on the same tick are a clash: both knocked back, no point.
+ --
++-- A fighter blocking (Fighter.block above 0, which sim.move keeps) cannot
++-- swing, and a swing that touches it from the front is blocked: the
++-- swinger is on the side it faces (its facing and the way to the swinger
++-- less than a right angle apart). A blocked swing scores nothing and is
++-- gone; both fighters are pushed apart at Fighter.block_push and the round
++-- goes on. A swing from behind (or square from the side) scores as ever.
++--
+ -- A touch is the distance between the swing's middle and the other's
+ -- against the swing's radius and half a body (BODY): no colliders. Every
+--- swing, point, and clash is an event (swing, point, clash): the tests
+--- count them, and systems/looks.luau plays their sounds and sparks.
++-- swing, point, clash, and blocked swing is an event (swing, point, clash,
++-- blocked): the tests count them, and systems/looks.luau plays their
++-- sounds and sparks.
+ local BODY = 0.4 -- a fighter's body: a circle this far round its middle
+ local FLASH = 30 -- ticks one hit shows it
+ 
+@@ -19,7 +27,7 @@ return system "sim.attack" {
+   reads = { "Actions", "PlayerSlot" },
+   writes = { "Fighter", "Swing", "Transform", "Match" },
+   spawns = { "swing" },
+-  doc = "The attack action swings a Swing (prefabs/swing) at Fighter.reach in front, for Fighter.swing_ticks, then waits Fighter.swing_every (swing {by}); one touching the other fighter within Fighter.radius plus half a body, unless it dashes, scores a point for its slot (point {by, at, one, two}), knocks the one hit back at Fighter.knockback, flashes it, and stands the round still (Match.state point); two on one tick are a clash {at}, no point.",
++  doc = "The attack action swings a Swing (prefabs/swing) at Fighter.reach in front, for Fighter.swing_ticks, then waits Fighter.swing_every (swing {by}), never while dashing or blocking; one touching the other fighter within Fighter.radius plus half a body, unless it dashes, scores a point for its slot (point {by, at, one, two}), knocks the one hit back at Fighter.knockback, flashes it, and stands the round still (Match.state point); one touching a blocking fighter from the side it faces is blocked instead (blocked {by, from, at}: by the blocker, from the swinger): gone, no point, both pushed apart at Fighter.block_push; two hits on one tick are a clash {at}, no point.",
+   run = function(q)
+     local m = q:entity("@arena"):get("Match")
+ 
+@@ -38,8 +46,9 @@ return system "sim.attack" {
+     end
+ 
+     -- The waits count down; where each fighter is now (sim.move has moved
+-    -- it), and whether it is dashing.
++    -- it), which way it faces, and whether it is dashing or blocking.
+     local fighters = {}
++    local at = {}
+     local swings = {}
+     for e, f, a, t in q:each("Fighter", "Actions", "Transform") do
+       if f.swing_wait > 0 then
+@@ -48,8 +57,9 @@ return system "sim.attack" {
+       if f.flash > 0 then
+         f.flash -= 1
+       end
+-      table.insert(fighters, { id = e:id(), pos = t.pos, dashing = f.dash > 0 })
+-      if m.state == "fight" and a.attack_pressed and f.swing_wait == 0 and f.dash == 0 then
++      table.insert(fighters, { id = e:id(), pos = t.pos, facing = f.facing, dashing = f.dash > 0, blocking = f.block > 0 })
++      at[e:id()] = t.pos
++      if m.state == "fight" and a.attack_pressed and f.swing_wait == 0 and f.dash == 0 and f.block == 0 then
+         f.swing_wait = f.swing_every
+         table.insert(swings, { id = e:id(), at = t.pos + f.facing * f.reach, dir = f.facing, ttl = f.swing_ticks - 1 })
+       end
+@@ -71,17 +81,36 @@ return system "sim.attack" {
+       q:emit("swing", { by = by })
+     end
+ 
+-    -- What each swing out touches.
++    -- What each swing out touches: a hit, or a block when the one touched
++    -- blocks and faces the swinger.
+     local hits = {}
+-    for _, s, t in q:each("Swing", "Transform") do
++    local blocks = {}
++    for e, s, t in q:each("Swing", "Transform") do
+       local owner = s.owner
+       local reach = owner:get("Fighter").radius + BODY
+       for _, f in fighters do
+         if f.id ~= owner:id() and not f.dashing and vector.magnitude(f.pos - t.pos) <= reach then
+-          table.insert(hits, { by = owner:id(), target = f.id, dir = s.dir, at = f.pos })
++          local from = at[owner:id()]
++          if f.blocking and vector.dot(from - f.pos, f.facing) > 0 then
++            table.insert(blocks, { swing = e:id(), by = f.id, from = owner:id(), dir = s.dir, at = (f.pos + from) * 0.5 })
++          else
++            table.insert(hits, { by = owner:id(), target = f.id, dir = s.dir, at = f.pos })
++          end
+         end
+       end
+     end
++
++    -- A blocked swing is gone, scoring nothing; the two are pushed apart.
++    for _, b in blocks do
++      local blocker = q:entity(b.by):get("Fighter")
++      local swinger = q:entity(b.from):get("Fighter")
++      local apart = at[b.by] - at[b.from]
++      apart = if vector.magnitude(apart) > 0 then vector.normalize(apart) else b.dir
++      blocker.push = apart * blocker.block_push
++      swinger.push = -apart * blocker.block_push
++      q:entity(b.swing):despawn()
++      q:emit("blocked", { by = q:entity(b.by), from = q:entity(b.from), at = b.at })
++    end
+     if #hits == 0 then
+       return
+     end
+diff --git a/examples/duel/systems/looks.luau b/examples/duel/systems/looks.luau
+index ba09fe9f..38f923b1 100644
+--- a/examples/duel/systems/looks.luau
++++ b/examples/duel/systems/looks.luau
+@@ -5,12 +5,14 @@
+ -- - picks each fighter's frame: its own twelve (player 1's first, then
+ --   player 2's), the view the way it faces (mirrored to face left), its
+ --   legs stepping while it walks, white and blinking while it shows a hit,
+---   and pale while it dashes;
++--   and pale while it dashes; while it blocks, the same from its own nine
++--   blocking frames (its blade held up across its front), and its guard's
++--   glow (its child `guard`) shown on the side it faces;
+ -- - sweeps each swing's slash (three frames over its life), tinted in its
+ --   fighter's colour;
+ -- - colours the win screen's title in the winner's colour;
+ -- - plays the sounds (audio.toml) and starts the effects (assets/fx/) of
+---   this tick's swing, dash, point, clash, and match.won events.
++--   this tick's swing, dash, point, clash, blocked, and match.won events.
+ --
+ -- The pictures are frames of sprites/actors, numbered as the list at the
+ -- end of assets/sprites/actors.art.luau has them.
+@@ -19,6 +21,9 @@ local PER_FIGHTER = 12 -- each fighter's frames: player 1's from 0, player 2's f
+ local SIDE, FRONT, BACK = 0, 3, 6 -- each view standing, then its two steps
+ local HIT = 9 -- each view hit: side, front, back
+ local SLASH = 24 -- the slash, three frames as it sweeps
++local GUARD = 31 -- each fighter blocking: player 1's nine from 31, player 2's from 40
++local PER_GUARD = 9 -- each view standing, then its two steps, as the first nine
++local GUARD_AT = 0.6 -- how far in front of the fighter's middle its guard's glow is, units
+ local STEP = 0.1 -- seconds each frame of a walk shows
+ local TINT = { "#9CD0FF", "#FFA898" } -- each slot's slash: its colour, paler
+ local PALE = "#FFFFFF5A" -- a fighter while it dashes: see-through
+@@ -45,13 +50,16 @@ return system "late.looks" {
+   stage = "late",
+   reads = { "Fighter", "PlayerSlot", "Actions", "Match", "Swing", "Transform" },
+   writes = { "Sprite", "Transform", "Emitter", "UiText" },
+-  doc = "Presentation only: picks each fighter's frame of sprites/actors (its view the way it faces, stepping while it walks, white and blinking while hit, pale while dashing), sweeps each swing's slash in its fighter's colour, colours the win screen's title, and plays the sounds and starts the effects of this tick's swing, dash, point, clash, and match.won events. Writes nothing gameplay reads.",
++  doc = "Presentation only: picks each fighter's frame of sprites/actors (its view the way it faces, stepping while it walks, its blocking frames and its guard's glow on the side it faces while it blocks, white and blinking while hit, pale while dashing), sweeps each swing's slash in its fighter's colour, colours the win screen's title, and plays the sounds and starts the effects of this tick's swing, dash, point, clash, blocked, and match.won events. Writes nothing gameplay reads.",
+   run = function(q)
+     local m = q:entity("@arena"):get("Match")
+ 
+-    for _, f, slot, a, sp in q:each("Fighter", "PlayerSlot", "Actions", "Sprite") do
++    local guards = {}
++    for e, f, slot, a, sp in q:each("Fighter", "PlayerSlot", "Actions", "Sprite") do
+       local face = f.facing
+       local view = if math.abs(face.x) >= math.abs(face.y) then SIDE elseif face.y > 0 then BACK else FRONT
++      local blocking = f.block > 0
++      local first = if blocking then GUARD + (slot.slot - 1) * PER_GUARD else (slot.slot - 1) * PER_FIGHTER
+       local frame = view
+       local walking = m.state == "fight" and f.dash == 0 and (a.move.x ~= 0 or a.move.y ~= 0)
+       if walking then
+@@ -63,14 +71,34 @@ return system "late.looks" {
+           frame = view + 2
+         end
+       end
++      frame += first
+       if f.flash > 0 and (f.flash // 4) % 2 == 0 then
+-        frame = HIT + view // 3
++        frame = (slot.slot - 1) * PER_FIGHTER + HIT + view // 3
+       end
+-      set(sp, "frame", (slot.slot - 1) * PER_FIGHTER + frame)
++      set(sp, "frame", frame)
+       if face.x ~= 0 then
+         set(sp, "flip_x", face.x < 0)
+       end
+       set(sp, "color", if f.dash > 0 then PALE else "#FFFFFF")
++      local name = e:name()
++      if name then
++        table.insert(guards, { id = "@" .. name .. "/guard", on = blocking, face = face })
++      end
++    end
++
++    -- Each fighter's guard: shown while it blocks, in front of it the way
++    -- it faces, turned to face that way.
++    for _, g in guards do
++      local guard = q:find(g.id)
++      if guard then
++        local sp = guard:get("Sprite")
++        set(sp, "visible", g.on)
++        if g.on then
++          local t = guard:get("Transform")
++          set(t, "pos", g.face * GUARD_AT)
++          set(t, "rot", math.atan2(g.face.y, g.face.x))
++        end
++      end
+     end
+ 
+     for _, s, sp in q:each("Swing", "Sprite") do
+@@ -102,6 +130,10 @@ return system "late.looks" {
+       q:play("sfx/hit")
+       burst(q, "fx/spark", ev.at)
+     end
++    for _, ev in ipairs(q:events("blocked")) do
++      q:play("sfx/block")
++      burst(q, "fx/block", ev.at)
++    end
+     if #q:events("match.won") > 0 then
+       q:play("sfx/win")
+     end
+diff --git a/examples/duel/systems/move.luau b/examples/duel/systems/move.luau
+index e0f0265f..a7f70ccd 100644
+--- a/examples/duel/systems/move.luau
++++ b/examples/duel/systems/move.luau
+@@ -4,6 +4,15 @@
+ -- (Fighter.dash_every). Only while the round is on (Match.state fight). A
+ -- knockback from a hit (Fighter.push) carries on through the pause after a
+ -- point, slowing. Both fighters are kept inside the arena's walls.
++--
++-- Blocking is here too, since it changes how a fighter moves: while block
++-- is held a fighter blocks (Fighter.block above 0), for Fighter.block_ticks
++-- at most. Then, whether it let go or ran out, block must be let go for
++-- Fighter.block_rest ticks (Fighter.block_wait, which counts down only on
++-- ticks block is up) before it blocks again. A blocking fighter walks at
++-- Fighter.block_slow of its speed and cannot dash; sim.attack, after this,
++-- keeps it from swinging and judges the swings that touch it. Not while
++-- dashing: a block held through a dash starts when the dash is over.
+ local SLOW = 0.86 -- the share of a knockback's speed kept each tick
+ 
+ return system "sim.move" {
+@@ -11,7 +20,7 @@ return system "sim.move" {
+   after = { "sim.round" },
+   reads = { "Actions", "Match", "Sprite" },
+   writes = { "Fighter", "Transform" },
+-  doc = "Walks each fighter by move at Fighter.speed, facing the way it moves; dash starts a dash of Fighter.dash_ticks at Fighter.dash_speed along its facing (dash {by, at}), then waits Fighter.dash_every; a knockback (Fighter.push) slows each tick; kept inside the arena's rect (@arena's Sprite).",
++  doc = "Walks each fighter by move at Fighter.speed, facing the way it moves; dash starts a dash of Fighter.dash_ticks at Fighter.dash_speed along its facing (dash {by, at}), then waits Fighter.dash_every; block held blocks (Fighter.block) for Fighter.block_ticks at most, walking at Fighter.block_slow of its speed and never dashing, then needs block let go Fighter.block_rest ticks (Fighter.block_wait) before the next (block {by, at} as one starts); a knockback (Fighter.push) slows each tick; kept inside the arena's rect (@arena's Sprite).",
+   run = function(q)
+     local arena = q:entity("@arena")
+     local fight = arena:get("Match").state == "fight"
+@@ -27,6 +36,32 @@ return system "sim.move" {
+         f.dash_wait -= 1
+       end
+ 
++      -- The block: on while block is held, for block_ticks at most; when
++      -- it ends, the rest, counted on the ticks block is let go (this one
++      -- too, if it was let go now).
++      local held = fight and a.block
++      if f.block > 0 then
++        if held then
++          f.block -= 1
++        else
++          f.block = 0
++        end
++        if f.block == 0 then
++          f.block_wait = f.block_rest
++        end
++      end
++      if f.block == 0 then
++        if f.block_wait > 0 then
++          if not a.block then
++            f.block_wait -= 1
++          end
++        elseif held and f.dash == 0 then
++          f.block = f.block_ticks
++          q:emit("block", { by = e, at = pos })
++        end
++      end
++      local blocking = f.block > 0
++
+       if fight then
+         local m = a.move
+         local moving = m.x ~= 0 or m.y ~= 0
+@@ -34,7 +69,7 @@ return system "sim.move" {
+           if moving then
+             f.facing = vector.normalize(m)
+           end
+-          if a.dash_pressed and f.dash_wait == 0 then
++          if a.dash_pressed and f.dash_wait == 0 and not blocking then
+             f.dash = f.dash_ticks
+             f.dash_wait = f.dash_every
+             q:emit("dash", { by = e, at = pos })
+@@ -43,7 +78,8 @@ return system "sim.move" {
+         if f.dash > 0 then
+           pos += f.facing * (f.dash_speed * dt)
+         elseif moving then
+-          pos += m * (f.speed * dt)
++          local speed = if blocking then f.speed * f.block_slow else f.speed
++          pos += m * (speed * dt)
+         end
+       end
+ 
+diff --git a/examples/duel/systems/round.luau b/examples/duel/systems/round.luau
+index 1416619c..c372370f 100644
+--- a/examples/duel/systems/round.luau
++++ b/examples/duel/systems/round.luau
+@@ -14,7 +14,7 @@
+ -- new_round too, or it carries over.
+ 
+ -- Both fighters back at home, facing each other, nothing cooling down, no
+--- swing out.
++-- block held or resting, no swing out.
+ local function new_round(q)
+   local homes = {}
+   for e, f in q:each("Fighter") do
+@@ -29,6 +29,7 @@ local function new_round(q)
+       end
+     end
+     f.dash, f.dash_wait, f.swing_wait, f.flash = 0, 0, 0, 0
++    f.block, f.block_wait = 0, 0
+     f.push = vector.create(0, 0, 0)
+   end
+   local swings = {}
+diff --git a/examples/duel/tests/block.luau b/examples/duel/tests/block.luau
+new file mode 100644
+index 00000000..d9f9d1f4
+--- /dev/null
++++ b/examples/duel/tests/block.luau
+@@ -0,0 +1,300 @@
++-- The block, on this machine: held, a swing from the front scores nothing
++-- (both pushed apart, the blocked sound), a swing from behind still
++-- scores, a blocker walks at half speed and cannot swing or dash, and a
++-- block lasts 1.5 s at most and then needs block let go a second. Each
++-- starts a match from the title menu, sets the fighters where it wants
++-- them (sim.set, the running world only), and drives both slots: t.input
++-- is player 1, t.input:slot(2) player 2. The numbers (block_ticks,
++-- block_rest, block_slow, speed) are read from the world, so tuning them
++-- keeps the tests green while the rules hold, but for two checks that pin
++-- the block's 1.5 seconds and its rest's one (90 and 60 ticks). The
++-- shared keyboard's R and comma, the menu's words, and the blocking look
++-- are checked here too; the touch Block button is in tests/touch.luau,
++-- blocks over a bad link in tests/online.luau, and a block's picture in
++-- tests/looks.luau.
++local duel = require("duel")
++
++return {
++  scenario "a swing at a blocker's front scores nothing: both are pushed apart and the blocked sound plays" {
++    scene = "arena", seed = 1,
++    run = function(t)
++      duel.start(t)
++      local two = t.input:slot(2)
++      -- Face to face; player 2 blocks, facing player 1, who swings.
++      duel.face_off(t, -1, 1.5)
++      two:hold("block", true)
++      t:step(1)
++      t.expect:field("@two", "Fighter.block"):gt(0)
++      t.input:tap("attack", true)
++      t:step(1)
++      t.expect:events("swing", { by = "@one" }):count():eq(1)
++      t.expect:events("blocked", { by = "@two", from = "@one" }):count():eq(1)
++      t.expect:events("point"):count():eq(0)
++      t.expect:events("sound.play", { sound = "sfx/block" }):count():eq(1)
++      t.expect:events("sound.play", { sound = "sfx/hit" }):count():eq(0)
++      t.expect:field("@arena", "Match.state"):eq("fight")
++      t.expect:field("@arena", "Match.one"):eq(0)
++      t.expect:field("@two", "Fighter.flash"):eq(0)
++      -- The blocked swing is gone, so it cannot land later.
++      t.expect:count({ has = { "Swing" } }):eq(0)
++
++      -- Pushed apart a little: each moves back, less than a hit's knockback.
++      t:step(30)
++      local one_x = duel.field(t, "@one", "Transform.pos.x")
++      local two_x = duel.field(t, "@two", "Transform.pos.x")
++      t.expect:field("@one", "Transform.pos.x"):between(-1 - 1.5, -1 - 0.4)
++      t.expect:field("@two", "Transform.pos.x"):between(0.5 + 0.4, 0.5 + 1.5)
++      t.expect:field("@one", "Fighter.push.x"):eq(0)
++      t.expect:field("@two", "Fighter.push.x"):eq(0)
++      t:log("pushed apart to " .. one_x .. " and " .. two_x)
++      t.expect:events("point"):count():eq(0)
++      t.expect:field("@arena", "Match.state"):eq("fight")
++
++      -- The same block, player 1 blocking player 2's swing.
++      two:release("block")
++      t:step(1)
++      duel.face_off(t, -1, 1.5)
++      t.input:hold("block", true)
++      t:step(1)
++      two:tap("attack", true)
++      t:step(1)
++      t.expect:events("blocked", { by = "@one", from = "@two" }):count():eq(1)
++      t.expect:events("blocked"):count():eq(2)
++      t.expect:events("point"):count():eq(0)
++      t.expect:field("@arena", "Match.two"):eq(0)
++    end,
++  },
++
++  scenario "a swing from behind scores on a blocker, and so does one once its block has run out" {
++    scene = "arena", seed = 1,
++    run = function(t)
++      duel.start(t)
++      local two = t.input:slot(2)
++      local pause = duel.get(t, "@arena").Match.pause
++      -- Player 2 in front of player 1 with its back to it, blocking.
++      duel.place(t, "@one", -1, 0, 1, 0)
++      duel.place(t, "@two", 0.5, 0, 1, 0)
++      two:hold("block", true)
++      t:step(1)
++      t.expect:field("@two", "Fighter.block"):gt(0)
++      t.input:tap("attack", true)
++      t:step(1)
++      t.expect:events("blocked"):count():eq(0)
++      t.expect:events("point", { by = 1 }):count():eq(1)
++      t.expect:field("@arena", "Match.one"):eq(1)
++      t.expect:field("@two", "Fighter.flash"):gt(0)
++      two:release("block")
++      local r = t:run_until { event = "round.started", max_frames = pause + 10 }
++      assert(r.hit, "no new round after the point")
++      -- The new round starts with no block held or resting.
++      t.expect:field("@two", "Fighter.block"):eq(0)
++      t.expect:field("@two", "Fighter.block_wait"):eq(0)
++
++      -- Facing player 1 but held past its 1.5 seconds: no block, a point.
++      local f = duel.get(t, "@two").Fighter
++      duel.face_off(t, -1, 1.5)
++      two:hold("block", true)
++      t:step(f.block_ticks + 1)
++      t.expect:field("@two", "Fighter.block"):eq(0)
++      t.input:tap("attack", true)
++      t:step(1)
++      t.expect:events("blocked"):count():eq(0)
++      t.expect:events("point", { by = 1 }):count():eq(2)
++      t.expect:field("@arena", "Match.one"):eq(2)
++    end,
++  },
++
++  scenario "a blocker walks at half speed and cannot swing or dash; let go, it can" {
++    scene = "arena", seed = 1,
++    run = function(t)
++      duel.start(t)
++      local f = duel.get(t, "@one").Fighter
++      -- Walking right for half a second while it blocks: half the way.
++      local x = duel.field(t, "@one", "Transform.pos.x")
++      t.input:hold("block", true)
++      t.input:hold("move", { 1, 0 }, 30)
++      t:step(30)
++      t.expect:field("@one", "Fighter.block"):gt(0)
++      t.expect:field("@one", "Transform.pos.x"):near(x + f.speed * f.block_slow * 30 / 60, 1e-3)
++
++      -- Attack and dash while it blocks are nothing.
++      t.input:tap("attack", true)
++      t:step(1)
++      t.input:tap("dash", true)
++      t:step(1)
++      t.expect:events("swing"):count():eq(0)
++      t.expect:events("dash"):count():eq(0)
++      t.expect:field("@one", "Fighter.block"):gt(0)
++      t.expect:count({ has = { "Swing" } }):eq(0)
++
++      -- Let go: full speed again, and it swings and dashes.
++      t.input:release("block")
++      t:step(1)
++      t.expect:field("@one", "Fighter.block"):eq(0)
++      x = duel.field(t, "@one", "Transform.pos.x")
++      t.input:hold("move", { 1, 0 }, 30)
++      t:step(30)
++      t.expect:field("@one", "Transform.pos.x"):near(x + f.speed * 30 / 60, 1e-3)
++      t.input:tap("attack", true)
++      t:step(1)
++      t.expect:events("swing", { by = "@one" }):count():eq(1)
++      t.input:tap("dash", true)
++      t:step(1)
++      t.expect:events("dash", { by = "@one" }):count():eq(1)
++
++      -- A block held through a dash starts once the dash is over.
++      t:step(f.dash_every)
++      t.input:tap("dash", true)
++      t:step(1)
++      t.expect:events("dash", { by = "@one" }):count():eq(2)
++      t.input:hold("block", true)
++      t:step(f.dash_ticks - 1)
++      t.expect:field("@one", "Fighter.dash"):gt(0)
++      t.expect:field("@one", "Fighter.block"):eq(0)
++      t:step(1)
++      t.expect:field("@one", "Fighter.dash"):eq(0)
++      t.expect:field("@one", "Fighter.block"):eq(f.block_ticks)
++    end,
++  },
++
++  scenario "a block lasts 1.5 seconds at most, then block must be let go a second before the next" {
++    scene = "arena", seed = 1,
++    run = function(t)
++      duel.start(t)
++      local f = duel.get(t, "@one").Fighter
++      t.expect:field("@one", "Fighter.block_ticks"):eq(90)
++      t.expect:field("@one", "Fighter.block_rest"):eq(60)
++
++      -- Held: it blocks from the first tick for block_ticks ticks, and on
++      -- the next it stops, held or not.
++      t.input:hold("block", true)
++      t:step(1)
++      t.expect:field("@one", "Fighter.block"):eq(f.block_ticks)
++      t:step(f.block_ticks - 1)
++      t.expect:field("@one", "Fighter.block"):eq(1)
++      t:step(1)
++      t.expect:field("@one", "Fighter.block"):eq(0)
++      t.expect:field("@one", "Fighter.block_wait"):eq(f.block_rest)
++
++      -- Still held, the rest does not count: a second later it waits as long.
++      t:step(f.block_rest)
++      t.expect:field("@one", "Fighter.block"):eq(0)
++      t.expect:field("@one", "Fighter.block_wait"):eq(f.block_rest)
++
++      -- Let go a tick short of a second, then held: no block yet, and the
++      -- rest waits while it is held.
++      t.input:release("block")
++      t:step(f.block_rest - 1)
++      t.expect:field("@one", "Fighter.block_wait"):eq(1)
++      t.input:hold("block", true)
++      t:step(5)
++      t.expect:field("@one", "Fighter.block"):eq(0)
++      t.expect:field("@one", "Fighter.block_wait"):eq(1)
++
++      -- Let go the last tick of the second: held again, it blocks at once.
++      t.input:release("block")
++      t:step(1)
++      t.expect:field("@one", "Fighter.block_wait"):eq(0)
++      t.input:hold("block", true)
++      t:step(1)
++      t.expect:field("@one", "Fighter.block"):eq(f.block_ticks)
++
++      -- A short block costs the same rest: let go after ten ticks and held
++      -- again at once, it does not block until a second let go has passed.
++      t:step(9)
++      t.input:release("block")
++      t:step(1)
++      t.expect:field("@one", "Fighter.block"):eq(0)
++      t.expect:field("@one", "Fighter.block_wait"):eq(f.block_rest - 1)
++      t.input:hold("block", true)
++      t:step(10)
++      t.expect:field("@one", "Fighter.block"):eq(0)
++      t.input:release("block")
++      t:step(f.block_rest - 1)
++      t.input:hold("block", true)
++      t:step(1)
++      t.expect:field("@one", "Fighter.block"):eq(f.block_ticks)
++
++      -- Three blocks began (block {by}), and nothing else happened.
++      t.expect:events("block", { by = "@one" }):count():eq(3)
++      t.expect:events("block", { by = "@two" }):count():eq(0)
++      t.expect:field("@arena", "Match.state"):eq("fight")
++    end,
++  },
++
++  scenario "R blocks for player 1 and comma for player 2 on the shared keyboard, and the menu says so" {
++    scene = "arena", seed = 1,
++    run = function(t)
++      duel.menu(t)
++      -- The menu's key lines: player 1's block key as a glyph, player 2's in words.
++      local keys = duel.field(t, "@menu/panel/keys", "UiText.shown")
++      assert(string.find(keys, "[key]R[/key] block", 1, true), "player 1's key line reads " .. keys)
++      assert(string.find(keys, "Comma block", 1, true), "player 2's key line reads " .. keys)
++
++      t.input:tap("ui_confirm", true)
++      t:step(2)
++      -- Keys as the window sends them (input.device), through input.toml.
++      local function key(name, down)
++        t:call("input.device", { events = { { key = name, pressed = down } } })
++      end
++      key("KeyR", true)
++      t:step(1)
++      t.expect:field("@one", "Fighter.block"):gt(0)
++      t.expect:field("@two", "Fighter.block"):eq(0)
++      key("KeyR", false)
++      key("Comma", true)
++      t:step(1)
++      t.expect:field("@one", "Fighter.block"):eq(0)
++      t.expect:field("@two", "Fighter.block"):gt(0)
++      key("Comma", false)
++      t:step(1)
++      t.expect:field("@two", "Fighter.block"):eq(0)
++      t.expect:events("block", { by = "@one" }):count():eq(1)
++      t.expect:events("block", { by = "@two" }):count():eq(1)
++    end,
++  },
++
++  scenario "a blocking fighter shows its guard: its blade up and a glow on the side it faces" {
++    scene = "arena", seed = 1,
++    run = function(t)
++      duel.start(t)
++      local two = t.input:slot(2)
++      -- Standing, side on: player 1's frame 0 and player 2's 12, no guard.
++      t:step(1)
++      t.expect:field("@one", "Sprite.frame"):eq(0)
++      t.expect:field("@two", "Sprite.frame"):eq(12)
++      t.expect:field("@one/guard", "Sprite.visible"):eq(false)
++      t.expect:field("@two/guard", "Sprite.visible"):eq(false)
++
++      -- Blocking: the first of each one's blocking frames (31, 40), and
++      -- its guard shown in front of it, player 1's to the right, player
++      -- 2's to the left.
++      t.input:hold("block", true)
++      two:hold("block", true)
++      t:step(1)
++      t.expect:field("@one", "Sprite.frame"):eq(31)
++      t.expect:field("@two", "Sprite.frame"):eq(40)
++      t.expect:field("@one/guard", "Sprite.visible"):eq(true)
++      t.expect:field("@two/guard", "Sprite.visible"):eq(true)
++      t.expect:field("@one/guard", "Transform.pos.x"):gt(0.3)
++      t.expect:field("@two/guard", "Transform.pos.x"):lt(-0.3)
++
++      -- Walking up while it blocks: the back view's blocking frames
++      -- (37 to 39), and the guard above it, turned up.
++      t.input:hold("move", { 0, 1 }, 12)
++      t:step(12)
++      t.expect:field("@one", "Sprite.frame"):between(37, 39)
++      t.expect:field("@one/guard", "Transform.pos.y"):gt(0.3)
++      t.expect:field("@one/guard", "Transform.rot"):near(math.pi / 2, 1e-3)
++
++      -- Let go: its own frames again, and no guard.
++      t.input:release("block")
++      two:release("block")
++      t:step(1)
++      t.expect:field("@one", "Sprite.frame"):between(6, 8)
++      t.expect:field("@two", "Sprite.frame"):eq(12)
++      t.expect:field("@one/guard", "Sprite.visible"):eq(false)
++      t.expect:field("@two/guard", "Sprite.visible"):eq(false)
++    end,
++  },
++}
+diff --git a/examples/duel/tests/looks.luau b/examples/duel/tests/looks.luau
+index 649ed44f..fa0e3734 100644
+--- a/examples/duel/tests/looks.luau
++++ b/examples/duel/tests/looks.luau
+@@ -5,7 +5,25 @@
+ -- the new look (read the pictures in tests/goldens before keeping them).
+ local duel = require("duel")
+ 
+-return scenario "the menu, a fight, and the win screen look as they did" {
++-- A block: player 1 blocks facing right, its blade up and its guard's blue
++-- glow before it; player 2 swings into it from the front and is pushed
++-- off, the blocked sparks between them.
++local block = scenario "a block looks as it did" {
++  scene = "arena", seed = 1,
++  run = function(t)
++    duel.start(t)
++    duel.place(t, "@one", -1, 1, 1, 0)
++    duel.place(t, "@two", 0.5, 1, -1, 0)
++    t.input:hold("block", true)
++    t:step(1)
++    t.input:slot(2):tap("attack", true)
++    t:step(3)
++    t.expect:events("blocked", { by = "@one" }):count():eq(1)
++    t.expect:image("block")
++  end,
++}
++
++local screens = scenario "the menu, a fight, and the win screen look as they did" {
+   scene = "arena", seed = 1,
+   run = function(t)
+     duel.menu(t)
+@@ -34,3 +52,5 @@ return scenario "the menu, a fight, and the win screen look as they did" {
+     t.expect:image("win")
+   end,
+ }
++
++return { screens, block }
+diff --git a/examples/duel/tests/online.luau b/examples/duel/tests/online.luau
+index d54ed5c5..e8e9acc1 100644
+--- a/examples/duel/tests/online.luau
++++ b/examples/duel/tests/online.luau
+@@ -1,5 +1,5 @@
+--- A whole match online, over a bad link: t:net makes player 2's world, a
+--- copy of this one, and sends every message between the two through a
++-- Online, over a bad link: a whole match, and blocks from the front and a
++-- swing from behind. t:net makes player 2's world, a copy of this one, and sends every message between the two through a
+ -- network with 60 ms each way, up to 30 ms more, 5% of messages lost, and
+ -- 2 ticks of input delay. Each t:step runs both worlds and ends with every
+ -- tick final and both worlds the same: if they ever differ, the run fails,
+@@ -26,7 +26,97 @@ local function close_in(t, two)
+   t:step(4)
+ end
+ 
+-return scenario "two players over a bad link play a whole match, and their worlds agree" {
++-- Blocks over the same bad link: each player blocks the other's swing from
++-- the front (no point, both pushed apart), then player 1 walks round
++-- behind player 2, who blocks facing the way it was, and scores. Block,
++-- like every action, goes through the match from each player's machine.
++local blocks = scenario "two players over a bad link block each other's swings, a swing from behind scores, and their worlds agree" {
++  scene = "arena", seed = 1,
++  run = function(t)
++    t:net { players = 2, delay = 2, latency = 60, jitter = 30, loss = 0.05 }
++    local two = t.input:slot(2)
++    t:step(2)
++    t.expect:field("@arena", "Match.state"):eq("fight")
++
++    -- Player 2 blocks, facing player 1, who swings: blocked.
++    close_in(t, two)
++    t.expect:field("@two", "Fighter.facing.x"):near(-1, 1e-6)
++    two:hold("block", true)
++    t:step(4)
++    t.expect:field("@two", "Fighter.block"):gt(0)
++    local gap = duel.field(t, "@two", "Transform.pos.x") - duel.field(t, "@one", "Transform.pos.x")
++    t.input:tap("attack", true)
++    t:step(6)
++    t.expect:events("swing", { by = "@one" }):count():eq(1)
++    t.expect:events("blocked", { by = "@two", from = "@one" }):count():eq(1)
++    t.expect:events("point"):count():eq(0)
++    t.expect:field("@arena", "Match.state"):eq("fight")
++    two:release("block")
++    t:step(30)
++    local apart = duel.field(t, "@two", "Transform.pos.x") - duel.field(t, "@one", "Transform.pos.x")
++    if apart < gap + 1 then
++      error("the block pushed them from " .. gap .. " apart to only " .. apart, 0)
++    end
++
++    -- Player 1 blocks, facing player 2, who swings: blocked.
++    close_in(t, two)
++    t.expect:field("@one", "Fighter.facing.x"):near(1, 1e-6)
++    t.input:hold("block", true)
++    t:step(4)
++    t.expect:field("@one", "Fighter.block"):gt(0)
++    two:tap("attack", true)
++    t:step(6)
++    t.expect:events("blocked", { by = "@one", from = "@two" }):count():eq(1)
++    t.expect:events("blocked"):count():eq(2)
++    t.expect:events("point"):count():eq(0)
++    t.expect:events("sound.play", { sound = "sfx/block" }):count():eq(2)
++    t.input:release("block")
++    t:step(30)
++
++    -- Player 1 walks on through player 2 to its back, and turns round.
++    t.input:hold("move", { 1, 0 })
++    for _ = 1, 120 do
++      t:step(1)
++      if duel.field(t, "@one", "Transform.pos.x") > duel.field(t, "@two", "Transform.pos.x") + 1 then
++        break
++      end
++    end
++    t.input:release("move")
++    t:step(4)
++    t.input:tap("move", { -1, 0 })
++    t:step(4)
++    t.expect:field("@one", "Fighter.facing.x"):near(-1, 1e-6)
++    t.expect:field("@two", "Fighter.facing.x"):near(-1, 1e-6)
++    local behind = duel.field(t, "@one", "Transform.pos.x") - duel.field(t, "@two", "Transform.pos.x")
++    t:log("player 1 is " .. behind .. " behind player 2")
++
++    -- Player 2 blocks, still facing the way player 1 was: the swing at its
++    -- back scores.
++    two:hold("block", true)
++    t:step(4)
++    t.expect:field("@two", "Fighter.block"):gt(0)
++    t.input:tap("attack", true)
++    t:step(6)
++    t.expect:events("blocked"):count():eq(2)
++    t.expect:events("point", { by = 1 }):count():eq(1)
++    t.expect:field("@arena", "Match.one"):eq(1)
++    t.expect:field("@arena", "Match.two"):eq(0)
++    two:release("block")
++    t:step(10)
++
++    -- The link made both players guess wrong, and the worlds were compared.
++    local s = t:net_status()
++    t:log("rollbacks " .. s.worlds[1].rollbacks .. " and " .. s.worlds[2].rollbacks .. ", lost " .. s.lost .. " of " .. s.messages .. ", checks " .. s.worlds[1].checks)
++    if s.worlds[1].rollbacks == 0 or s.worlds[2].rollbacks == 0 then
++      error("a player never rolled back over a 60 ms link", 0)
++    end
++    if s.worlds[1].checks < 3 then
++      error("too few checks of the worlds: " .. s.worlds[1].checks, 0)
++    end
++  end,
++}
++
++local match = scenario "two players over a bad link play a whole match, and their worlds agree" {
+   scene = "arena", seed = 1,
+   run = function(t)
+     -- In the match q:net() says playing from its first tick on both
+@@ -68,3 +158,5 @@ return scenario "two players over a bad link play a whole match, and their world
+     end
+   end,
+ }
++
++return { match, blocks }
+diff --git a/examples/duel/tests/touch.luau b/examples/duel/tests/touch.luau
+index becdaddc..15fb0cd8 100644
+--- a/examples/duel/tests/touch.luau
++++ b/examples/duel/tests/touch.luau
+@@ -1,10 +1,35 @@
+ -- Under a finger (input.toml's [touch]): a tap on the menu's button is a
+--- click, the stick at the bottom left moves player 1, and the Attack and
+--- Dash buttons at the bottom right swing and dash. Places are in the UI
+--- canvas's pixels (960 x 540), as input.toml lays the controls out.
++-- click, the stick at the bottom left moves player 1, the Attack and Dash
++-- buttons at the bottom right swing and dash, and Block above Attack
++-- blocks while it is held. Places are in the UI canvas's pixels
++-- (960 x 540), as input.toml lays the controls out.
+ local duel = require("duel")
+ 
+-return scenario "player 1 plays under a finger: a tap starts the match, the stick moves, the buttons swing and dash" {
++local block = scenario "under a finger, the Block button blocks for as long as the finger stays on it" {
++  scene = "arena", seed = 1,
++  run = function(t)
++    duel.start(t)
++    -- Block (110 in from the bottom right, 260 up), held across ticks.
++    t.input:touch(1, "start", 960 - 110, 540 - 260)
++    t:step(2)
++    t.expect:field("@one", "Fighter.block"):gt(0)
++    t.expect:field("@two", "Fighter.block"):eq(0)
++    t:step(20)
++    t.expect:field("@one", "Fighter.block"):gt(0)
++    -- Attack under another finger while it blocks is nothing.
++    t.input:touch(2, "start", 960 - 110, 540 - 120)
++    t:step(1)
++    t.input:touch(2, "end", 960 - 110, 540 - 120)
++    t:step(1)
++    t.expect:events("swing"):count():eq(0)
++    t.input:touch(1, "end", 960 - 110, 540 - 260)
++    t:step(1)
++    t.expect:field("@one", "Fighter.block"):eq(0)
++    t.expect:events("block", { by = "@one" }):count():eq(1)
++  end,
++}
++
++local play = scenario "player 1 plays under a finger: a tap starts the match, the stick moves, the buttons swing and dash" {
+   scene = "arena", seed = 1,
+   run = function(t)
+     duel.menu(t)
+@@ -42,3 +67,5 @@ return scenario "player 1 plays under a finger: a tap starts the match, the stic
+     t.expect:events("dash", { by = "@two" }):count():eq(0)
+   end,
+ }
++
++return { play, block }

@@ -8,7 +8,8 @@
 // (`--join <code> --headless <ticks>`); without it, two pages play. The
 // pages press keys (slot 1's: WASD, F, Space) on their own schedule. It
 // fails when any player falls out of step, or the players agreed on too
-// few checks. --lag and --jitter make the relay's link slow on purpose.
+// few checks. --lag and --jitter make the relay's link slow on purpose;
+// --relay ws://... plays through a relay already running instead.
 // Prints one JSON line. Node 24, no npm packages.
 import { spawn } from "node:child_process";
 import { mkdtempSync, existsSync, readFileSync, rmSync } from "node:fs";
@@ -24,7 +25,8 @@ const game = opt("--game");
 const ticks = Number(opt("--ticks", "600"));
 const lag = opt("--lag", "0");
 const jitter = opt("--jitter", "0");
-if (!argus || !site) {
+const given = opt("--relay");
+if ((!argus && !given) || !site) {
   console.error("usage: check.mjs --argus <argus.exe> --site <web build> [--game <desktop exe>] [--ticks 600]");
   process.exit(2);
 }
@@ -121,10 +123,13 @@ const report = { ok: false, mode: game ? "page and desktop" : "two pages", lag: 
 let failed = false;
 try {
   // The relay and the site.
-  const rp = await freePort();
-  const relayUrl = `ws://127.0.0.1:${rp}`;
-  const relay = spawn(argus, ["relay", `:${rp}`, `lag=${lag}`, `jitter=${jitter}`], { stdio: "ignore" });
-  kids.push(relay);
+  let relayUrl = given;
+  if (!relayUrl) {
+    const rp = await freePort();
+    relayUrl = `ws://127.0.0.1:${rp}`;
+    kids.push(spawn(argus, ["relay", `:${rp}`, `lag=${lag}`, `jitter=${jitter}`], { stdio: "ignore" }));
+  }
+  report.relay = relayUrl;
   const http = await freePort();
   kids.push(spawn(process.execPath, ["tools/web/serve.mjs", site, String(http), "127.0.0.1"], { stdio: "ignore" }));
   await sleep(800);

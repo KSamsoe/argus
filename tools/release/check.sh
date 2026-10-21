@@ -125,7 +125,7 @@ if [ "$failed" = 0 ]; then
   if [ -n "$KEEP" ]; then
     rm -rf "${KEEP:?}"
     mkdir -p "$KEEP"
-    for g in hollow delve swarm outpost; do
+    for g in hollow delve swarm outpost duel; do
       cp -r "$WORK/out/$g-$OS" "$KEEP/$g"
     done
     echo "kept the games' $OS releases in $KEEP"

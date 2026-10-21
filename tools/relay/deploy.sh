@@ -6,9 +6,10 @@
 #
 # Builds the last commit's argus there (in ~/argus-ci, from a git bundle, as
 # CI's det step does), puts it in ~/argus-relay, and installs and restarts
-# argus-relay.service (a user unit, as the games site's is). Then checks
-# the relay from here with tools/relay/check.mjs. $ARGUS_RELAY_HOST is the
-# host (default klab).
+# argus-relay.service (a user unit, as the games site's is) on port 7879 and
+# argus-relay-slow.service on 7880, a link made slow on purpose (80 ms more
+# a message, up to 40 more). Then checks both from here with
+# tools/relay/check.mjs. $ARGUS_RELAY_HOST is the host (default klab).
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 HOST=${ARGUS_RELAY_HOST:-klab}
@@ -30,8 +31,11 @@ mkdir -p ~/argus-relay ~/.config/systemd/user
 cp target/release/argus ~/argus-relay/argus.new
 mv ~/argus-relay/argus.new ~/argus-relay/argus
 REMOTE
-scp -q -o BatchMode=yes tools/relay/argus-relay.service "$HOST:.config/systemd/user/argus-relay.service"
-ssh -o BatchMode=yes "$HOST" 'systemctl --user daemon-reload && systemctl --user enable -q argus-relay.service && systemctl --user restart argus-relay.service && sleep 1 && systemctl --user is-active argus-relay.service'
+for u in argus-relay argus-relay-slow; do
+  scp -q -o BatchMode=yes "tools/relay/$u.service" "$HOST:.config/systemd/user/$u.service"
+  ssh -o BatchMode=yes "$HOST" "systemctl --user daemon-reload && systemctl --user enable -q $u.service && systemctl --user restart $u.service && sleep 1 && systemctl --user is-active $u.service"
+done
 IP=$(ssh -o BatchMode=yes "$HOST" 'tailscale ip -4 | head -1')
-echo "== the relay: ws://$IP:7879"
+echo "== the relay: ws://$IP:7879, and slow on purpose ws://$IP:7880"
 node tools/relay/check.mjs "ws://$IP:7879"
+node tools/relay/check.mjs "ws://$IP:7880"

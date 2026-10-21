@@ -166,7 +166,7 @@ t:run_until { event = "player.fell", max_frames = 120 }
 | `t.expect:field("@player", "Health.cur")` | A field's value now. `Transform.pos.x` reads one axis of a vec2. |
 | `t.expect:count({ has = {"Enemy"}, within = { of = "@player", r = 3 } })` | How many entities match a query's `where`. |
 | `t.expect:sum("Stockpile.food", where)` | A field added up over the matching entities. |
-| `t.expect:events("damage", { by = "@player" })` | This run's events with that name (and those fields). Then `:count()`, `:exists()`, `:first()` (the first event's row, its data under `.fields`), `:last()` (the newest's), or `:all()` (every row, oldest first). |
+| `t.expect:events("damage", { by = "@player" })` | This run's events with that name (and those fields). Then `:count()`, `:exists()`, `:first()` (the first event's row, its data under `.fields`), `:last()` (the newest's), or `:all()` (every row, oldest first). A row's own `by` is the system that emitted it; an event field named `by` is `row.fields.by`. |
 | `t.expect:path("@player", { has = {"Stairs"} })` | `:exists()`: a way from the entity to one that matches, over the navigation grid when there is one. |
 | `t.expect:perf("sim")` | `:p95_ms()`: the stage's 95th percentile milliseconds over the last 600 ticks. `"tick"` is the whole tick. |
 | `t.expect:series("Stockpile.food", { every = days(1) })` | Samples a field from now on. Then `:samples()`, `:last()`, `:min()`, `:max()`, `:trend()` (the slope per sample). |
@@ -189,6 +189,8 @@ Some details that matter:
 - **An error does stop it.** `error(msg)`, `assert`, or a failing `t:call` ends the run and names the line in `tests/`. In a helper of your own, `error(msg, 2)` names the caller's line instead.
 - **Declare a series before the run it watches.** Declared late, the harness runs that seed again from the start with the series in place. Outpost's food scenario declares it first for this reason, since a rerun would be thirty more days.
 - **`perf` has slack.** With the default `perf_margin` of 1.5, `:lt(4.0)` passes up to 6 ms. Timing depends on the machine and how busy it is.
+
+A run loads its scene afresh from the files on disk, so a changed component, entity file, or script is what every run of `argus test` plays, with no `scene load` first (that is only for the daemon's own world, when a reload refuses a changed component).
 
 ## A multiplayer match
 

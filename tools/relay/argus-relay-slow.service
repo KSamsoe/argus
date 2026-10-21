@@ -1,0 +1,14 @@
+[Unit]
+Description=Argus relay made slow on purpose: 80 ms more each message, up to 40 more, on the tailnet only
+After=network-online.target tailscaled.service
+
+[Service]
+# A second relay on klab for trying a match over a bad connection
+# (docs/multiplayer-checklist.md, the gate): ws://<klab's tailnet
+# address>:7880. The ordinary one, argus-relay.service, is on 7879.
+ExecStart=%h/argus-relay/argus relay tailnet:7880 lag=80 jitter=40
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

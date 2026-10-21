@@ -106,7 +106,7 @@ Coordinates are pixels, x right and y down from the top left, as in an image fil
 
 Scripts share code and colours through modules. `local pal = require("colours")` runs `assets/colours.lib.luau`, a Luau file that returns something (a table of colours, a helper function), and a change to it imports again every script that requires it, so one palette can colour several sprites. A module is not an asset, and a release leaves it out.
 
-A script is sandboxed: it cannot read files, the clock, or the network, and `math.random` is refused in favour of `art.rng(seed)`. Its maths is the same on every machine, so the same script draws the same pixels everywhere. A mistake is an import error with the script's line, and `print` comes back as a warning on the asset, in `argus asset list`. To look at what it drew, put it in a scene and use `observe`; the packed sheet is in `.argus/assets/<name>.png`.
+A script is sandboxed: it cannot read files, the clock, or the network, and `math.random` is refused in favour of `art.rng(seed)`. Its maths is the same on every machine, so the same script draws the same pixels everywhere. A mistake is an import error with the script's line, and `print` comes back as a warning on the asset, in `argus asset list`. To look at what it drew, put it in a scene and use `observe`; the packed sheet is in `.argus/assets/<name>.png`. Frames are packed edge to edge, so a frame drawn much larger than its pixels (a zoomed camera) can pick up a line of its neighbour's colour at an edge, more so in the software rasteriser that picture goldens use: leave a one-pixel clear border round a frame that is shown that way.
 
 The templates' art is drawn this way: their `assets/*.art.luau` are worked examples of characters, tiles, and panels.
 
@@ -661,7 +661,7 @@ q:play("sfx/hit", { entity = e })
 
 The options are `entity` (where it plays from), `gain`, `pitch`, `bus`, `pan`, and `loop`. A sound is **spatial** by default: it is quieter and panned by its distance from the entity with an `AudioListener`, or from the drawing camera when there is none (`[spatial] min_distance` and `max_distance` in `audio.toml`). Give it `spatial = false` for UI and music-like sounds. Animator events, dialogue lines, and timeline cues play sounds by name too.
 
-`q:play` returns nothing, so a script cannot name the voice it started. To stop sounds from a script, emit `sound.stop`. With `sound`, it stops every voice of that sound: `q:emit("sound.stop", { sound = "sfx/hum", fade_ms = 300 })` ends a hum's loop, spatial or not. With `entity`, it stops the spatial sounds playing from that entity.
+`q:play` is a `sound.play` event, `{sound, entity, gain, pitch, ...}` as it was called, which a scenario counts like any event (`t.expect:events("sound.play", { sound = "sfx/hit" })`); the mixer answers it with `sound.played`. `q:play` returns nothing, so a script cannot name the voice it started. To stop sounds from a script, emit `sound.stop`. With `sound`, it stops every voice of that sound: `q:emit("sound.stop", { sound = "sfx/hum", fade_ms = 300 })` ends a hum's loop, spatial or not. With `entity`, it stops the spatial sounds playing from that entity.
 
 ### Music
 
@@ -683,7 +683,7 @@ m.intensity = math.min(1, n / 30)
 
 ### Checking sound without ears
 
-`argus audio describe sound=sfx/jump` says what a sound is like, measured from the samples the mixer plays, a file's or a tone's: its length, its peak and loudness, when it is loudest and when it has faded, how its pitch moves (where it has one) and how bright it is, in numbers and in a sentence: "0.17 s long, peak -6.0 dB; loudest at 0.00 s, faded to a tenth by 0.16 s; a note starting near 560 Hz at 0.00 s, ending near 826 Hz at 0.14 s (higher)".
+`argus audio describe sound=sfx/jump` says what a sound is like (each variation's own samples, before the sound's `gain`), measured from the samples the mixer plays, a file's or a tone's: its length, its peak and loudness, when it is loudest and when it has faded, how its pitch moves (where it has one) and how bright it is, in numbers and in a sentence: "0.17 s long, peak -6.0 dB; loudest at 0.00 s, faded to a tenth by 0.16 s; a note starting near 560 Hz at 0.00 s, ending near 826 Hz at 0.14 s (higher)".
 
 Every play is an event (`sound.play` asked, `sound.played` with the variation chosen and the gain and pitch it played at, its jitter included, or `sound.missing`), and music changes are `music.started`, `music.layer`, and `music.queued`. `argus audio status` shows the buses with their levels and ducking, the voices, and the music. `argus audio clip` writes the last seconds of the mix as a WAV for a person to hear. Headless, the mixer runs on sim time, so the clip is the same every run.
 

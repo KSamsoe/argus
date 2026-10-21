@@ -1,7 +1,7 @@
 The Argus example games
 =======================
 
-Four small games made with Argus, the 2D engine you build games in
+Five small games made with Argus, the 2D engine you build games in
 together with an AI. Each folder is a game as `argus build` released it:
 nothing to install. Run the program in the folder (hollow.exe on Windows,
 ./hollow on Linux, and so on).
@@ -24,7 +24,15 @@ Outpost: a colony sim
   Pan: WASD or the arrow keys     Zoom: - and =      Pause: Space
   Speed: 1, 2, 3                  Inspect a colonist: Tab     Menu: Esc
 
-A gamepad works in all four, and a screen reader reads their menus.
+Duel: two players, one arena, first to three
+  Player 1: WASD to move, F to swing, Space to dash
+  Player 2: the arrows to move, . to swing, / to dash
+  Its menu plays two on this machine, or hosts or joins a game online.
+  Online needs a relay (`argus relay`, in an Argus install): start Duel
+  with --relay ws://<the relay's address>:7879, then Host online and give
+  the other player the room's code, or Join online with theirs.
+
+A gamepad works in all five, and a screen reader reads their menus.
 Each game's Esc menu has settings (text size, high contrast, full
 screen) and the controls, where a key can be rebound. Hollow also plays
 in French.
@@ -34,4 +42,5 @@ Valve's test app (Spacewar, 480): with Steam running, Steam shows you
 playing Spacewar. Without Steam they play the same.
 
 The games' source, and Argus itself: https://github.com/KSamsoe/argus
-(examples/hollow, examples/delve, examples/swarm, examples/outpost).
+(examples/hollow, examples/delve, examples/swarm, examples/outpost,
+examples/duel).
