@@ -128,7 +128,10 @@ fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 /// Messages held back for a slow link (`Limits::lag`), each until its time,
 /// and the thread that sends them then.
 #[derive(Clone)]
-struct Later(Arc<(Mutex<Vec<(Instant, Conn, Down)>>, std::sync::Condvar)>);
+struct Later(Arc<(Mutex<Vec<Held>>, std::sync::Condvar)>);
+
+/// A message held back, and when it goes.
+type Held = (Instant, Conn, Down);
 
 impl Later {
     fn start() -> Later {
