@@ -1,0 +1,1543 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Argus: a 2D game engine you build games in with an AI</title>
+<meta name="description" content="Argus is a 2D game engine you build games in together with an AI agent. Public release coming soon.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Argus">
+<meta property="og:description" content="A 2D game engine you build games in together with an AI agent. Public release coming soon.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%2316181A'/%3E%3Ccircle cx='16' cy='16' r='9.5' fill='%23F6F7F5'/%3E%3Ccircle cx='16' cy='16' r='4' fill='%23C8341E'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root {
+  color-scheme: light;
+  /* the building: white walls, grey floors, steel */
+  --wall: #F6F7F5;
+  --glass: #FFFFFF;
+  --concrete: #E9EBE9;
+  --concrete-2: #D9DDDB;
+  --rule: #C9CECC;
+  --steel: #596064;
+  --graphite: #16181A;
+  --graphite-2: #202427;
+  --graphite-3: #2F3437;
+  --graphite-4: #4B5154;
+  --on-dark: #F3F4F2;
+  --on-dark-2: #A9AFB2;
+  /* two hues, each with one meaning */
+  --you: #C8341E;        /* you, the person: the red chair */
+  --you-deep: #A32813;
+  --agent: #1C6B60;      /* the agent: the green at the edge of plate glass */
+  --agent-lt: #74D1BE;   /* the agent's marks, drawn over the dark game */
+  --agent-pale: #DDEEE9;
+  --font: "Instrument Sans", "Helvetica Neue", Helvetica, Arial, system-ui, sans-serif;
+  --mono: "IBM Plex Mono", "Cascadia Mono", Consolas, "SFMono-Regular", ui-monospace, monospace;
+  /* one scale, a major third */
+  --s-2: .75rem;
+  --s-1: .875rem;
+  --s0: 1.0625rem;
+  --s1: 1.3125rem;
+  --s2: 1.625rem;
+  --s3: 2rem;
+  --s4: 2.5rem;
+  --s5: 3.125rem;
+  --s6: 3.875rem;
+  --s7: 4.875rem;
+  --gl: max(16px, env(safe-area-inset-left, 0px));
+  --gr: max(16px, env(safe-area-inset-right, 0px));
+  --pad: clamp(64px, 8.5vw, 128px);
+  --ease: cubic-bezier(.45, 0, .2, 1);
+  --line: var(--graphite);
+  --line-soft: var(--rule);
+  --floor: var(--wall);
+  --focus: var(--graphite);
+}
+@media (min-width: 720px) {
+  :root {
+    --gl: max(40px, env(safe-area-inset-left, 0px));
+    --gr: max(40px, env(safe-area-inset-right, 0px));
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--wall);
+  color: var(--graphite);
+  font-family: var(--font);
+  font-size: var(--s0);
+  line-height: 1.55;
+}
+img, svg, canvas { display: block; max-width: 100%; }
+h1, h2, h3 { font-family: var(--font); font-weight: 600; line-height: 1.06; letter-spacing: -.02em; margin: 0; text-wrap: balance; }
+p { margin: 0; }
+a { color: inherit; }
+code {
+  font-family: var(--mono);
+  font-size: .88em;
+  padding: .04em .3em;
+  background: color-mix(in srgb, currentColor 9%, transparent);
+}
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.skip {
+  position: absolute; left: 12px; top: -60px; z-index: 50;
+  background: var(--graphite); color: var(--on-dark); padding: 12px 16px;
+  font: 600 var(--s0)/1 var(--font); text-decoration: none; transition: top 240ms var(--ease);
+}
+.skip:focus { top: 12px; }
+
+.wrap {
+  max-width: 1320px;
+  margin-inline: auto;
+  padding-left: var(--gl);
+  padding-right: var(--gr);
+}
+.panel { position: relative; background: var(--floor); }
+.panel > .wrap { padding-top: var(--pad); padding-bottom: var(--pad); position: relative; }
+.visually-hidden { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* the thread: a steel column down the page, a level marker for each floor */
+.label {
+  position: relative;
+  display: flex; align-items: center; gap: 12px;
+  margin: 0 0 34px;
+  font: 600 var(--s-2)/1.2 var(--font);
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+.label .no { font: 500 var(--s-1)/1 var(--mono); letter-spacing: .02em; }
+.label::after { content: ""; flex: 1 1 auto; min-width: 24px; height: 1px; background: var(--line-soft); }
+.stop {
+  flex: none;
+  width: 20px; height: 20px; border-radius: 50%;
+  border: 2px solid var(--line);
+  background: conic-gradient(var(--line) 0 25%, var(--floor) 0 50%, var(--line) 0 75%, var(--floor) 0);
+}
+.stop.end { background: var(--line); }
+@media (min-width: 960px) {
+  .route > .wrap { padding-left: calc(var(--gl) + 80px); }
+  .route > .wrap::before {
+    content: ""; position: absolute; top: 0; bottom: 0;
+    left: calc(var(--gl) + 23px); width: 2px; background: var(--line);
+  }
+  .route.first > .wrap::before { top: calc(var(--pad) + 9px); }
+  .label .stop { position: absolute; left: -68px; top: 50%; transform: translateY(-50%); width: 24px; height: 24px; }
+  .label::before { content: ""; position: absolute; left: -44px; width: 34px; top: 50%; height: 1px; background: var(--line); }
+}
+
+h2 { font-size: clamp(2rem, 1.15rem + 2.3vw, var(--s5)); max-width: 20ch; }
+.lede { font-size: clamp(1.125rem, 1rem + .4vw, var(--s1)); line-height: 1.45; max-width: 56ch; margin-top: 22px; }
+.body { max-width: 58ch; margin-top: 18px; }
+
+/* buttons: plain rectangles; on hover a panel slides across, like a door */
+.btn {
+  position: relative; isolation: isolate; overflow: hidden;
+  display: inline-flex; align-items: center; gap: 16px;
+  min-height: 54px; padding: 15px 20px 15px 22px;
+  font: 600 var(--s0)/1 var(--font);
+  text-decoration: none;
+  background: var(--graphite); color: var(--on-dark);
+  border: 2px solid var(--graphite);
+  transition: color 300ms var(--ease), border-color 300ms var(--ease);
+}
+.btn::before {
+  content: ""; position: absolute; inset: 0; z-index: -1;
+  background: var(--you);
+  transform: translateX(-101%);
+  transition: transform 360ms var(--ease);
+}
+.btn:hover::before { transform: none; }
+.btn:hover { border-color: var(--you); }
+.btn .arr { display: grid; place-items: center; transition: transform 360ms var(--ease); }
+.btn .arr svg { width: 22px; height: 14px; }
+.btn:hover .arr { transform: translateX(4px); }
+.btn.line { background: transparent; color: var(--graphite); }
+.btn.line::before { background: var(--graphite); }
+.btn.line:hover { color: var(--on-dark); border-color: var(--graphite); }
+.btn.line:hover .arr { transform: translateY(3px); }
+
+/* ---------- top bar ---------- */
+.top { background: var(--wall); border-bottom: 1px solid var(--rule); }
+.top .wrap { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 72px; }
+.brand { display: inline-flex; align-items: center; gap: 12px; text-decoration: none; font: 600 1.375rem/1 var(--font); letter-spacing: -.015em; }
+.brand svg { width: 30px; height: 30px; }
+.top ul { display: flex; align-items: center; gap: 6px; list-style: none; margin: 0; padding: 0; }
+.top li { display: flex; }
+.top .nl {
+  position: relative; display: block; padding: 12px 2px; margin: 0 12px; text-decoration: none;
+  font: 500 .9375rem/1 var(--font);
+}
+.top .nl::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 6px; height: 2px; background: var(--graphite);
+  transform: scaleX(0); transform-origin: left; transition: transform 300ms var(--ease);
+}
+.top .nl:hover::after { transform: none; }
+.top .play {
+  position: relative; isolation: isolate; overflow: hidden;
+  display: block; margin-left: 10px; padding: 12px 20px; text-decoration: none;
+  font: 600 .9375rem/1 var(--font); background: var(--graphite); color: var(--on-dark);
+}
+.top .play::before { content: ""; position: absolute; inset: 0; z-index: -1; background: var(--you); transform: translateX(-101%); transition: transform 320ms var(--ease); }
+.top .play:hover::before { transform: none; }
+@media (max-width: 760px) { .top .nl { display: none; } }
+
+/* ---------- hero ---------- */
+.hero > .wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  gap: clamp(32px, 5vw, 80px);
+  align-items: center;
+  padding-top: clamp(40px, 5.5vw, 84px);
+  padding-bottom: clamp(56px, 7vw, 104px);
+}
+.sign { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; font: 600 var(--s-2)/1.2 var(--font); letter-spacing: .14em; text-transform: uppercase; color: var(--steel); }
+.sign::before { content: ""; width: 40px; height: 2px; background: var(--graphite); }
+.sign b { color: var(--graphite); font-weight: 600; }
+.sign span { padding-left: 14px; border-left: 1px solid var(--rule); }
+.hero h1 { font-size: clamp(2.6rem, 1.2rem + 4.4vw, var(--s7)); line-height: 1.03; letter-spacing: -.028em; margin: 28px 0 30px; max-width: 12ch; text-wrap: wrap; }
+.hl.you { color: var(--you); }
+.hl.agent { color: var(--agent); }
+.hero .lede { margin-top: 0; max-width: 50ch; }
+.actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 38px; }
+.map { position: relative; margin: 0; }
+.map .board { position: relative; aspect-ratio: 720 / 600; }
+.map svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.map svg text { font-family: var(--font); }
+.ml { position: absolute; font: 600 clamp(.85rem, .6rem + .7vw, 1.125rem)/1.15 var(--font); letter-spacing: -.005em; }
+.ml small { display: block; font: 400 clamp(.72rem, .62rem + .25vw, .875rem)/1.3 var(--font); margin-top: 3px; color: var(--steel); letter-spacing: 0; }
+.ml.l { left: 0; }
+.ml.r { right: 0; text-align: right; }
+.ml.t { top: 15.3%; transform: translateY(-100%); }
+.ml.b { top: 85.2%; }
+.map figcaption { display: flex; gap: 12px; margin-top: 14px; font-size: var(--s-1); color: var(--steel); max-width: 54ch; }
+.map figcaption::before { content: ""; flex: none; width: 24px; height: 1px; margin-top: .72em; background: var(--graphite); }
+@media (max-width: 900px) {
+  .hero > .wrap { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 520px) {
+  .ml small { display: none; }
+}
+
+/* ---------- 1 the idea: two volumes and a core on one beam ---------- */
+.idea { --floor: var(--concrete); }
+.idea h2 { max-width: 22ch; }
+.duo { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: stretch; gap: clamp(28px, 4vw, 56px); margin-top: 52px; }
+.duo::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 6px; margin-top: -3px; background: var(--graphite); }
+.side { position: relative; z-index: 1; display: flex; flex-direction: column; min-height: 270px; padding: clamp(22px, 2.4vw, 32px); color: #FFFFFF; }
+.side.you { background: var(--you); }
+.side.agent { background: var(--agent); }
+.side .shape { width: 34px; height: 34px; border: 2px solid currentColor; margin-bottom: auto; }
+.side.you .shape { border-radius: 50%; }
+.side h3 { font-size: clamp(1.6rem, 1.2rem + 1vw, var(--s3)); margin: 44px 0 8px; }
+.side p { max-width: 32ch; }
+.disc {
+  position: relative; z-index: 1; align-self: center;
+  width: clamp(200px, 19vw, 260px); aspect-ratio: 1;
+  background: var(--graphite); color: var(--on-dark);
+  display: grid; align-content: end; padding: 22px;
+  box-shadow: inset 0 0 0 10px var(--graphite), inset 0 0 0 11px var(--graphite-4);
+}
+.disc b { font: 600 clamp(1.5rem, 1.1rem + 1vw, var(--s3))/1.04 var(--font); letter-spacing: -.02em; }
+.disc span { display: block; margin-top: 10px; font-size: var(--s-1); line-height: 1.35; color: var(--on-dark-2); }
+.idea-more { margin-top: 52px; max-width: 64ch; font-size: clamp(1.0625rem, 1rem + .25vw, 1.1875rem); }
+@media (max-width: 859px) {
+  .duo { grid-template-columns: minmax(0, 1fr); gap: 28px; }
+  .duo::before { left: 50%; right: auto; top: 0; bottom: 0; width: 6px; height: auto; margin: 0 0 0 -3px; }
+  .side { min-height: 0; }
+  .side h3 { margin-top: 28px; }
+  .disc { justify-self: center; }
+}
+
+/* ---------- 2 live ---------- */
+.live { --floor: var(--graphite); color: var(--on-dark); --line: var(--on-dark); --line-soft: var(--graphite-4); --focus: var(--agent-lt); }
+.live h2 { max-width: 20ch; }
+@media (min-width: 1101px) {
+  .live-head { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 56px; align-items: end; }
+  .live-head h2 { font-size: clamp(2rem, .9rem + 2.3vw, 3.1rem); max-width: none; }
+  .live-head .lede { margin-top: 0; font-size: var(--s0); color: var(--on-dark); }
+}
+.live-grid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 32px; margin-top: 44px; align-items: start; }
+@media (max-width: 1100px) { .live-grid { grid-template-columns: minmax(0, 1fr); } }
+.stage-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin-bottom: 18px; }
+.views { position: relative; display: inline-flex; border: 1px solid var(--graphite-4); padding: 3px; }
+.views button {
+  position: relative; z-index: 1; border: 0; background: transparent; color: var(--on-dark);
+  font: 600 var(--s-1)/1 var(--font); letter-spacing: .02em; padding: 12px 18px; cursor: pointer;
+  transition: color 260ms var(--ease);
+}
+.views button[aria-pressed="true"] { color: var(--graphite); }
+.views button[data-view="player"][aria-pressed="true"] { color: #FFFFFF; }
+.views .thumb {
+  position: absolute; top: 3px; bottom: 3px; left: 0; width: 0; background: var(--on-dark);
+  transition: transform 320ms var(--ease), width 320ms var(--ease), background-color 260ms var(--ease);
+}
+.chip { display: inline-flex; align-items: center; gap: 10px; font: 500 var(--s-1)/1.2 var(--font); padding: 10px 13px; border: 1px solid var(--graphite-4); color: var(--on-dark); transition: background-color 260ms var(--ease), color 260ms var(--ease), border-color 260ms var(--ease); }
+.chip i { width: 9px; height: 9px; background: var(--on-dark-2); transition: background-color 260ms var(--ease); }
+.chip.on { background: var(--on-dark); color: var(--graphite); border-color: var(--on-dark); }
+.chip.on i { background: var(--you); }
+.chip.rep { background: var(--graphite-3); }
+.chip.rep i { background: var(--agent-lt); }
+
+.screen {
+  position: relative; background: #0A0B0C; overflow: hidden;
+  box-shadow: 0 0 0 7px var(--graphite), 0 0 0 8px var(--graphite-4);
+  transition: box-shadow 260ms var(--ease);
+}
+.screen:focus-within { box-shadow: 0 0 0 5px var(--graphite), 0 0 0 8px var(--agent-lt); }
+.screen canvas, .screen > img { width: 100%; aspect-ratio: 16 / 9; height: auto; }
+.screen canvas:focus { outline: none; }
+.ground {
+  position: absolute; inset: 0; pointer-events: none;
+  background-color: var(--glass);
+  background-image:
+    linear-gradient(to right, #E0E3E1 1px, transparent 1px),
+    linear-gradient(to bottom, #E0E3E1 1px, transparent 1px);
+  background-size: 6.25% 11.111%;
+  transform: translateX(-101%);
+  transition: transform 460ms var(--ease);
+}
+.screen[data-view="agent"] .ground { transform: none; }
+.overlay { position: absolute; inset: 0; pointer-events: none; overflow: hidden; transition: opacity 220ms var(--ease); }
+.screen[data-view="player"] .overlay { opacity: 0; }
+.ob { position: absolute; left: 0; top: 0; }
+.ob .tag {
+  position: absolute; left: -2px; top: -2px; white-space: nowrap;
+  font: 600 12px/1.1 var(--font); letter-spacing: .01em; padding: 3px 6px 3px;
+  background: var(--agent-lt); color: var(--graphite);
+}
+.narrow .ob .tag { font-size: 10px; padding: 1px 4px 2px; }
+.ent { z-index: 3; border: 2px solid var(--agent-lt); }
+.light { z-index: 1; border: 1.5px dashed var(--lc); border-radius: 50%; }
+.light::after { content: ""; position: absolute; left: 50%; top: 50%; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; background: var(--lc); border: 2px solid var(--graphite); }
+.light .tag { background: var(--lc); }
+.narrow .light .tag, .narrow .uib .tag { display: none; }
+.uib { z-index: 2; border: 1.5px dashed var(--on-dark); }
+.uib .tag { background: var(--on-dark); }
+.uib .txt { display: none; }
+.screen[data-view="agent"] .ent { background: var(--agent); border-color: var(--graphite); }
+.screen[data-view="agent"] .ent.shape { background: var(--fill); }
+.screen[data-view="agent"] .ent.round { border-radius: 50%; }
+.screen[data-view="agent"] .light { background: color-mix(in srgb, var(--lc) 34%, transparent); border-style: solid; mix-blend-mode: multiply; }
+.screen[data-view="agent"] .uib { background: var(--graphite); border: 0; }
+.screen[data-view="agent"] .uib .tag { background: var(--concrete-2); }
+.screen[data-view="agent"] .uib .txt { display: block; color: var(--on-dark); font: 500 11px/1 var(--mono); padding: 5px 7px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.screen[data-view="agent"] .narrow .uib .txt { font-size: 8px; padding: 3px 4px; }
+.loading { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 16px; font: 500 var(--s0) var(--font); letter-spacing: .02em; color: var(--on-dark); background: #0A0B0C; }
+.loading .blocks { display: flex; gap: 6px; }
+.loading .blocks i { width: 14px; height: 14px; background: var(--graphite-3); animation: step 900ms steps(1) infinite; }
+.loading .blocks i:nth-child(2) { animation-delay: 300ms; }
+.loading .blocks i:nth-child(3) { animation-delay: 600ms; }
+@keyframes step { 0% { background: var(--agent-lt); } 33% { background: var(--graphite-3); } }
+.screen.running .loading { display: none; }
+.keys { display: flex; flex-wrap: wrap; gap: 10px 24px; margin: 22px 0 0; padding: 0; list-style: none; font-size: var(--s-1); color: var(--on-dark); }
+.keys li { display: flex; align-items: center; gap: 6px; }
+.kbd { display: inline-block; min-width: 2em; text-align: center; padding: 5px 7px; border: 1px solid var(--on-dark-2); color: var(--on-dark); font: 500 .8125rem/1 var(--mono); }
+.touch-note { display: none; margin-top: 12px; font-size: var(--s-1); }
+@media (pointer: coarse) { .touch-note { display: block; } }
+
+.replay { margin-top: 26px; border: 1px solid var(--graphite-4); padding: 20px; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 16px 22px; align-items: center; --focus: var(--on-dark); }
+.replay > p { grid-column: 1 / -1; max-width: 70ch; font-size: var(--s-1); color: var(--on-dark-2); }
+.rbtn {
+  position: relative; isolation: isolate; overflow: hidden;
+  display: inline-flex; align-items: center; gap: 12px; border: 0; cursor: pointer;
+  background: var(--on-dark); color: var(--graphite); padding: 15px 20px 15px 16px;
+  font: 600 var(--s0)/1 var(--font);
+  transition: color 300ms var(--ease);
+}
+.rbtn::before { content: ""; position: absolute; inset: 0; z-index: -1; background: var(--you); transform: translateX(-101%); transition: transform 360ms var(--ease); }
+.rbtn svg { width: 20px; height: 20px; transition: transform 360ms var(--ease); }
+.rbtn:hover:not(:disabled) { color: #FFFFFF; }
+.rbtn:hover:not(:disabled)::before { transform: none; }
+.rbtn:hover:not(:disabled) svg { transform: rotate(-90deg); }
+.rbtn:disabled { cursor: default; background: var(--graphite-3); color: var(--on-dark-2); }
+.tickets { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0; border: 1px solid var(--graphite-4); }
+.ticket { padding: 10px 14px 12px; position: relative; overflow: hidden; }
+.ticket + .ticket { border-left: 1px solid var(--graphite-4); }
+.ticket .k { font: 600 var(--s-2)/1.25 var(--font); letter-spacing: .06em; text-transform: uppercase; color: var(--on-dark-2); }
+.ticket .v { font: 500 .9375rem/1.35 var(--mono); margin-top: 4px; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.ticket .bar { position: absolute; left: 0; bottom: 0; height: 3px; width: 100%; background: var(--agent-lt); transform-origin: left; transform: scaleX(0); }
+.verdict { grid-column: 1 / -1; display: none; align-items: center; gap: 12px; padding: 12px 14px; font: 600 var(--s0)/1.3 var(--font); }
+.verdict.show { display: flex; }
+.verdict.same { background: var(--on-dark); color: var(--graphite); }
+.verdict.run { background: var(--graphite-3); color: var(--on-dark); }
+.verdict.bad { background: var(--you); color: #FFFFFF; }
+.verdict svg { width: 22px; height: 22px; flex: none; }
+@media (max-width: 640px) {
+  .replay { grid-template-columns: minmax(0, 1fr); }
+  .tickets { grid-template-columns: minmax(0, 1fr); }
+  .ticket + .ticket { border-left: 0; border-top: 1px solid var(--graphite-4); }
+}
+
+.readout { background: var(--glass); color: var(--graphite); padding: 24px; border-top: 6px solid var(--agent); --focus: var(--graphite); }
+.readout h3 { font-size: var(--s2); }
+.readout .sub { font-size: var(--s-1); color: var(--steel); margin-top: 6px; }
+.stats { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); margin: 18px 0 6px; border-top: 1px solid var(--graphite); border-bottom: 1px solid var(--rule); }
+.stat { padding: 9px 14px 10px 0; }
+.stat:nth-child(2) { padding-left: 14px; border-left: 1px solid var(--rule); }
+.stat:nth-child(3) { grid-column: 1 / -1; border-top: 1px solid var(--rule); }
+.stat .k { font: 600 .6875rem/1.2 var(--font); text-transform: uppercase; letter-spacing: .12em; color: var(--steel); }
+.stat .v { font: 500 var(--s0)/1.35 var(--mono); font-variant-numeric: tabular-nums; margin-top: 2px; }
+.rh { font: 600 var(--s-2)/1.2 var(--font); text-transform: uppercase; letter-spacing: .12em; margin: 20px 0 0; padding-bottom: 7px; border-bottom: 1px solid var(--graphite); display: flex; justify-content: space-between; }
+.rh span { font: 500 var(--s-1)/1 var(--mono); letter-spacing: 0; color: var(--steel); }
+.rows { list-style: none; margin: 0; padding: 0; }
+.rows li { display: grid; grid-template-columns: 12px minmax(0, 1fr); gap: 3px 12px; padding: 8px 0 9px; border-bottom: 1px solid var(--concrete-2); }
+.rows .sw { width: 12px; height: 12px; margin-top: 5px; background: var(--agent); border: 1px solid var(--graphite); }
+.rows .sw.round { border-radius: 50%; }
+.rows .nm { font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
+.rows .nm code { font-weight: 400; font-size: .78rem; background: transparent; padding: 0; color: var(--steel); }
+.rows .tx { grid-column: 2; font-size: var(--s-1); color: var(--steel); line-height: 1.4; overflow-wrap: anywhere; }
+.rows .bd { grid-column: 2; font: .78rem/1.35 var(--mono); overflow-wrap: anywhere; }
+.raw { margin-top: 20px; }
+.raw summary {
+  position: relative; isolation: isolate; overflow: hidden;
+  display: inline-flex; align-items: center; gap: 10px; cursor: pointer; list-style: none;
+  border: 2px solid var(--graphite); padding: 10px 16px;
+  font: 600 var(--s-1)/1 var(--font); transition: color 300ms var(--ease);
+}
+.raw summary::-webkit-details-marker { display: none; }
+.raw summary::before { content: ""; width: 0; height: 0; border-left: 7px solid currentColor; border-top: 5px solid transparent; border-bottom: 5px solid transparent; transition: transform 260ms var(--ease); }
+.raw summary::after { content: ""; position: absolute; inset: 0; z-index: -1; background: var(--graphite); transform: translateX(-101%); transition: transform 360ms var(--ease); }
+.raw summary:hover { color: var(--on-dark); }
+.raw summary:hover::after { transform: none; }
+.raw[open] summary::before { transform: rotate(90deg); }
+.raw pre { margin: 12px 0 0; max-height: 340px; overflow: auto; background: var(--graphite); color: var(--on-dark); padding: 14px; font: .78rem/1.55 var(--mono); white-space: pre-wrap; word-break: break-all; }
+.ro-wait { margin-top: 14px; font-size: var(--s-1); }
+.why { display: flex; gap: 16px; align-items: flex-start; margin-top: 44px; max-width: 62ch; font-size: clamp(1.125rem, 1rem + .4vw, var(--s1)); line-height: 1.45; }
+.why::before { content: ""; flex: none; width: 16px; height: 16px; margin-top: 7px; background: var(--agent-lt); }
+.fail-note { display: none; margin-top: 18px; background: var(--glass); color: var(--graphite); padding: 14px 16px; }
+.failed .fail-note, .fail-note.show { display: block; }
+
+/* ---------- 3 see and play: a curtain wall of four panes ---------- */
+.tools { --floor: var(--agent); color: #FFFFFF; --line: #FFFFFF; --line-soft: rgba(255, 255, 255, .42); --focus: #FFFFFF; }
+.tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 2px; margin-top: 48px; list-style: none; padding: 0; background: var(--graphite); border: 2px solid var(--graphite); }
+@media (max-width: 1040px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .tiles { grid-template-columns: minmax(0, 1fr); } }
+.tile { background: var(--glass); color: var(--graphite); padding: 26px 24px 30px; }
+.tile .pic svg { width: 52px; height: 52px; }
+.tile h3 { font: 500 var(--s1)/1.2 var(--mono); margin: 30px 0 10px; letter-spacing: 0; padding-top: 14px; border-top: 1px solid var(--rule); }
+.tile p { font-size: var(--s0); }
+
+/* ---------- 4 every change is a step ---------- */
+.steps { --floor: var(--wall); }
+.steps .grid2 { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: clamp(28px, 5vw, 72px); align-items: center; }
+@media (max-width: 960px) { .steps .grid2 { grid-template-columns: minmax(0, 1fr); } }
+.feed { position: relative; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; list-style: none; margin: 0; padding: 72px 0 0; }
+.feed::before { content: ""; position: absolute; left: 0; right: 0; top: 39px; height: 3px; background: var(--graphite); }
+.feed li { position: relative; }
+.feed li::before { content: ""; position: absolute; left: 11px; top: -20px; width: 2px; height: 20px; background: var(--graphite); }
+.feed .dot { position: absolute; top: -44px; left: 0; width: 24px; height: 24px; background: var(--you); border-radius: 50%; box-shadow: 0 0 0 4px var(--floor); }
+.feed .agent .dot { background: var(--agent); border-radius: 0; }
+.feed .prop .dot { background: var(--glass); border: 2px dashed var(--agent); border-radius: 0; }
+.card { background: var(--glass); border: 1px solid var(--rule); border-top: 6px solid var(--you); padding: 14px 14px 16px; min-height: 150px; }
+.feed .agent .card { border-top-color: var(--agent); }
+.feed .prop .card { border: 2px dashed var(--agent); border-top-width: 6px; }
+.card b { display: block; font: 600 var(--s1)/1.15 var(--font); letter-spacing: -.01em; }
+.card .who { display: block; font-size: var(--s-1); line-height: 1.35; color: var(--steel); margin-top: 5px; }
+.card .note { display: grid; gap: 6px; margin-top: 18px; }
+.card .note i { height: 4px; background: var(--concrete-2); }
+.card .note i:nth-child(2) { width: 64%; }
+.undo-sign { position: absolute; right: 0; top: 0; display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--graphite); background: var(--floor); padding: 6px 10px 6px 8px; font: 600 var(--s-2)/1 var(--font); letter-spacing: .1em; text-transform: uppercase; }
+.undo-sign svg { width: 18px; height: 12px; }
+@media (max-width: 640px) {
+  .feed { grid-template-columns: minmax(0, 1fr); padding: 48px 0 0 48px; gap: 14px; }
+  .feed::before { left: 11px; right: auto; top: 48px; bottom: 0; width: 3px; height: auto; }
+  .feed li::before { left: -24px; top: 25px; width: 24px; height: 2px; }
+  .feed .dot { top: 14px; left: -48px; }
+  .card { min-height: 0; }
+  .undo-sign { left: 0; right: auto; }
+}
+
+/* ---------- 5 same seed ---------- */
+.seed { --floor: var(--concrete); }
+.seed .grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(28px, 5vw, 72px); align-items: center; }
+@media (max-width: 960px) { .seed .grid2 { grid-template-columns: minmax(0, 1fr); } }
+.platforms { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.plate { background: var(--glass); border: 1px solid var(--graphite); padding: 12px 16px; font: 600 var(--s0)/1 var(--font); }
+.eq { font: 500 var(--s2)/1 var(--mono); }
+.plate-note { margin-top: 14px; font-weight: 600; }
+@media (max-width: 560px) {
+  .platforms { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr); gap: 5px; }
+  .plate { padding: 11px 2px; text-align: center; font-size: .8125rem; }
+  .eq { font-size: 1rem; }
+}
+.film { position: relative; display: grid; grid-template-columns: repeat(16, minmax(0, 1fr)); gap: 4px; background: var(--glass); border: 1px solid var(--graphite); padding: 46px 8px 8px; margin-top: 32px; }
+.film i { position: relative; aspect-ratio: 4 / 3; border: 1px solid var(--rule); background: var(--wall); }
+.film i.mk { background: var(--you); border-color: var(--you); }
+.film i.fail { background: var(--graphite); border-color: var(--graphite); }
+.film i.mk::before, .film i.fail::before { content: ""; position: absolute; bottom: calc(100% + 3px); left: 50%; width: 2px; height: 30px; margin-left: -1px; background: var(--you); }
+.film i.mk::after, .film i.fail::after { content: ""; position: absolute; bottom: calc(100% + 21px); left: calc(50% + 1px); width: 16px; height: 12px; background: var(--you); }
+.film i.fail::before, .film i.fail::after { background: var(--graphite); }
+.film-key { display: flex; flex-wrap: wrap; gap: 8px 24px; margin-top: 14px; list-style: none; padding: 0; font-size: var(--s-1); }
+.film-key li { display: flex; align-items: center; gap: 8px; }
+.film-key i { width: 12px; height: 12px; background: var(--you); }
+.film-key li + li i { background: var(--graphite); }
+.seed-live { margin-top: 24px; background: var(--graphite); color: var(--on-dark); padding: 13px 16px; font-size: var(--s-1); }
+.seed-live b { font-family: var(--mono); font-weight: 500; font-variant-numeric: tabular-nums; }
+
+/* ---------- 6 tests ---------- */
+.tests { --floor: var(--wall); }
+.tests .grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(28px, 5vw, 72px); align-items: center; }
+@media (max-width: 960px) { .tests .grid2 { grid-template-columns: minmax(0, 1fr); } }
+.flow { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px; list-style: none; margin: 0 0 28px; padding: 0; }
+.flow li { position: relative; background: var(--glass); border: 1px solid var(--graphite); padding: 14px 16px 16px; font: 600 var(--s0)/1.25 var(--font); }
+.flow li + li::before { content: ""; position: absolute; left: -31px; width: 22px; top: 50%; height: 2px; margin-top: -1px; background: var(--graphite); }
+.flow li + li::after { content: ""; position: absolute; left: -10px; top: 50%; margin-top: -5px; border-left: 8px solid var(--graphite); border-top: 5px solid transparent; border-bottom: 5px solid transparent; }
+.flow span { display: block; font: 600 .6875rem/1 var(--font); text-transform: uppercase; letter-spacing: .12em; color: var(--steel); margin-bottom: 8px; }
+@media (max-width: 560px) {
+  .flow { grid-template-columns: minmax(0, 1fr); gap: 26px; }
+  .flow li + li::before { left: 23px; top: -25px; width: 2px; height: 16px; margin: 0; }
+  .flow li + li::after { left: 19px; top: -10px; margin: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 8px solid var(--graphite); border-bottom: 0; }
+}
+.seeds { display: grid; grid-template-columns: repeat(20, minmax(0, 1fr)); gap: 4px; }
+.seeds i { aspect-ratio: 1; border: 1.5px solid var(--graphite); transition: background-color 200ms var(--ease); transition-delay: calc(var(--i, 0) * 9ms); }
+.seeds.filled i { background: var(--graphite); box-shadow: inset 0 0 0 3px var(--floor); }
+.seeds-cap { margin-top: 14px; font-weight: 600; }
+
+/* ---------- 7 speed: a timetable ---------- */
+.speed { --floor: var(--concrete); }
+.speed .grid2 { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); gap: clamp(28px, 5vw, 72px); align-items: start; }
+@media (max-width: 1040px) { .speed .grid2 { grid-template-columns: minmax(0, 1fr); } }
+.boardt { width: 100%; border-collapse: collapse; background: var(--glass); border-top: 3px solid var(--graphite); font-variant-numeric: tabular-nums; }
+.boardt caption { text-align: left; font: 600 var(--s2)/1.2 var(--font); letter-spacing: -.01em; padding: 0 0 14px; }
+.boardt th, .boardt td { text-align: left; padding: 14px 16px; vertical-align: top; border-bottom: 1px solid var(--rule); }
+.boardt thead th { font: 600 .6875rem/1.2 var(--font); text-transform: uppercase; letter-spacing: .12em; color: var(--steel); border-bottom: 1px solid var(--graphite); }
+.boardt tbody th { font-weight: 400; width: 44%; }
+.boardt td { font-family: var(--mono); font-size: .9375rem; white-space: nowrap; }
+.boardt td.res b { font-weight: 600; }
+.boardt .ok { display: inline-flex; align-items: center; gap: 6px; margin-left: 10px; font: 600 .6875rem/1 var(--font); text-transform: uppercase; letter-spacing: .1em; color: var(--graphite); vertical-align: 1px; }
+.boardt .ok::before { content: ""; width: 9px; height: 5px; border-left: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: translateY(-2px) rotate(-45deg); }
+.boardt .aside { display: block; font: .8125rem/1.4 var(--font); color: var(--steel); white-space: normal; margin-top: 4px; }
+@media (max-width: 720px) {
+  .boardt, .boardt tbody, .boardt tr, .boardt th, .boardt td { display: block; }
+  .boardt thead { display: none; }
+  .boardt caption { display: block; padding: 16px 14px 6px; }
+  .boardt tbody th { width: auto; }
+  .boardt tr { padding: 12px 14px; border-top: 1px solid var(--rule); }
+  .boardt th, .boardt td { border: 0; padding: 2px 0; white-space: normal; }
+  .boardt tbody th { font-weight: 600; margin-bottom: 4px; }
+  .boardt td::before { content: attr(data-k) " "; font: 600 .6875rem/1 var(--font); text-transform: uppercase; letter-spacing: .1em; color: var(--steel); margin-right: 6px; }
+}
+.threads { margin-top: 32px; background: var(--glass); border-top: 3px solid var(--graphite); padding: 20px 20px 22px; }
+.threads h3 { font-size: var(--s1); letter-spacing: -.01em; }
+.trow { display: grid; grid-template-columns: 6.5em minmax(0, 1fr) 4.4em; gap: 14px; align-items: center; margin-top: 16px; font-weight: 500; }
+.trow i { position: relative; height: 16px; width: var(--w); background: var(--steel); }
+.trow i::after { content: ""; position: absolute; right: 0; top: -5px; bottom: -5px; width: 2px; background: var(--graphite); }
+.trow:last-of-type i { background: var(--graphite); }
+.trow b { font: 500 var(--s0) var(--mono); text-align: right; }
+.threads p { margin-top: 16px; font-size: var(--s-1); color: var(--steel); }
+
+/* ---------- 8 the engine: a schedule, under one roof ---------- */
+.engine { --floor: var(--wall); }
+.blocks { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); column-gap: clamp(20px, 2.6vw, 40px); list-style: none; margin: 48px 0 0; padding: 0; counter-reset: b; }
+@media (max-width: 1040px) { .blocks { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .blocks { grid-template-columns: minmax(0, 1fr); } }
+.blocks li { counter-increment: b; display: grid; grid-template-columns: 2.4em minmax(0, 1fr); gap: 0 8px; padding: 14px 0 20px; border-top: 1px solid var(--graphite); font: 500 var(--s0)/1.4 var(--font); }
+.blocks li::before { content: counter(b, decimal-leading-zero); font: 500 var(--s-1)/1.7 var(--mono); color: var(--steel); }
+.blocks li:nth-child(-n+4) { border-top-width: 3px; }
+@media (max-width: 1040px) { .blocks li:nth-child(-n+4) { border-top-width: 1px; } .blocks li:nth-child(-n+2) { border-top-width: 3px; } }
+@media (max-width: 560px) { .blocks li:nth-child(-n+2) { border-top-width: 1px; } .blocks li:first-child { border-top-width: 3px; } }
+
+/* ---------- 9 example games: a gallery ---------- */
+.games { --floor: var(--graphite); color: var(--on-dark); --line: var(--on-dark); --line-soft: var(--graphite-4); --focus: var(--agent-lt); }
+.gcards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: clamp(20px, 2.4vw, 32px); margin-top: 48px; list-style: none; padding: 0; }
+@media (max-width: 1140px) { .gcards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .gcards { grid-template-columns: minmax(0, 1fr); } }
+.gcard { display: flex; flex-direction: column; border-top: 3px solid var(--on-dark); padding-top: 18px; }
+.gcard img { width: 100%; aspect-ratio: 16 / 9; height: auto; object-fit: cover; background: #0A0B0C; outline: 1px solid var(--graphite-4); }
+.gbody { padding: 20px 0 0; display: flex; flex-direction: column; gap: 10px; flex: 1; }
+.gbody h3 { font-size: var(--s3); }
+.gbody p { font-size: var(--s0); }
+.added { margin-top: auto; min-height: calc(2.8em + 13px); display: flex; gap: 10px; align-items: flex-start; padding-top: 12px; border-top: 1px solid var(--graphite-4); font-size: .97rem; line-height: 1.4; }
+.added::before { content: ""; flex: none; width: 12px; height: 12px; margin-top: 5px; background: var(--agent-lt); }
+.added b { font-weight: 600; }
+.inbrowser { align-self: flex-start; font: 600 .6875rem/1 var(--font); letter-spacing: .12em; text-transform: uppercase; border: 1px solid var(--on-dark-2); padding: 6px 8px; }
+
+/* ---------- 10 out to players: two rooms ---------- */
+.out { --floor: var(--wall); background: linear-gradient(90deg, var(--wall) 50%, var(--concrete) 50%); }
+.out .halves { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: calc(2 * clamp(28px, 4vw, 64px)); }
+.out h2 { font-size: clamp(1.9rem, 1.1rem + 2.2vw, 3rem); }
+.dest { list-style: none; margin: 30px 0 0; padding: 0; max-width: 440px; border-bottom: 1px solid var(--graphite); }
+.dest li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 0; border-top: 1px solid var(--graphite); font: 600 var(--s1)/1.2 var(--font); }
+.dest li:first-child { border-top-width: 3px; }
+.dest svg { width: 26px; height: 14px; flex: none; }
+.dest small { display: block; font: 400 var(--s-1) var(--font); color: var(--steel); margin-top: 3px; }
+.ed { margin-top: 30px; display: grid; grid-template-columns: minmax(0, 1fr) 78px; gap: 16px; align-items: end; max-width: 520px; }
+.ed-win { background: var(--glass); border: 2px solid var(--graphite); padding: 8px; display: grid; grid-template-columns: 1fr 2.6fr 1fr; grid-template-rows: auto 1fr auto; gap: 6px; aspect-ratio: 16 / 10.5; }
+.ed-win > div { border: 1px solid var(--graphite); background: var(--glass); font: 500 .75rem/1.15 var(--font); padding: 6px; }
+.ed-title { grid-column: 1 / -1; background: var(--concrete) !important; border-color: var(--concrete) !important; }
+.ed-v { background: var(--graphite) !important; color: var(--on-dark); display: grid; place-content: center; text-align: center; font-size: .875rem !important; }
+.ed-t { grid-column: 1 / -1; position: relative; padding-bottom: 22px !important; }
+.ed-t::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: 10px; height: 1px; background: var(--graphite); }
+.ed-t::before { content: ""; position: absolute; left: 58%; bottom: 4px; width: 3px; height: 13px; background: var(--you); z-index: 1; }
+.ed-phone { background: var(--glass); border: 2px solid var(--graphite); padding: 8px 6px 16px; aspect-ratio: 9 / 17; display: grid; }
+.ed-phone div { border: 1px solid var(--graphite); font: 500 .6875rem/1.1 var(--font); padding: 5px; }
+@media (min-width: 960px) {
+  .out > .wrap { padding-right: calc(var(--gr) + 80px); }
+}
+@media (max-width: 959px) {
+  .out .halves { column-gap: calc(2 * clamp(28px, 4vw, 64px)); }
+}
+@media (max-width: 859px) {
+  .out { background: var(--wall); }
+  .out > .wrap { padding-bottom: 0; }
+  .out .halves { grid-template-columns: minmax(0, 1fr); }
+  .out .half.people {
+    background: var(--concrete); margin-top: var(--pad);
+    margin-left: calc(-1 * var(--gl)); margin-right: calc(-1 * var(--gr));
+    padding: var(--pad) var(--gr) var(--pad) var(--gl);
+  }
+}
+
+/* ---------- 11 start ---------- */
+.start { --floor: var(--wall); }
+.start .grid2 { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr); gap: clamp(28px, 5vw, 64px); align-items: start; }
+@media (max-width: 1000px) { .start .grid2 { grid-template-columns: minmax(0, 1fr); } }
+.term { margin-top: 32px; background: var(--graphite); color: var(--on-dark); --focus: var(--agent-lt); }
+.term-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px 10px 16px; border-bottom: 1px solid var(--graphite-4); font: 600 .6875rem/1 var(--font); letter-spacing: .12em; text-transform: uppercase; color: var(--on-dark-2); }
+.copy { border: 1px solid var(--on-dark-2); cursor: pointer; background: transparent; color: var(--on-dark); padding: 9px 16px; font: 600 var(--s-1)/1 var(--font); letter-spacing: 0; text-transform: none; transition: background-color 260ms var(--ease), color 260ms var(--ease), border-color 260ms var(--ease); }
+.copy:hover { background: var(--on-dark); color: var(--graphite); }
+.copy.done { background: var(--agent-lt); color: var(--graphite); border-color: var(--agent-lt); }
+.cmds { list-style: none; margin: 0; padding: 6px 0; counter-reset: c; }
+.cmds li { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 2px 14px; padding: 12px 16px; counter-increment: c; }
+.cmds li + li { border-top: 1px solid var(--graphite-3); }
+.cmds li::before { content: counter(c, decimal-leading-zero); grid-row: span 2; font: 500 var(--s-1)/1.7 var(--mono); color: var(--on-dark-2); }
+.cmds code { background: transparent; padding: 0; font-size: 1rem; color: var(--on-dark); overflow-wrap: anywhere; }
+.cmds .c { font-size: var(--s-1); color: var(--on-dark-2); }
+.tpl { margin: 0; }
+.tpl img { width: 100%; height: auto; border: 2px solid var(--graphite); background: var(--graphite); }
+.tpl figcaption { display: flex; gap: 12px; margin-top: 14px; font-size: var(--s-1); color: var(--steel); }
+.tpl figcaption::before { content: ""; flex: none; width: 24px; height: 1px; margin-top: .72em; background: var(--graphite); }
+
+/* ---------- 12 where it stands ---------- */
+.limits { --floor: var(--concrete); }
+.plain { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; list-style: none; margin: 36px 0 0; padding: 0; }
+@media (max-width: 1040px) { .plain { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .plain { grid-template-columns: minmax(0, 1fr); } }
+.plain li { background: var(--glass); padding: 20px 20px 24px; border-top: 6px solid var(--graphite); }
+.plain li:last-child { border-top-style: dashed; }
+.plain b { display: block; font: 600 var(--s1)/1.2 var(--font); letter-spacing: -.01em; margin-bottom: 8px; }
+
+/* ---------- the next step: one red door ---------- */
+.cta { --floor: var(--wall); --focus: var(--graphite); }
+.door { position: relative; }
+.go {
+  position: relative; isolation: isolate; overflow: hidden;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 28px 40px;
+  min-height: clamp(240px, 24vw, 330px); padding: clamp(26px, 3.4vw, 52px);
+  background: var(--you); color: #FFFFFF; text-decoration: none;
+}
+.go::before { content: ""; position: absolute; inset: 0; z-index: -1; background: var(--you-deep); transform: translateX(-101%); transition: transform 520ms var(--ease); }
+.go:hover::before { transform: none; }
+.go .gt { display: grid; gap: 16px; }
+.go b { font: 600 clamp(2.6rem, 1.3rem + 4vw, 5.2rem)/.98 var(--font); letter-spacing: -.035em; }
+.go .gs { font-size: clamp(1.0625rem, 1rem + .3vw, var(--s1)); max-width: 30ch; line-height: 1.35; }
+.go .arr { display: block; width: clamp(64px, 7vw, 108px); transition: transform 420ms var(--ease); }
+.go .arr svg { width: 100%; height: auto; }
+.go:hover .arr { transform: translateX(14px); }
+.go:focus-visible { outline: 3px solid var(--graphite); outline-offset: 6px; }
+.after-go { margin-top: 26px; font-size: var(--s0); }
+.after-go a { font-weight: 600; text-underline-offset: 5px; text-decoration-thickness: 1px; }
+.after-go a:hover { text-decoration-thickness: 2px; }
+@media (min-width: 960px) {
+  .cta > .wrap::before { bottom: auto; height: calc(var(--pad) + 9px); }
+  .door::before { content: ""; position: absolute; left: -57px; width: 57px; top: 50%; height: 2px; margin-top: -1px; background: var(--line); }
+  .door::after { content: ""; position: absolute; left: -57px; width: 2px; top: -34px; bottom: 50%; background: var(--line); }
+}
+@media (max-width: 560px) {
+  .go { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ---------- footer ---------- */
+.foot { background: var(--graphite); color: var(--on-dark); --focus: var(--agent-lt); }
+.foot .wrap { padding-top: 40px; padding-bottom: max(32px, env(safe-area-inset-bottom, 0px)); display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px 32px; }
+.foot .brand { font-size: 1.2rem; }
+.foot .brand svg { width: 24px; height: 24px; }
+.foot p { color: var(--on-dark-2); font-size: var(--s-1); }
+.foot ul { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 22px; list-style: none; margin: 0; padding: 0; font: 500 var(--s-1) var(--font); }
+.foot a { text-underline-offset: 4px; text-decoration-thickness: 1px; }
+.foot a:hover { text-decoration-thickness: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; transition-delay: 0ms !important; }
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#live">Skip to the live game</a>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="Argus, back to the top">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" fill="#16181A"/><circle cx="16" cy="16" r="9.5" fill="#F6F7F5"/><circle cx="16" cy="16" r="4" fill="#C8341E"/></svg>
+      Argus
+    </a>
+    <nav aria-label="Page">
+      <ul>
+        <li><a class="nl" href="#live">Live game</a></li>
+        <li><a class="nl" href="#tools">How it works</a></li>
+        <li><a class="nl" href="#start">Get started</a></li>
+        <li><a class="play" href="games/">Play</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+<!-- the first picture: one live game, four ways in -->
+<section class="panel hero" aria-labelledby="h-hero">
+  <div class="wrap">
+    <div>
+      <p class="sign"><b>2D game engine</b><span>Public release coming soon</span></p>
+      <h1 id="h-hero"><span class="hl you">You</span> and <span class="hl agent">an AI</span>, building one game together.</h1>
+      <p class="lede">Argus is a 2D game engine made so an AI agent can work on a game as well as you can, right beside you. The game runs live, and you, the agent, the tests and the command line all work on that one running game.</p>
+      <div class="actions">
+        <a class="btn" href="games/">Play the games <span class="arr"><svg viewBox="0 0 22 14" aria-hidden="true"><path d="M0 7h20M14 1l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2"/></svg></span></a>
+        <a class="btn line" href="#live">See what the agent sees <span class="arr"><svg viewBox="0 0 22 14" aria-hidden="true"><path d="M11 0v12M5 6l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2"/></svg></span></a>
+      </div>
+    </div>
+    <figure class="map">
+      <div class="board">
+        <svg id="map-svg" viewBox="0 0 720 600" role="img" aria-labelledby="map-t">
+          <title id="map-t">A plan drawing. Four lines, for you, the agent, the tests and the command line, all run into one building: the live game.</title>
+          <defs>
+            <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+              <path d="M40 0H0V40" fill="none" stroke="#E1E4E2" stroke-width="1"/>
+            </pattern>
+          </defs>
+          <!-- the structural grid, the centre lines and the plinth -->
+          <rect x="80" y="40" width="560" height="520" fill="url(#grid)"/>
+          <rect x="80.5" y="40.5" width="559" height="519" fill="none" stroke="#D3D7D5"/>
+          <path d="M360 18 V582 M58 300 H662" fill="none" stroke="#A9AFAD" stroke-width="1" stroke-dasharray="16 4 3 4"/>
+          <rect x="210" y="150" width="300" height="300" fill="#E3E6E4"/>
+          <!-- four lines in -->
+          <g fill="none" stroke-width="12">
+            <path id="ln-you" d="M40 120 H120 A20 20 0 0 1 140 140 V235 A20 20 0 0 0 160 255 H250" stroke="#C8341E"/>
+            <path id="ln-agent" d="M40 480 H120 A20 20 0 0 0 140 460 V365 A20 20 0 0 1 160 345 H250" stroke="#1C6B60"/>
+            <path id="ln-tests" d="M680 120 H600 A20 20 0 0 0 580 140 V235 A20 20 0 0 1 560 255 H470" stroke="#16181A"/>
+            <path id="ln-cli" d="M680 480 H600 A20 20 0 0 1 580 460 V365 A20 20 0 0 0 560 345 H470" stroke="#16181A"/>
+            <path d="M680 480 H600 A20 20 0 0 1 580 460 V365 A20 20 0 0 0 560 345 H470" stroke="#F6F7F5" stroke-width="4"/>
+          </g>
+          <!-- what travels on them: calls in, answers back -->
+          <g fill="#FFFFFF" stroke="#16181A" stroke-width="2.5">
+            <rect x="-7" y="-7" width="14" height="14">
+              <animateMotion dur="7s" begin="0s" repeatCount="indefinite" calcMode="spline" keyPoints="0;0;1;1;0;0" keyTimes="0;0.1;0.42;0.58;0.9;1" keySplines="0 0 1 1;.45 0 .2 1;0 0 1 1;.45 0 .2 1;0 0 1 1"><mpath href="#ln-you" xlink:href="#ln-you"/></animateMotion>
+            </rect>
+            <rect x="-7" y="-7" width="14" height="14">
+              <animateMotion dur="7s" begin="-1.75s" repeatCount="indefinite" calcMode="spline" keyPoints="0;0;1;1;0;0" keyTimes="0;0.1;0.42;0.58;0.9;1" keySplines="0 0 1 1;.45 0 .2 1;0 0 1 1;.45 0 .2 1;0 0 1 1"><mpath href="#ln-agent" xlink:href="#ln-agent"/></animateMotion>
+            </rect>
+            <rect x="-7" y="-7" width="14" height="14">
+              <animateMotion dur="7s" begin="-3.5s" repeatCount="indefinite" calcMode="spline" keyPoints="0;0;1;1;0;0" keyTimes="0;0.1;0.42;0.58;0.9;1" keySplines="0 0 1 1;.45 0 .2 1;0 0 1 1;.45 0 .2 1;0 0 1 1"><mpath href="#ln-tests" xlink:href="#ln-tests"/></animateMotion>
+            </rect>
+            <rect x="-7" y="-7" width="14" height="14">
+              <animateMotion dur="7s" begin="-5.25s" repeatCount="indefinite" calcMode="spline" keyPoints="0;0;1;1;0;0" keyTimes="0;0.1;0.42;0.58;0.9;1" keySplines="0 0 1 1;.45 0 .2 1;0 0 1 1;.45 0 .2 1;0 0 1 1"><mpath href="#ln-cli" xlink:href="#ln-cli"/></animateMotion>
+            </rect>
+          </g>
+          <!-- the building everyone shares: a glass room with a lettered fascia -->
+          <rect x="250" y="190" width="220" height="220" fill="#16181A"/>
+          <rect x="274" y="214" width="172" height="172" fill="#FFFFFF"/>
+          <path d="M286 232h12M292 226v12M422 232h12M428 226v12M286 368h12M292 362v12M422 368h12M428 362v12" fill="none" stroke="#16181A" stroke-width="3"/>
+          <g font-size="11" font-weight="600" letter-spacing="3.2" fill="#F6F7F5" text-anchor="middle">
+            <text x="360" y="206">ONE PROTOCOL</text>
+            <text x="360" y="402">ONE PROTOCOL</text>
+            <text transform="translate(266 300) rotate(-90)">ONE PROTOCOL</text>
+            <text transform="translate(454 300) rotate(90)">ONE PROTOCOL</text>
+          </g>
+          <text x="360" y="295" text-anchor="middle" font-size="34" font-weight="600" fill="#16181A" letter-spacing="-0.6">The live</text>
+          <text x="360" y="335" text-anchor="middle" font-size="34" font-weight="600" fill="#16181A" letter-spacing="-0.6">game</text>
+          <!-- where each line begins: a shape for each -->
+          <circle cx="40" cy="120" r="20" fill="#C8341E"/>
+          <rect x="20" y="460" width="40" height="40" fill="#1C6B60"/>
+          <rect x="660" y="100" width="40" height="40" fill="#16181A"/>
+          <path d="M670 121l7 7 13-14" fill="none" stroke="#F6F7F5" stroke-width="3.5"/>
+          <rect x="660" y="460" width="40" height="40" fill="#16181A"/>
+          <path d="M671 470l10 10-10 10M684 491h8" fill="none" stroke="#F6F7F5" stroke-width="3.5"/>
+        </svg>
+        <span class="ml l t" aria-hidden="true">You<small>in the editor</small></span>
+        <span class="ml l b" aria-hidden="true">An agent<small>in Claude, Cursor or Codex</small></span>
+        <span class="ml r t" aria-hidden="true">Tests<small>the test runner</small></span>
+        <span class="ml r b" aria-hidden="true">Command line<small>argus test, argus build</small></span>
+      </div>
+      <figcaption>Four ways into one live game. Everyone reaches it through the same protocol.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- 1 -->
+<section class="panel idea route first" aria-labelledby="h-idea">
+  <div class="wrap">
+    <p class="label"><span class="stop" aria-hidden="true"></span><span class="no">01</span>The idea</p>
+    <h2 id="h-idea">Most game engines seat one person at an editor. Argus seats two.</h2>
+    <div class="duo">
+      <div class="side you">
+        <div class="shape" aria-hidden="true"></div>
+        <h3>You</h3>
+        <p>At the editor, with the live game in front of you.</p>
+      </div>
+      <div class="disc"><b>One live game</b><span>The tests and the command line use it too.</span></div>
+      <div class="side agent">
+        <div class="shape" aria-hidden="true"></div>
+        <h3>The agent</h3>
+        <p>In Claude, Cursor or Codex, on the same running game.</p>
+      </div>
+    </div>
+    <p class="idea-more">The game runs live in a background program that holds its whole world. Everyone works on that world through one protocol, so the agent works from the game itself. It can look at the game, play it, rewind it, test it and change it, then tell you what happened and why.</p>
+  </div>
+</section>
+
+<!-- 2 live -->
+<section class="panel live route" id="live" aria-labelledby="h-live">
+  <div class="wrap">
+    <p class="label"><span class="stop" aria-hidden="true"></span><span class="no">02</span>Live in this page</p>
+    <div class="live-head">
+    <h2 id="h-live">This is Hollow, running here. The boxes are what the agent sees.</h2>
+    <p class="lede">Hollow is one of the example games, and this is its real web build. Click it and play. Each box comes from the frame the agent gets from <code>observe</code>, read from the game as it runs. Switch the view to see the game, the agent's picture of it, or both at once.</p>
+    </div>
+
+    <div class="live-grid">
+      <div class="stage">
+        <div class="stage-bar">
+          <div class="views" id="views" role="group" aria-label="Which view to show">
+            <span class="thumb" aria-hidden="true"></span>
+            <button type="button" data-view="player" aria-pressed="false">Player</button>
+            <button type="button" data-view="both" aria-pressed="true">Both</button>
+            <button type="button" data-view="agent" aria-pressed="false">Agent</button>
+          </div>
+          <span class="chip" id="chip" aria-live="polite"><i aria-hidden="true"></i><span>Click the game to play</span></span>
+        </div>
+        <div class="screen" id="screen" data-view="both">
+          <canvas id="hollow" width="960" height="540" aria-label="Hollow, a platformer, running live. Click to play."></canvas>
+          <div class="ground" aria-hidden="true"></div>
+          <div class="overlay" id="overlay" aria-hidden="true"></div>
+          <div class="loading" id="loading"><span>Loading Hollow</span><span class="blocks" aria-hidden="true"><i></i><i></i><i></i></span></div>
+          <noscript><img src="img/clip-hollow.webp" width="480" height="270" alt="A short clip of Hollow being played." style="position:absolute;inset:0;width:100%;height:100%"></noscript>
+        </div>
+        <p class="fail-note" id="fail-note">The live game didn't start in this browser, so this is a clip of it instead. You can play Hollow from <a href="games/">the games page</a>.</p>
+        <ul class="keys" id="keys" aria-label="Controls">
+          <li><span class="kbd">&larr;</span><span class="kbd">&rarr;</span> or <span class="kbd">A</span><span class="kbd">D</span> move</li>
+          <li><span class="kbd">Space</span> or <span class="kbd">Z</span> jump</li>
+          <li><span class="kbd">E</span> talk</li>
+          <li><span class="kbd">R</span> restart</li>
+        </ul>
+        <p class="touch-note">On a phone, use the buttons the game draws on the picture. Scroll from the space around it.</p>
+
+        <div class="replay" id="replay">
+          <button type="button" class="rbtn" id="rbtn" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12a7 7 0 1 0 2.1-5" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M4 3v6h6" fill="none" stroke="currentColor" stroke-width="2.4"/></svg>
+            <span>Replay my run</span>
+          </button>
+          <div class="tickets">
+            <div class="ticket"><div class="k">Your run, when you press Replay</div><div class="v" id="t-yours">tick &middot; digest</div></div>
+            <div class="ticket"><div class="k">The replay, at the same tick</div><div class="v" id="t-again">waiting</div><span class="bar" id="t-bar"></span></div>
+          </div>
+          <p class="verdict" id="verdict" aria-live="polite"></p>
+          <p>Replay starts Hollow again from the same seed and plays back every key you pressed, tick for tick. The digest is a hash of the whole world, so the same digest at the same tick means the same game.</p>
+        </div>
+      </div>
+
+      <aside class="readout" aria-labelledby="h-ro">
+        <h3 id="h-ro">What the agent receives</h3>
+        <p class="sub">The frame from <code>observe</code>, live.</p>
+        <div class="stats">
+          <div class="stat"><div class="k">Tick</div><div class="v" id="ro-tick">&middot;</div></div>
+          <div class="stat"><div class="k">Size</div><div class="v"><span id="ro-bytes">&middot;</span> bytes</div></div>
+          <div class="stat"><div class="k">Digest</div><div class="v" id="ro-digest">&middot;</div></div>
+        </div>
+        <p class="ro-wait" id="ro-wait">The game is loading. When it runs, this lists every entity, light and line of text the agent gets.</p>
+        <div id="ro-lists" hidden>
+          <p class="rh">On screen <span id="ro-n-ents"></span></p>
+          <ul class="rows" id="ro-ents"></ul>
+          <p class="rh">Lights <span id="ro-n-lights"></span></p>
+          <ul class="rows" id="ro-lights"></ul>
+          <p class="rh">Text <span id="ro-n-text"></span></p>
+          <ul class="rows" id="ro-text"></ul>
+          <details class="raw" id="raw">
+            <summary>Show the raw JSON</summary>
+            <pre id="ro-json"></pre>
+          </details>
+        </div>
+      </aside>
+    </div>
+    <p class="why">This is what the agent works from. It reads the running game itself, so it does not have to guess what the game does from its source code.</p>
+  </div>
+</section>
+
+<!-- 3 -->
+<section class="panel tools route" id="tools" aria-labelledby="h-tools">
+  <div class="wrap">
+    <p class="label"><span class="stop" aria-hidden="true"></span><span class="no">03</span>See and play</p>
+    <h2 id="h-tools">An agent that can see the game and play it.</h2>
+    <p class="lede">The agent reaches the running game through the same protocol as the editor. These calls are how it looks, moves through time and asks what happened.</p>
+    <ul class="tiles">
+      <li class="tile">
+        <div class="pic"><svg viewBox="0 0 52 52" aria-hidden="true"><path d="M4 26 C13 13, 39 13, 48 26 C39 39, 13 39, 4 26 Z" fill="none" stroke="#16181A" stroke-width="2.5"/><circle cx="26" cy="26" r="8.5" fill="#1C6B60"/><circle cx="26" cy="26" r="3.2" fill="#16181A"/></svg></div>
+        <h3>observe</h3>
+        <p>The frame as data: what is on screen, where it is and what it is, in about 3 KB. Or the frame as a picture.</p>
+      </li>
+      <li class="tile">
+        <div class="pic"><svg viewBox="0 0 52 52" aria-hidden="true"><path d="M22 14 L7 26 L22 38 Z" fill="none" stroke="#16181A" stroke-width="2.5" stroke-linejoin="miter"/><rect x="24.5" y="10" width="3" height="32" fill="#1C6B60"/><path d="M30 14 L45 26 L30 38 Z" fill="#16181A"/></svg></div>
+        <h3>run, seek</h3>
+        <p>Move time forward, or back to any frame.</p>
+      </li>
+      <li class="tile">
+        <div class="pic"><svg viewBox="0 0 52 52" aria-hidden="true"><circle cx="22" cy="22" r="13" fill="none" stroke="#16181A" stroke-width="2.5"/><rect x="17" y="17" width="10" height="10" fill="#1C6B60"/><path d="M31.5 31.5 L45 45" stroke="#16181A" stroke-width="4"/></svg></div>
+        <h3>query</h3>
+        <p>Read any entity in the world.</p>
+      </li>
+      <li class="tile">
+        <div class="pic"><svg viewBox="0 0 52 52" aria-hidden="true"><circle cx="11" cy="26" r="6.5" fill="none" stroke="#16181A" stroke-width="2.5"/><path d="M18 26 H33" stroke="#16181A" stroke-width="2.5"/><path d="M29 20 L35 26 L29 32" fill="none" stroke="#16181A" stroke-width="2.5"/><rect x="38" y="18" width="10" height="16" fill="#1C6B60"/></svg></div>
+        <h3>events</h3>
+        <p>What happened, and what caused it.</p>
+      </li>
+    </ul>
+  </div>
+</section>
+
+<!-- 4 -->
+<section class="panel steps route" aria-labelledby="h-steps">
+  <div class="wrap">
+    <p class="label"><span class="stop" aria-hidden="true"></span><span class="no">04</span>Every change is a step</p>
+    <div class="grid2">
+      <div>
+        <h2 id="h-steps">Every change is a step you can see and undo.</h2>
+        <p class="body">Edits are transactions. Each one carries a note and an author, you or the agent, and they all land in one change feed. You can see who changed what and why, and undo any step.</p>
+        <p class="body">When the agent has an idea, <code>propose</code> offers the change for you to try before it is kept.</p>
+      </div>
+      <div style="position:relative">
+        <span class="undo-sign"><svg viewBox="0 0 18 12" aria-hidden="true"><path d="M18 6H2M6 1L1 6l5 5" fill="none" stroke="currentColor" stroke-width="2"/></svg>Undo any step</span>
+        <ol class="feed" aria-label="How a change feed reads, as a diagram">
+          <li><span class="dot" aria-hidden="true"></span><div class="card"><b>Edit</b><span class="who">by you</span><span class="note" aria-hidden="true"><i></i><i></i></span></div></li>
+          <li class="agent"><span class="dot" aria-hidden="true"></span><div class="card"><b>Edit</b><span class="who">by the agent</span><span class="note" aria-hidden="true"><i></i><i></i></span></div></li>
+          <li class="prop"><span class="dot" aria-hidden="true"></span><div class="card"><b>Proposal</b><span class="who">by the agent, for you to try</span><span class="note" aria-hidden="true"><i></i><i></i></span></div></li>
+          <li><span class="dot" aria-hidden="true"></span><div class="card"><b>Kept</b><span class="who">by you, after trying it</span><span class="note" aria-hidden="true"><i></i><i></i></span></div></li>
+        </ol>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 5 -->
+<section class="panel seed route" aria-labelledby="h-seed">
+  <div class="wrap">
+    <p class="label"><span class="stop" aria-hidden="true"></span><span class="no">05</span>Same seed, same game</p>
+    <div class="grid2">
+      <div>
+        <h2 id="h-seed">The same seed plays the same game, bit for bit.</h2>
+        <p class="body">A run comes out the same on Windows, Linux, the Mac and in the browser. A failing test saves a replay that opens at the moment it failed. When a player flags a moment while playing, with a mark and a note, the agent opens the game at exactly that frame.</p>
+        <p class="seed-live" id="seed-live" hidden>Hollow, in the panel above, right now: tick <b id="sl-tick"></b>, digest <b id="sl-digest"></b>. Press Replay there to see it reached again.</p>
+      </div>
+      <div>
+        <div class="platforms" aria-label="Windows, Linux, macOS and the browser give the same run">
+          <span class="plate">Windows</span><span class="eq" aria-hidden="true">=</span>
+          <span class="plate">Linux</span><span class="eq" aria-hidden="true">=</span>
+          <span class="plate">macOS</span><span class="eq" aria-hidden="true">=</span>
+          <span class="plate">Browser</span>
+        </div>
+        <div class="film" aria-hidden="true">
+          <i></i><i></i><i></i><i></i><i></i><i class="fail"></i><i></i><i></i><i></i><i></i><i></i><i class="mk"></i><i></i><i></i><i></i><i></i>
+        </div>
+        <ul class="film-key">
+          <li><i aria-hidden="true"></i>A player's mark, with a note</li>
+          <li><i aria-hidden="true"></i>Where a test failed</li>
+        </ul>
+        <p class="plate-note">Each one opens the game at that exact frame.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 6 -->
+<section class="panel tests route" aria-labelledby="h-tests">
+  <div class="wrap">
+    <p class="label"><span class="stop" aria-hidden="true"></span><span class="no">06</span>Tests that play</p>
+    <div class="grid2">
+      <div>
+        <h2 id="h-tests">Tests that play the game.</h2>
+        <p class="body">A scenario drives the game with scripted input and checks what must stay true, over one seed or a hundred. A change is done when the scenarios pass.</p>
+      </div>
+      <div>
+        <ol class="flow">
+          <li><span>First</span>Scripted input</li>
+          <li><span>Then</span>The game plays</li>
+          <li><span>Always</span>Checks that must hold</li>
+        </ol>
+        <div class="seeds" id="seeds" aria-hidden="true"></div>
+        <p class="seeds-cap">One scenario, a hundred seeds.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 7 -->
+<section class="panel speed route" aria-labelledby="h-speed">
+  <div class="wrap">
+    <p class="label"><span class="stop" aria-hidden="true"></span><span class="no">07</span>Tuning and speed</p>
+    <div class="grid2">
+      <div>
+        <h2 id="h-speed">Tuning and speed are data too.</h2>
+        <p class="body">Mark a field as tunable and sweep it across seeds. <code>profile</code> reports each system's cost against the game's performance targets, and names the system to look at.</p>
+        <div class="threads">
+          <h3>Systems run in parallel</h3>
+          <div class="trow"><span>1 thread</span><i style="--w:100%"></i><b>6.7 ms</b></div>
+          <div class="trow"><span>4 threads</span><i style="--w:29.9%"></i><b>2.0 ms</b></div>
+          <p>Four heavy systems, one tick. Systems that do not touch the same components run side by side, and the world comes out identical on 1, 3 or 4 threads.</p>
+        </div>
+      </div>
+      <table class="boardt">
+        <caption>Measured on a laptop</caption>
+        <thead><tr><th scope="col">Measured</th><th scope="col">Target</th><th scope="col">Result</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Swarm, with the swarm on the hero: sim tick</th><td data-k="Target">under 6 ms</td><td class="res" data-k="Result"><b>1.7 ms</b><span class="ok">met</span></td></tr>
+          <tr><th scope="row">Outpost at 10x speed, 200 colonists and 20,000 items: sim tick</th><td data-k="Target">under 1.6 ms</td><td class="res" data-k="Result"><b>1.2 ms</b><span class="ok">met</span></td></tr>
+          <tr><th scope="row">Outpost fast-forward, headless</th><td data-k="Target">over 2,000 ticks/s</td><td class="res" data-k="Result"><b>about 3,500</b><span class="ok">met</span><span class="aside">A month of colony life in about 30 s.</span></td></tr>
+          <tr><th scope="row">Collision pass, 100,000 entities moving</th><td data-k="Target">none set</td><td class="res" data-k="Result"><b>0.43 ms</b></td></tr>
+          <tr><th scope="row">Save and load at eight hours of play</th><td data-k="Target">under 200 and 500 ms</td><td class="res" data-k="Result"><b>66 and 280 ms</b><span class="ok">met</span></td></tr>
+          <tr><th scope="row">A web build's first load on a 20 Mbit link</th><td data-k="Target">under 5 s</td><td class="res" data-k="Result"><b>2.6 s</b><span class="ok">met</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- 8 -->
+<section class="panel engine route" aria-labelledby="h-engine">
+  <div class="wrap">
+    <p class="label"><span class="stop" aria-hidden="true"></span><span class="no">08</span>The whole engine</p>
+    <h2 id="h-engine">A whole 2D engine, under one roof.</h2>
+    <ul class="blocks">
+      <li>Luau scripts that reload while the game runs</li>
+      <li>Scenes as plain text, one file per entity</li>
+      <li>Sprites, Aseprite and Spine animation</li>
+      <li>2D lighting with shadows and normal maps</li>
+      <li>Particles</li>
+      <li>Parallax</li>
+      <li>UI with rich text and a screen-reader feed</li>
+      <li>Touch controls</li>
+      <li>Sound and adaptive music</li>
+      <li>Physics</li>
+      <li>Tilemaps</li>
+      <li>Dialogue and timelines</li>
+      <li>Saves</li>
+      <li>Mods</li>
+      <li>Turn-based games that keep animating between turns</li>
+      <li>Rust plugins for the hot paths</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 9 -->
+<section class="panel games route" aria-labelledby="h-games">
+  <div class="wrap">
+    <p class="label"><span class="stop" aria-hidden="true"></span><span class="no">09</span>The example games</p>
+    <h2 id="h-games">Four example games, each with a feature an agent added.</h2>
+    <p class="lede">Each agent was given only the game and Argus's docs.</p>
+    <ul class="gcards">
+      <li class="gcard">
+        <picture><source media="(prefers-reduced-motion: reduce)" srcset="img/game-hollow.png"><img src="img/clip-hollow.webp" width="480" height="270" alt="Hollow: a hero in a dark cave, lit by a fire and a lantern." loading="lazy"></picture>
+        <div class="gbody">
+          <h3>Hollow</h3>
+          <span class="inbrowser">Plays in your browser</span>
+          <p>A platformer with 2D lighting, dialogue, music, and rooms that stream in.</p>
+          <p class="added"><span><b>The agent added</b> a feather for a double jump.</span></p>
+        </div>
+      </li>
+      <li class="gcard">
+        <picture><source media="(prefers-reduced-motion: reduce)" srcset="img/game-delve.png"><img src="img/clip-delve.webp" width="480" height="270" alt="Delve: a dungeon drawn on a tilemap, played turn by turn." loading="lazy"></picture>
+        <div class="gbody">
+          <h3>Delve</h3>
+          <span class="inbrowser">Plays in your browser</span>
+          <p>A turn-based dungeon on a tilemap, with menus and potions.</p>
+          <p class="added"><span><b>The agent added</b> healing potions.</span></p>
+        </div>
+      </li>
+      <li class="gcard">
+        <picture><source media="(prefers-reduced-motion: reduce)" srcset="img/game-swarm.png"><img src="img/clip-swarm.webp" width="480" height="270" alt="Swarm: hundreds of enemies circling the hero in an arena." loading="lazy"></picture>
+        <div class="gbody">
+          <h3>Swarm</h3>
+          <p>An arena shooter with hundreds of enemies. Its chase runs in a Rust plugin.</p>
+          <p class="added"><span><b>The agent added</b> charging &ldquo;dasher&rdquo; enemies.</span></p>
+        </div>
+      </li>
+      <li class="gcard">
+        <picture><source media="(prefers-reduced-motion: reduce)" srcset="img/game-outpost.png"><img src="img/clip-outpost.webp" width="480" height="270" alt="Outpost: colonists at work around a small settlement in a forest." loading="lazy"></picture>
+        <div class="gbody">
+          <h3>Outpost</h3>
+          <span class="inbrowser">Plays in your browser</span>
+          <p>A colony where colonists find work, farm, cut wood and eat.</p>
+          <p class="added"><span><b>The agent added</b> woodcutting.</span></p>
+        </div>
+      </li>
+    </ul>
+  </div>
+</section>
+
+<!-- 10 -->
+<section class="panel out route" aria-labelledby="h-ship">
+  <div class="wrap">
+    <p class="label"><span class="stop" aria-hidden="true"></span><span class="no">10</span>Out to players</p>
+    <div class="halves">
+      <div class="half ship">
+        <h2 id="h-ship">It ships games.</h2>
+        <p class="body"><code>argus build</code> makes a release with the game's own name and icon. It checks that the release plays and looks exactly as the project does, and it needs no compiler. Steam support is built in.</p>
+        <ul class="dest">
+          <li>Windows<svg viewBox="0 0 26 14" aria-hidden="true"><path d="M0 7h24M18 1l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2"/></svg></li>
+          <li>Linux<svg viewBox="0 0 26 14" aria-hidden="true"><path d="M0 7h24M18 1l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2"/></svg></li>
+          <li>macOS<svg viewBox="0 0 26 14" aria-hidden="true"><path d="M0 7h24M18 1l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2"/></svg></li>
+          <li><span>The web <small>plays on a phone, by touch</small></span><svg viewBox="0 0 26 14" aria-hidden="true"><path d="M0 7h24M18 1l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2"/></svg></li>
+        </ul>
+      </div>
+      <div class="half people">
+        <h2>It is made for people too.</h2>
+        <p class="body">The editor shows the live game with a hierarchy, an inspector, a timeline, tilemap painting and a replay scrubber. A review page works on a phone.</p>
+        <div class="ed" aria-hidden="true">
+          <div class="ed-win">
+            <div class="ed-title">The editor</div>
+            <div>Hierarchy</div>
+            <div class="ed-v">The live game</div>
+            <div>Inspector</div>
+            <div class="ed-t">Timeline and replay scrubber</div>
+          </div>
+          <div class="ed-phone"><div>Review page</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 11 -->
+<section class="panel start route" id="start" aria-labelledby="h-start">
+  <div class="wrap">
+    <p class="label"><span class="stop" aria-hidden="true"></span><span class="no">11</span>Get started</p>
+    <div class="grid2">
+      <div>
+        <h2 id="h-start">Start from a game that already plays.</h2>
+        <p class="body">Once the public release is out, a new game starts from a template: a small game that already plays, with its art drawn by a script you or an agent can change, and scenarios that pin how it plays.</p>
+        <div class="term">
+          <div class="term-top"><span>Five commands</span><button type="button" class="copy" id="copy">Copy</button></div>
+          <ol class="cmds" id="cmds">
+            <li><code>argus new my-game --template platformer</code><span class="c">or blank, roguelike, arena, colony</span></li>
+            <li><code>cd my-game</code><span class="c">into the new project</span></li>
+            <li><code>argus test</code><span class="c">the template's scenarios pass</span></li>
+            <li><code>argus editor</code><span class="c">the game in the editor</span></li>
+            <li><code>argus mcp setup claude-code</code><span class="c">or claude-desktop, cursor, vscode, codex, gemini</span></li>
+          </ol>
+        </div>
+      </div>
+      <figure class="tpl">
+        <img src="img/templates.png" width="972" height="366" alt="The five templates side by side: a platformer, an arena, a roguelike dungeon, a colony and a blank room." loading="lazy">
+        <figcaption>The five templates, each one a small game that plays from the start.</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<!-- 12 -->
+<section class="panel limits route" aria-labelledby="h-limits">
+  <div class="wrap">
+    <p class="label"><span class="stop" aria-hidden="true"></span><span class="no">12</span>Where it stands</p>
+    <h2 id="h-limits">Plainly, where Argus is today.</h2>
+    <ul class="plain">
+      <li><b>Young</b>Argus is at version 0.1.2, tested in private. The public release is coming soon.</li>
+      <li><b>2D only</b>There is no 3D.</li>
+      <li><b>Phones play in the browser</b>Phones and tablets play Argus games in the browser, not as installed apps.</li>
+      <li><b>In testing</b>Online multiplayer, with rollback, through a relay, for the next release.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- the next step -->
+<section class="panel cta route" aria-labelledby="h-go">
+  <div class="wrap">
+    <p class="label"><span class="stop end" aria-hidden="true"></span>The next step</p>
+    <div class="cta-row">
+      <div class="door">
+        <a class="go" href="games/" aria-labelledby="h-go">
+          <span class="gt">
+            <b id="h-go">Play the games</b>
+            <span class="gs">Hollow, Delve and Outpost, in your browser.</span>
+          </span>
+          <span class="arr" aria-hidden="true"><svg viewBox="0 0 108 30"><path d="M0 15h104M90 1l14 14-14 14" fill="none" stroke="currentColor" stroke-width="3"/></svg></span>
+        </a>
+      </div>
+      <p class="after-go">The public release of Argus is coming soon.</p>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="Argus, back to the top">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" fill="#F3F4F2"/><circle cx="16" cy="16" r="9.5" fill="#16181A"/><circle cx="16" cy="16" r="4" fill="#C8341E"/></svg>
+      Argus
+    </a>
+    <p>A 2D game engine you build games in together with an AI. Public release coming soon.</p>
+    <ul>
+      <li><a href="games/">Play in the browser</a></li>
+    </ul>
+  </div>
+</footer>
+
+<script type="module">
+const $ = (s, r = document) => r.querySelector(s);
+const fmt = (n) => Number(n).toLocaleString("en-US");
+const short = (id) => String(id).replace(/^@[^/]*\//, "");
+const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+
+/* the plan's calls stand still for reduced motion */
+const mapSvg = $("#map-svg");
+const trains = () => {
+  try {
+    if (reduce.matches) { mapSvg.pauseAnimations(); mapSvg.setCurrentTime(2.2); }
+    else mapSvg.unpauseAnimations();
+  } catch {}
+};
+trains();
+reduce.addEventListener?.("change", trains);
+
+/* a hundred seeds that fill in once, when they come into view */
+const seeds = $("#seeds");
+for (let i = 0; i < 100; i++) { const s = document.createElement("i"); s.style.setProperty("--i", i); seeds.append(s); }
+if (reduce.matches || !("IntersectionObserver" in window)) seeds.classList.add("filled");
+else {
+  const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { seeds.classList.add("filled"); io.disconnect(); } }, { threshold: 0.4 });
+  io.observe(seeds);
+}
+
+/* copy the five commands */
+const copy = $("#copy");
+copy.addEventListener("click", async () => {
+  const text = [...document.querySelectorAll("#cmds code")].map((c) => c.textContent).join("\n");
+  try { await navigator.clipboard.writeText(text); copy.textContent = "Copied"; copy.classList.add("done"); }
+  catch { copy.textContent = "Select to copy"; }
+  setTimeout(() => { copy.textContent = "Copy"; copy.classList.remove("done"); }, 1600);
+});
+
+/* ---------- the live game ---------- */
+const screen = $("#screen");
+const canvas = $("#hollow");
+const overlay = $("#overlay");
+const chip = $("#chip");
+const chipText = chip.querySelector("span");
+const views = $("#views");
+const thumb = views.querySelector(".thumb");
+const vbtns = [...views.querySelectorAll("button")];
+const tint = { player: "var(--you)", both: "var(--on-dark)", agent: "var(--agent-lt)" };
+
+function placeThumb() {
+  const b = vbtns.find((x) => x.getAttribute("aria-pressed") === "true");
+  if (!b) return;
+  thumb.style.width = b.offsetWidth + "px";
+  thumb.style.transform = `translateX(${b.offsetLeft}px)`;
+  thumb.style.background = tint[b.dataset.view];
+}
+function setView(v) {
+  screen.dataset.view = v;
+  for (const b of vbtns) b.setAttribute("aria-pressed", String(b.dataset.view === v));
+  placeThumb();
+  if (game && v !== "player" && game.frame()) drawOverlay(game.frame());
+}
+for (const b of vbtns) b.addEventListener("click", () => setView(b.dataset.view));
+placeThumb();
+document.fonts?.ready.then(placeThumb);
+addEventListener("resize", placeThumb);
+
+let game = null;
+let failed = false;
+let busy = false;
+const ran = new Map();          // tick -> digest, from the visitor's own run
+const nodes = new Map();
+
+function setChip(state) {
+  chip.classList.toggle("on", state === "on");
+  chip.classList.toggle("rep", state === "replay");
+  chipText.textContent = state === "on" ? "Keys go to the game" : state === "replay" ? "Replaying your keys" : "Click the game to play";
+}
+canvas.addEventListener("focus", () => { if (!busy) setChip("on"); });
+canvas.addEventListener("keydown", () => { if (!busy && !chip.classList.contains("on")) setChip("on"); });
+canvas.addEventListener("pointerdown", () => { if (!busy) setChip("on"); });
+canvas.addEventListener("blur", () => { if (!busy) setChip("off"); });
+
+function node(key, cls) {
+  let n = nodes.get(key);
+  if (!n) {
+    n = document.createElement("div");
+    n.className = "ob " + cls;
+    const t = document.createElement("span");
+    t.className = "tag";
+    n.append(t);
+    if (cls === "uib") { const x = document.createElement("span"); x.className = "txt"; n.append(x); }
+    overlay.append(n);
+    nodes.set(key, n);
+  }
+  n.seen = true;
+  return n;
+}
+function put(n, x, y, w, h) {
+  n.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+  n.style.width = w.toFixed(1) + "px";
+  n.style.height = h.toFixed(1) + "px";
+}
+const hits = (a, list) => list.some((o) => a.x < o.x + o.w && o.x < a.x + a.w && a.y < o.y + o.h && o.y < a.y + a.h);
+
+function drawOverlay(f) {
+  const r = canvas.getBoundingClientRect();
+  const W = r.width, H = r.height;
+  if (W < 1 || H < 1) return;
+  for (const n of nodes.values()) n.seen = false;
+  const k = W / ((f.size && f.size[0]) || 960);
+  const narrow = W < 560;
+  overlay.classList.toggle("narrow", narrow);
+  const taken = [];
+  const lightTags = [];
+
+  for (const L of (f.lighting && f.lighting.lights) || []) {
+    if (!Array.isArray(L.at)) continue;
+    const c = f.box([L.at[0], L.at[1], L.at[0], L.at[1]]);
+    const rad = Math.max(3, (L.radius_px || 0) * k);
+    const n = node("l:" + L.id, "light");
+    put(n, c.x - rad, c.y - rad, rad * 2, rad * 2);
+    n.style.setProperty("--lc", L.color || "#FFFFFF");
+    const label = "light: " + short(L.id);
+    if (n.firstChild.textContent !== label) n.firstChild.textContent = label;
+    lightTags.push({ n, c, rad });
+  }
+  for (const u of f.ui || []) {
+    if (!Array.isArray(u.bounds)) continue;
+    const b = f.box(u.bounds);
+    if (b.w < 1 || b.h < 1) continue;
+    const n = node("u:" + u.id, "uib");
+    put(n, b.x, b.y, b.w, b.h);
+    n.firstChild.textContent = "text";
+    n.firstChild.style.transform = `translate(0px, ${(b.h + 2).toFixed(1)}px)`;   // below, so the game's own words stay readable
+    if (n.lastChild.textContent !== (u.text || "")) n.lastChild.textContent = u.text || "";
+  }
+  const ents = [];
+  for (const e of f.entities || []) {
+    const bd = e.bounds;
+    // no area, or nothing drawn (the feather, once picked up): no box
+    if (!Array.isArray(bd) || bd[2] - bd[0] < 2 || bd[3] - bd[1] < 2 || e.look === "") continue;
+    const b = f.box(bd);
+    const n = node("e:" + e.id, "ent");
+    put(n, b.x, b.y, b.w, b.h);
+    const m = /^(rect|circle)\s+(#[0-9a-fA-F]{3,8})/.exec(e.look || "");
+    n.classList.toggle("shape", !!m);
+    n.classList.toggle("round", !!m && m[1] === "circle");
+    if (m) n.style.setProperty("--fill", m[2]); else n.style.removeProperty("--fill");
+    const label = e.name || (narrow ? short(e.id) : e.id);
+    if (n.firstChild.textContent !== label) n.firstChild.textContent = label;
+    ents.push({ n, b });
+  }
+  for (const [key, n] of nodes) if (!n.seen) { n.remove(); nodes.delete(key); }
+
+  // labels: the biggest boxes first, each tag where it covers no other tag
+  ents.sort((a, b) => b.b.w * b.b.h - a.b.w * a.b.h);
+  for (const { n, b } of ents) {
+    const t = n.firstChild;
+    const tw = t.offsetWidth, th = t.offsetHeight;
+    const spots = [[b.x, b.y - th - 2], [b.x, b.y + b.h + 2], [b.x + b.w + 2, b.y], [b.x - tw - 2, b.y], [b.x, b.y]];
+    let pick = spots[0];
+    for (const [x, y] of spots) {
+      const a = { x, y, w: tw, h: th };
+      if (y < 0 || y + th > H || x < 0 || x + tw > W) continue;
+      if (hits(a, taken)) continue;
+      pick = [x, y];
+      break;
+    }
+    taken.push({ x: pick[0], y: pick[1], w: tw, h: th });
+    t.style.transform = `translate(${(pick[0] - b.x).toFixed(1)}px, ${(pick[1] - b.y).toFixed(1)}px)`;
+  }
+  if (!narrow) {
+    for (const { n, c, rad } of lightTags) {
+      const t = n.firstChild;
+      const tw = t.offsetWidth, th = t.offsetHeight;
+      let x = Math.min(Math.max(c.x - tw / 2, 2), W - tw - 2);
+      let y = Math.min(Math.max(c.y - rad - th / 2, 44), H - th - 2);
+      const a = { x, y, w: tw, h: th };
+      if (hits(a, taken)) { y = Math.min(c.y + 12, H - th - 2); a.y = y; }
+      taken.push(a);
+      t.style.transform = `translate(${(x - (c.x - rad)).toFixed(1)}px, ${(y - (c.y - rad)).toFixed(1)}px)`;
+    }
+  }
+}
+
+/* the readout: what the agent receives, a few times a second */
+const ro = {
+  tick: $("#ro-tick"), bytes: $("#ro-bytes"), digest: $("#ro-digest"),
+  wait: $("#ro-wait"), lists: $("#ro-lists"),
+  ents: $("#ro-ents"), lights: $("#ro-lights"), text: $("#ro-text"),
+  nEnts: $("#ro-n-ents"), nLights: $("#ro-n-lights"), nText: $("#ro-n-text"),
+  raw: $("#raw"), json: $("#ro-json"),
+};
+const seedLive = $("#seed-live");
+const sl = { tick: $("#sl-tick"), digest: $("#sl-digest") };
+let lastRO = 0, lastJSON = 0;
+const sigs = new WeakMap();
+
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+function fill(list, items) {
+  const sig = JSON.stringify(items.map((i) => i.sig));
+  if (sigs.get(list) === sig) return;
+  sigs.set(list, sig);
+  list.replaceChildren(...items.map((i) => i.li));
+}
+const swatch = (color, round) => { const s = el("span", "sw" + (round ? " round" : "")); if (color) s.style.background = color; return s; };
+
+function readout(f) {
+  ro.tick.textContent = fmt(f.tick);
+  ro.bytes.textContent = fmt(f.bytes);
+  ro.digest.textContent = f.digest;
+  sl.tick.textContent = fmt(f.tick);
+  sl.digest.textContent = f.digest;
+  const ents = (f.entities || []).map((e) => {
+    const m = /^(rect|circle)\s+(#[0-9a-fA-F]{3,8})/.exec(e.look || "");
+    const li = el("li");
+    li.append(swatch(m ? m[2] : null, m && m[1] === "circle"));
+    const nm = el("span", "nm", e.name || "no name");
+    nm.append(" ", el("code", null, e.id));
+    li.append(nm);
+    if (e.text) li.append(el("span", "tx", e.text));
+    li.append(el("span", "bd", "bounds [" + (e.bounds || []).join(", ") + "]" + (e.look ? "" : ", not drawn")));
+    return { li, sig: [e.id, e.name, e.text, e.bounds, e.look] };
+  });
+  const lights = ((f.lighting && f.lighting.lights) || []).map((L) => {
+    const li = el("li");
+    li.append(swatch(L.color, true));
+    const nm = el("span", "nm", short(L.id));
+    nm.append(" ", el("code", null, L.color || ""));
+    li.append(nm);
+    const bits = ["at [" + (L.at || []).join(", ") + "]", "reach " + L.radius_px + " px", "intensity " + L.intensity];
+    if (L.flicker) bits.push("flicker " + L.flicker);
+    li.append(el("span", "bd", bits.join(", ")));
+    return { li, sig: [L.id, L.at, L.radius_px, L.color, L.intensity, L.flicker] };
+  });
+  const text = (f.ui || []).map((u) => {
+    const li = el("li");
+    li.append(swatch("var(--glass)"));
+    li.append(el("span", "nm", u.text || ""));
+    li.append(el("span", "bd", u.id + ", bounds [" + (u.bounds || []).join(", ") + "]"));
+    return { li, sig: [u.id, u.text, u.bounds] };
+  });
+  fill(ro.ents, ents);
+  fill(ro.lights, lights);
+  fill(ro.text, text);
+  ro.nEnts.textContent = ents.length;
+  ro.nLights.textContent = lights.length;
+  ro.nText.textContent = text.length;
+}
+
+function onFrame(f) {
+  if (failed) return;
+  if (!screen.classList.contains("running")) {
+    screen.classList.add("running");
+    ro.wait.hidden = true;
+    ro.lists.hidden = false;
+    seedLive.hidden = false;
+  }
+  if (!(game && game.replaying)) {
+    ran.set(f.tick, f.digest);
+    if (ran.size > 60000) ran.delete(ran.keys().next().value);
+  }
+  if (screen.dataset.view !== "player") drawOverlay(f);
+  const now = performance.now();
+  if (now - lastRO > 250) { lastRO = now; readout(f); }
+  if (ro.raw.open && now - lastJSON > 600) { lastJSON = now; if (ro.json.textContent !== f.json) ro.json.textContent = f.json; }
+}
+ro.raw.addEventListener("toggle", () => { if (ro.raw.open && game && game.frame()) { ro.json.textContent = game.frame().json; lastJSON = performance.now(); } });
+
+function fallback(err) {
+  if (failed) return;
+  failed = true;
+  window.live_error = String(err && (err.message || err));
+  try { game && game.stop(); } catch {}
+  const img = new Image(480, 270);
+  img.src = "img/clip-hollow.webp";
+  img.alt = "A short clip of Hollow being played.";
+  canvas.replaceWith(img);
+  screen.classList.add("failed");
+  screen.querySelector(".loading").remove();
+  overlay.remove();
+  screen.querySelector(".ground").remove();
+  $("#fail-note").classList.add("show");
+  for (const s of ["#live .stage-bar", "#keys", "#replay", "#live .stats", "#live .readout .sub", "#live .why"]) $(s).hidden = true;
+  $("#h-live").textContent = "This is Hollow. Where it runs, the agent's view is drawn over it.";
+  $("#live .lede").textContent = "Hollow is one of the example games. In a browser that can run its web build, it plays right here, with a box over each thing the agent sees in the frame it gets from observe.";
+  document.querySelector(".touch-note").hidden = true;
+  ro.wait.textContent = "When the game runs here, this lists every entity, light and line of text the agent gets, with the size of the frame in bytes and the tick.";
+  seedLive.hidden = true;
+}
+
+/* replay: the same seed and the same keys, to the same tick and digest */
+const rbtn = $("#rbtn");
+const tYours = $("#t-yours"), tAgain = $("#t-again"), tBar = $("#t-bar");
+const verdict = $("#verdict");
+const check = '<svg viewBox="0 0 22 22" aria-hidden="true"><rect width="22" height="22" fill="#16181A"/><path d="M5.5 11.5l3.6 3.6L16.5 7.5" fill="none" stroke="#74D1BE" stroke-width="2.6"/></svg>';
+function say(kind, text) {
+  verdict.className = "verdict show " + kind;
+  verdict.innerHTML = (kind === "same" ? check : "") + "<span></span>";
+  verdict.lastChild.textContent = text;
+}
+const pair = (t, d) => "tick " + fmt(t) + " · " + d;
+
+async function doReplay() {
+  if (!game || busy || failed) return;
+  let s;
+  try { s = JSON.parse(game.player.status()); } catch { return; }
+  busy = true;
+  rbtn.disabled = true;
+  const T = s.tick, D = s.digest;
+  ran.set(T, D);
+  tYours.textContent = pair(T, D);
+  tAgain.textContent = "tick 0";
+  tBar.style.transform = "scaleX(0)";
+  say("run", "Replaying your run from tick 0. The game takes no keys until it catches up.");
+  setChip("replay");
+  try { await game.replay(); }
+  catch (e) { say("bad", "The replay could not start in this browser."); busy = false; rbtn.disabled = false; setChip("off"); return; }
+  const seen = new Map();
+  let hit = null;
+  const step = () => {
+    let st;
+    try { st = JSON.parse(game.player.status()); } catch { requestAnimationFrame(step); return; }
+    seen.set(st.tick, st.digest);
+    if (st.tick === T) hit = st.digest;
+    tBar.style.transform = `scaleX(${Math.min(1, st.tick / Math.max(1, T))})`;
+    if (st.tick < T) { tAgain.textContent = "tick " + fmt(st.tick); requestAnimationFrame(step); return; }
+    let at = T, got = hit, want = D;
+    if (got == null) {
+      // a slow frame stepped over tick T: compare at the latest tick both runs saw
+      at = -1;
+      for (const [t] of seen) if (ran.has(t) && t > at) at = t;
+      got = at >= 0 ? seen.get(at) : null;
+      want = at >= 0 ? ran.get(at) : null;
+      if (at >= 0) tYours.textContent = pair(at, want);
+    }
+    tAgain.textContent = got == null ? "no tick to compare" : pair(at, got);
+    if (got != null && got === want) say("same", at === T ? "Same tick, same digest. The replay rebuilt your run exactly." : "Same digest at tick " + fmt(at) + ". The replay rebuilt your run exactly.");
+    else say("bad", "The digests differ.");
+    busy = false;
+    rbtn.disabled = false;
+    setChip(document.activeElement === canvas ? "on" : "off");
+  };
+  requestAnimationFrame(step);
+}
+rbtn.addEventListener("click", doReplay);
+
+import("./live.js")
+  .then((m) => m.startGame(canvas, { onFrame, every: 3, onError: fallback }))
+  .then((g) => {
+    if (failed) { try { g.stop(); } catch {} return; }
+    game = g;
+    window.live_game = g;
+    rbtn.disabled = false;
+  })
+  .catch(fallback);
+</script>
+</body>
+</html>
