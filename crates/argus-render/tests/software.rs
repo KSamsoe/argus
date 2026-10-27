@@ -132,6 +132,52 @@ fn and_through_five_post_passes() {
     assert!(f < 0.01, "{:.2}% of the pixels differ", f * 100.0);
 }
 
+/// A sprite drawn larger than its art keeps every texel a hard-edged
+/// square, as a GPU draws it. WARP minifies a sample at level 0 where a GPU
+/// magnifies, and with the atlas sampler's linear min filter it blurred
+/// zoomed-in sprites and spread a frame's edge column into a clear one
+/// beside it, so picture goldens did not show what players see.
+#[test]
+fn a_zoomed_in_sprite_stays_sharp() {
+    let mut r = match Renderer::offscreen(64, 36, true) {
+        Ok(r) => r,
+        Err(e) if e.code == argus_render::codes::NO_ADAPTER => {
+            eprintln!("skipping: {e}");
+            return;
+        }
+        Err(e) => panic!("the software renderer did not start: {e}"),
+    };
+    // A clear texel, then a red one, 18 pixels each.
+    let art: Vec<u8> = [[0u8, 0, 0, 0], [255, 0, 0, 255]].concat();
+    r.gpu_mut()
+        .add_atlas_rgba("art", 2, 1, &art, vec![[0.0, 0.0, 1.0, 1.0]]);
+    let mut w = world_with_camera(4.0);
+    r.render(&w, 0, 1.0).unwrap();
+    let bg = r.capture().unwrap().pixel(32, 18);
+    let e = w.spawn();
+    w.insert(e, Transform::at(0.0, 0.0)).unwrap();
+    let s = Sprite {
+        atlas: w.strings().intern("art"),
+        size: Vec2::new(4.0, 2.0),
+        ..Default::default()
+    };
+    w.insert(e, s).unwrap();
+    r.render(&w, 1, 1.0).unwrap();
+    let img = r.capture().unwrap();
+    let near = |p: [u8; 4], q: [u8; 4]| (0..3).all(|i| (p[i] as i32 - q[i] as i32).abs() <= 2);
+    let red = [255, 0, 0, 255];
+    let between: Vec<(u32, [u8; 4])> = (14..50)
+        .map(|x| (x, img.pixel(x, 18)))
+        .filter(|&(_, p)| !near(p, bg) && !near(p, red))
+        .collect();
+    assert!(
+        between.is_empty(),
+        "{}: pixels neither the background {bg:?} nor red: {between:?}",
+        r.gpu().adapter
+    );
+    assert!(near(img.pixel(40, 18), red), "{:?}", img.pixel(40, 18));
+}
+
 /// A Background on the drawing camera is what shows where nothing is drawn;
 /// without one, the engine's dark grey (a band around Delve's map and the
 /// templates' floors, before there was a Background).

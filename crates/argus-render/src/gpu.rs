@@ -499,10 +499,14 @@ impl Gpu {
                 }),
             }],
         });
+        // Nearest both ways. Atlases are read at level 0, which a GPU
+        // magnifies (nearest) at any size; WARP minifies, so a linear min
+        // filter blurred its zoomed-in sprites and spread an edge column's
+        // colour into a clear one beside it.
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("nearest"),
             mag_filter: wgpu::FilterMode::Nearest,
-            min_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Nearest,
             ..Default::default()
         });
         let instance_cap = 4096;
