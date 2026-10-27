@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>The example games: Argus</title>
+<meta name="description" content="Hollow, Delve and Outpost, three games made with Argus, play in your browser. Argus is a 2D game engine you build games in together with an AI agent.">
+<link rel="canonical" href="https://argusengine.org/games/">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://argusengine.org/games/">
+<meta property="og:title" content="The Argus example games">
+<meta property="og:description" content="Hollow, Delve and Outpost, made with Argus, play in your browser.">
+<meta property="og:image" content="https://argusengine.org/img/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%2316181A'/%3E%3Ccircle cx='16' cy='16' r='9.5' fill='%23F6F7F5'/%3E%3Ccircle cx='16' cy='16' r='4' fill='%23C8341E'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* The front page's building (index.html beside this), one floor per kind of game. */
+:root {
+  color-scheme: light;
+  --wall: #F6F7F5;
+  --glass: #FFFFFF;
+  --concrete: #E9EBE9;
+  --rule: #C9CECC;
+  --steel: #596064;
+  --graphite: #16181A;
+  --graphite-3: #2F3437;
+  --graphite-4: #4B5154;
+  --on-dark: #F3F4F2;
+  --on-dark-2: #A9AFB2;
+  --you: #C8341E;
+  --you-deep: #A32813;
+  --agent: #1C6B60;
+  --agent-lt: #74D1BE;
+  --font: "Instrument Sans", "Helvetica Neue", Helvetica, Arial, system-ui, sans-serif;
+  --mono: "IBM Plex Mono", "Cascadia Mono", Consolas, "SFMono-Regular", ui-monospace, monospace;
+  --s-2: .75rem;
+  --s-1: .875rem;
+  --s0: 1.0625rem;
+  --s1: 1.3125rem;
+  --s3: 2rem;
+  --s5: 3.125rem;
+  --s7: 4.875rem;
+  --gl: max(16px, env(safe-area-inset-left, 0px));
+  --gr: max(16px, env(safe-area-inset-right, 0px));
+  --pad: clamp(56px, 7vw, 104px);
+  --ease: cubic-bezier(.45, 0, .2, 1);
+  --line: var(--graphite);
+  --line-soft: var(--rule);
+  --floor: var(--wall);
+  --focus: var(--graphite);
+}
+@media (min-width: 720px) {
+  :root {
+    --gl: max(40px, env(safe-area-inset-left, 0px));
+    --gr: max(40px, env(safe-area-inset-right, 0px));
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--wall); color: var(--graphite); font-family: var(--font); font-size: var(--s0); line-height: 1.55; }
+img, svg { display: block; max-width: 100%; }
+h1, h2, h3 { font-family: var(--font); font-weight: 600; line-height: 1.06; letter-spacing: -.02em; margin: 0; text-wrap: balance; }
+p { margin: 0; }
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.skip {
+  position: absolute; left: 12px; top: -60px; z-index: 50;
+  background: var(--graphite); color: var(--on-dark); padding: 12px 16px;
+  font: 600 var(--s0)/1 var(--font); text-decoration: none; transition: top 240ms var(--ease);
+}
+.skip:focus { top: 12px; }
+.wrap { max-width: 1320px; margin-inline: auto; padding-left: var(--gl); padding-right: var(--gr); }
+.panel { position: relative; background: var(--floor); }
+.panel > .wrap { padding-top: var(--pad); padding-bottom: var(--pad); position: relative; }
+.visually-hidden { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* the thread: a steel column down the page, a level marker for each floor */
+.label {
+  position: relative; display: flex; align-items: center; gap: 12px; margin: 0 0 34px;
+  font: 600 var(--s-2)/1.2 var(--font); letter-spacing: .14em; text-transform: uppercase;
+}
+.label .no { font: 500 var(--s-1)/1 var(--mono); letter-spacing: .02em; }
+.label::after { content: ""; flex: 1 1 auto; min-width: 24px; height: 1px; background: var(--line-soft); }
+.stop {
+  flex: none; width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--line);
+  background: conic-gradient(var(--line) 0 25%, var(--floor) 0 50%, var(--line) 0 75%, var(--floor) 0);
+}
+.stop.end { background: var(--line); }
+@media (min-width: 960px) {
+  .route > .wrap { padding-left: calc(var(--gl) + 80px); }
+  .route > .wrap::before { content: ""; position: absolute; top: 0; bottom: 0; left: calc(var(--gl) + 23px); width: 2px; background: var(--line); }
+  .route.first > .wrap::before { top: calc(var(--pad) + 9px); }
+  .label .stop { position: absolute; left: -68px; top: 50%; transform: translateY(-50%); width: 24px; height: 24px; }
+  .label::before { content: ""; position: absolute; left: -44px; width: 34px; top: 50%; height: 1px; background: var(--line); }
+}
+h2 { font-size: clamp(1.9rem, 1.1rem + 2.2vw, 3rem); max-width: 22ch; }
+.lede { font-size: clamp(1.125rem, 1rem + .4vw, var(--s1)); line-height: 1.45; max-width: 56ch; margin-top: 22px; }
+
+/* buttons: plain rectangles; on hover a panel slides across, like a door */
+.btn {
+  position: relative; isolation: isolate; overflow: hidden;
+  display: inline-flex; align-items: center; gap: 16px;
+  min-height: 54px; padding: 15px 20px 15px 22px;
+  font: 600 var(--s0)/1 var(--font); text-decoration: none;
+  background: var(--graphite); color: var(--on-dark); border: 2px solid var(--graphite);
+  transition: color 300ms var(--ease), border-color 300ms var(--ease);
+}
+.btn::before { content: ""; position: absolute; inset: 0; z-index: -1; background: var(--you); transform: translateX(-101%); transition: transform 360ms var(--ease); }
+.btn:hover::before { transform: none; }
+.btn:hover { border-color: var(--you); }
+.btn .arr { display: grid; place-items: center; transition: transform 360ms var(--ease); }
+.btn .arr svg { width: 22px; height: 14px; }
+.btn:hover .arr { transform: translateX(4px); }
+
+/* ---------- top bar ---------- */
+.top { background: var(--wall); border-bottom: 1px solid var(--rule); }
+.top .wrap { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 72px; }
+.brand { display: inline-flex; align-items: center; gap: 12px; text-decoration: none; font: 600 1.375rem/1 var(--font); letter-spacing: -.015em; }
+.brand svg { width: 30px; height: 30px; }
+.top ul { display: flex; align-items: center; gap: 6px; list-style: none; margin: 0; padding: 0; }
+.top li { display: flex; }
+.top .nl { position: relative; display: block; padding: 12px 2px; margin: 0 12px; text-decoration: none; font: 500 .9375rem/1 var(--font); }
+.top .nl::after { content: ""; position: absolute; left: 0; right: 0; bottom: 6px; height: 2px; background: var(--graphite); transform: scaleX(0); transform-origin: left; transition: transform 300ms var(--ease); }
+.top .nl:hover::after, .top .nl[aria-current]::after { transform: none; }
+.top .home {
+  position: relative; isolation: isolate; overflow: hidden;
+  display: flex; align-items: center; gap: 10px; margin-left: 10px; padding: 12px 20px; text-decoration: none;
+  font: 600 .9375rem/1 var(--font); background: var(--graphite); color: var(--on-dark);
+}
+.top .home svg { width: 18px; height: 12px; }
+.top .home::before { content: ""; position: absolute; inset: 0; z-index: -1; background: var(--you); transform: translateX(101%); transition: transform 320ms var(--ease); }
+.top .home:hover::before { transform: none; }
+@media (max-width: 760px) { .top .nl { display: none; } }
+
+/* ---------- the first floor: what this page is ---------- */
+.intro > .wrap { padding-bottom: clamp(40px, 5vw, 72px); }
+.back { display: inline-flex; align-items: center; gap: 10px; font: 600 var(--s-1)/1 var(--font); text-decoration: none; padding: 6px 0; }
+.back svg { width: 18px; height: 12px; transition: transform 300ms var(--ease); }
+.back:hover svg { transform: translateX(-4px); }
+.back span { text-decoration: underline; text-underline-offset: 4px; text-decoration-thickness: 1px; }
+.sign { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-top: 40px; font: 600 var(--s-2)/1.2 var(--font); letter-spacing: .14em; text-transform: uppercase; color: var(--steel); }
+.sign::before { content: ""; width: 40px; height: 2px; background: var(--graphite); }
+.sign b { color: var(--graphite); font-weight: 600; }
+.sign span { padding-left: 14px; border-left: 1px solid var(--rule); }
+.intro h1 { font-size: clamp(2.6rem, 1.2rem + 4.4vw, var(--s7)); line-height: 1.03; letter-spacing: -.028em; margin: 26px 0 0; max-width: 14ch; }
+
+/* ---------- 01 the three that play here: one room each ---------- */
+.rows { list-style: none; margin: 48px 0 0; padding: 0; display: grid; gap: clamp(48px, 6vw, 88px); }
+.row { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: clamp(24px, 4vw, 64px); align-items: start; border-top: 3px solid var(--graphite); padding-top: 24px; }
+@media (max-width: 860px) { .row { grid-template-columns: minmax(0, 1fr); } }
+.pic { display: block; }
+.pic img { width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover; background: #0A0B0C; image-rendering: pixelated; outline: 1px solid var(--rule); }
+.pic:focus-visible { outline-offset: 6px; }
+.txt { display: grid; gap: 18px; align-content: start; min-width: 0; }
+.txt h3 { font-size: clamp(2rem, 1.4rem + 1.6vw, var(--s5)); }
+.txt > p { max-width: 48ch; }
+.keys { margin: 0; display: grid; border-top: 1px solid var(--rule); }
+.keys div { display: grid; grid-template-columns: 7.5rem minmax(0, 1fr); gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--rule); font-size: var(--s-1); }
+.keys dt { font-weight: 600; }
+.keys dd { margin: 0; color: var(--steel); }
+kbd {
+  font: 500 .8125rem/1 var(--mono); color: var(--graphite); background: var(--glass);
+  border: 1px solid var(--graphite); border-bottom-width: 2px; padding: 3px 6px; white-space: nowrap;
+}
+.txt .btn { justify-self: start; margin-top: 4px; }
+
+/* ---------- 02 the desktop: a graphite room ---------- */
+.desk { --floor: var(--graphite); color: var(--on-dark); --line: var(--on-dark); --line-soft: var(--graphite-4); --focus: var(--agent-lt); }
+.desk .row { border-top-color: var(--on-dark); }
+.desk .pic img { outline-color: var(--graphite-4); }
+.desk .txt > p { color: var(--on-dark-2); }
+.desk .txt > p.why { color: var(--on-dark); }
+.tag { justify-self: start; font: 600 .6875rem/1 var(--font); letter-spacing: .12em; text-transform: uppercase; border: 1px solid var(--on-dark-2); padding: 6px 8px; }
+
+/* ---------- 03 good to know: a schedule ---------- */
+.know { --floor: var(--concrete); }
+.facts { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 clamp(24px, 3vw, 48px); }
+@media (max-width: 900px) { .facts { grid-template-columns: minmax(0, 1fr); } }
+.facts li { border-top: 3px solid var(--graphite); padding: 16px 0 24px; display: grid; gap: 8px; align-content: start; }
+.facts b { font: 600 var(--s1)/1.2 var(--font); }
+
+/* ---------- the next step: one red door, back to the front page ---------- */
+.cta { --floor: var(--wall); --focus: var(--graphite); }
+.door { position: relative; }
+.go {
+  position: relative; isolation: isolate; overflow: hidden;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 28px 40px;
+  min-height: clamp(220px, 22vw, 300px); padding: clamp(26px, 3.4vw, 52px);
+  background: var(--you); color: #FFFFFF; text-decoration: none;
+}
+.go::before { content: ""; position: absolute; inset: 0; z-index: -1; background: var(--you-deep); transform: translateX(-101%); transition: transform 520ms var(--ease); }
+.go:hover::before { transform: none; }
+.go .gt { display: grid; gap: 16px; }
+.go b { font: 600 clamp(2.4rem, 1.3rem + 3.6vw, 4.6rem)/.98 var(--font); letter-spacing: -.035em; }
+.go .gs { font-size: clamp(1.0625rem, 1rem + .3vw, var(--s1)); max-width: 34ch; line-height: 1.35; }
+.go .arr { display: block; width: clamp(64px, 7vw, 108px); transition: transform 420ms var(--ease); }
+.go .arr svg { width: 100%; height: auto; }
+.go:hover .arr { transform: translateX(14px); }
+.go:focus-visible { outline: 3px solid var(--graphite); outline-offset: 6px; }
+@media (min-width: 960px) {
+  .cta > .wrap::before { bottom: auto; height: calc(var(--pad) + 9px); }
+  .door::before { content: ""; position: absolute; left: -57px; width: 57px; top: 50%; height: 2px; margin-top: -1px; background: var(--line); }
+  .door::after { content: ""; position: absolute; left: -57px; width: 2px; top: -34px; bottom: 50%; background: var(--line); }
+}
+@media (max-width: 560px) { .go { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---------- footer ---------- */
+.foot { background: var(--graphite); color: var(--on-dark); --focus: var(--agent-lt); }
+.foot .wrap { padding-top: 40px; padding-bottom: max(32px, env(safe-area-inset-bottom, 0px)); display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px 32px; }
+.foot .brand { font-size: 1.2rem; }
+.foot .brand svg { width: 24px; height: 24px; }
+.foot p { color: var(--on-dark-2); font-size: var(--s-1); }
+.foot ul { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 22px; list-style: none; margin: 0; padding: 0; font: 500 var(--s-1) var(--font); }
+.foot a { text-underline-offset: 4px; text-decoration-thickness: 1px; }
+.foot a:hover { text-decoration-thickness: 2px; }
+.foot .by { flex-basis: 100%; padding-top: 16px; border-top: 1px solid var(--graphite-3); }
+.foot .by a { color: var(--on-dark); overflow-wrap: anywhere; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; transition-delay: 0ms !important; }
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#games">Skip to the games</a>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="../" aria-label="Argus, the front page">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" fill="#16181A"/><circle cx="16" cy="16" r="9.5" fill="#F6F7F5"/><circle cx="16" cy="16" r="4" fill="#C8341E"/></svg>
+      Argus
+    </a>
+    <nav aria-label="Site">
+      <ul>
+        <li><a class="nl" href="../#live">Live game</a></li>
+        <li><a class="nl" href="../#tools">How it works</a></li>
+        <li><a class="nl" href="./" aria-current="page">Games</a></li>
+        <li><a class="home" href="../"><svg viewBox="0 0 22 14" aria-hidden="true"><path d="M22 7H2M8 1 2 7l6 6" fill="none" stroke="currentColor" stroke-width="2"/></svg>Back to Argus</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main>
+<section class="panel intro" aria-labelledby="h-page">
+  <div class="wrap">
+    <a class="back" href="../"><svg viewBox="0 0 22 14" aria-hidden="true"><path d="M22 7H2M8 1 2 7l6 6" fill="none" stroke="currentColor" stroke-width="2"/></svg><span>Argus</span></a>
+    <p class="sign"><b>Example games</b><span>Made with Argus</span></p>
+    <h1 id="h-page">The example games.</h1>
+    <p class="lede">Small games made with Argus, a 2D game engine you build games in together with an AI agent. Each one runs here in your browser, the same game, tick for tick, as its desktop build.</p>
+  </div>
+</section>
+
+<!-- 01 -->
+<section class="panel play route first" id="games" aria-labelledby="h-play">
+  <div class="wrap">
+    <p class="label"><span class="stop" aria-hidden="true"></span><span class="no">01</span>In your browser</p>
+    <h2 id="h-play">Three to play now.</h2>
+    <ol class="rows">
+      <li class="row">
+        <a class="pic" href="../hollow/" tabindex="-1" aria-hidden="true"><picture><source media="(prefers-reduced-motion: reduce)" srcset="../img/game-hollow.png"><img src="../img/clip-hollow.webp" width="480" height="270" alt=""></picture></a>
+        <div class="txt">
+          <h3>Hollow</h3>
+          <p>A cave platformer with 2D lighting, dialogue, music, and rooms that stream in as you go.</p>
+          <dl class="keys" aria-label="Hollow's controls">
+            <div><dt>Move</dt><dd><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> or the arrow keys</dd></div>
+            <div><dt>Jump</dt><dd><kbd>Space</kbd> or <kbd>Z</kbd></dd></div>
+            <div><dt>Talk</dt><dd><kbd>E</kbd></dd></div>
+            <div><dt>Restart</dt><dd><kbd>R</kbd></dd></div>
+            <div><dt>Pause</dt><dd><kbd>Esc</kbd></dd></div>
+          </dl>
+          <a class="btn" href="../hollow/">Play Hollow <span class="arr"><svg viewBox="0 0 22 14" aria-hidden="true"><path d="M0 7h20M14 1l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2"/></svg></span></a>
+        </div>
+      </li>
+      <li class="row">
+        <a class="pic" href="../delve/" tabindex="-1" aria-hidden="true"><picture><source media="(prefers-reduced-motion: reduce)" srcset="../img/game-delve.png"><img src="../img/clip-delve.webp" width="480" height="270" alt="" loading="lazy"></picture></a>
+        <div class="txt">
+          <h3>Delve</h3>
+          <p>A turn-based dungeon on a tilemap, with a new floor from the seed each time you go down the stairs.</p>
+          <dl class="keys" aria-label="Delve's controls">
+            <div><dt>Move, attack</dt><dd>The arrow keys</dd></div>
+            <div><dt>Wait</dt><dd><kbd>.</kbd></dd></div>
+            <div><dt>Drink</dt><dd><kbd>Q</kbd></dd></div>
+            <div><dt>Descend</dt><dd><kbd>Enter</kbd></dd></div>
+            <div><dt>Pause</dt><dd><kbd>Esc</kbd></dd></div>
+          </dl>
+          <a class="btn" href="../delve/">Play Delve <span class="arr"><svg viewBox="0 0 22 14" aria-hidden="true"><path d="M0 7h20M14 1l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2"/></svg></span></a>
+        </div>
+      </li>
+      <li class="row">
+        <a class="pic" href="../outpost/" tabindex="-1" aria-hidden="true"><picture><source media="(prefers-reduced-motion: reduce)" srcset="../img/game-outpost.png"><img src="../img/clip-outpost.webp" width="480" height="270" alt="" loading="lazy"></picture></a>
+        <div class="txt">
+          <h3>Outpost</h3>
+          <p>A colony sim: colonists find work, farm, cut wood, cook, and sleep through a day and night.</p>
+          <dl class="keys" aria-label="Outpost's controls">
+            <div><dt>Pan</dt><dd><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> or the arrow keys</dd></div>
+            <div><dt>Zoom</dt><dd><kbd>-</kbd> and <kbd>=</kbd></dd></div>
+            <div><dt>Inspect</dt><dd><kbd>Tab</kbd></dd></div>
+            <div><dt>Speed</dt><dd><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> for 1, 3 and 10 times</dd></div>
+            <div><dt>Pause</dt><dd><kbd>Space</kbd>, and <kbd>Esc</kbd> for the menu</dd></div>
+          </dl>
+          <a class="btn" href="../outpost/">Play Outpost <span class="arr"><svg viewBox="0 0 22 14" aria-hidden="true"><path d="M0 7h20M14 1l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2"/></svg></span></a>
+        </div>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<!-- 02 -->
+<section class="panel desk route" aria-labelledby="h-desk">
+  <div class="wrap">
+    <p class="label"><span class="stop" aria-hidden="true"></span><span class="no">02</span>On the desktop</p>
+    <h2 id="h-desk">One that needs a desktop.</h2>
+    <ol class="rows">
+      <li class="row">
+        <div class="pic"><picture><source media="(prefers-reduced-motion: reduce)" srcset="../img/game-swarm.png"><img src="../img/clip-swarm.webp" width="480" height="270" alt="Swarm: hundreds of enemies circling the hero in an arena." loading="lazy"></picture></div>
+        <div class="txt">
+          <h3>Swarm</h3>
+          <span class="tag">Desktop only</span>
+          <p class="why">An arena shooter against waves of hundreds of enemies.</p>
+          <p>Its chase runs in a Rust plugin, for speed, and a browser cannot load one. So Swarm plays on Windows, Linux and the Mac, from the example games that come with each release.</p>
+        </div>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<!-- 03 -->
+<section class="panel know route" aria-labelledby="h-know">
+  <div class="wrap">
+    <p class="label"><span class="stop" aria-hidden="true"></span><span class="no">03</span>Good to know</p>
+    <h2 id="h-know" class="visually-hidden">Good to know</h2>
+    <ul class="facts">
+      <li><b>Click the game first</b><p>A game hears your keys once you click it. On a phone or a tablet, play by touch.</p></li>
+      <li><b>Settings in every game</b><p>Each game's <kbd>Esc</kbd> menu has text size, high contrast and full screen, and its controls, where any key can be rebound.</p></li>
+      <li><b>Drawn on your graphics card</b><p>The games draw with WebGPU where the browser has it, and with WebGL2 where it does not.</p></li>
+    </ul>
+  </div>
+</section>
+
+<!-- the next step -->
+<section class="panel cta route" aria-labelledby="h-go">
+  <div class="wrap">
+    <p class="label"><span class="stop end" aria-hidden="true"></span>The next step</p>
+    <div class="door">
+      <a class="go" href="../" aria-labelledby="h-go">
+        <span class="gt">
+          <b id="h-go">See how Argus works</b>
+          <span class="gs">The engine behind these games, with Hollow running live and what an AI agent sees of it.</span>
+        </span>
+        <span class="arr" aria-hidden="true"><svg viewBox="0 0 108 30"><path d="M0 15h104M90 1l14 14-14 14" fill="none" stroke="currentColor" stroke-width="3"/></svg></span>
+      </a>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <a class="brand" href="../" aria-label="Argus, the front page">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" fill="#F3F4F2"/><circle cx="16" cy="16" r="9.5" fill="#16181A"/><circle cx="16" cy="16" r="4" fill="#C8341E"/></svg>
+      Argus
+    </a>
+    <p>A 2D game engine you build games in together with an AI. Public release coming soon.</p>
+    <ul>
+      <li><a href="../">The front page</a></li>
+    </ul>
+    <p class="by">Built by Kevin Samsoe · <a href="https://github.com/KSamsoe">GitHub</a> · <a href="mailto:samsoekevin@gmail.com">samsoekevin@gmail.com</a></p>
+  </div>
+</footer>
+</body>
+</html>

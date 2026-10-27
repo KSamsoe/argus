@@ -12,7 +12,7 @@
 # by its build; Swarm has no web build (its chase is a Rust plugin). The
 # site is Argus's front page (tools/web/site/, which runs Hollow live), the
 # games' pages, the page of the games at games/
-# (tools/web/games/index.html), and the README's clips and stills
+# (tools/web/site/games.html), and the README's clips and stills
 # (tools/web/site/assemble.sh), and it goes up on argusengine.org whole.
 # On klab, https://klab.tailde2255.ts.net/ (Tailscale Funnel) serves no
 # files since 2026-10-27: argus-games.service runs serve.mjs --redirect on
