@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Put the example games and Argus's front page on the public site:
-# https://argusengine.org/ (Cloudflare, tools/web/site/deploy.sh) and klab,
-# through Tailscale Funnel (docs/playtest.md, "The games in a browser"):
+# Put the example games and Argus's front page on the public site,
+# https://argusengine.org/ (Cloudflare, tools/web/site/deploy.sh), and keep
+# klab's old public address sending everyone there (docs/playtest.md,
+# "The games in a browser"):
 #
 #   tools/web/publish-games.sh <argus> [ssh host]
 #
@@ -12,12 +13,13 @@
 # site is Argus's front page (tools/web/site/, which runs Hollow live), the
 # games' pages, the page of the games at games/
 # (tools/web/games/index.html), and the README's clips and stills
-# (tools/web/site/assemble.sh); it is copied beside the one being served
-# and swapped in with one rename. The read-only server (argus-games.service, serve.mjs
-# --read-only on 127.0.0.1:8766) is installed and started when it is not
-# there, and restarted when serve.mjs changed. The host defaults to
-# $ARGUS_PLAYTEST_HOST, else kevin@100.70.114.55; $ARGUS_SSH_OPTS are added
-# to ssh and scp.
+# (tools/web/site/assemble.sh), and it goes up on argusengine.org whole.
+# On klab, https://klab.tailde2255.ts.net/ (Tailscale Funnel) serves no
+# files since 2026-10-27: argus-games.service runs serve.mjs --redirect on
+# 127.0.0.1:8766, which sends every path on to argusengine.org; the server
+# and its unit are copied when they differ, and the service restarted. The
+# host defaults to $ARGUS_PLAYTEST_HOST, else kevin@100.70.114.55;
+# $ARGUS_SSH_OPTS are added to ssh and scp.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 ARGUS=${1:?usage: tools/web/publish-games.sh <argus> [ssh host]}
@@ -42,10 +44,11 @@ for g in hollow delve outpost; do
 done
 tools/web/site/assemble.sh "$WORK/site"
 
-echo "== on $HOST"
-ssh_ 'mkdir -p ~/argus-games ~/.config/systemd/user && rm -rf ~/argus-games/site.new'
-scp_ -r "$WORK/site" "$HOST:argus-games/site.new"
-ssh_ 'cd ~/argus-games && rm -rf site.old && { [ -d site ] && mv site site.old || true; } && mv site.new site && rm -rf site.old && ls site'
+echo "== argusengine.org"
+tools/web/site/deploy.sh "$WORK/site"
+
+echo "== the redirect on $HOST"
+ssh_ 'mkdir -p ~/argus-games ~/.config/systemd/user'
 # The server: copied when it differs (the hashes alone; see deploy.sh),
 # then the service installed, or restarted for a new server.
 SERVER=tools/web/serve.mjs
@@ -63,7 +66,4 @@ fi
 if [ "$changed" = 1 ]; then
   ssh_ 'systemctl --user restart argus-games.service && sleep 1 && systemctl --user is-active argus-games.service'
 fi
-ssh_ 'curl -s -o /dev/null -w "the site answers: %{http_code}\n" http://127.0.0.1:8766/ && tailscale funnel status 2>&1 | head -6'
-
-echo "== argusengine.org"
-tools/web/site/deploy.sh "$WORK/site"
+ssh_ 'curl -s -o /dev/null -w "klab answers: %{http_code} to %{redirect_url}\n" http://127.0.0.1:8766/ && tailscale funnel status 2>&1 | head -6'

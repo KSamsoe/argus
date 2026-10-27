@@ -6,6 +6,10 @@
 // (docs/playtest.md, "The games in a browser"), where anyone on the
 // internet could otherwise send 8 MB at a time.
 //
+// --redirect <url> serves nothing: every GET or HEAD is sent on to the
+// same path and query at <url> (301), as klab's public address sends
+// everyone to https://argusengine.org/ (2026-10-27).
+//
 // Defaults: target-web/site, 8765, 127.0.0.1, <site>/../marks. The host may
 // be several addresses, comma-separated: on klab, 127.0.0.1 for Tailscale's
 // HTTPS proxy, which players reach, and the tailnet address, which
@@ -28,7 +32,13 @@ import { extname, join, normalize, resolve, dirname, sep } from "node:path";
 import { randomBytes } from "node:crypto";
 
 const readOnly = process.argv.includes("--read-only");
-const args = process.argv.slice(2).filter((a) => a !== "--read-only");
+const at = process.argv.indexOf("--redirect");
+const redirect = at > 0 ? (process.argv[at + 1] ?? "").replace(/\/+$/, "") : null;
+if (redirect !== null && !/^https?:\/\/[^/]+/.test(redirect)) {
+  console.error("--redirect takes a url, as https://argusengine.org");
+  process.exit(2);
+}
+const args = process.argv.slice(2).filter((a, i) => a !== "--read-only" && i !== at - 2 && i !== at - 1);
 const root = resolve(args[0] ?? "target-web/site");
 const port = Number(args[1] ?? 8765);
 const hosts = (args[2] ?? "127.0.0.1").split(",").filter(Boolean);
@@ -101,6 +111,12 @@ async function brotli(file) {
 }
 
 const handle = async (req, res) => {
+  if (redirect !== null) {
+    if (req.method !== "GET" && req.method !== "HEAD") return send(res, 405, { error: "GET only" });
+    const u = new URL(req.url, "http://x");
+    res.writeHead(301, { location: redirect + u.pathname + u.search, "cache-control": "max-age=3600" });
+    return res.end();
+  }
   const path = decodeURIComponent(new URL(req.url, "http://x").pathname);
   try {
     if (readOnly) {
@@ -140,6 +156,10 @@ const handle = async (req, res) => {
 
 for (const host of hosts) {
   createServer(handle).listen(port, host, () =>
-    console.log(`serving ${root} on http://${host}:${port}/, ${readOnly ? "taking no reports" : `reports into ${marks}`}`),
+    console.log(
+      redirect !== null
+        ? `sending http://${host}:${port}/ on to ${redirect}/`
+        : `serving ${root} on http://${host}:${port}/, ${readOnly ? "taking no reports" : `reports into ${marks}`}`,
+    ),
   );
 }
