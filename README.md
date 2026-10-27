@@ -71,7 +71,7 @@ Where the big engines are ahead, and will stay ahead for a while: 3D, which Argu
 
 ## Play the games
 
-**[Play Hollow, Delve, and Outpost in your browser](https://klab.tailde2255.ts.net/)**: the same games, tick for tick, drawn with WebGPU (or WebGL2). Click a game, then play with the keys its page lists. (Swarm runs its chase in a Rust plugin, which a page cannot load, so it plays on the desktop.)
+**[Play Hollow, Delve, and Outpost in your browser](https://argusengine.org/games/)**: the same games, tick for tick, drawn with WebGPU (or WebGL2). Click a game, then play with the keys its page lists. (Swarm runs its chase in a Rust plugin, which a page cannot load, so it plays on the desktop.) The site's front page, [argusengine.org](https://argusengine.org/), runs Hollow live with what an agent sees of it drawn over the game.
 
 Each release also has the four games built and ready to run, nothing to install: `example-games-<version>` for Windows, Linux, or macOS (the Mac's without Swarm, whose Rust plugin is built on a Mac), on the [releases page](https://github.com/KSamsoe/argus/releases). Unpack it and run a game's program; its `README.txt` has the controls.
 

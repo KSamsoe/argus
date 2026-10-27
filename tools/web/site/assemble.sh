@@ -8,7 +8,8 @@
 # runs Hollow live from the site's own hollow/ build through live.js beside
 # it. The page of the games (tools/web/games/index.html) moves to games/,
 # its links pointed one folder up, so each game keeps its address. img/
-# gets the README's clips and stills that both pages show.
+# gets the README's clips and stills that both pages show, and og.png, the
+# picture a link to the site shows when shared.
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 SITE=${1:?usage: tools/web/site/assemble.sh <site dir>}
@@ -21,3 +22,4 @@ for g in hollow delve swarm outpost; do
   cp "docs/img/clip-$g.webp" "docs/img/game-$g.png" "$SITE/img/"
 done
 cp docs/img/templates.png "$SITE/img/"
+cp tools/web/site/og.png "$SITE/img/og.png"

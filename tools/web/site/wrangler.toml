@@ -1,0 +1,9 @@
+# Argus's public site, https://argusengine.org/, on Cloudflare: static
+# files only (Workers static assets), no code of its own. deploy.sh beside
+# this puts an assembled site (assemble.sh) up with it.
+name = "argus-site"
+compatibility_date = "2026-09-01"
+routes = [
+  { pattern = "argusengine.org", custom_domain = true },
+  { pattern = "www.argusengine.org", custom_domain = true },
+]

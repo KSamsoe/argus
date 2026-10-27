@@ -78,7 +78,7 @@ The server sends the page brotli-compressed to a browser that takes it: about 2.
 
 ## The games in a browser
 
-The example games, Hollow, Delve, and Outpost, are also on a public site anyone can open, with no Tailscale: `https://klab.tailde2255.ts.net/`. Its front page is Argus's own (`tools/web/site/index.html`): what Argus is, with Hollow running live in the page and what an agent sees of it drawn over the game, and the public release announced as coming soon. The page of the games (`tools/web/games/index.html`) is at `/games/`, and each game is in its own folder (`/hollow/`, `/delve/`, `/outpost/`). Swarm is not there: its chase is a Rust plugin, which a page cannot load, so it plays from a release's example games.
+The example games, Hollow, Delve, and Outpost, are also on a public site anyone can open, with no Tailscale: `https://argusengine.org/`, on Cloudflare (static files only; `tools/web/site/wrangler.toml` and `deploy.sh`, Kevin's account, the domain bought there 2026-10-27), and the same site from klab at `https://klab.tailde2255.ts.net/`. Its front page is Argus's own (`tools/web/site/index.html`): what Argus is, with Hollow running live in the page and what an agent sees of it drawn over the game, and the public release announced as coming soon. The page of the games (`tools/web/games/index.html`) is at `/games/`, and each game is in its own folder (`/hollow/`, `/delve/`, `/outpost/`). Swarm is not there: its chase is a Rust plugin, which a page cannot load, so it plays from a release's example games.
 
 The front page's live game is the site's own `/hollow/` build, which `tools/web/site/live.js` loads beside it, so the page is only right on a site that has that build; `tools/web/site/assemble.sh <site dir>` puts the front page, the page of the games, and the pictures on one. To look at the front page here, assemble it around a Hollow web build and serve it:
 
@@ -106,7 +106,7 @@ To put up the games again (after a release, say), with an installed argus:
 tools/web/publish-games.sh ~/AppData/Local/Argus/app/bin/argus.exe
 ```
 
-It builds the three games' pages from copies of `examples/`, each checked by its build, adds the front page with `assemble.sh`, swaps the site in with one rename, and installs or restarts the service when its file or `serve.mjs` changed. `node tools/web/games-check.mjs https://klab.tailde2255.ts.net/ <out-dir>` opens each game in headless Chrome and says whether it runs, with a screenshot of each.
+It builds the three games' pages from copies of `examples/`, each checked by its build, adds the front page with `assemble.sh`, swaps the site in on klab with one rename, installs or restarts the service when its file or `serve.mjs` changed, and last deploys the same site to argusengine.org (wrangler must be signed in to Kevin's Cloudflare account: `npx wrangler login`, once). `node tools/web/games-check.mjs https://argusengine.org/ <out-dir>` opens each game in headless Chrome and says whether it runs, with a screenshot of each.
 
 ## Linux builds
 

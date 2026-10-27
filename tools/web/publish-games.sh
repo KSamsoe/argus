@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Put the example games on their public web site (klab, through Tailscale
-# Funnel; docs/playtest.md, "The games in a browser"):
+# Put the example games and Argus's front page on the public site:
+# https://argusengine.org/ (Cloudflare, tools/web/site/deploy.sh) and klab,
+# through Tailscale Funnel (docs/playtest.md, "The games in a browser"):
 #
 #   tools/web/publish-games.sh <argus> [ssh host]
 #
@@ -63,3 +64,6 @@ if [ "$changed" = 1 ]; then
   ssh_ 'systemctl --user restart argus-games.service && sleep 1 && systemctl --user is-active argus-games.service'
 fi
 ssh_ 'curl -s -o /dev/null -w "the site answers: %{http_code}\n" http://127.0.0.1:8766/ && tailscale funnel status 2>&1 | head -6'
+
+echo "== argusengine.org"
+tools/web/site/deploy.sh "$WORK/site"
