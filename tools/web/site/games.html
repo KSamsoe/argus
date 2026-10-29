@@ -170,7 +170,15 @@ kbd {
 }
 .txt .btn { justify-self: start; margin-top: 4px; }
 
-/* ---------- 02 the desktop: a graphite room ---------- */
+/* ---------- 02 made with Argus: a whole game, on a concrete floor ---------- */
+.made { --floor: var(--concrete); }
+.made .tag { border-color: var(--steel); }
+.acts { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 4px; }
+.btn.line { background: transparent; color: var(--graphite); }
+.btn.line::before { background: var(--graphite); }
+.btn.line:hover { color: var(--on-dark); border-color: var(--graphite); }
+
+/* ---------- 03 the desktop: a graphite room ---------- */
 .desk { --floor: var(--graphite); color: var(--on-dark); --line: var(--on-dark); --line-soft: var(--graphite-4); --focus: var(--agent-lt); }
 .desk .row { border-top-color: var(--on-dark); }
 .desk .pic img { outline-color: var(--graphite-4); }
@@ -313,9 +321,32 @@ kbd {
 </section>
 
 <!-- 02 -->
+<section class="panel made route" id="byogm" aria-labelledby="h-made">
+  <div class="wrap">
+    <p class="label"><span class="stop" aria-hidden="true"></span><span class="no">02</span>Made with Argus</p>
+    <h2 id="h-made">A whole game, with your AI as game master.</h2>
+    <ol class="rows">
+      <li class="row">
+        <a class="pic" href="https://byogm.argusengine.org/" tabindex="-1" aria-hidden="true"><img src="../img/byogm.png" width="960" height="540" alt="" loading="lazy"></a>
+        <div class="txt">
+          <h3>Bring Your Own Game Master</h3>
+          <span class="tag">On its own site</span>
+          <p>A roguelike where your own AI is the game master. You type what your character does, and your AI decides what happens, as a game master does at a table.</p>
+          <p>A small rules kernel rolls a d20 and keeps the hit points, so the game master can be inventive but can't cheat. Six floors, a boss at the bottom, and a story of your run when it ends. It runs on your own model through BYOLLM; the demo floor needs no AI at all.</p>
+          <div class="acts">
+            <a class="btn" href="https://byogm.argusengine.org/">Play it <span class="arr"><svg viewBox="0 0 22 14" aria-hidden="true"><path d="M0 7h20M14 1l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2"/></svg></span></a>
+            <a class="btn line" href="https://byogm.argusengine.org/play/?demo">Try the demo floor</a>
+          </div>
+        </div>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<!-- 03 -->
 <section class="panel desk route" aria-labelledby="h-desk">
   <div class="wrap">
-    <p class="label"><span class="stop" aria-hidden="true"></span><span class="no">02</span>On the desktop</p>
+    <p class="label"><span class="stop" aria-hidden="true"></span><span class="no">03</span>On the desktop</p>
     <h2 id="h-desk">One that needs a desktop.</h2>
     <ol class="rows">
       <li class="row">
@@ -331,10 +362,10 @@ kbd {
   </div>
 </section>
 
-<!-- 03 -->
+<!-- 04 -->
 <section class="panel know route" aria-labelledby="h-know">
   <div class="wrap">
-    <p class="label"><span class="stop" aria-hidden="true"></span><span class="no">03</span>Good to know</p>
+    <p class="label"><span class="stop" aria-hidden="true"></span><span class="no">04</span>Good to know</p>
     <h2 id="h-know" class="visually-hidden">Good to know</h2>
     <ul class="facts">
       <li><b>Click the game first</b><p>A game hears your keys once you click it. On a phone or a tablet, play by touch.</p></li>
