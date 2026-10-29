@@ -22,3 +22,4 @@ for g in hollow delve swarm outpost; do
 done
 cp docs/img/templates.png "$SITE/img/"
 cp tools/web/site/og.png "$SITE/img/og.png"
+cp tools/web/site/byogm.png "$SITE/img/byogm.png"
