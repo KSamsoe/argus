@@ -460,7 +460,8 @@ impl<W: Wire> Netplay<W> {
     }
 
     /// Host a room through `wire` for the player's game; the match starts
-    /// on `scene` (the player's when none) from `seed`.
+    /// on `scene` (the player's when none) from `seed`, every player's
+    /// input `delay` ticks late (the game's own is `player.net_delay`).
     pub fn host(
         &mut self,
         wire: W,

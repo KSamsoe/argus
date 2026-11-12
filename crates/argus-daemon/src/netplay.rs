@@ -154,7 +154,8 @@ impl Daemon {
             )));
         }
         let players = players as u8;
-        let delay = json::u64_param(params, "delay", 2)?.min(30) as u8;
+        let game_delay = self.require_session()?.project.config.net_delay as u64;
+        let delay = json::u64_param(params, "delay", game_delay)?.min(30) as u8;
         let num = |k: &str, d: f64| params.get(k).and_then(Json::as_f64).unwrap_or(d);
         let cond = Conditions {
             delay_ms: num("latency", 30.0).max(0.0),
@@ -264,7 +265,8 @@ impl Daemon {
             })
             .collect();
         let (sent, lost) = ns.net.counts();
-        json!({ "state": "sim", "players": ns.players.len(), "worlds": worlds, "messages": sent, "lost": lost })
+        let delay = ns.players.first().map(|(_, m)| m.config().delay);
+        json!({ "state": "sim", "players": ns.players.len(), "delay": delay, "worlds": worlds, "messages": sent, "lost": lost })
     }
 
     /// Whether a scenario's match is on: steps and injects go through it.
@@ -545,7 +547,8 @@ impl Daemon {
                     | 1
             }
         };
-        let delay = json::u64_param(params, "delay", 2)?.min(30) as u8;
+        let game_delay = self.require_session()?.project.config.net_delay as u64;
+        let delay = json::u64_param(params, "delay", game_delay)?.min(30) as u8;
         let c = Daemon::relay_client(params)?;
         let mut lobby = argus_net::Lobby::new();
         lobby.host(c, players as u8, self.fingerprint(), &scene, seed, delay);
@@ -750,7 +753,7 @@ impl Daemon {
         };
         let stats = rp.game.as_ref().map(|m| {
             let s = m.stats();
-            json!({ "final_to": m.final_to(), "rollbacks": s.rollbacks, "again": s.again, "checks": s.checks, "waits": s.waits })
+            json!({ "delay": m.config().delay, "final_to": m.final_to(), "rollbacks": s.rollbacks, "again": s.again, "checks": s.checks, "waits": s.waits })
         });
         json!({
             "state": state,

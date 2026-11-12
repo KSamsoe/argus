@@ -359,7 +359,7 @@ impl Game {
             .map(|d| d.as_nanos() as u64)
             .unwrap_or(1)
             | 1;
-        self.net.host(c, &self.p, players, scene, seed, 2);
+        self.net.host(c, &self.p, players, scene, seed, self.p.net_delay);
     }
 
     /// Join a room by its code.
@@ -817,7 +817,7 @@ fn headless_match(mut p: Player, args: &Args, ticks: u64) -> Result<(), String> 
         || argus_relay::Client::connect(&url).map_err(|e| format!("the relay at {url}: {e}"));
     let mut net: Netplay<argus_relay::Client> = Netplay::new();
     match (&args.host, &args.join) {
-        (Some(players), _) => net.host(connect()?, &p, *players, None, args.seed.unwrap_or(7), 2),
+        (Some(players), _) => net.host(connect()?, &p, *players, None, args.seed.unwrap_or(7), p.net_delay),
         (None, Some(code)) => net.join(connect()?, &p, code),
         _ => unreachable!(),
     }

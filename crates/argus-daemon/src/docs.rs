@@ -1228,7 +1228,7 @@ pub const METHODS: &[MethodDoc] = &[
         doc: "A whole multiplayer match in this daemon (multiplayer item 3), as a scenario's t:net makes one: the other players' worlds are forks of this one (net.2 to net.N, from now), and every player's messages go through a simulated network with this latency, jitter, and loss. While it lasts sim.step and sim.run_until {ticks} run every player's world, input.inject with a slot is that player's input through the match, and every step ends with every player at the same tick, every tick final, and every world the same, or an error naming the fields that differ. A scene.load ends it.",
         params: &[
             opt("players", INTEGER, "2 to 4; default 2"),
-            opt("delay", INTEGER, "input delay in ticks; default 2"),
+            opt("delay", INTEGER, "input delay in ticks; default the game's (argus.toml [net] delay, 2 when it says none)"),
             opt("latency", NUMBER, "ms a message takes one way; default 30"),
             opt("jitter", NUMBER, "up to this many ms more, each message; default 0"),
             opt("loss", NUMBER, "the chance a message is lost, 0 to 0.9; default 0"),
@@ -1244,7 +1244,7 @@ pub const METHODS: &[MethodDoc] = &[
             opt("players", INTEGER, "2 to 4; default 2"),
             opt("scene", STRING, "the match's scene; default this one"),
             opt("seed", INTEGER, "the match's seed; default from the clock"),
-            opt("delay", INTEGER, "input delay in ticks; default 2"),
+            opt("delay", INTEGER, "input delay in ticks; default the game's (argus.toml [net] delay, 2 when it says none)"),
         ],
         returns: "net.status",
     },
@@ -1262,9 +1262,9 @@ pub const METHODS: &[MethodDoc] = &[
     },
     MethodDoc {
         name: "net.status",
-        doc: "The match this daemon plays, if any. Through a relay (net.host, net.join): the room's code, this side's slot, the players present, and the match's final_to, rollbacks, and checks; why it ended, once it has. In a scenario's match (net.sim): for each player's world its slot, tick, final_to, state (running, or what went wrong), rollbacks, ticks run again, deepest rollback, checks agreed, and waits; and the messages sent and lost.",
+        doc: "The match this daemon plays, if any. Through a relay (net.host, net.join): the room's code, this side's slot, the players present, and the match's input delay, final_to, rollbacks, and checks; why it ended, once it has. In a scenario's match (net.sim): its input delay; for each player's world its slot, tick, final_to, state (running, or what went wrong), rollbacks, ticks run again, deepest rollback, checks agreed, and waits; and the messages sent and lost.",
         params: &[],
-        returns: "{state: alone | asking | room | playing | ended, code, slot, players, present, tick, match: {final_to, rollbacks, again, checks, waits}, why}; for net.sim {state: sim, players, worlds: [{world, slot, tick, final_to, state, rollbacks, again, deepest, checks, waits}], messages, lost}",
+        returns: "{state: alone | asking | room | playing | ended, code, slot, players, present, tick, match: {delay, final_to, rollbacks, again, checks, waits}, why}; for net.sim {state: sim, players, delay, worlds: [{world, slot, tick, final_to, state, rollbacks, again, deepest, checks, waits}], messages, lost}",
     },
     MethodDoc {
         name: "sim.ring",

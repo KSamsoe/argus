@@ -82,7 +82,14 @@ pub struct ProjectConfig {
     /// `[game]`: what a player sees of the game outside it: its title,
     /// version, and icon (reaching players item 2).
     pub game: GameInfo,
+    /// `[net] delay`: ticks each player's input is delayed in a match this
+    /// game hosts, however it is hosted (multiplayer item 1: "the game
+    /// chooses it"). 2 when the project does not say.
+    pub net_delay: u8,
 }
+
+/// The input delay a match has when the game does not choose one.
+pub const NET_DELAY: u8 = 2;
 
 /// `argus.toml`'s `[game]`: the game as a player's machine shows it.
 #[derive(Clone, Debug, PartialEq)]
@@ -262,6 +269,30 @@ impl ProjectConfig {
                 }
             },
         };
+        let net_t = t.get("net").and_then(|i| i.as_table_like());
+        if let Some(n) = net_t {
+            if let Some((k, _)) = n.iter().find(|(k, _)| *k != "delay") {
+                return Err(ArgusError::new(
+                    codes::BAD_SCENE,
+                    format!("argus.toml [net] has no key {k:?}: it takes delay"),
+                )
+                .at(Some(at("net"))));
+            }
+        }
+        let net_delay = match net_t.and_then(|n| n.get("delay")) {
+            None => NET_DELAY,
+            Some(i) => match i.as_integer() {
+                Some(n) if (0..=30).contains(&n) => n as u8,
+                _ => {
+                    return Err(ArgusError::new(
+                        codes::BAD_SCENE,
+                        "argus.toml [net] delay must be a whole number of ticks, 0 to 30",
+                    )
+                    .hint("Ticks each player's input waits before it takes effect in a match: more hides a slower link, and makes every press answer later.")
+                    .at(Some(at("net"))))
+                }
+            },
+        };
         let build_exclude = match t
             .get("build")
             .and_then(|i| i.as_table_like())
@@ -342,6 +373,7 @@ impl ProjectConfig {
             reports_url,
             build_exclude,
             game,
+            net_delay,
         })
     }
 
@@ -473,6 +505,7 @@ impl Project {
                     icon: None,
                     icon_frame: 0,
                 },
+                net_delay: NET_DELAY,
             };
             argus_os::fs::write(&cfg, c.to_toml()).map_err(|e| {
                 ArgusError::new(codes::MISSING_FILE, format!("cannot write argus.toml: {e}"))

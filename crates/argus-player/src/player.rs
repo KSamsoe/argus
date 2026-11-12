@@ -27,6 +27,9 @@ pub struct Player {
     pub scene: String,
     /// The project's name (`argus.toml`), for a window's title.
     pub name: String,
+    /// The input delay a match this game hosts has (`argus.toml` `[net]
+    /// delay`).
+    pub net_delay: u8,
     /// The run seed.
     pub seed: u64,
     pub(crate) input: Option<Rc<RefCell<InputState>>>,
@@ -171,6 +174,7 @@ impl Player {
             sched: a.sched,
             root,
             name: cfg.name.clone(),
+            net_delay: cfg.net_delay,
             scene: scene_name,
             seed: a.seed,
             input: a.input,

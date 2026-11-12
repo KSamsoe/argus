@@ -12,7 +12,7 @@ A player's actions take time to arrive. The game does not wait for them:
 
 - **Prediction.** A tick runs at once with what is known. A player whose actions for it have not arrived is guessed to be doing what they were doing (their actions unchanged).
 - **Rollback.** When their actions arrive and the guess was wrong, the game goes back to the tick that was wrong, from a snapshot it kept, and runs the ticks since again with what is now known, quietly, before the frame is drawn. It keeps the last 8 ticks, and waits rather than guess further ahead than that.
-- **Input delay.** Each player's own actions take effect 2 ticks after they press (the host chooses the delay). On a link quicker than that, nothing is ever guessed.
+- **Input delay.** Each player's own actions take effect a few ticks after they press: 2, unless the game chooses another in `argus.toml` (below). On a link quicker than that, nothing is ever guessed.
 
 A **turn-based game** (a `discrete` clock) is played in lockstep instead. A turn runs when every player's command for it is in. A player who has nothing to do answers at once with nothing, so one player's press moves the game for everyone, as it does alone. Letting go of a key takes no turn of its own.
 
@@ -44,6 +44,15 @@ A game that plays well with two players at one machine is most of the way there.
 - A **sound** starts at once, because a late sound feels wrong. After a rollback, a sound the corrected ticks no longer make is stopped, one they make again keeps playing, and one only they make plays then.
 - **Particles** are part of the run, so they roll back with it.
 - **Everything else** a tick asks of the host (`q:send`, a save to load or delete, an achievement) waits until the tick is final: every player's input for it is in, and it ran with it.
+
+**Input delay.** A game chooses its own, in ticks, in `argus.toml`:
+
+```toml
+[net]
+delay = 4
+```
+
+Every match the game hosts has it, from its menu, the desktop game's `--host`, a page's `?host=`, or the daemon (whose `delay=` can still say otherwise). More hides a slower link: the other player's actions arrive in time more often, so fewer are guessed and corrected, and something short they did (a swing that lasts a few ticks) is less often over before this machine learns of it. Less makes every press answer sooner. 0 to 30; 2 when the game does not say.
 
 **Math.** Luau's `math`, `^`, and `vector` give the same numbers on every machine. A Rust plugin must use the SDK's `argus_plugin::math`, not the float's own functions ([Releasing](releasing.md#rust-plugins)).
 
@@ -131,7 +140,7 @@ return scenario "two players over a bad link play whole rounds" {
 }
 ```
 
-- `latency` is the time a message takes one way, in milliseconds; `jitter` up to that much more for each message; `loss` the chance a message is lost; `delay` the input delay in ticks.
+- `latency` is the time a message takes one way, in milliseconds; `jitter` up to that much more for each message; `loss` the chance a message is lost; `delay` the input delay in ticks (the game's own when left out).
 - `t.input` is slot 1's input and `t.input:slot(n)` slot n's, each through the match.
 - Every `t:step(n)` runs every player's world n ticks and ends with every tick final and every world the same. When two differ, the run fails, naming the fields. Only steps by ticks work in a match.
 - The expectations read slot 1's world, which is every player's.

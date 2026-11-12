@@ -166,7 +166,7 @@ impl WebPlayer {
         let wire = self.open_wire()?;
         let seed = (js_sys::Math::random() * 9.0e15) as u64 | 1;
         let players = players.clamp(2, 4) as u8;
-        self.net.host(wire, &self.p, players, None, seed, 2);
+        self.net.host(wire, &self.p, players, None, seed, self.p.net_delay);
         Ok(())
     }
 

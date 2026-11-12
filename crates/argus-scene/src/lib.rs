@@ -31,7 +31,7 @@ pub use defs::{DefRow, DefSchema, DefTable, Defs};
 pub use doc::{ComponentDoc, EntityDoc, FieldDoc};
 pub use moves::{MoveKind, MoveRecord, MoveReport};
 pub use prefab::PrefabLibrary;
-pub use project::{GameInfo, Project, ProjectConfig};
+pub use project::{GameInfo, Project, ProjectConfig, NET_DELAY};
 pub use resolve::{Provenance, ResolvedComponent, ResolvedEntity, ResolvedField};
 pub use scene::{
     EntityFile, LoadReport, Memory, Room, RoomDoc, RoomGraph, Scene, SceneDoc, SeedPolicy,
