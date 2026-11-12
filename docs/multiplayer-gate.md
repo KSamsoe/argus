@@ -12,7 +12,7 @@ This file records that run, begun on 2026-10-21.
 
 | Part | Where it stands | Where to look |
 |---|---|---|
-| Duel played by two people on two machines, a browser and a desktop, through klab's relay over a slow link | Waiting for Kevin: everything for it is ready (below) | "Two people", below |
+| Duel played by two people on two machines, a browser and a desktop, through klab's relay over a slow link | Met, 2026-11-12 (below) | "Two people", below |
 | An agent with only the docs adds a feature to Duel and checks it with a two-player scenario | Met (below) | `docs/multiplayer-gate/duel-block.diff` |
 | Every example gives the same run on this PC, klab, and Chrome | Met (below) | `tools/determinism/ci.sh` |
 
@@ -44,3 +44,14 @@ What it needs, all in place:
 - klab runs two relays on the tailnet: `ws://100.70.114.55:7879`, and `ws://100.70.114.55:7880`, which holds every message 80 ms and up to 40 more (`tools/relay/deploy.sh`).
 - Duel's web build, served on the tailnet.
 - Duel's desktop build for Windows.
+
+Before the people, a check: `tools/net/check.mjs` had a page in headless Chrome host a match and the desktop build join it through the slow relay. 600 ticks, all 9 digest checks agreed on both sides, the desktop rolling back 32 times.
+
+Then Kevin played it on 2026-11-12: the desktop build on this PC, hosting, and the web build in a browser on another machine, joining, both through the slow relay. They never fell out of step.
+
+What it felt like:
+
+- Laggy, as a link that holds every message 80 to 120 ms should be.
+- The other player's swing often did not show, or only its end. A swing is out for 8 ticks, and the other player's input arrives about 5 to 8 ticks late on this link, of which the match's input delay (2 ticks, fixed by the desktop and web runners) hides only 2. By the time a rollback learns of the swing, most or all of its 8 ticks have passed, so its slash is drawn briefly or not at all.
+
+Two things follow, neither part of the gate: a game should choose its own input delay, as the plan says it does (the runners fix it at 2 for now), and Duel could draw a swing learned late from its start.
