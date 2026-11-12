@@ -26,7 +26,7 @@ local function close_in(t, two)
   t:step(4)
 end
 
-return scenario "two players over a bad link play a whole match, and their worlds agree" {
+local over_a_bad_link = scenario "two players over a bad link play a whole match, and their worlds agree" {
   scene = "arena", seed = 1,
   run = function(t)
     -- In the match q:net() says playing from its first tick on both
@@ -67,4 +67,20 @@ return scenario "two players over a bad link play a whole match, and their world
       error("too few checks of the worlds: " .. s.worlds[1].checks, 0)
     end
   end,
+}
+
+return {
+  over_a_bad_link,
+
+  scenario "a match has Duel's own input delay, argus.toml's [net] delay, when none is asked for" {
+    scene = "arena", seed = 1,
+    run = function(t)
+      t:net { players = 2, latency = 30 }
+      t:step(2)
+      local s = t:net_status()
+      if s.delay ~= 3 then
+        error("the match's input delay is " .. tostring(s.delay) .. ", not argus.toml's 3", 0)
+      end
+    end,
+  },
 }

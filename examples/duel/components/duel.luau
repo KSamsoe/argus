@@ -30,6 +30,13 @@ component "Swing" {
   ttl = field.u8 { default = 0, doc = "Ticks left after this one" },
 }
 
+component "Slash" {
+  doc = "A swing's slash as it is drawn, presentation only (late.looks spawns it from prefabs/slash.toml on a swing event): it sweeps while the swing's hitbox is out, then stays, fading, so a swing learned of late online still shows",
+  owner = field.entity { doc = "The fighter swinging" },
+  dir = field.vec2 { default = {1, 0}, doc = "The way it swings" },
+  age = field.u8 { default = 0, doc = "Ticks since its swing began" },
+}
+
 return component "Match" {
   doc = "The match, on @arena: the score, first to `to` points, and where the round is (sim.round)",
   to = field.u8 { default = 3, range = {1, 99}, tune = true, doc = "Points that win the match" },

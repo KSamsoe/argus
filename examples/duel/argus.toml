@@ -9,3 +9,10 @@ plugins = []
 title = "Duel"
 icon = "sprites/actors"
 icon_frame = 0
+
+# Online, every player's input takes effect 3 ticks (50 ms) after the press.
+# Over a slow link (klab's relay on port 7880, 80 to 120 ms each way) that
+# corrects a quarter fewer ticks than the engine's 2, and costs one tick of
+# answer to each press. More hides a slower link; less answers sooner.
+[net]
+delay = 3

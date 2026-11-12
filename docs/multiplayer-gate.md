@@ -22,7 +22,7 @@ One agent (Opus 5.5) was given a copy of Duel outside the repository, an `argus`
 
 It built it. 9 new scenarios, among them two players over `t:net` (60 ms, 30 ms jitter, 5% loss) each blocking the other's swing from the front, then a swing from behind scoring through a block; both players rolled back (8 and 12 times), and it passed on seeds 1 to 20. It broke six of the rules one at a time on purpose and saw the matching scenarios fail. The suite ended `22 scenarios, 22 runs, 0 failed`, which I reran myself with the same tool. I read its transcript: 153 tool calls, none of them reaching the engine's source or the repository.
 
-Its changes are in `docs/multiplayer-gate/duel-block.diff`, against Duel as committed (pictures left out). Whether the block joins Duel is Kevin's to decide: it is a good feature, and it makes the example longer to read.
+Its changes are in `docs/multiplayer-gate/duel-block.diff`, against Duel as committed then (pictures left out); Duel's slash and input delay (below) came after, so it now needs `git apply -3` and a hand at `looks.luau`, the README, and `tests/online.luau`. Whether the block joins Duel is Kevin's to decide: it is a good feature, and it makes the example longer to read.
 
 What it found missing, and what became of each:
 
@@ -54,4 +54,9 @@ What it felt like:
 - Laggy, as a link that holds every message 80 to 120 ms should be.
 - The other player's swing often did not show, or only its end. A swing is out for 8 ticks, and the other player's input arrives about 5 to 8 ticks late on this link, of which the match's input delay (2 ticks, fixed by the desktop and web runners) hides only 2. By the time a rollback learns of the swing, most or all of its 8 ticks have passed, so its slash is drawn briefly or not at all.
 
-Two things follow, neither part of the gate: a game should choose its own input delay, as the plan says it does (the runners fix it at 2 for now), and Duel could draw a swing learned late from its start.
+Two things followed, neither part of the gate, both done before 0.2.0:
+
+- A game chooses its own input delay, as the plan said it does: `argus.toml`'s `[net] delay`, which every way of hosting uses (the menu's `q:net_host`, the desktop game's `--host`, a page's `?host=`, the daemon), and `net.status` reports. Duel's is 3. Over a simulated link like the slow relay, both players moving and swinging, the ticks run again fell from 120 at 2 to 89 at 3 (61 at 4, 42 at 6).
+- Duel's slash is drawn apart from its hitbox, and outlives it by 16 ticks, fading where it was. It cannot be drawn from when this machine learned of the swing: the slash is in the world, and the world must be the same on both machines, or the match stops out of step.
+
+The page-against-desktop check through the slow relay with both: all 9 checks agreed, the desktop rolled back 28 times (32 before) and waited 4 times (169 before).

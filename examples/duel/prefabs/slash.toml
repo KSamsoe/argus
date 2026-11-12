@@ -1,0 +1,14 @@
+# A swing's slash, as late.looks spawns it on a swing event (systems/
+# looks.luau): frames 24 to 26 of sprites/actors, glowing, tinted in its
+# fighter's colour. It sweeps while the hitbox (prefabs/swing.toml) is out,
+# then stays, fading. Presentation only.
+[Transform]
+
+[Slash]
+
+[Sprite]
+atlas = "sprites/actors"
+frame = 24
+size = [1.5, 2.0]
+material = "fx/glow"
+z = 3.0
