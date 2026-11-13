@@ -60,3 +60,5 @@ Two things followed, neither part of the gate, both done before 0.2.0:
 - Duel's slash is drawn apart from its hitbox, and outlives it by 16 ticks, fading where it was. It cannot be drawn from when this machine learned of the swing: the slash is in the world, and the world must be the same on both machines, or the match stops out of step.
 
 The page-against-desktop check through the slow relay with both: all 9 checks agreed, the desktop rolled back 28 times (32 before) and waited 4 times (169 before).
+
+Kevin played it again on 2026-11-13 with both, the same way, desktop against browser through the slow relay: no desyncs, and the other player's swings showed.
