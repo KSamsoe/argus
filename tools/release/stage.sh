@@ -13,6 +13,7 @@
 #   runtime/web/pkg/, index.html, main.js
 #   templates/                           what `argus new` starts from
 #   install.ps1 or install.sh            what `argus self-update` runs
+#   LICENSE, NOTICE, TRADEMARKS.md       Argus's license and credits
 #   manifest.json                        every file, its size and SHA-256
 #
 # Each runtime directory has runtime.json (version, revision, target,
@@ -111,6 +112,9 @@ if [ "$OS" = windows ]; then
 else
   cp tools/release/install.sh "$OUT/"
 fi
+
+# The license and the credits it asks to travel with every copy.
+cp LICENSE NOTICE TRADEMARKS.md "$OUT/"
 
 # The templates `argus new` starts from.
 cp -r templates "$OUT/templates"

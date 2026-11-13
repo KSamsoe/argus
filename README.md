@@ -121,3 +121,9 @@ That adds Argus to the tool's own settings. Set up once with `--scope user`, and
 - **[The design](docs/argus-engine-design-v0.3.html)**, **[how it was built](docs/history.md)**, and **[working on the engine](docs/developing.md)**, for changing Argus itself.
 
 Argus is young: version 0.2.0 is its first public release (0.1.0 was the first with a whole game made on it), on Windows, Linux, and macOS (cross-built on Linux, and tested on a Mac).
+
+## License
+
+Argus is open source under the [Apache License 2.0](LICENSE): use it for anything, free or paid, change it, and share your own version, keeping the copyright notice and the [NOTICE](NOTICE) file. A game you make with Argus is yours, under whatever terms you choose. The [templates](templates/LICENSE) and [example games](examples/LICENSE) are under MIT No Attribution, so a game started from one owes nothing for it.
+
+The names "Argus" and "Argus Engine" are not part of the license: [TRADEMARKS.md](TRADEMARKS.md) says how to use them. Contributions are welcome under the same license, signed off as [CONTRIBUTING.md](CONTRIBUTING.md) describes.
