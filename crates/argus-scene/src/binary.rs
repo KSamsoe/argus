@@ -457,7 +457,12 @@ pub fn pack(files: &mut Vec<(String, Vec<u8>)>, shown: &dyn Fn(&str) -> String) 
         }
         !made
     });
-    for (dir, docs) in bundles {
+    for (dir, mut docs) in bundles {
+        // In the order the text loader spawns them, by file: the files came
+        // in whatever order the caller listed them, which is the folder's
+        // own on Linux, and a bundle spawned in another order gives its
+        // entities other ids.
+        docs.sort_by(|a, b| a.1.cmp(&b.1));
         out.entities += docs.len();
         out.bundles += 1;
         files.push((format!("{dir}/{ENTITIES}"), encode_entities(&docs)));
