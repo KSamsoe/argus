@@ -100,6 +100,10 @@ An Argus install carries prebuilt game runtimes in `runtime/` beside `bin/` (or 
 
 Run from a checkout of the engine, with `--from-source`, or with `$ARGUS_ENGINE` set, `argus build` compiles the runtime from source with cargo instead, which is slow the first time. There `--release` matters: without it the executable is a debug build.
 
+### The licenses that come with a build
+
+A build from an install carries three text files beside the game (in a web build, in `pkg/`): `ARGUS-LICENSE.txt` and `ARGUS-NOTICE.txt`, Argus's license and credits, and `THIRD-PARTY-NOTICES.txt`, the licenses of the code Argus is built from. Argus's license (Apache 2.0) and theirs ask that they go wherever the game goes, so keep them in what you ship; a store page or a credits screen need not repeat them. Your game itself is yours, under whatever terms you choose, and the templates and example games owe nothing (MIT No Attribution).
+
 ## The web
 
 ```sh

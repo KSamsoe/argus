@@ -14,6 +14,7 @@
 #   templates/                           what `argus new` starts from
 #   install.ps1 or install.sh            what `argus self-update` runs
 #   LICENSE, NOTICE, TRADEMARKS.md       Argus's license and credits
+#   THIRD-PARTY-NOTICES.txt              every crate it is built from, and its license
 #   manifest.json                        every file, its size and SHA-256
 #
 # Each runtime directory has runtime.json (version, revision, target,
@@ -113,8 +114,21 @@ else
   cp tools/release/install.sh "$OUT/"
 fi
 
-# The license and the credits it asks to travel with every copy.
+# The license and the credits it asks to travel with every copy, and the
+# licenses of the crates Argus is built from (tools/release/notices.py).
 cp LICENSE NOTICE TRADEMARKS.md "$OUT/"
+PY=python3
+[ "$OS" = windows ] && PY=python
+"$PY" tools/release/notices.py "$OUT/THIRD-PARTY-NOTICES.txt"
+# A game carries them too: `argus build` copies a desktop runtime's files,
+# and the web runtime's pkg/, into the game, so each holds them.
+notices() {
+  cp LICENSE "$1/ARGUS-LICENSE.txt"
+  cp NOTICE "$1/ARGUS-NOTICE.txt"
+  cp "$OUT/THIRD-PARTY-NOTICES.txt" "$1/"
+}
+notices "$OUT/runtime/$OS/standard"
+notices "$OUT/runtime/$OS/steam"
 
 # The templates `argus new` starts from.
 cp -r templates "$OUT/templates"
@@ -152,6 +166,7 @@ if [ "$WEB" = 1 ]; then
   # The page and its script, and the playtest server that serves a web
   # build and takes its reports (`argus build` copies only the first two).
   cp tools/web/index.html tools/web/main.js tools/web/serve.mjs "$OUT/runtime/web/"
+  notices "$OUT/runtime/web/pkg"
   meta "$OUT/runtime/web" web web '["rigid"]'
 fi
 

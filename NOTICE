@@ -11,12 +11,14 @@ started from them owes nothing to Argus for that.
 This product includes Luau (https://luau.org), under the MIT License:
 Copyright (c) 2019-2024 Roblox Corporation
 Copyright (c) 1994-2019 Lua.org, PUC-Rio.
-See vendor/luau0-src/luau/LICENSE.txt.
+Its license text is in THIRD-PARTY-NOTICES.txt beside an installed Argus or
+a game built with it, and in vendor/luau0-src/luau/LICENSE.txt in the source.
 
 It includes the luau0-src crate, Copyright (c) 2022 Aleksandr Orlenko, and
 the mlua-sys crate, Copyright (c) 2019-2021 A. Orlenko and Copyright (c) 2017
-rlua, both under the MIT License, with changes marked "Argus:". See the
-LICENSE file in each folder under vendor/.
+rlua, both under the MIT License, with changes marked "Argus:" in the
+source under vendor/. THIRD-PARTY-NOTICES.txt lists every other crate
+Argus is built from, with its license.
 
 "Argus" and "Argus Engine" are names of the project, not licensed by the
 Apache License: see TRADEMARKS.md.
