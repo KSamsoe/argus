@@ -1,10 +1,13 @@
-# Install Argus for this user (distribution item 6), from a release on the
-# private GitHub repository, or from an archive already here:
+# Install Argus for this user (distribution item 6), from a release on
+# GitHub, or from an archive already here:
 #
 #   powershell -ExecutionPolicy Bypass -File install.ps1 [-Version 0.0.1] [-Archive <zip>] [-Repo owner/name]
 #
-# A release needs a GitHub token that can read the repository: $env:GITHUB_TOKEN,
-# else `gh auth token` (the GitHub CLI, signed in). The archive's checksum is
+#   irm https://argusengine.org/install.ps1 | iex
+#
+# A public release needs nothing more. A GitHub token is used when there is
+# one, for a private repository or a fork: $env:GITHUB_TOKEN, else
+# `gh auth token` (the GitHub CLI, signed in). The archive's checksum is
 # checked against the release's SHA256SUMS before anything is put in place.
 #
 # Argus goes in %LOCALAPPDATA%\Argus\app (bin\, runtime\, templates\), and
@@ -75,12 +78,11 @@ if (-not $Archive) {
     if (-not $token) {
         try { $token = (& gh auth token 2>$null).Trim() } catch { }
     }
-    if (-not $token) {
-        throw "a release on $Repo needs a GitHub token: set GITHUB_TOKEN, or sign in with ``gh auth login``"
-    }
-    $h = @{ Authorization = "Bearer $token"; "X-GitHub-Api-Version" = "2022-11-28"; "User-Agent" = "argus-install" }
+    $h = @{ "X-GitHub-Api-Version" = "2022-11-28"; "User-Agent" = "argus-install" }
+    if ($token) { $h.Authorization = "Bearer $token" }
     $api = "https://api.github.com/repos/$Repo/releases/" + $(if ($Version -eq "latest") { "latest" } else { "tags/v$Version" })
-    $rel = Invoke-RestMethod -Headers $h -Uri $api
+    try { $rel = Invoke-RestMethod -Headers $h -Uri $api }
+    catch { throw "no release at $api ($($_.Exception.Message)); a private repository needs GITHUB_TOKEN, or ``gh auth login``" }
     $asset = $rel.assets | Where-Object { $_.name -like "argus-*-windows-x86_64.zip" } | Select-Object -First 1
     $sums = $rel.assets | Where-Object { $_.name -eq "SHA256SUMS" } | Select-Object -First 1
     if (-not $asset) { throw "release $($rel.tag_name) has no Windows archive" }

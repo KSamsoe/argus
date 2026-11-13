@@ -77,19 +77,19 @@ Each release also has the four games built and ready to run, nothing to install:
 
 ## Install
 
-Argus runs on Windows 10 or 11, on Linux (x86-64, Ubuntu 24.04 or newer), and on macOS 11 or newer, Apple Silicon or Intel ([what each needs](docs/install.md#what-you-need)). Releases are on this repository; with the GitHub CLI signed in:
+Argus runs on Windows 10 or 11, on Linux (x86-64, Ubuntu 24.04 or newer), and on macOS 11 or newer, Apple Silicon or Intel ([what each needs](docs/install.md#what-you-need)). Install it with one command:
 
 ```powershell
 # Windows (PowerShell)
-gh release download --repo KSamsoe/argus --pattern install.ps1
-powershell -ExecutionPolicy Bypass -File install.ps1
+irm https://argusengine.org/install.ps1 | iex
 ```
 
 ```sh
 # Linux and macOS
-gh release download --repo KSamsoe/argus --pattern install.sh
-sh install.sh
+curl -fsSL https://argusengine.org/install.sh | sh
 ```
+
+The installer takes the latest release from this repository and checks it against the release's checksums.
 
 Then, in a new terminal:
 
@@ -120,4 +120,4 @@ That adds Argus to the tool's own settings. Set up once with `--scope user`, and
 - **Problems and ideas**: open an [issue](https://github.com/KSamsoe/argus/issues/new/choose) on this repository. Its templates ask for what helps: `argus version`, how to make it happen again, and a player's report if there is one. An agent that runs into something can write one too.
 - **[The design](docs/argus-engine-design-v0.3.html)**, **[how it was built](docs/history.md)**, and **[working on the engine](docs/developing.md)**, for changing Argus itself.
 
-Argus is young: version 0.2.0 (0.1.0 was the first release with a whole game made on it), in a private repository, on Windows, Linux, and macOS (cross-built on Linux, and tested on a Mac).
+Argus is young: version 0.2.0 is its first public release (0.1.0 was the first with a whole game made on it), on Windows, Linux, and macOS (cross-built on Linux, and tested on a Mac).

@@ -6,9 +6,7 @@ This page covers installing Argus, making a first game, connecting the AI tools 
 
 **Just want to play the example games?** Each release also has `example-games-<version>` for Windows (a zip), Linux, and the Mac (each a tar.gz): Hollow, Delve, Swarm, and Outpost (the Mac's has the first three), built by Argus, with nothing to install. Unpack it and run the program in a game's folder; its `README.txt` has the controls. Windows may stop the first run with "Windows protected your PC", because the programs are not signed: choose More info, then Run anyway.
 
-```sh
-gh release download --repo KSamsoe/argus --pattern "example-games-*-windows-x86_64.zip"
-```
+They are on the [latest release](https://github.com/KSamsoe/argus/releases/latest).
 
 ## What you need
 
@@ -16,7 +14,6 @@ gh release download --repo KSamsoe/argus --pattern "example-games-*-windows-x86_
 - Or a Mac with macOS 11 or newer, Apple Silicon or Intel (one build runs on both). The Mac build is made on Linux. It was first tested on a Mac at 0.0.6 (an Apple M4 Max, macOS 27), where its games played the same as on Windows, bit for bit; [testing it on a Mac](mac-testing.md) is the packet a Mac's AI agent works through.
 - A graphics card with DirectX 12, Vulkan, or Metal (every Mac since 2012). Without one, Argus draws in software: Windows has this built in, and on Linux it needs Mesa's software Vulkan (`mesa-vulkan-drivers`).
 - On Linux, for sound and windows: ALSA (`libasound2`) and X11 or Wayland, which a desktop already has.
-- Access to the Argus repository on GitHub, and a way to prove it: the GitHub CLI signed in (`gh auth login`), or a token in `GITHUB_TOKEN` that can read the repository.
 
 You do not need Rust or a compiler, unless a game has Rust plugins (one of the examples does): those are built with Rust when the game is.
 
@@ -25,16 +22,16 @@ You do not need Rust or a compiler, unless a game has Rust plugins (one of the e
 On Windows, in PowerShell:
 
 ```powershell
-gh release download --repo KSamsoe/argus --pattern install.ps1
-powershell -ExecutionPolicy Bypass -File install.ps1
+irm https://argusengine.org/install.ps1 | iex
 ```
 
 On Linux or a Mac:
 
 ```sh
-gh release download --repo KSamsoe/argus --pattern install.sh
-sh install.sh
+curl -fsSL https://argusengine.org/install.sh | sh
 ```
+
+Each is the installer from the [latest release](https://github.com/KSamsoe/argus/releases/latest) (`install.ps1` and `install.sh` are on every release too), so it can be read before it runs. To pass it options, download it and run it: `powershell -ExecutionPolicy Bypass -File install.ps1 -Version 0.2.0`, or `sh install.sh --version 0.2.0`.
 
 The installer downloads the latest release, checks it against the release's checksums, and installs it for you alone: in `%LOCALAPPDATA%\Argus` on Windows, `~/.local/share/argus` on Linux and the Mac (with `argus` linked into `~/.local/bin`). It puts `argus` on your PATH; open a new terminal afterwards. Check it with:
 
@@ -113,6 +110,6 @@ The version you had stays until the new one has started, and comes back if it do
 ## When something is wrong
 
 - **`argus` is not recognised:** open a new terminal, so it picks up the new PATH.
-- **The installer says it needs a token:** sign in with `gh auth login`, or set `GITHUB_TOKEN` to a token that can read the repository.
+- **The installer finds no release:** GitHub allows 60 requests an hour without signing in. Sign in with `gh auth login` (the installer uses it when it is there), or set `GITHUB_TOKEN`, and run it again. The same goes for installing from a private fork.
 - **A game with Rust plugins will not build:** install Rust (https://rustup.rs); `argus build` says when a game needs it.
 - **An AI tool does not show the Argus tools:** run `argus mcp setup <tool>` again and read what it says to do next; most tools only load new servers when they start.

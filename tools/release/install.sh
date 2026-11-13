@@ -1,11 +1,14 @@
 #!/usr/bin/env sh
-# Install Argus for this user (distribution item 6), from a release on the
-# private GitHub repository, or from an archive already here:
+# Install Argus for this user (distribution item 6), from a release on
+# GitHub, or from an archive already here:
 #
 #   sh install.sh [--version 0.0.1] [--archive <tar.gz>] [--repo owner/name] [--uninstall]
 #
-# A release needs a GitHub token that can read the repository: $GITHUB_TOKEN,
-# else `gh auth token` (the GitHub CLI, signed in). The archive's checksum is
+#   curl -fsSL https://argusengine.org/install.sh | sh
+#
+# A public release needs nothing more. A GitHub token is used when there is
+# one, for a private repository or a fork: $GITHUB_TOKEN, else
+# `gh auth token` (the GitHub CLI, signed in). The archive's checksum is
 # checked against the release's SHA256SUMS before anything is put in place.
 #
 # On Linux and macOS alike (the release's linux-x86_64 or macos-universal
@@ -83,10 +86,18 @@ if [ -z "$ARCHIVE" ]; then
   if [ -z "$TOKEN" ] && command -v gh > /dev/null 2>&1; then
     TOKEN=$(gh auth token 2>/dev/null || true)
   fi
-  [ -n "$TOKEN" ] || { echo "install.sh: a release on $REPO needs a GitHub token: set GITHUB_TOKEN, or sign in with gh auth login" >&2; exit 1; }
   if [ "$VERSION" = latest ]; then REL=latest; else REL=tags/v$VERSION; fi
-  api() { curl -fsSL -H "Authorization: Bearer $TOKEN" -H "X-GitHub-Api-Version: 2022-11-28" "$@"; }
-  JSON=$(api "https://api.github.com/repos/$REPO/releases/$REL")
+  api() {
+    if [ -n "$TOKEN" ]; then
+      curl -fsSL -H "Authorization: Bearer $TOKEN" -H "X-GitHub-Api-Version: 2022-11-28" "$@"
+    else
+      curl -fsSL -H "X-GitHub-Api-Version: 2022-11-28" "$@"
+    fi
+  }
+  JSON=$(api "https://api.github.com/repos/$REPO/releases/$REL") || {
+    echo "install.sh: no release at github.com/$REPO ($REL); a private repository needs GITHUB_TOKEN, or gh auth login" >&2
+    exit 1
+  }
   # The asset's API url, the line after its name in the release's JSON.
   asset_url() {
     printf '%s\n' "$JSON" | tr ',' '\n' | awk -v want="$1" '
