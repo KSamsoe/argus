@@ -1,8 +1,15 @@
 # CI on the reference laptop
 
-CI runs on this laptop, on a GitHub Actions runner Kevin installs once (phase 5 item 0). It runs when started by hand: open the repository's Actions tab, choose "ci", and click "Run workflow". Running it on every push was turned off (Kevin, 2026-10-07): a run takes about forty minutes, too slow for private work. It goes back on with public builds, by adding `push` and `pull_request` to the `on:` list in `.github/workflows/ci.yml`. `bash tools/ci/ci.sh` runs the same checks without the runner. The design's performance targets (section 17) are numbers on this laptop, so this is where they are checked.
+CI is one script, run by hand on the reference laptop before a release:
 
-The workflow is `.github/workflows/ci.yml`. It runs `tools/ci/ci.sh`, which can also be run by hand.
+```sh
+bash tools/ci/ci.sh            # every step
+bash tools/ci/ci.sh fmt clippy # only those
+```
+
+The design's performance targets (section 17) are numbers on this laptop, so this is where they are checked. A full run takes about an hour. Between releases, run the tests a change touches; the whole run is for a release, after all its work is in.
+
+Until 0.2.0 a self-hosted GitHub Actions runner on this laptop ran the same script from the repository's Actions tab. It was removed before the repository went public (Kevin, 2026-11-13): on a public repository, anyone's pull request could add a workflow that runs code on the machine a self-hosted runner is on.
 
 ## What a run checks
 
@@ -16,44 +23,11 @@ The workflow is `.github/workflows/ci.yml`. It runs `tools/ci/ci.sh`, which can 
 | web | Hollow's web page is built and played in headless Chrome. This includes a cold load over a 20 Mbit link, which must finish in under 5 seconds. |
 | det | Every example gives the same run everywhere: long played runs and every scenario, on this laptop and on klab, and the runs again in headless Chrome. A world that differs by one bit anywhere fails the step, since players of one match must compute the same world. It checks the last commit, so it refuses a tree with uncommitted changes. Its reports are in `target/determinism/`. |
 
-Every step runs even if an earlier one failed. The run fails if any step failed, and the Actions page shows the last 40 lines of each failing step.
+Every step runs even if an earlier one failed. The run fails if any step failed, and prints the last 40 lines of each failing step. Each step's full log is in `target/ci/<step>.log`.
 
-Each run keeps an artifact named `ci-<run number>` for 14 days, holding:
+## What it needs
 
-- Every step's full log (`target/ci/`).
-- The web check's report and screenshots.
-- For a picture that no longer matches its golden, the picture drawn and the difference image (golden faded, differing pixels in red).
-- For a failing scenario, its replay. Open it with `argus replay open path=<its folder>`.
-
-## Installing the runner (once)
-
-1. Open https://github.com/KSamsoe/argus/settings/actions/runners/new and choose Windows, x64.
-2. In PowerShell, make the folder `C:\actions-runner` and run the page's Download commands there. A short path avoids Windows' long-path limits, since the runner's own checkout and build caches go under this folder (tens of GB).
-3. Configure it with the token the page shows, adding the label the workflow asks for:
-
-   ```powershell
-   ./config.cmd --url https://github.com/KSamsoe/argus --token <the page's token> --name reference-laptop --labels argus-reference --work _work --unattended --replace
-   ```
-
-   `--unattended` answers its questions with the defaults: the default runner group, and not a service. Without it, config stops to ask, and whatever you type next becomes the answer. It should run as you, not as a service: a service runs as another Windows account, without your Rust, wasi-sdk, and Chrome, and with unreliable access to the GPU. `--replace` takes over a runner of the same name if an earlier attempt registered one. The token lasts an hour; if config refuses it, reload the page for a new one. Config ends with "Settings Saved."
-4. When config has finished, start the runner:
-
-   ```powershell
-   ./run.cmd
-   ```
-
-   It says "Listening for Jobs". Leave the window open.
-5. To have it start when you log in, add a logon task. This opens the runner's window each time you log in:
-
-   ```powershell
-   schtasks /create /tn "argus CI runner" /tr "C:\actions-runner\run.cmd" /sc onlogon
-   ```
-
-To check that it works, open the repository's Actions tab, choose "ci", and click "Run workflow".
-
-## What the runner uses
-
-These are already installed on this laptop:
+These are installed on this laptop:
 
 - Git for Windows, at `C:\Program Files\Git`.
 - Rust, with the GNU toolchain and the `wasm32-unknown-unknown` target.
@@ -63,10 +37,12 @@ These are already installed on this laptop:
 - Node 24 and Chrome.
 - ssh to klab (`ssh klab`, from `~/.ssh/config`), for the det step. Set `ARGUS_DET_HOST` for another Linux machine; it builds in `~/argus-ci` there.
 
+## On klab
+
+The steps that only compile and test (fmt, clippy, test, games, perf) run on klab too, to spare this laptop: check out the commit there and run `CARGO_HOME=$HOME/.cargo bash tools/ci/ci.sh fmt clippy test games perf`. Some results there are not this laptop's: the timing targets are this laptop's numbers; the render tests and a few others draw on a GPU, and klab has none a headless test can use, so they hang or differ there; and a few tests assume Windows (a release for "the other platform", a Windows path). Run those on this laptop. The det and web steps always run here: det compares this laptop with klab, and web needs Chrome and wasi-sdk.
+
 ## Good to know
 
-- **The laptop must be on.** A run only happens while the laptop is on, you are logged in, and the runner is running. A push made while it is off waits. GitHub drops a job that has waited 24 hours; run it again from the Actions page.
 - **The timing tests assume a quiet laptop.** They expect it plugged in and not busy with a game or another build. If a timing test fails while the laptop was busy, run it again before looking for a slowdown.
-- **The runner has its own build caches.** Its checkout is `C:\actions-runner\_work\argus\argus`, with its own build caches. A run cleans everything else in that checkout first, and empties the build cache when it grows past 100 GB (a working cache, debug and release builds, is about 85 GB; the run that empties it builds from cold, which takes about forty minutes). After every run, on the runner or by hand, the run also removes the test programs older builds left: each build of a test is its own program, named by a hash of what it was built from, so a version bump or a changed dependency leaves the old ones behind (a checkout here once held 1,172 of them, 160 GB, and the disk ran out). Keep an eye on the disk all the same: this cache and your own checkout's can each reach 100 GB.
-- **Keep the repository private.** While this runner is attached, a public repository would let a stranger's pull request run code on this laptop.
-- **Running it by hand:** `bash tools/ci/ci.sh` runs every step. `bash tools/ci/ci.sh fmt clippy` runs only those steps.
+- **Keep the laptop awake.** A run is about an hour; a laptop that sleeps partway makes slow games and failed timings.
+- **Old test programs are pruned.** Each build of a test is its own program, named by a hash of what it was built from, so a version bump or a changed dependency leaves the old ones behind (a checkout here once held 1,172 of them, 160 GB, and the disk ran out). After every run, the run removes the ones a newer build replaced. Keep an eye on the disk all the same: a build cache, debug and release, is about 85 GB.

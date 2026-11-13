@@ -126,4 +126,4 @@ Argus is young: version 0.2.0 is its first public release (0.1.0 was the first w
 
 Argus is open source under the [Apache License 2.0](LICENSE): use it for anything, free or paid, change it, and share your own version, keeping the copyright notice and the [NOTICE](NOTICE) file. A game you make with Argus is yours, under whatever terms you choose. The [templates](templates/LICENSE) and [example games](examples/LICENSE) are under MIT No Attribution, so a game started from one owes nothing for it.
 
-The names "Argus" and "Argus Engine" are not part of the license: [TRADEMARKS.md](TRADEMARKS.md) says how to use them. Contributions are welcome under the same license, signed off as [CONTRIBUTING.md](CONTRIBUTING.md) describes.
+The names "Argus" and "Argus Engine" are not part of the license: [TRADEMARKS.md](TRADEMARKS.md) says how to use them. Bug reports and ideas are welcome as issues; code from outside is not taken for now, as [CONTRIBUTING.md](CONTRIBUTING.md) explains.

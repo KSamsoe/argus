@@ -16,9 +16,8 @@
 # so it wants a clean tree).
 #
 # Every step runs; the script says which failed and exits 1 if any did.
-# Each step's output is in target/ci/<step>.log, which the workflow keeps.
-# It runs on the reference laptop as a self-hosted GitHub Actions runner
-# (docs/ci.md), and by hand the same way.
+# Each step's output is in target/ci/<step>.log. It runs by hand on the
+# reference laptop before a release (docs/ci.md).
 set -uo pipefail
 cd "$(dirname "$0")/../.."
 

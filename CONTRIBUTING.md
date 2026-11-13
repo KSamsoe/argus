@@ -1,54 +1,17 @@
 # Contributing to Argus
 
-Thank you for helping. Argus is under the Apache License 2.0 (`LICENSE`), and a contribution is accepted under the same license: section 5 of the license says so for anything you submit, and nothing more is asked.
+Argus is open source under the Apache License 2.0 (`LICENSE`): you may use it, change it, and share your own version, as the license says. What it does not take, for now, is code from outside: pull requests are closed without being merged.
 
-## Sign off your commits
+That is not a judgment of anyone's work. Argus is one person's engine, built with AI agents, and every change to it is weighed against a design and a plain style that are still settling. Reviewing outside code well would take time that goes into the engine instead, and keeping every line under one author keeps the project's future license choices open. This may change once Argus has a community around it; this page will say so.
 
-Each commit says you have the right to give it, by a line at the end of its message:
+## What helps, and is welcome
 
-```
-Signed-off-by: Your Name <you@example.com>
-```
+- **Bug reports.** Open an [issue](https://github.com/KSamsoe/argus/issues/new/choose). Its templates ask for what helps most: `argus version`, how to make it happen again, and a player's report (from F8 in a game) if there is one. An agent that runs into something can write one too.
+- **Ideas and questions.** An issue is the place for those as well: what you tried to make, what got in the way, what you wished Argus did.
+- **Games.** Make something with Argus and say so. "Made with Argus" is welcome anywhere (`TRADEMARKS.md`).
 
-`git commit -s` adds it. The line means you agree to the Developer Certificate of Origin, below: the work is yours to give (or you have the right to pass it on), and it may be shared under the project's license. It is the same promise Linux and many other projects ask for. A pull request whose commits are not signed off is asked to add it before it is merged.
+A fix you would have sent as a pull request is still useful as an issue: describe the problem and the change, and it may well be made.
 
-Use your real name, or the name you are known by in open source. The email in the line will be public.
+## Your own version
 
-## Developer Certificate of Origin 1.1
-
-```
-Developer Certificate of Origin
-Version 1.1
-
-Copyright (C) 2004, 2006 The Linux Foundation and its contributors.
-
-Everyone is permitted to copy and distribute verbatim copies of this
-license document, but changing it is not allowed.
-
-
-Developer's Certificate of Origin 1.1
-
-By making a contribution to this project, I certify that:
-
-(a) The contribution was created in whole or in part by me and I
-    have the right to submit it under the open source license
-    indicated in the file; or
-
-(b) The contribution is based upon previous work that, to the best
-    of my knowledge, is covered under an appropriate open source
-    license and I have the right under that license to submit that
-    work with modifications, whether created in whole or in part
-    by me, under the same open source license (unless I am
-    permitted to submit under a different license), as indicated
-    in the file; or
-
-(c) The contribution was provided directly to me by some other
-    person who certified (a), (b) or (c) and I have not modified
-    it.
-
-(d) I understand and agree that this project and the contribution
-    are public and that a record of the contribution (including all
-    personal information I submit with it, including my sign-off) is
-    maintained indefinitely and may be redistributed consistent with
-    this project or the open source license(s) involved.
-```
+The license lets anyone fork Argus and change it. A changed version you share needs a name of its own (`TRADEMARKS.md`), and keeps the `LICENSE` and `NOTICE` files and the copyright notices, with a note of what you changed.
