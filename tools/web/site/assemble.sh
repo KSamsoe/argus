@@ -23,3 +23,7 @@ done
 cp docs/img/templates.png "$SITE/img/"
 cp tools/web/site/og.png "$SITE/img/og.png"
 cp tools/web/site/byogm.png "$SITE/img/byogm.png"
+# The installers, at argusengine.org/install.ps1 and /install.sh, as text:
+# each fetches the latest release from GitHub, so a copy here stays good.
+cp tools/release/install.ps1 tools/release/install.sh "$SITE/"
+printf '%s\n' "/install.ps1" "  Content-Type: text/plain; charset=utf-8" "/install.sh" "  Content-Type: text/plain; charset=utf-8" > "$SITE/_headers"

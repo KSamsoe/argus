@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Argus: a 2D game engine you build games in with an AI</title>
-<meta name="description" content="Argus is a 2D game engine you build games in together with an AI agent. Public release coming soon.">
+<meta name="description" content="Argus is a 2D game engine you build games in together with an AI agent. Free and open source.">
 <link rel="canonical" href="https://argusengine.org/">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://argusengine.org/">
 <meta property="og:title" content="Argus">
-<meta property="og:description" content="A 2D game engine you build games in together with an AI agent. Public release coming soon.">
+<meta property="og:description" content="A 2D game engine you build games in together with an AI agent. Free and open source.">
 <meta property="og:image" content="https://argusengine.org/img/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -212,6 +212,7 @@ h2 { font-size: clamp(2rem, 1.15rem + 2.3vw, var(--s5)); max-width: 20ch; }
 .hl.agent { color: var(--agent); }
 .hero .lede { margin-top: 0; max-width: 50ch; }
 .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 38px; }
+.see { margin-top: 18px; font-size: var(--s0); }
 .map { position: relative; margin: 0; }
 .map .board { position: relative; aspect-ratio: 720 / 600; }
 .map svg { position: absolute; inset: 0; width: 100%; height: 100%; }
@@ -630,6 +631,11 @@ h2 { font-size: clamp(2rem, 1.15rem + 2.3vw, var(--s5)); max-width: 20ch; }
 .cmds li::before { content: counter(c, decimal-leading-zero); grid-row: span 2; font: 500 var(--s-1)/1.7 var(--mono); color: var(--on-dark-2); }
 .cmds code { background: transparent; padding: 0; font-size: 1rem; color: var(--on-dark); overflow-wrap: anywhere; }
 .cmds .c { font-size: var(--s-1); color: var(--on-dark-2); }
+.cmds.alt li { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+.cmds.alt li::before { content: none; }
+.cmds.alt code, .cmds.alt .c { grid-column: 1; }
+.cmds.alt .copy { grid-column: 2; grid-row: 1 / span 2; }
+.term-note { margin-top: 14px; font-size: var(--s-1); max-width: 60ch; }
 .tpl { margin: 0; }
 .tpl img { width: 100%; height: auto; border: 2px solid var(--graphite); background: var(--graphite); }
 .tpl figcaption { display: flex; gap: 12px; margin-top: 14px; font-size: var(--s-1); color: var(--steel); }
@@ -641,7 +647,6 @@ h2 { font-size: clamp(2rem, 1.15rem + 2.3vw, var(--s5)); max-width: 20ch; }
 @media (max-width: 1040px) { .plain { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 560px) { .plain { grid-template-columns: minmax(0, 1fr); } }
 .plain li { background: var(--glass); padding: 20px 20px 24px; border-top: 6px solid var(--graphite); }
-.plain li:last-child { border-top-style: dashed; }
 .plain b { display: block; font: 600 var(--s1)/1.2 var(--font); letter-spacing: -.01em; margin-bottom: 8px; }
 
 /* ---------- the next step: one red door ---------- */
@@ -717,13 +722,14 @@ h2 { font-size: clamp(2rem, 1.15rem + 2.3vw, var(--s5)); max-width: 20ch; }
 <section class="panel hero" aria-labelledby="h-hero">
   <div class="wrap">
     <div>
-      <p class="sign"><b>2D game engine</b><span>Public release coming soon</span></p>
+      <p class="sign"><b>2D game engine</b><span>0.2.0, free and open source</span></p>
       <h1 id="h-hero"><span class="hl you">You</span> and <span class="hl agent">an AI</span>, building one game together.</h1>
       <p class="lede">Argus is a 2D game engine made so an AI agent can work on a game as well as you can, right beside you. The game runs live, and you, the agent, the tests and the command line all work on that one running game.</p>
       <div class="actions">
-        <a class="btn" href="games/">Play the games <span class="arr"><svg viewBox="0 0 22 14" aria-hidden="true"><path d="M0 7h20M14 1l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2"/></svg></span></a>
-        <a class="btn line" href="#live">See what the agent sees <span class="arr"><svg viewBox="0 0 22 14" aria-hidden="true"><path d="M11 0v12M5 6l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2"/></svg></span></a>
+        <a class="btn" href="#start">Get Argus <span class="arr"><svg viewBox="0 0 22 14" aria-hidden="true"><path d="M11 0v12M5 6l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2"/></svg></span></a>
+        <a class="btn line" href="games/">Play the games <span class="arr"><svg viewBox="0 0 22 14" aria-hidden="true"><path d="M0 7h20M14 1l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2"/></svg></span></a>
       </div>
+      <p class="see"><a href="#live">See what the agent sees</a></p>
     </div>
     <figure class="map">
       <div class="board">
@@ -952,7 +958,7 @@ h2 { font-size: clamp(2rem, 1.15rem + 2.3vw, var(--s5)); max-width: 20ch; }
     <div class="grid2">
       <div>
         <h2 id="h-seed">The same seed plays the same game, bit for bit.</h2>
-        <p class="body">A run comes out the same on Windows, Linux, the Mac and in the browser. A failing test saves a replay that opens at the moment it failed. When a player flags a moment while playing, with a mark and a note, the agent opens the game at exactly that frame.</p>
+        <p class="body">A run comes out the same on Windows, Linux, the Mac and in the browser. A failing test saves a replay that opens at the moment it failed. When a player flags a moment while playing, with a mark and a note, the agent opens the game at exactly that frame. It is also what lets players play together online: every machine computes the same world from everyone's input.</p>
         <p class="seed-live" id="seed-live" hidden>Hollow, in the panel above, right now: tick <b id="sl-tick"></b>, digest <b id="sl-digest"></b>. Press Replay there to see it reached again.</p>
       </div>
       <div>
@@ -1038,8 +1044,7 @@ h2 { font-size: clamp(2rem, 1.15rem + 2.3vw, var(--s5)); max-width: 20ch; }
       <li>Scenes as plain text, one file per entity</li>
       <li>Sprites, Aseprite and Spine animation</li>
       <li>2D lighting with shadows and normal maps</li>
-      <li>Particles</li>
-      <li>Parallax</li>
+      <li>Particles and parallax</li>
       <li>UI with rich text and a screen-reader feed</li>
       <li>Touch controls</li>
       <li>Sound and adaptive music</li>
@@ -1049,6 +1054,7 @@ h2 { font-size: clamp(2rem, 1.15rem + 2.3vw, var(--s5)); max-width: 20ch; }
       <li>Saves</li>
       <li>Mods</li>
       <li>Turn-based games that keep animating between turns</li>
+      <li>Online multiplayer with rollback, two to four players</li>
       <li>Rust plugins for the hot paths</li>
     </ul>
   </div>
@@ -1134,7 +1140,7 @@ h2 { font-size: clamp(2rem, 1.15rem + 2.3vw, var(--s5)); max-width: 20ch; }
     <div class="halves">
       <div class="half ship">
         <h2 id="h-ship">It ships games.</h2>
-        <p class="body"><code>argus build</code> makes a release with the game's own name and icon. It checks that the release plays and looks exactly as the project does, and it needs no compiler. Steam support is built in.</p>
+        <p class="body"><code>argus build</code> makes a release with the game's own name and icon. It checks that the release plays and looks exactly as the project does, and it needs no compiler. Steam support is built in. Games play online too: two to four players, on any mix of desktops and browsers, through a relay you run with <code>argus relay</code>.</p>
         <ul class="dest">
           <li>Windows<svg viewBox="0 0 26 14" aria-hidden="true"><path d="M0 7h24M18 1l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2"/></svg></li>
           <li>Linux<svg viewBox="0 0 26 14" aria-hidden="true"><path d="M0 7h24M18 1l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2"/></svg></li>
@@ -1167,7 +1173,15 @@ h2 { font-size: clamp(2rem, 1.15rem + 2.3vw, var(--s5)); max-width: 20ch; }
     <div class="grid2">
       <div>
         <h2 id="h-start">Start from a game that already plays.</h2>
-        <p class="body">Once the public release is out, a new game starts from a template: a small game that already plays, with its art drawn by a script you or an agent can change, and scenarios that pin how it plays.</p>
+        <p class="body">Argus is free and open source, on Windows, Linux and the Mac. Install it with one command. A new game starts from a template: a small game that already plays, with its art drawn by a script you or an agent can change, and scenarios that pin how it plays.</p>
+        <div class="term">
+          <div class="term-top"><span>Install</span></div>
+          <ul class="cmds alt">
+            <li><code>irm https://argusengine.org/install.ps1 | iex</code><span class="c">Windows, in PowerShell</span><button type="button" class="copy" data-copy>Copy</button></li>
+            <li><code>curl -fsSL https://argusengine.org/install.sh | sh</code><span class="c">Linux or macOS, in a terminal</span><button type="button" class="copy" data-copy>Copy</button></li>
+          </ul>
+        </div>
+        <p class="term-note">Then open a new terminal. <a href="https://github.com/KSamsoe/argus/blob/main/docs/install.md">The install guide</a> says what a machine needs and how to connect each AI tool.</p>
         <div class="term">
           <div class="term-top"><span>Five commands</span><button type="button" class="copy" id="copy">Copy</button></div>
           <ol class="cmds" id="cmds">
@@ -1193,10 +1207,10 @@ h2 { font-size: clamp(2rem, 1.15rem + 2.3vw, var(--s5)); max-width: 20ch; }
     <p class="label"><span class="stop" aria-hidden="true"></span><span class="no">13</span>Where it stands</p>
     <h2 id="h-limits">Plainly, where Argus is today.</h2>
     <ul class="plain">
-      <li><b>Young</b>Argus is at version 0.1.2, tested in private. The public release is coming soon.</li>
+      <li><b>Young</b>Argus is at version 0.2.0, its first public release. Expect rough edges, and say so in an issue when you find one.</li>
       <li><b>2D only</b>There is no 3D.</li>
       <li><b>Phones play in the browser</b>Phones and tablets play Argus games in the browser, not as installed apps.</li>
-      <li><b>In testing</b>Online multiplayer, with rollback, through a relay, for the next release.</li>
+      <li><b>Online needs a relay</b>Players connect through a relay, which you run yourself, and a match ends if a player's connection drops.</li>
     </ul>
   </div>
 </section>
@@ -1215,7 +1229,7 @@ h2 { font-size: clamp(2rem, 1.15rem + 2.3vw, var(--s5)); max-width: 20ch; }
           <span class="arr" aria-hidden="true"><svg viewBox="0 0 108 30"><path d="M0 15h104M90 1l14 14-14 14" fill="none" stroke="currentColor" stroke-width="3"/></svg></span>
         </a>
       </div>
-      <p class="after-go">The public release of Argus is coming soon.</p>
+      <p class="after-go">Argus is free and open source under the <a href="https://github.com/KSamsoe/argus/blob/main/LICENSE">Apache License 2.0</a>. <a href="https://github.com/KSamsoe/argus">Get it on GitHub</a>, or <a href="#start">install it</a>.</p>
     </div>
   </div>
 </section>
@@ -1227,9 +1241,11 @@ h2 { font-size: clamp(2rem, 1.15rem + 2.3vw, var(--s5)); max-width: 20ch; }
       <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" fill="#F3F4F2"/><circle cx="16" cy="16" r="9.5" fill="#16181A"/><circle cx="16" cy="16" r="4" fill="#C8341E"/></svg>
       Argus
     </a>
-    <p>A 2D game engine you build games in together with an AI. Public release coming soon.</p>
+    <p>A 2D game engine you build games in together with an AI. Free and open source, under the Apache License 2.0.</p>
     <ul>
       <li><a href="games/">Play in the browser</a></li>
+      <li><a href="https://github.com/KSamsoe/argus">Argus on GitHub</a></li>
+      <li><a href="https://github.com/KSamsoe/argus/blob/main/docs/install.md">Install</a></li>
     </ul>
     <p class="by">Built by Kevin Samsoe · <a href="https://github.com/KSamsoe">GitHub</a> · <a href="mailto:samsoekevin@gmail.com">samsoekevin@gmail.com</a></p>
   </div>
@@ -1261,14 +1277,17 @@ else {
   io.observe(seeds);
 }
 
-/* copy the five commands */
+/* copy the five commands, or one install line */
+const copyText = async (btn, text) => {
+  try { await navigator.clipboard.writeText(text); btn.textContent = "Copied"; btn.classList.add("done"); }
+  catch { btn.textContent = "Select to copy"; }
+  setTimeout(() => { btn.textContent = "Copy"; btn.classList.remove("done"); }, 1600);
+};
 const copy = $("#copy");
-copy.addEventListener("click", async () => {
-  const text = [...document.querySelectorAll("#cmds code")].map((c) => c.textContent).join("\n");
-  try { await navigator.clipboard.writeText(text); copy.textContent = "Copied"; copy.classList.add("done"); }
-  catch { copy.textContent = "Select to copy"; }
-  setTimeout(() => { copy.textContent = "Copy"; copy.classList.remove("done"); }, 1600);
-});
+copy.addEventListener("click", () => copyText(copy, [...document.querySelectorAll("#cmds code")].map((c) => c.textContent).join("\n")));
+for (const b of document.querySelectorAll("[data-copy]")) {
+  b.addEventListener("click", () => copyText(b, b.closest("li").querySelector("code").textContent));
+}
 
 /* ---------- the live game ---------- */
 const screen = $("#screen");
