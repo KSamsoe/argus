@@ -107,6 +107,12 @@ Phase 0, piece 10: the scenario test runner, in [crates/argus-test](../crates/ar
 
 Its trace is [crates/argus-test/SPEC-TRACE.md](../crates/argus-test/SPEC-TRACE.md).
 
+## Multiplayer, and 0.2.0
+
+Online play: two to four players, each at their own machine, in one game, on Windows, Linux, a Mac, or in a browser, in any mix. First every machine had to compute the same world from the same input, to the bit: the engine's and Luau's math now come from one library, and CI checks every example's runs and scenarios on this PC, klab, and Chrome. Then matches with prediction and rollback (lockstep for turn-based games), a relay every player connects out to, hosting and joining from a game's own menu, `t:net` to test a match over a bad network, and Duel, a versus game, to show it. The plan is [docs/multiplayer-checklist.md](multiplayer-checklist.md).
+
+Its gate is [docs/multiplayer-gate.md](multiplayer-gate.md): an agent with only the docs added a block to Duel, every example gave the same run on all three, and Kevin played Duel desktop against browser through klab's relay over a link slowed on purpose, without falling out of step. That play found the other player's swing often unseen; a game now chooses its own input delay (`argus.toml` `[net] delay`), and Duel's slash outlives its hitbox. Version 0.2.0 shipped it; its notes are [docs/releases/0.2.0.md](releases/0.2.0.md).
+
 ## Reaching players, and 0.1.1
 
 After 0.1.0, what games made on Argus need to reach people, chosen over online multiplayer: touch, so a web build plays on a phone or a tablet; a game's own name and icon on every platform, and a Mac app a player double-clicks; rich text in the UI; and two small fixes found making 0.1.0 (a web click's modifiers, undoing a named edit). Hollow plays by touch, every example game is built with its own icon, and Delve's log and menu use rich text. Kevin's play of Hollow on his phone led to two more: the camera framing the hero above the thumbs, and the page using the phone's whole screen. The plan and what each item built are in [docs/reaching-players-checklist.md](reaching-players-checklist.md).

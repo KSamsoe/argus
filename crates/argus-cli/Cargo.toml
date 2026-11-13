@@ -14,19 +14,19 @@ name = "argus"
 path = "src/main.rs"
 
 [dependencies]
-argus-client = { path = "../argus-client", version = "0.1.2" }
-argus-daemon = { path = "../argus-daemon", version = "0.1.2" }
-argus-relay = { path = "../argus-relay", version = "0.1.2" }
-argus-player = { path = "../argus-player", version = "0.1.2", features = ["rigid"] }
-argus-plugins = { path = "../argus-plugins", version = "0.1.2" }
-argus-render = { path = "../argus-render", version = "0.1.2" }
-argus-scene = { path = "../argus-scene", version = "0.1.2" }
-argus-os = { path = "../argus-os", version = "0.1.2" }
-argus-sim = { path = "../argus-sim", version = "0.1.2" }
-argus-input = { path = "../argus-input", version = "0.1.2" }
+argus-client = { path = "../argus-client", version = "0.2.0" }
+argus-daemon = { path = "../argus-daemon", version = "0.2.0" }
+argus-relay = { path = "../argus-relay", version = "0.2.0" }
+argus-player = { path = "../argus-player", version = "0.2.0", features = ["rigid"] }
+argus-plugins = { path = "../argus-plugins", version = "0.2.0" }
+argus-render = { path = "../argus-render", version = "0.2.0" }
+argus-scene = { path = "../argus-scene", version = "0.2.0" }
+argus-os = { path = "../argus-os", version = "0.2.0" }
+argus-sim = { path = "../argus-sim", version = "0.2.0" }
+argus-input = { path = "../argus-input", version = "0.2.0" }
 serde_json = "1"
 interprocess = "2"
-argus-assets = { path = "../argus-assets", version = "0.1.2" }
+argus-assets = { path = "../argus-assets", version = "0.2.0" }
 # A game's icon and version into a Windows executable's resources, with no
 # compiler (reaching players item 2); its table of strings is an IndexMap
 # with foldhash's hasher.
@@ -35,4 +35,4 @@ indexmap = "2"
 foldhash = "0.2"
 
 [dev-dependencies]
-argus-ecs = { path = "../argus-ecs", version = "0.1.2" }
+argus-ecs = { path = "../argus-ecs", version = "0.2.0" }

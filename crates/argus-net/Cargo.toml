@@ -6,5 +6,5 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-argus-ecs = { path = "../argus-ecs", version = "0.1.2" }
-argus-input = { path = "../argus-input", version = "0.1.2" }
+argus-ecs = { path = "../argus-ecs", version = "0.2.0" }
+argus-input = { path = "../argus-input", version = "0.2.0" }
