@@ -3,7 +3,11 @@
 use argus_scene::{ProjectConfig, NET_DELAY};
 
 fn load(extra: &str) -> argus_ecs::Result<ProjectConfig> {
-    let dir = std::env::temp_dir().join(format!("argus-net-config-{}-{}", std::process::id(), extra.len()));
+    let dir = std::env::temp_dir().join(format!(
+        "argus-net-config-{}-{}",
+        std::process::id(),
+        extra.len()
+    ));
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("argus.toml"), format!("name = \"t\"\n{extra}")).unwrap();
     let r = ProjectConfig::load(&dir);
