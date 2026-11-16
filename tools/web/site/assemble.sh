@@ -20,7 +20,7 @@ cp tools/web/site/games.html "$SITE/games/index.html"
 for g in hollow delve swarm outpost; do
   cp "docs/img/clip-$g.webp" "docs/img/game-$g.png" "$SITE/img/"
 done
-cp docs/img/templates.png "$SITE/img/"
+cp docs/img/templates.png docs/img/game-duel.png "$SITE/img/"
 cp tools/web/site/og.png "$SITE/img/og.png"
 cp tools/web/site/byogm.png "$SITE/img/byogm.png"
 # The installers, at argusengine.org/install.ps1 and /install.sh, as text:

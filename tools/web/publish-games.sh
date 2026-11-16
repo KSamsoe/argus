@@ -8,8 +8,9 @@
 #
 # <argus> is an installed argus (an install's, so each page is what a
 # release makes; the checkout's builds too, from source). Hollow, Delve,
-# and Outpost are built for the web from copies of examples/, each checked
-# by its build; Swarm has no web build (its chase is a Rust plugin). The
+# Outpost, and Duel are built for the web from copies of examples/, each
+# checked by its build, Duel's page set to play online through the public
+# relay; Swarm has no web build (its chase is a Rust plugin). The
 # site is Argus's front page (tools/web/site/, which runs Hollow live), the
 # games' pages, the page of the games at games/
 # (tools/web/site/games.html), and the README's clips and stills
@@ -33,7 +34,7 @@ rm -rf "${WORK:?}"
 mkdir -p "$WORK/src" "$WORK/site/img"
 trap 'rm -rf "${WORK:?}"' EXIT
 echo "== the pages ($("$ARGUS" version))"
-for g in hollow delve outpost; do
+for g in hollow delve outpost duel; do
   cp -r "examples/$g" "$WORK/src/$g"
   rm -rf "${WORK:?}/src/$g/.argus" "${WORK:?}/src/$g/dist"
   "$ARGUS" --project "$WORK/src/$g" build --target web --release --out "$WORK/site/$g" | tail -1
@@ -42,6 +43,11 @@ for g in hollow delve outpost; do
   # The site takes no reports, so the page does not offer F8's.
   sed -i 's|<span id="f8">[^<]*</span>|<span id="f8"></span>|' "$WORK/site/$g/index.html"
 done
+# Duel online: the public relay (tools/relay/deploy-public.sh), put in the
+# page's address before main.js reads it, unless a link names another.
+RELAY=${ARGUS_PUBLIC_RELAY:-wss://klab.tailde2255.ts.net:10000}
+sed -i 's|^<meta charset="utf-8">|<meta charset="utf-8">\n<script>const u = new URL(location.href); if (!u.searchParams.has("relay")) { u.searchParams.set("relay", "'"$RELAY"'"); history.replaceState(null, "", u); }</script>|' "$WORK/site/duel/index.html"
+grep -q "$RELAY" "$WORK/site/duel/index.html" || { echo "duel's page does not name the relay" >&2; exit 1; }
 tools/web/site/assemble.sh "$WORK/site"
 
 echo "== argusengine.org"

@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>The example games: Argus</title>
-<meta name="description" content="Hollow, Delve and Outpost, three games made with Argus, play in your browser. Argus is a 2D game engine you build games in together with an AI agent.">
+<meta name="description" content="Hollow, Delve, Outpost and Duel, four games made with Argus, play in your browser, Duel online against a friend. Argus is a 2D game engine you build games in together with an AI agent.">
 <link rel="canonical" href="https://argusengine.org/games/">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://argusengine.org/games/">
 <meta property="og:title" content="The Argus example games">
-<meta property="og:description" content="Hollow, Delve and Outpost, made with Argus, play in your browser.">
+<meta property="og:description" content="Hollow, Delve, Outpost and Duel, made with Argus, play in your browser.">
 <meta property="og:image" content="https://argusengine.org/img/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -269,7 +269,7 @@ kbd {
 <section class="panel play route first" id="games" aria-labelledby="h-play">
   <div class="wrap">
     <p class="label"><span class="stop" aria-hidden="true"></span><span class="no">01</span>In your browser</p>
-    <h2 id="h-play">Three to play now.</h2>
+    <h2 id="h-play">Four to play now.</h2>
     <ol class="rows">
       <li class="row">
         <a class="pic" href="../hollow/" tabindex="-1" aria-hidden="true"><picture><source media="(prefers-reduced-motion: reduce)" srcset="../img/game-hollow.png"><img src="../img/clip-hollow.webp" width="480" height="270" alt=""></picture></a>
@@ -314,6 +314,20 @@ kbd {
             <div><dt>Pause</dt><dd><kbd>Space</kbd>, and <kbd>Esc</kbd> for the menu</dd></div>
           </dl>
           <a class="btn" href="../outpost/">Play Outpost <span class="arr"><svg viewBox="0 0 22 14" aria-hidden="true"><path d="M0 7h20M14 1l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2"/></svg></span></a>
+        </div>
+      </li>
+      <li class="row">
+        <a class="pic" href="../duel/" tabindex="-1" aria-hidden="true"><img src="../img/game-duel.png" width="480" height="270" alt="" loading="lazy"></a>
+        <div class="txt">
+          <h3>Duel</h3>
+          <span class="tag">Two players, online too</span>
+          <p>Two fighters in one arena, first to three. A swing that lands is a point, and a dash goes straight through one. Play two on one keyboard, or online against a friend in another browser: one chooses Host online and shares the five-letter code, the other chooses Join online and types it.</p>
+          <dl class="keys" aria-label="Duel's controls">
+            <div><dt>Player 1</dt><dd><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> to move, <kbd>F</kbd> to swing, <kbd>Space</kbd> to dash</dd></div>
+            <div><dt>Player 2</dt><dd>The arrow keys, <kbd>.</kbd> to swing, <kbd>/</kbd> to dash</dd></div>
+            <div><dt>Online</dt><dd>Each player uses player 1's keys</dd></div>
+          </dl>
+          <a class="btn" href="../duel/">Play Duel <span class="arr"><svg viewBox="0 0 22 14" aria-hidden="true"><path d="M0 7h20M14 1l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2"/></svg></span></a>
         </div>
       </li>
     </ol>
@@ -368,6 +382,7 @@ kbd {
     <p class="label"><span class="stop" aria-hidden="true"></span><span class="no">04</span>Good to know</p>
     <h2 id="h-know" class="visually-hidden">Good to know</h2>
     <ul class="facts">
+      <li><b>Online in Duel</b><p>Matches go through a relay Argus runs for this site. It passes the two players' moves between them and keeps nothing. A room is open to whoever has its code.</p></li>
       <li><b>Click the game first</b><p>A game hears your keys once you click it. On a phone or a tablet, play by touch.</p></li>
       <li><b>Settings in every game</b><p>Each game's <kbd>Esc</kbd> menu has text size, high contrast and full screen, and its controls, where any key can be rebound.</p></li>
       <li><b>Drawn on your graphics card</b><p>The games draw with WebGPU where the browser has it, and with WebGL2 where it does not.</p></li>

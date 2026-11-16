@@ -1,0 +1,16 @@
+[Unit]
+Description=Argus relay for anyone: rooms for the site's Duel, behind Tailscale Funnel
+After=network-online.target tailscaled.service
+
+[Service]
+# This machine only (argus relay local:7881); Tailscale Funnel puts it on
+# the internet with TLS as wss://klab.tailde2255.ts.net:10000, which is
+# what a page on https://argusengine.org can reach (Kevin, 2026-11-16).
+# What a public relay exposes: docs/manual/releasing.md, "Running a relay".
+# The binary is the release's own (tools/relay/deploy-public.sh).
+ExecStart=%h/argus-relay-public/argus relay local:7881
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
