@@ -18,7 +18,7 @@ This file records that run, begun on 2026-10-21.
 
 ## The trial
 
-One agent (Opus 5.5) was given a copy of Duel outside the repository, an `argus` built from the commit before (424a891a), and the docs that tool gives. It was asked to add a **block**: a button that, held, walks at half speed, stops attacks and dashes, and turns a swing from the front into no point, both fighters pushed apart; at most 1.5 seconds at a time, then a second's rest. It must not read the engine's source, and done meant scenarios for every rule, at least one of them a two-player match online over a bad link with both players' input scripted, and the whole suite passing.
+One agent (Opus 5.5) was given a copy of Duel outside the repository, an `argus` built from the commit before (ada612a7), and the docs that tool gives. It was asked to add a **block**: a button that, held, walks at half speed, stops attacks and dashes, and turns a swing from the front into no point, both fighters pushed apart; at most 1.5 seconds at a time, then a second's rest. It must not read the engine's source, and done meant scenarios for every rule, at least one of them a two-player match online over a bad link with both players' input scripted, and the whole suite passing.
 
 It built it. 9 new scenarios, among them two players over `t:net` (60 ms, 30 ms jitter, 5% loss) each blocking the other's swing from the front, then a swing from behind scoring through a block; both players rolled back (8 and 12 times), and it passed on seeds 1 to 20. It broke six of the rules one at a time on purpose and saw the matching scenarios fail. The suite ended `22 scenarios, 22 runs, 0 failed`, which I reran myself with the same tool. I read its transcript: 153 tool calls, none of them reaching the engine's source or the repository.
 
@@ -35,7 +35,7 @@ What it found missing, and what became of each:
 
 ## The same run everywhere
 
-CI's det step, at 424a891a: all 16 long runs (Duel's two among them) ended every checkpoint on the same world on this PC, klab, and Chrome, Swarm's on the first two (it has no web build); all 361 scenario runs, Duel's 13 among them with its online match, ended on the same world on klab as here.
+CI's det step, at ada612a7: all 16 long runs (Duel's two among them) ended every checkpoint on the same world on this PC, klab, and Chrome, Swarm's on the first two (it has no web build); all 361 scenario runs, Duel's 13 among them with its online match, ended on the same world on klab as here.
 
 ## Two people
 

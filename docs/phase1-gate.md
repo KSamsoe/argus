@@ -4,7 +4,7 @@ The plan (design §18) ends phase 1 with a gate:
 
 > Swarm and Delve are playable by a human in a window. The agent builds a three-room slice of Hollow with tiles, a kinematic player, one-way platforms, and a following camera, screenshots it, describes what's on screen from the semantic frame, and fixes a visual bug it found that way. The player has a run, jump, and land animation with a footstep event that fires a sound.
 
-This file records that run, done on 2026-09-22 with the phase-1 engine at commit `51ed984` plus the fixes this commit adds. The gate has two halves, and both are done: the gate is passed. For the second half, Kevin played Swarm and Delve on 2026-09-23 and found two faults, both fixed. Both halves are below, with what was checked without a person.
+This file records that run, done on 2026-09-22 with the phase-1 engine at commit `a9170c7` plus the fixes this commit adds. The gate has two halves, and both are done: the gate is passed. For the second half, Kevin played Swarm and Delve on 2026-09-23 and found two faults, both fixed. Both halves are below, with what was checked without a person.
 
 ## The brief
 

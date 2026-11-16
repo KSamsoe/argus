@@ -53,7 +53,7 @@ The mark replays too. The check holds a key in real time in Chrome, takes a mark
 A mark looks like this:
 
 ```json
-{"scene":"hollow","seed":1,"tick":146,"code":"git:04d4878+dirty",
+{"scene":"hollow","seed":1,"tick":146,"code":"git:0a757c4+dirty",
  "digest":"02c569cab37c02da","events_digest":"e60657482b525a11",
  "log":[[35,1,"move",[1.0,0.0]],[127,1,"move",[0.0,0.0]]],
  "note":"held the right arrow for a second and a half"}

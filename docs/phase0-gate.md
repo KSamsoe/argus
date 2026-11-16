@@ -4,7 +4,7 @@ The plan (design §18) ends phase 0 with a gate rather than an item:
 
 > From an empty directory and a paragraph brief each, an agent using only the CLI builds headless cores of Swarm (continuous clock, 50k entities, waves) and Delve (discrete clock, generated floors, turn order) with passing tests, and can answer "why did the player die" in both from events and traces. If either game fights the protocol, that finding is the phase's output.
 
-This file is the record of that run, done on 2026-09-18 with the phase-0 engine at commit `d4fb03b` plus the two example projects this commit adds. The agent wrote TOML and Luau files and drove the engine only through `argus`; it never touched Rust, the daemon's socket, or the index.
+This file is the record of that run, done on 2026-09-18 with the phase-0 engine at commit `67956b0` plus the two example projects this commit adds. The agent wrote TOML and Luau files and drove the engine only through `argus`; it never touched Rust, the daemon's socket, or the index.
 
 ## The briefs
 

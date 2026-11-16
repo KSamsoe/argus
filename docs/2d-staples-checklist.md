@@ -56,6 +56,6 @@ Done (2026-10-14): gameplay (rays and shapes, the four collider shapes, save slo
 
 Met (2026-10-14). Tests: each item's above. The examples, spread over the games as Kevin chose:
 
-- Toybox (e4de7b07): a wedge with a polygon collider the balls roll down, a pill with a capsule collider standing on the floor, and a tripwire laser along the floor, a raycast each tick that ends on the pill's rounded foot unless a ball rolls through, its beam debug-drawn. `tests/staples.luau`.
-- Hollow (032454f2): the back wall is a parallax tile layer at half speed, so its columns pass behind the level in the shaft and the hall. The hall's picture golden is updated for it.
-- Delve (df977bef): monsters see the hero only when a ray from their cell to the hero's meets no wall (seen, they come every turn; else every other turn, on the trail); `DebugView.sight` draws each sight line; the menu's Saves page saves three slots with what they hold, loads them, and deletes them. Its sparks fly between turns. `tests/sight.luau`, `tests/saves.luau`; the fight golden is updated for the new pace.
+- Toybox (1feb853a): a wedge with a polygon collider the balls roll down, a pill with a capsule collider standing on the floor, and a tripwire laser along the floor, a raycast each tick that ends on the pill's rounded foot unless a ball rolls through, its beam debug-drawn. `tests/staples.luau`.
+- Hollow (7e7e983f): the back wall is a parallax tile layer at half speed, so its columns pass behind the level in the shaft and the hall. The hall's picture golden is updated for it.
+- Delve (a85ad28a): monsters see the hero only when a ray from their cell to the hero's meets no wall (seen, they come every turn; else every other turn, on the trail); `DebugView.sight` draws each sight line; the menu's Saves page saves three slots with what they hold, loads them, and deletes them. Its sparks fly between turns. `tests/sight.luau`, `tests/saves.luau`; the fight golden is updated for the new pace.
