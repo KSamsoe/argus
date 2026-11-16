@@ -10,6 +10,13 @@
 // fails when any player falls out of step, or the players agreed on too
 // few checks. --lag and --jitter make the relay's link slow on purpose;
 // --relay ws://... plays through a relay already running instead.
+// --url <page> plays a published page as it is, through the relay it
+// picks itself (Duel on https://argusengine.org/duel/), with no relay or
+// server here; two pages only. On a machine in the tailnet, the relay's
+// name resolves to klab's tailnet address, which Chrome's local network
+// access check refuses to a public page; play as the internet would with
+// CHROME_FLAGS="--host-resolver-rules=MAP klab.tailde2255.ts.net <public
+// address>" (Chrome flags, separated by |).
 // Prints one JSON line. Node 24, no npm packages.
 import { spawn } from "node:child_process";
 import { mkdtempSync, existsSync, readFileSync, rmSync } from "node:fs";
@@ -26,8 +33,9 @@ const ticks = Number(opt("--ticks", "600"));
 const lag = opt("--lag", "0");
 const jitter = opt("--jitter", "0");
 const given = opt("--relay");
-if ((!argus && !given) || !site) {
-  console.error("usage: check.mjs --argus <argus.exe> --site <web build> [--game <desktop exe>] [--ticks 600]");
+const published = opt("--url");
+if (published ? game : (!argus && !given) || !site) {
+  console.error("usage: check.mjs --argus <argus.exe> --site <web build> [--game <desktop exe>] [--ticks 600], or check.mjs --url <page>");
   process.exit(2);
 }
 const chrome = process.env.CHROME ?? "C:/Program Files/Google/Chrome/Application/chrome.exe";
@@ -60,6 +68,7 @@ async function openPage(url) {
       "--disable-background-timer-throttling",
       "--disable-renderer-backgrounding",
       "--disable-backgrounding-occluded-windows",
+      ...(process.env.CHROME_FLAGS ? process.env.CHROME_FLAGS.split("|") : []),
       "about:blank",
     ],
     { stdio: "ignore" },
@@ -124,17 +133,23 @@ let failed = false;
 try {
   // The relay and the site.
   let relayUrl = given;
-  if (!relayUrl) {
-    const rp = await freePort();
-    relayUrl = `ws://127.0.0.1:${rp}`;
-    kids.push(spawn(argus, ["relay", `:${rp}`, `lag=${lag}`, `jitter=${jitter}`], { stdio: "ignore" }));
+  let base;
+  if (published) {
+    base = published.includes("?") ? published : `${published}?`;
+  } else {
+    if (!relayUrl) {
+      const rp = await freePort();
+      relayUrl = `ws://127.0.0.1:${rp}`;
+      kids.push(spawn(argus, ["relay", `:${rp}`, `lag=${lag}`, `jitter=${jitter}`], { stdio: "ignore" }));
+    }
+    const http = await freePort();
+    kids.push(spawn(process.execPath, ["tools/web/serve.mjs", site, String(http), "127.0.0.1"], { stdio: "ignore" }));
+    await sleep(800);
+    base = `http://127.0.0.1:${http}/?relay=${encodeURIComponent(relayUrl)}`;
   }
-  report.relay = relayUrl;
-  const http = await freePort();
-  kids.push(spawn(process.execPath, ["tools/web/serve.mjs", site, String(http), "127.0.0.1"], { stdio: "ignore" }));
-  await sleep(800);
-  const base = `http://127.0.0.1:${http}/?relay=${encodeURIComponent(relayUrl)}`;
   const host = await openPage(`${base}&host=2`);
+  // The relay the page chose (a published page names its own).
+  report.relay = published ? await host.evaluate("new URL(location.href).searchParams.get('relay')") : relayUrl;
   let code = null;
   for (let i = 0; i < 200 && !code; i++) {
     const n = await host.net();
