@@ -3,6 +3,8 @@
 #
 #   tools/relay/deploy-public.sh [version]     (default: the latest release)
 #
+# $ARGUS_RELAY_BINARY, a path on klab, runs that argus instead of a
+# release's (one built there from a fix not released yet).
 # On klab ($ARGUS_RELAY_HOST), in ~/argus-relay-public:
 #   - the release's own Linux argus, checked against its SHA256SUMS, run by
 #     argus-relay-public.service (a user unit) as `argus relay local:7881`,
@@ -28,25 +30,32 @@ if [ -z "$VERSION" ]; then
 fi
 URL=https://github.com/KSamsoe/argus/releases/download/v$VERSION
 echo "== argus $VERSION's relay on $HOST, as $NAME"
-ssh -o BatchMode=yes "$HOST" bash -s -- "$URL" "$VERSION" "$CLOUDFLARED" "$CLOUDFLARED_SHA" "$NAME" <<'REMOTE'
+BINARY=${ARGUS_RELAY_BINARY:-}
+[ -n "$BINARY" ] && echo "   (the relay: $BINARY on $HOST, not the release's)"
+ssh -o BatchMode=yes "$HOST" bash -s -- "$URL" "$VERSION" "$CLOUDFLARED" "$CLOUDFLARED_SHA" "$NAME" "$BINARY" <<'REMOTE'
 set -euo pipefail
 URL=$1
 VERSION=$2
 CF=$3
 CF_SHA=$4
 NAME=$5
+BINARY=$6
 DIR=~/argus-relay-public
 mkdir -p "$DIR" ~/.config/systemd/user
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 cd "$TMP"
-# The relay: the release's own argus.
-curl -fsSL -o a.tgz "$URL/argus-$VERSION-linux-x86_64.tar.gz"
-curl -fsSL -o SUMS "$URL/SHA256SUMS"
-want=$(grep " argus-$VERSION-linux-x86_64.tar.gz\$" SUMS | cut -d' ' -f1)
-[ "$want" = "$(sha256sum a.tgz | cut -d' ' -f1)" ] || { echo "the archive does not match its checksum" >&2; exit 1; }
-tar -xzf a.tgz
-cp "argus-$VERSION-linux/bin/argus" "$DIR/argus.new"
+# The relay: the release's own argus, or the one named.
+if [ -n "$BINARY" ]; then
+  cp "$BINARY" "$DIR/argus.new"
+else
+  curl -fsSL -o a.tgz "$URL/argus-$VERSION-linux-x86_64.tar.gz"
+  curl -fsSL -o SUMS "$URL/SHA256SUMS"
+  want=$(grep " argus-$VERSION-linux-x86_64.tar.gz\$" SUMS | cut -d' ' -f1)
+  [ "$want" = "$(sha256sum a.tgz | cut -d' ' -f1)" ] || { echo "the archive does not match its checksum" >&2; exit 1; }
+  tar -xzf a.tgz
+  cp "argus-$VERSION-linux/bin/argus" "$DIR/argus.new"
+fi
 mv "$DIR/argus.new" "$DIR/argus"
 # The tunnel: Cloudflare's cloudflared, when it is not this version yet.
 if ! "$DIR/cloudflared" --version 2>/dev/null | grep -q "version $CF "; then
