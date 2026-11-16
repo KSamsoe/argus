@@ -4,7 +4,7 @@
 //! running.
 
 use argus_net::Link;
-use argus_relay::{ws, Client, Limits, Relay};
+use argus_relay::{ws, Client, Down, Limits, Relay, Up};
 use std::io::{Read, Write};
 use std::time::Duration;
 
@@ -152,15 +152,49 @@ fn a_player_breaking_the_limits_is_dropped() {
         "{:?}",
         b.closed()
     );
-    // Too quiet: no ping, nothing sent.
-    let mut c = Client::host(&url, 2, 7).unwrap();
-    std::thread::sleep(Duration::from_millis(500));
-    got(&mut c, 1);
-    assert!(
-        c.closed().is_some_and(|w| w.contains("silent")),
-        "{:?}",
-        c.closed()
-    );
+    // Too quiet: a player gone sends nothing, and answers no ping.
+    let (mut s, mut r) = ws::connect(&url).unwrap();
+    let host = Up::Host {
+        players: 2,
+        game: 7,
+    };
+    s.write_all(&ws::frame(
+        ws::op::BINARY,
+        &host.encode(),
+        Some([1, 2, 3, 4]),
+    ))
+    .unwrap();
+    let mut pings = 0;
+    let why = loop {
+        match ws::read_frame(&mut r, 1 << 20).unwrap() {
+            (ws::op::PING, _, _) => pings += 1,
+            (ws::op::BINARY, _, data) => {
+                if let Down::Refused(why) = Down::decode(&data).unwrap() {
+                    break why;
+                }
+            }
+            _ => {}
+        }
+    };
+    assert!(why.contains("silent"), "{why}");
+    assert!(pings >= 2, "the relay pinged it {pings} times");
+}
+
+#[test]
+fn a_host_waiting_alone_answers_the_relays_pings_and_stays() {
+    // A web page sends no pings of its own; the client sends none either
+    // while nothing calls it, and only answers the relay's.
+    let url = relay(Limits {
+        idle: Duration::from_millis(300),
+        ..Limits::default()
+    });
+    let mut a = Client::host(&url, 2, 7).unwrap();
+    std::thread::sleep(Duration::from_millis(1200));
+    let mut b = Client::join(&url, a.code(), 7).unwrap();
+    assert_eq!(b.slot(), 2);
+    present(&mut a, &[1, 2]);
+    a.send(b"still here".to_vec());
+    assert_eq!(got(&mut b, 1), vec![b"still here".to_vec()]);
 }
 
 #[test]

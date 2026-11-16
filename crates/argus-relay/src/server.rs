@@ -32,7 +32,9 @@ pub struct Limits {
     pub rate: f64,
     /// Messages a player may send at once beyond the rate.
     pub burst: f64,
-    /// A player who sends nothing this long is dropped (a client pings).
+    /// A player who sends nothing this long is dropped. The relay pings
+    /// each player a third of this apart and a client or page answers, so
+    /// only a player gone falls silent.
     pub idle: Duration,
     /// A room with no one connected is kept this long for one coming back.
     pub empty: Duration,
@@ -286,6 +288,24 @@ fn connection(
             id: st.next,
             out: Arc::new(Mutex::new(s)),
         }
+    };
+    // A web page cannot ping (a browser sends no WebSocket pings of its
+    // own) but answers one, so the relay pings every player a third of
+    // `idle` apart: a page waiting alone in its room stays, and a player
+    // gone (no answer either) is still dropped. Stops with the connection.
+    let _pinging = {
+        let (stop, stopped) = std::sync::mpsc::channel::<()>();
+        let out = conn.out.clone();
+        let every = limits.idle / 3;
+        std::thread::spawn(move || {
+            while let Err(std::sync::mpsc::RecvTimeoutError::Timeout) = stopped.recv_timeout(every)
+            {
+                if ws::write_frame(&mut *lock(&out), op::PING, &[]).is_err() {
+                    return;
+                }
+            }
+        });
+        stop
     };
     let full = {
         let mut st = lock(state);
