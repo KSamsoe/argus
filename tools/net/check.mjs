@@ -12,11 +12,8 @@
 // --relay ws://... plays through a relay already running instead.
 // --url <page> plays a published page as it is, through the relay it
 // picks itself (Duel on https://argusengine.org/duel/), with no relay or
-// server here; two pages only. On a machine in the tailnet, the relay's
-// name resolves to klab's tailnet address, which Chrome's local network
-// access check refuses to a public page; play as the internet would with
-// CHROME_FLAGS="--host-resolver-rules=MAP klab.tailde2255.ts.net <public
-// address>" (Chrome flags, separated by |).
+// server here; two pages only. CHROME_FLAGS adds flags to Chrome,
+// separated by | (say, --host-resolver-rules=MAP <name> <address>).
 // Prints one JSON line. Node 24, no npm packages.
 import { spawn } from "node:child_process";
 import { mkdtempSync, existsSync, readFileSync, rmSync } from "node:fs";

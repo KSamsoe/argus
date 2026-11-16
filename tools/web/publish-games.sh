@@ -45,7 +45,7 @@ for g in hollow delve outpost duel; do
 done
 # Duel online: the public relay (tools/relay/deploy-public.sh), put in the
 # page's address before main.js reads it, unless a link names another.
-RELAY=${ARGUS_PUBLIC_RELAY:-wss://klab.tailde2255.ts.net:10000}
+RELAY=${ARGUS_PUBLIC_RELAY:-wss://relay.argusengine.org}
 sed -i 's|^<meta charset="utf-8">|<meta charset="utf-8">\n<script>const u = new URL(location.href); if (!u.searchParams.has("relay")) { u.searchParams.set("relay", "'"$RELAY"'"); history.replaceState(null, "", u); }</script>|' "$WORK/site/duel/index.html"
 grep -q "$RELAY" "$WORK/site/duel/index.html" || { echo "duel's page does not name the relay" >&2; exit 1; }
 tools/web/site/assemble.sh "$WORK/site"

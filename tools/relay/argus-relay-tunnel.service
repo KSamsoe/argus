@@ -1,0 +1,18 @@
+[Unit]
+Description=Cloudflare Tunnel for the public Argus relay: wss://relay.argusengine.org
+After=network-online.target argus-relay-public.service
+Wants=argus-relay-public.service
+
+[Service]
+# Puts argus-relay-public.service (this machine only, 127.0.0.1:7881) on
+# the internet as wss://relay.argusengine.org through Cloudflare, so it has
+# a public name everywhere, tailnet machines included (Kevin, 2026-11-16).
+# tunnel.yml names the tunnel and its credentials; both are written by
+# tools/relay/deploy-public.sh. cloudflared is Cloudflare's release binary,
+# updated by that script, not by itself.
+ExecStart=%h/argus-relay-public/cloudflared tunnel --no-autoupdate --config %h/argus-relay-public/tunnel.yml run
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
