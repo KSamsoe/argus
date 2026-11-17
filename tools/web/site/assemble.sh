@@ -27,3 +27,17 @@ cp tools/web/site/byogm.png "$SITE/img/byogm.png"
 # each fetches the latest release from GitHub, so a copy here stays good.
 cp tools/release/install.ps1 tools/release/install.sh "$SITE/"
 printf '%s\n' "/install.ps1" "  Content-Type: text/plain; charset=utf-8" "/install.sh" "  Content-Type: text/plain; charset=utf-8" > "$SITE/_headers"
+# Cloudflare Web Analytics (Kevin, 2026-11-17): visits counted with no
+# cookies, on every page, the games' own included. The token is public (it
+# is in each page); the site is argusengine.org's in the Cloudflare
+# dashboard, Analytics & Logs > Web Analytics.
+BEACON_TOKEN=685e0b1fb6ba4f13a14246d0e63f029f
+BEACON="<script defer src=\"https://static.cloudflareinsights.com/beacon.min.js\" data-cf-beacon='{\"token\": \"$BEACON_TOKEN\"}'></script>"
+find "$SITE" -name '*.html' | while read -r page; do
+  if grep -q '</body>' "$page"; then
+    sed -i "0,/<\/body>/s|</body>|$BEACON\n</body>|" "$page"
+  else
+    printf '%s\n' "$BEACON" >> "$page"
+  fi
+  grep -q "$BEACON_TOKEN" "$page" || { echo "$page has no analytics beacon" >&2; exit 1; }
+done
