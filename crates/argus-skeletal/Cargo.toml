@@ -7,13 +7,13 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-argus-ecs = { path = "../argus-ecs", version = "0.2.0" }
-argus-sim = { path = "../argus-sim", version = "0.2.0" }
-argus-assets = { path = "../argus-assets", version = "0.2.0" }
-argus-anim = { path = "../argus-anim", version = "0.2.0" }
+argus-ecs = { path = "../argus-ecs", version = "0.2.1" }
+argus-sim = { path = "../argus-sim", version = "0.2.1" }
+argus-assets = { path = "../argus-assets", version = "0.2.1" }
+argus-anim = { path = "../argus-anim", version = "0.2.1" }
 # A pose's trig, the same on every system (pose.rs).
 libm = "0.2"
 
 [dev-dependencies]
 # The renderer's own Sprite, which the parts are, in the tests.
-argus-render = { path = "../argus-render", version = "0.2.0" }
+argus-render = { path = "../argus-render", version = "0.2.1" }
