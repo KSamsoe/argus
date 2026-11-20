@@ -39,7 +39,7 @@ VERSION=$2
 CF=$3
 CF_SHA=$4
 NAME=$5
-BINARY=$6
+BINARY=${6:-}  # ssh drops an empty argument
 DIR=~/argus-relay-public
 mkdir -p "$DIR" ~/.config/systemd/user
 TMP=$(mktemp -d)
